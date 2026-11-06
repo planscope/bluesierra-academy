@@ -1,0 +1,28 @@
+<!--
+  Blue Sierra Academy · what goes in the Webflow page /academy.
+  The page loads the code from GitHub (planscope/bluesierra-academy) through jsDelivr,
+  so every push to the repo updates the site. You never paste the big files again.
+-->
+
+<!-- 1) Page settings → Custom code → Inside <head> -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Cormorant+Garamond:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy.css">
+
+<!-- 2) A Code Embed in the page body, full width -->
+<div id="bs-academy"></div>
+
+<!-- 3) Page settings → Custom code → Before </body>
+     Fill these three values here, in Webflow. They are not in the public repo.
+     loginPhoto / heroPhoto: URLs of two Blue Sierra photos uploaded to Webflow Assets.
+     callsApi: the Apps Script web app URL (ends in /exec). -->
+<script>
+  window.BSA_SETTINGS = {
+    loginPhoto: "",
+    heroPhoto: "",
+    callsApi: ""
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-content.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-calls.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-app.js"></script>

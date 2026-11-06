@@ -26,18 +26,27 @@ Si un campo está vacío, el dashboard muestra el valor de siempre (Calendly, ho
 
 ## 2. Webflow, página `/academy`
 
-1. **Quita la contraseña de página "upwork"**. Memberstack ya protege la página y si dejas las dos, le piden contraseña dos veces.
-2. **Page settings → Custom code → Inside `<head>`**: pega todo `webflow/1-head-code.html`.
-3. En el Designer, arrastra un **Code Embed** a la página, a todo lo ancho, y pega `webflow/2-embed.html`. Puedes borrar lo demás de la página: el dashboard ocupa toda la pantalla.
-4. Justo debajo, otro **Code Embed** con `webflow/3-calls-embed.html` (la pestaña Calls y el Report).
-5. **Page settings → Custom code → Before `</body>`**: pega `webflow/4-footer-code.html`.
-6. Copia los dos formularios de `/onboarding-setter` a `/academy` y ponles estos nombres en el Designer (hoy se llaman "Html Form"):
+El código vive en GitHub (`planscope/bluesierra-academy`) y la página lo carga desde jsDelivr. Pegas un snippet corto una sola vez, y cada cambio que se sube al repositorio aparece solo en la página.
+
+1. **Quita la contraseña de página "upwork"** cuando Memberstack ya esté listo. Si dejas las dos, le piden contraseña dos veces.
+2. Abre `webflow-loader.html` y pega sus tres partes:
+   - **Page settings → Custom code → Inside `<head>`**: la parte 1 (fuentes y estilos).
+   - Un **Code Embed** a todo lo ancho en la página: la parte 2 (`<div id="bs-academy"></div>`). Puedes borrar lo demás de la página.
+   - **Page settings → Custom code → Before `</body>`**: la parte 3.
+3. En la parte 3 llena `window.BSA_SETTINGS`:
+   - `loginPhoto` y `heroPhoto`: sube dos fotos de Blue Sierra a **Assets** y pega sus URLs. Sin fotos, se ve con fondo negro.
+   - `callsApi`: la URL del Apps Script (sección 3).
+   Estos datos van en Webflow y no en el repositorio, que es público.
+4. Copia los dos formularios de `/onboarding-setter` a `/academy` y ponles estos nombres en el Designer (hoy se llaman "Html Form"):
    - **Academy Progress**, con campos `Name`, `Role`, `Module`, `Score`, `Timestamp`
    - **Setter Certification**, con campos `Full-Name`, `Email`, `Course-Results`, `Acknowledge`
    El dashboard los esconde y los llena solo. Te llega un aviso de Webflow cada vez que alguien empieza, pasa un módulo, termina la práctica o se certifica.
-7. Fotos: sube dos fotos de Blue Sierra a **Assets**, copia sus URLs y reemplaza `PASTE_LOGIN_PHOTO_URL` y `PASTE_HERO_PHOTO_URL` en el bloque 2. Sin fotos, se ve con fondo negro.
-8. El modo vista previa ya viene apagado (`"demoAllowed": false`). Si Memberstack no carga, nadie entra.
-9. Publica solo cuando todo lo anterior esté listo.
+5. El modo vista previa viene apagado. Si Memberstack no carga, nadie entra.
+6. Publica solo cuando todo lo anterior esté listo.
+
+### Subir cambios
+
+Desde esta carpeta, `./publicar.sh "qué cambió"` revisa el código, lo sube a GitHub y limpia el caché de jsDelivr, así el cambio se ve en minutos y no en horas.
 
 ## 3. Registro de llamadas (Calls) y tu reporte
 
@@ -48,7 +57,7 @@ Una sola vez, en la Setter Call List:
 1. **Extensions → Apps Script**. Borra lo que haya en `Code.gs` y pega todo `apps-script/Code.gs`. Revisa que `REPORT_EMAIL` sea tu correo. Guarda.
 2. Arriba elige la función **setup** y dale **Run**. Google te pide permiso para la hoja: acéptalo con tu cuenta. Esto crea la pestaña **Call Log** y tu llave de admin. La llave sale en el registro de ejecución (View → Logs).
 3. Para cada setter corre `addSetter("Timothy", "su correo")` y copia la llave del registro. Las llaves se guardan en la memoria privada del script, no en la hoja: Timothy puede editar la hoja, así que ahí las podría ver.
-4. **Deploy → New deployment → Web app**. Execute as: **Me**. Who has access: **Anyone**. Copia la URL que termina en `/exec` y pégala en `callsApi` del bloque de Webflow (ver `webflow-loader.html`).
+4. **Deploy → New deployment → Web app**. Execute as: **Me**. Who has access: **Anyone**. Copia la URL que termina en `/exec` y pégala en `callsApi` de la parte 3 de `webflow-loader.html`.
 5. En Memberstack crea el campo `call-key`. Pon la llave de cada setter en su cuenta y la tuya en tu cuenta. A tu cuenta ponle `role` = **Admin** para que te salga la pestaña Report.
 6. No compartas las llaves por chat ni las pongas en la hoja.
 
@@ -71,7 +80,7 @@ El script nunca agrega, borra ni reordena firmas. Las notas nuevas van al princi
 
 ## Cambiar el contenido
 
-Las preguntas, módulos, checklist y textos están en `academy-content.js`, que es el bloque 2. Ojo: todo lo que esté ahí se puede ver en el código de la página, así que no pongas nada secreto. Lo personal de cada empleado va en los campos de Memberstack.
+Las preguntas, módulos, checklist y textos están en `academy-content.js`. Ojo: el repositorio es público y todo lo que esté ahí se puede ver, así que no pongas nada secreto. Lo personal de cada empleado va en los campos de Memberstack.
 
 ## Probarlo sin Webflow
 
