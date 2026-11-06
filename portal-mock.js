@@ -157,8 +157,8 @@
     });
   }
 
-  var CHANNELS = ["client", "architect", "team"], RX = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
-  function chansFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["team"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+  var CHANNELS = ["client", "architect", "team", "crew"], RX = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
+  function chansFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["crew"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
   function chOf(m) { return m.channel || "client"; }
   function readKey(me, pid, ch) { return me.email + "|" + pid + "|" + ch; }
   function readsOf(db, me) { var o = {}; db.reads.forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
@@ -179,7 +179,7 @@
       if (i.status === "paid") o.paid += a - r; else { o.waiting += a - r; if (i.due && i.due < today()) o.overdue += a - r; } });
     o.left = total - o.billed; return o;
   }
-  function ev(db, p, me, type, action, detail, ref) { db.messages.push({ id: "e" + id(), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: action + (detail ? "\n" + detail : ""), question_id: "", status: type, via: "portal", channel: "client", thread_id: "", ref: ref }); }
+  function ev(db, p, me, type, action, detail, ref, ch) { db.messages.push({ id: "e" + id(), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: action + (detail ? "\n" + detail : ""), question_id: "", status: type, via: "portal", channel: ch || "client", thread_id: "", ref: ref }); }
   function usd(n) { return num(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function needsOf(db, p) {
     var t = today(), lim = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
@@ -421,6 +421,94 @@
       if (done) ev(db, pp, me, "done", "checked off a to-do", it.item, "check:" + it.id); return {};
     }
   };
+
+  /* ---- permission #tags, footprints, pins, start-over (mirrors Portal.gs) ---- */
+  var AUDS = ["client", "architect", "team", "crew", "private"];
+  function audOf(me) { return isStaff(me) ? AUDS : me.role === "crew" ? ["crew"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+  function audList(v) { return (Array.isArray(v) ? v : String(v || "").split(",")).map(String).filter(function (a) { return AUDS.indexOf(a) > -1; }); }
+  function audOk(me, v) { var l = audList(v); return !l.length || l.some(function (a) { return audOf(me).indexOf(a) > -1; }); }
+  function myAud(me) { return me.role === "crew" ? "crew" : me.role === "architect" ? "architect" : me.role === "client" ? "client" : "team"; }
+  function readTags(t) { var W = { client: "client", cliente: "client", architect: "architect", arquitecto: "architect", team: "team", equipo: "team", crew: "crew", private: "private", privado: "private" }, aud = [];
+    var rest = String(t || "").replace(/(^|\s)#([a-z]+)\b/gi, function (all, sp, w) { var a = W[w.toLowerCase()]; if (!a) return all; if (aud.indexOf(a) < 0) aud.push(a); return sp; }); return { aud: aud, text: rest.replace(/\s{2,}/g, " ").trim() }; }
+  function canBill(me, p) { return isStaff(me) ? true : me.role === "crew" ? false : audList(p.billing_aud).indexOf(me.role) > -1; }
+  function foot(db, email, at) { if (!email) return null; var x = db.people.filter(function (q) { return q.email === email; })[0] || {}; return { name: x.name || "Someone", key: pk(email), avatar: x.avatar || "", role: x.role || "", at: at || "" }; }
+  function canCheck(me, it) { if (isStaff(me)) return true; if (it.assignee) return it.assignee === me.email; var l = audList(it.aud); if (!l.length) return it.owner === "client" && me.role === "client"; return l.indexOf(myAud(me)) > -1; }
+  var baseGet = ACTIONS.getProject, baseList = ACTIONS.listProjects;
+  ACTIONS.getProject = function (db, me, b) {
+    var out = baseGet(db, me, b), p = db.projects.filter(function (x) { return x.id === b.projectId; })[0], bill = canBill(me, p);
+    out.billing = bill; if (!bill) { out.invoices = []; out.contract = { retainage_pct: 0, lines: [] }; }
+    out.channels = audOf(me).filter(function (a) { return a !== "private"; });
+    out.messages = db.messages.filter(function (m) { return m.project_id === p.id && (isDm(chOf(m)) ? m.channel.indexOf(pk(me.email)) > -1 : out.channels.indexOf(chOf(m)) > -1); }).map(function (m) { return msgOut(db, m, me); });
+    out.project.billing_aud = audList(p.billing_aud);
+    var hid = {}; db.timeline.forEach(function (u) { if (u.project_id === p.id && !audOk(me, u.aud)) hid[u.id] = 1; });
+    out.timeline = out.timeline.filter(function (u) { return !hid[u.id]; }).map(function (u) { return Object.assign({}, u, { aud: audList(u.aud) }); });
+    out.photos = out.photos.filter(function (ph) { return !hid[ph.update_id]; });
+    var rx = function (r) { r = r || {}; return Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e] }; }); };
+    out.checklist = out.checklist.filter(function (c) { return audOk(me, c.aud) || c.assignee === me.email; }).map(function (c) {
+      return Object.assign({}, c, { aud: audList(c.aud), assignee: c.assignee ? foot(db, c.assignee) : null, mine: c.assignee === me.email, can: canCheck(me, c), pinned: c.pinned === "yes",
+        doneFoot: c.done === "yes" ? foot(db, c.done_email, c.done_at) || { name: c.done_by, at: c.done_at } : null, edited: foot(db, c.edited_by || c.created_by, c.edited_at), reactions: rx(c.reactions) }); });
+    out.schedule = out.schedule.map(function (x) { return Object.assign({}, x, { edited: foot(db, x.edited_by, x.edited_at), req: x.req_by ? Object.assign(foot(db, x.req_by, x.req_at), { note: x.req_note }) : null }); });
+    if (me.role === "admin") { var w = (db.wipes || []).filter(function (x) { return x.pid === p.id; }).slice(-1)[0]; out.wipe = w ? { id: w.id, at: w.at, items: w.n } : null; }
+    return out;
+  };
+  ACTIONS.listProjects = function (db, me) {
+    var out = baseList(db, me), names = {}; out.projects.forEach(function (p) { names[p.id] = p.name; var raw = db.projects.filter(function (x) { return x.id === p.id; })[0]; if (!canBill(me, raw)) { p.money = {}; p.balance = 0; if (p.needs) p.needs.invoices = []; }
+      p.needs = p.needs || {}; p.needs.mine = db.checklist.filter(function (c) { return c.project_id === p.id && c.assignee === me.email && c.done !== "yes"; }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }); });
+    var pins = [];
+    db.messages.forEach(function (m) { if (m.pinned === "yes" && names[m.project_id] && canRead(me, chOf(m))) pins.push({ kind: "msg", id: m.id, pid: m.project_id, project: names[m.project_id], at: m.at, text: m.text, author: m.author, akey: pk(m.author_email), channel: chOf(m) }); });
+    db.timeline.forEach(function (u) { if (u.pinned === "yes" && names[u.project_id] && audOk(me, u.aud)) pins.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: u.text, author: u.author, aud: audList(u.aud) }); });
+    db.checklist.forEach(function (c) { if (c.pinned === "yes" && names[c.project_id] && (audOk(me, c.aud) || c.assignee === me.email)) pins.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: c.done === "yes", aud: audList(c.aud) }); });
+    out.pins = pins; return out;
+  };
+  ACTIONS.postUpdate = function (db, me, b) {
+    needStaff(me); var p = needProject(db, me, b.projectId), tg = readTags(clean(b.text, 5000)), aud = audList((b.aud || []).concat(tg.aud)).filter(function (a, i, l) { return l.indexOf(a) === i; });
+    if (aud.indexOf("private") > -1) aud = ["private"];
+    var u = id(), phs = savePhotos(db, me, p, b.photos || [], "", u);
+    db.timeline.push({ id: u, project_id: p.id, at: now(), author: me.name, author_email: me.email, text: tg.text, photo_ids: phs.join(","), emailed: b.notify ? "yes" : "", aud: aud.join(",") });
+    if (aud[0] !== "private") (aud.length && aud.indexOf("client") < 0 ? aud : ["client"]).forEach(function (ch) { ev(db, p, me, "update", "posted a project update", tg.text.slice(0, 240), "update:" + u, ch); });
+    return {};
+  };
+  ACTIONS.saveChecklistItem = function (db, me, b) {
+    needStaff(me); var p = needProject(db, me, b.projectId), f = b.item || {}, tg = readTags(f.item), aud = audList((f.aud || []).concat(tg.aud));
+    var who = f.assignee ? db.people.filter(function (x) { return pk(x.email) === f.assignee; })[0] : null;
+    var patch = { phase: PHASES.indexOf(f.phase) > -1 ? f.phase : PHASES[0], item: tg.text, owner: aud.indexOf("client") > -1 ? "client" : "blue sierra", due: clean(f.due, 10), aud: aud.join(","), assignee: who ? who.email : "", edited_by: me.email, edited_at: now() };
+    if (!patch.item) throw new Error("Write the checklist item.");
+    if (f.id) Object.assign(db.checklist.filter(function (c) { return c.id === f.id; })[0] || {}, patch);
+    else { var nc = Object.assign({ id: id(), project_id: p.id, done: "", sort: String(Date.now()), created_by: me.email }, patch); db.checklist.push(nc);
+      if (who) ev(db, p, me, "todo", "assigned a to-do to " + who.name, nc.item, "check:" + nc.id, aud.indexOf("client") > -1 ? "client" : aud.indexOf("crew") > -1 ? "crew" : "team"); }
+    return {};
+  };
+  ACTIONS.toggleChecklist = function (db, me, b) {
+    var it = db.checklist.filter(function (c) { return c.id === b.itemId; })[0]; if (!it) throw new Error("Item not found.");
+    var pp = needProject(db, me, it.project_id); if (!canCheck(me, it)) throw new Error("You can't check that one.");
+    var done = it.done !== "yes"; it.done = done ? "yes" : ""; it.done_by = done ? me.name : ""; it.done_email = done ? me.email : ""; it.done_at = done ? now() : "";
+    if (done) ev(db, pp, me, "done", "checked off a to-do", it.item, "check:" + it.id); return {};
+  };
+  ACTIONS.reactCheck = function (db, me, b) { var it = db.checklist.filter(function (c) { return c.id === b.itemId; })[0]; var r = it.reactions || {}, l = r[b.emoji] || [], i = l.indexOf(me.email); if (i > -1) l.splice(i, 1); else l.push(me.email); if (l.length) r[b.emoji] = l; else delete r[b.emoji]; it.reactions = r; return {}; };
+  ACTIONS.requestScheduleChange = function (db, me, b) { var it = db.schedule.filter(function (x) { return x.id === b.itemId; })[0]; var p = needProject(db, me, it.project_id); it.req_by = me.email; it.req_at = now(); it.req_note = clean(b.note, 500); ev(db, p, me, "date", "asked to change “" + it.title + "”", it.req_note, "sched:" + it.id, me.role === "crew" ? "crew" : "client"); return {}; };
+  var baseSched = ACTIONS.saveScheduleItem;
+  ACTIONS.saveScheduleItem = function (db, me, b) { var r = baseSched(db, me, b), it = db.schedule.filter(function (x) { return x.id === (b.item || {}).id; })[0] || db.schedule[db.schedule.length - 1]; it.edited_by = me.email; it.edited_at = now(); it.req_by = ""; it.req_note = ""; return r; };
+  ACTIONS.togglePin = function (db, me, b) { needStaff(me); var list = b.kind === "update" ? db.timeline : b.kind === "check" ? db.checklist : db.messages, it = list.filter(function (x) { return x.id === b.id; })[0]; it.pinned = it.pinned === "yes" ? "" : "yes"; return {}; };
+  var baseSaveP = ACTIONS.saveProject;
+  ACTIONS.saveProject = function (db, me, b) { var f = b.project || {}, r = baseSaveP(db, me, b), p = db.projects.filter(function (x) { return x.id === (f.id || r.project.id); })[0];
+    if (f.architect_name != null) p.architect_name = clean(f.architect_name, 200); if (f.billing_aud) p.billing_aud = audList(f.billing_aud).join(","); if (f.logo && f.logo.data) p.architect_logo = f.logo.data; if (f.logo === "") p.architect_logo = ""; return r; };
+  ACTIONS.wipeProject = function (db, me, b) { var p = needProject(db, me, b.projectId); if (String(b.confirm || "").trim().toLowerCase() !== p.name.toLowerCase()) throw new Error("Type the project name exactly to start it over.");
+    var w = { id: id(), pid: p.id, at: now(), data: {} }, n = 0; ["messages", "timeline", "photos", "invoices", "checklist", "schedule", "contractLines"].forEach(function (t) { w.data[t] = db[t].filter(function (r) { return r.project_id === p.id; }); n += w.data[t].length; db[t] = db[t].filter(function (r) { return r.project_id !== p.id; }); });
+    w.n = n; (db.wipes = db.wipes || []).push(w); return {}; };
+  ACTIONS.restoreWipe = function (db, me, b) { var w = (db.wipes || []).filter(function (x) { return x.pid === b.projectId; }).slice(-1)[0]; if (!w) throw new Error("There's nothing to restore."); Object.keys(w.data).forEach(function (t) { db[t] = db[t].concat(w.data[t]); }); db.wipes = db.wipes.filter(function (x) { return x !== w; }); return {}; };
+
+  ACTIONS.qbStatus = function (db, me) { needStaff(me); var q = db.qb || {}; return { hasKeys: !!q.keys, connected: !!q.connected, company: q.connected ? "Blue Sierra Construction (sample)" : "", env: q.env || "production", admin: me.role === "admin" }; };
+  ACTIONS.qbSaveKeys = function (db, me, b) { db.qb = Object.assign(db.qb || {}, { keys: true, env: b.env }); return ACTIONS.qbStatus(db, me); };
+  ACTIONS.qbConnectUrl = function (db, me) { db.qb = Object.assign(db.qb || {}, { connected: true }); return { url: "about:blank#preview-quickbooks-connected" }; };
+  ACTIONS.qbDisconnect = function (db) { db.qb = { keys: true }; return {}; };
+  ACTIONS.qbCustomers = function () { return { customers: [{ id: "58", name: "Sample Client" }, { id: "61", name: "Second Client" }] }; };
+  ACTIONS.qbLink = function (db, me, b) { var p = needProject(db, me, b.projectId); p.qb_customer = b.customerId || ""; return {}; };
+  ACTIONS.qbInvoices = function (db, me, b) { var p = needProject(db, me, b.projectId); if (!p.qb_customer) return { linked: false, invoices: [] };
+    var imp = {}; db.invoices.forEach(function (i) { if (i.qb_id) imp[i.qb_id] = i.id; });
+    return { linked: true, invoices: [{ id: "1041", number: "1041", date: "2026-11-01", due: "2026-11-15", total: 18500, balance: 18500, imported: imp["1041"] || "" }, { id: "1032", number: "1032", date: "2026-10-01", due: "2026-10-15", total: 22000, balance: 0, imported: imp["1032"] || "" }] }; };
+  ACTIONS.qbImport = function (db, me, b) { var p = needProject(db, me, b.projectId), ex = db.invoices.filter(function (i) { return i.qb_id === b.qbId; })[0];
+    var paid = b.qbId === "1032", f = { id: ex ? ex.id : undefined, number: b.qbId, title: "QuickBooks invoice", amount: paid ? 22000 : 18500, issued: paid ? "2026-10-01" : "2026-11-01", due: paid ? "2026-10-15" : "2026-11-15", status: paid ? "paid" : "sent" };
+    var r = ACTIONS.saveInvoice(db, me, { projectId: p.id, invoice: f }); var it = db.invoices.filter(function (i) { return i.id === (r.id || (db.invoices[db.invoices.length - 1] || {}).id); })[0] || db.invoices[db.invoices.length - 1]; it.qb_id = b.qbId; it.pdf_file_id = "qb"; return { id: it.id }; };
 
   window.BSP_MOCK = function (b) {
     return new Promise(function (resolve) {

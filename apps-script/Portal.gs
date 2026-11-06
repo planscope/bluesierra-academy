@@ -37,16 +37,18 @@ var CONFIG = {
 };
 
 var TABLES = {
-  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon"],
+  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon", "billing_aud", "architect_name", "architect_logo", "qb_customer"],
   People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar", "pin_hash", "pin_salt", "pin_fails", "pin_lock"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
-  Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned"],
+  Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned", "aud", "author_email"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
   Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref", "pinned"],
-  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines"],
-  Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
+  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines", "created_by", "created_at", "updated_by", "updated_at", "qb_id"],
+  Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort", "aud", "assignee", "created_by", "edited_by", "edited_at", "reactions", "pinned", "done_email"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
-  Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"],
+  Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort", "edited_by", "edited_at", "req_by", "req_at", "req_note"],
+  // "Start over": a project's rows are moved here (as JSON) so the admin can bring them back.
+  Wipes: ["wipe_id", "project_id", "at", "by", "tbl", "part", "data"],
   // The contract: "base" lines are the schedule of values (they add up to the contract sum); "change" lines are change orders.
   Reads: ["email", "project_id", "channel", "at"],
   // Plan sets: one row per uploaded revision. "sheets" is JSON: [{n, sheet, title, img, w, h, status, score, boxes}]
@@ -60,10 +62,16 @@ var PREFETCH = {
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
   activity: ["Projects", "People", "Messages", "Reads"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
-var NO_LOCK = { markRead: 1, presence: 1 };          // only touch your own row / the cache: no need to queue behind other saves
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
-var CHANNELS = ["client", "architect", "team"];
+var CHANNELS = ["client", "architect", "team", "crew"];
+/* Permission tags. Everything that can be limited (chat, updates, checklist items, contract & billing) carries #tags:
+   #client (client + architect + Blue Sierra), #architect (architect + Blue Sierra), #team (Blue Sierra only), #crew (field crew + Blue Sierra),
+   #private (admin and project managers only). No tag = everyone on the project. */
+var AUDS = ["client", "architect", "team", "crew", "private"];
+var TAG_WORDS = { client: "client", cliente: "client", clients: "client", clientes: "client", architect: "architect", arquitecto: "architect", arch: "architect",
+  team: "team", equipo: "team", crew: "crew", cuadrilla: "crew", private: "private", privado: "private", privada: "private" };
 var REACTIONS = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
 var AVATARS = ["🦊", "🐻", "🦉", "🐢", "🐙", "🦖", "🐝", "🦄", "🐸", "🐼", "🦁", "🐧", "🌵", "🌲", "🌻", "🍄", "🏗️", "🚜", "🧱", "🔨", "📐", "🛠️", "🏡", "⛰️", "🌊", "🔥", "⭐", "🎸", "🚀", "😎"];
 var AVATAR_COLORS = ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4", "#111111"];
@@ -71,10 +79,21 @@ var PLAN_ORIGINS = ["https://www.bluesierracorp.com", "https://bluesierracorp.co
 
 /* ============================ web app ============================ */
 
-function doGet() { return out({ ok: false, error: "Use POST." }); }
+/* GET is only used by QuickBooks, to hand back the authorization after Jesús clicks "Connect QuickBooks". */
+function doGet(e) {
+  var q = (e && e.parameter) || {};
+  if (q.code && q.state && q.realmId) {
+    var msg;
+    try { qbFinishConnect(q.code, q.state, q.realmId); msg = "QuickBooks is connected to the Blue Sierra portal. You can close this tab."; }
+    catch (err) { msg = "QuickBooks couldn't connect: " + String(err.message || err); }
+    return HtmlService.createHtmlOutput("<div style='font-family:Arial,sans-serif;padding:40px;font-size:18px'>" + esc(msg) + "</div>");
+  }
+  return out({ ok: false, error: "Use POST." });
+}
 
 function doPost(e) {
   var res, notices = [];
+  OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
     var pub = PUBLIC[b.action], fn;
@@ -85,15 +104,29 @@ function doPost(e) {
       var me = auth(b.token);
       fn = ACTIONS[b.action];
       if (!fn) throw new Error("Unknown action.");
-      res = READ_ONLY[b.action] || NO_LOCK[b.action] ? fn(me, b) : withLock(function () { return fn(me, b); });
+      if (READ_ONLY[b.action] || NO_LOCK[b.action]) res = fn(me, b);
+      else {
+        res = withLock(function () {
+          // Inside the lock, read fresh: someone may have saved while we waited, and row positions must be exact.
+          _ROWS = {}; prefetch(["People"].concat(PREFETCH[b.action] || WRITE_TABLES));
+          return fn(me, b);
+        });
+        res = res || {}; res.ver = bumpVersion(b.projectId);   // so the saver's own portal doesn't reload twice
+      }
     }
     res = res || {}; res.ok = true;
-    if (notices.length) res.notice = notices[0];
   } catch (err) { res = { ok: false, error: String(err.message || err) }; }
+  flushMail();                                   // emails go out after the lock is released, so nobody waits behind them
+  if (notices.length && res.ok) res.notice = notices[0];
   return out(res);
 }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
-function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(20000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { lock.releaseLock(); } }
+/* One writer at a time. Locks are held only for sheet work (no email, no waiting on Google services that can be done after). */
+function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(25000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); } }
+var WRITE_TABLES = ["Projects", "Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads", "Sessions"];
+/* Every save bumps a version number; open portals see it in their next ping and reload only when something really changed. */
+function bumpVersion(pid) { var t = Date.now(); try { CacheService.getScriptCache().put("ver:" + (pid || "*"), String(t), 21600); } catch (e) {} return t; }
+function versionOf(pid) { try { var g = CacheService.getScriptCache().getAll(["ver:" + pid, "ver:*"]); return Math.max(Number(g["ver:" + pid] || 0), Number(g["ver:*"] || 0)); } catch (e) { return 0; } }
 
 /* ============================ login ============================ */
 
@@ -183,7 +216,24 @@ function dmOf(a, b) { return "dm:" + [a, b].sort().join("-"); }
 /* Can this person read (and post in) this channel? Normal channels by role; private messages only the two people in them. */
 function canRead(me, ch) { if (isDm(ch)) { me._k = me._k || pkey(me.email); return ch.indexOf(me._k) > -1; } return channelsFor(me).indexOf(ch) > -1; }
 function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
-function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["team"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["crew"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+function audOf(me) { return isStaff(me) ? AUDS : channelsFor(me); }
+function audList(v) { return splitIds(v).filter(function (a) { return AUDS.indexOf(a) > -1; }); }
+function audOk(me, v) { var l = audList(v); if (!l.length) return true; var mine = audOf(me); return l.some(function (a) { return mine.indexOf(a) > -1; }); }
+function myAud(me) { return me.role === "crew" ? "crew" : me.role === "architect" ? "architect" : me.role === "client" ? "client" : "team"; }
+/* "#team #client" in a text → ["team","client"], and the text without the tags. */
+function readTags(text) {
+  var aud = [];
+  var rest = String(text || "").replace(/(^|\s)#([a-záéíóú]+)\b/gi, function (all, sp, w) { var a = TAG_WORDS[w.toLowerCase()]; if (!a) return all; if (aud.indexOf(a) < 0) aud.push(a); return sp; });
+  return { aud: aud, text: rest.replace(/[ \t]{2,}/g, " ").trim() };
+}
+function cleanAud(v) { return (Array.isArray(v) ? v : splitIds(v)).map(String).filter(function (a, i, l) { return AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
+/* Contract & billing: Blue Sierra always; the field crew never; the client and the architect only when the admin tags them in. */
+function canBill(me, p) { if (isStaff(me)) return true; if (me.role === "crew") return false; return audList(p.billing_aud).indexOf(me.role) > -1; }
+function billChannel(p) { return audList(p.billing_aud).indexOf("client") > -1 ? "client" : audList(p.billing_aud).indexOf("architect") > -1 ? "architect" : "team"; }
+/* A channel for a list of tags (where the chat card goes). */
+function chanFor(aud) { return !aud.length || aud.indexOf("client") > -1 ? "client" : aud.indexOf("architect") > -1 ? "architect" : aud.indexOf("crew") > -1 ? "crew" : "team"; }
+function chansFor(aud) { if (!aud.length) return ["client"]; if (aud.indexOf("client") > -1) return ["client"]; return aud.filter(function (a) { return a !== "private"; }); }
 function chOf(m) { return m.channel || "client"; }
 function isOutside(p) { return p.role === "client" || p.role === "architect"; }   // people outside the team: see only their projects
 function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
@@ -203,38 +253,44 @@ var ACTIONS = {
   listProjects: function (me) {
     var all = rows("Projects").filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && (p.status !== "deleted" || me.role === "admin"); });
     var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline"), lines = rows("ContractLines"), reads = readsAll(me), ck = rows("Checklist"), sc = rows("Schedule");
-    return { me: publicMe(me), projects: all.map(function (p) { var o = summary(p, inv, msgs, tl, me, lines, reads); o.needs = needsOf(p, ck, sc, inv);
-      if (me.role === "crew") { o.money = {}; o.balance = 0; o.needs.invoices = []; o.needs.todos = []; }
+    var live = all.filter(function (p) { return p.status !== "deleted"; }), names = {}; live.forEach(function (p) { names[p.id] = p.name; });
+    return { me: publicMe(me), pins: pinsFor(me, names, msgs, tl, ck), projects: all.map(function (p) { var o = summary(p, inv, msgs, tl, me, lines, reads); o.needs = needsOf(p, ck, sc, inv, me);
+      if (!canBill(me, p)) { o.money = {}; o.balance = 0; o.needs.invoices = []; }
+      if (me.role === "crew") o.needs.todos = [];
       return o; }) };
   },
 
   getProject: function (me, b) {
-    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me), team = isTeam(me), crew = me.role === "crew";
+    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me), team = isTeam(me), crew = me.role === "crew", bill = canBill(me, p);
     var by = function (t) { return rows(t).filter(function (r) { return r.project_id === id; }); };
+    var ppl = peopleIndex(), tl = by("Timeline").filter(function (u) { return audOk(me, u.aud); }), hiddenU = {};
+    by("Timeline").forEach(function (u) { if (!audOk(me, u.aud)) hiddenU[u.id] = 1; });
     var data = {
       project: projectOut(p),
-      timeline: by("Timeline").reverse(),
-      photos: by("Photos").reverse().map(photoOut),
+      timeline: tl.reverse().map(function (u) { var o = Object.assign({}, u, { aud: audList(u.aud), akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "" }); delete o.author_email; return o; }),
+      photos: by("Photos").filter(function (ph) { return !hiddenU[ph.update_id]; }).reverse().map(photoOut),
+      billing: bill,
       // Clients never receive other people's email addresses.
       messages: messagesOut(by("Messages"), me),
       reads: readsFor(me, id),
       members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }),
       channels: channelsFor(me),
-      invoices: crew ? [] : by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff); }),
-      checklist: by("Checklist").sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }),
+      invoices: !bill ? [] : by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff, ppl); }),
+      checklist: by("Checklist").filter(function (c) { return audOk(me, c.aud) || c.assignee === me.email; }).sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }).map(function (c) { return checkOut(c, me, ppl); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
-        .map(function (x) { var o = Object.assign({}, x); if (!team) delete o.notes; return o; }),
-      contract: crew ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
+        .map(function (x) { return schedOut(x, team, ppl); }),
+      contract: !bill ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
       plans: plansOut(by("Plans"), me),
       phases: CONFIG.PHASES
     };
+    if (me.role === "admin") data.wipe = lastWipe(id);
     if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), avatar: x.avatar || "" }; });
     return data;
   },
 
   saveProject: function (me, b) {
     needStaff(me);
-    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct", "lat", "lon"];
+    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct", "lat", "lon", "architect_name"];
     if (!clean(f.name, 200)) throw new Error("The project needs a name.");
     if (f.phase && CONFIG.PHASES.indexOf(f.phase) < 0) throw new Error("Unknown phase.");
     var patch = {}; fields.forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
@@ -244,6 +300,9 @@ var ACTIONS = {
     ["lat", "lon"].forEach(function (k) { if (patch[k] != null) patch[k] = patch[k] === "" ? "" : String(Math.round(num(patch[k]) * 1e6) / 1e6); });   // where the property is, for the header map
     if (f.address != null && f.lat == null) { patch.lat = ""; patch.lon = ""; }                                                                   // a new address: find it again
     if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
+    if (f.billing_aud != null) { if (me.role !== "admin") throw new Error("Only Jesús changes who sees Contract & billing."); patch.billing_aud = cleanAud(f.billing_aud).filter(function (a) { return a === "client" || a === "architect"; }).join(","); }
+    if (f.logo && f.logo.data && f.id) { var lp = findBy("Projects", "id", f.id); patch.architect_logo = saveFile(lp, f.logo, "Architect logo", true); }
+    if (f.logo === "") patch.architect_logo = "";
     if (f.id) { needProject(me, f.id); update("Projects", "id", f.id, patch); return { project: projectOut(findBy("Projects", "id", f.id)) }; }
     var id = newId("p");
     patch.id = id; patch.folder_id = rootFolder().createFolder(patch.name + " · " + id).getId(); patch.created_at = now(); patch.status = patch.status || "active";
@@ -263,6 +322,7 @@ var ACTIONS = {
     needStaff(me);
     var email = normEmail(b.email), role = ["staff", "architect", "crew"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
     if (role === "staff" && !admin) throw new Error("Only Jesús can add team members.");
+    if (!b.projectId && (role === "client" || role === "architect")) throw new Error("Add clients and architects from a project's People tab, so they only see that project.");
     if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) throw new Error("That email doesn't look right.");
     var p = b.projectId ? needProject(me, b.projectId) : null;
     purgeOrphans();                                        // clear leftovers first, so a returning email always starts fresh
@@ -278,7 +338,7 @@ var ACTIONS = {
     } else {
       insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
     }
-    if (b.invite && !p && role === "staff") safeMail(function () {
+    if (b.invite && !p && (role === "staff" || role === "crew")) safeMail(function () {
       sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
         "<p>Hi " + esc(first(b.name || "")) + ",</p><p>Jesús added you to the " + CONFIG.COMPANY + " project portal. You can see every project: schedule, photos, chat, contract and invoices.</p>" +
         button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
@@ -307,11 +367,16 @@ var ACTIONS = {
 
   postUpdate: function (me, b) {
     needStaff(me); var p = needProject(me, b.projectId);
-    var text = clean(b.text, 5000); if (!text && !(b.photos || []).length) throw new Error("Write something or add photos.");
-    var uid = newId("u"), ids = savePhotos(me, p, b.photos || [], "", uid);
-    insert("Timeline", { id: uid, project_id: p.id, at: now(), author: me.name, text: text, photo_ids: ids.join(","), emailed: b.notify ? "yes" : "" });
-    postEvent(p, me, "update", "posted a project update" + (ids.length ? " with " + ids.length + " photo" + (ids.length > 1 ? "s" : "") : ""), text.slice(0, 240), "update:" + uid);
-    if (b.notify) safeMail(function () { emailClients(p, "Project update: " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + (ids.length ? "<p>" + ids.length + " new photo" + (ids.length > 1 ? "s" : "") + " in the portal.</p>" : "") + button("See the update", deep(p.id, "updates"))); }, "Posted, but the email to the client couldn't be sent.");
+    // #team, #client, #architect, #crew or #private in the text (or picked as chips) decide who sees it and which chat gets the card.
+    var tg = readTags(clean(b.text, 5000)), aud = cleanAud(cleanAud(b.aud).concat(tg.aud)), text = tg.text;
+    if (aud.indexOf("private") > -1) aud = ["private"];
+    if (!text && !(b.photos || []).length) throw new Error("Write something or add photos.");
+    var uid = newId("u"), ids = savePhotos(me, p, b.photos || [], "", uid), toClient = !aud.length || aud.indexOf("client") > -1;
+    insert("Timeline", { id: uid, project_id: p.id, at: now(), author: me.name, author_email: me.email, text: text, photo_ids: ids.join(","), emailed: b.notify && toClient ? "yes" : "", aud: aud.join(",") });
+    if (aud[0] !== "private") chansFor(aud).forEach(function (ch) {
+      postEvent(p, me, "update", "posted a project update" + (ids.length ? " with " + ids.length + " photo" + (ids.length > 1 ? "s" : "") : ""), text.slice(0, 240), "update:" + uid, ch);
+    });
+    if (b.notify && toClient) safeMail(function () { emailClients(p, "Project update: " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + (ids.length ? "<p>" + ids.length + " new photo" + (ids.length > 1 ? "s" : "") + " in the portal.</p>" : "") + button("See the update", deep(p.id, "updates"))); }, "Posted, but the email to the client couldn't be sent.");
     return {};
   },
 
@@ -354,7 +419,7 @@ var ACTIONS = {
     if (dmTo) {
       emailed[dmTo.email] = 1;
       try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, ""); } catch (e) {}
-    } else if (isStaff(me) && channel !== "team") {
+    } else if (isStaff(me) && (channel === "client" || channel === "architect")) {
       // Client channel: the client and the architect. Architect channel: only the architect. Replies by email come back into the same place.
       var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect"); });
       var subj = (kind === "question" ? "Question about " : "Message about ") + p.name + " " + tag(p.id, id);
@@ -450,7 +515,7 @@ var ACTIONS = {
     });
     var pulse = newest ? { id: newest.id, at: newest.at, author: newest.author, avatar: (rows("People").filter(function (x) { return x.email === newest.author_email; })[0] || {}).avatar || "", akey: keyOf(newest.author_email),
       text: String(newest.text).split("\n")[0].slice(0, 140), kind: newest.kind, status: newest.kind === "event" ? newest.status : "", pid: newest.project_id, project: names[newest.project_id], channel: chOf(newest), thread_id: newest.thread_id || "", dm: isDm(chOf(newest)), unread: unread } : { unread: unread };
-    return { me: mine, pulse: pulse, people: people.map(function (x) {
+    return { me: mine, pulse: pulse, ver: b.pid && names[b.pid] ? versionOf(String(b.pid)) : 0, people: people.map(function (x) {
       var k = pkey(x.email), raw = got["pres:" + k], pr = raw ? JSON.parse(raw) : null, age = pr ? now - pr.at : Infinity;
       var state = !pr || age > 3 * 60000 ? "offline" : pr.call > now ? "busy" : pr.s === "busy" ? "busy" : pr.hidden || pr.s === "away" || age > 90000 ? "away" : "online";
       var shared = isStaff(x) ? projects.map(function (p) { return p.id; }) : splitIds(x.project_ids).filter(function (id) { return names[id]; });
@@ -481,7 +546,7 @@ var ACTIONS = {
   /* Pin or unpin an update or a message (team only); pinned things show at the top for everyone who can see them. */
   togglePin: function (me, b) {
     needStaff(me);
-    var t = b.kind === "update" ? "Timeline" : "Messages", it = findBy(t, "id", b.id); if (!it) throw new Error("Not found.");
+    var t = b.kind === "update" ? "Timeline" : b.kind === "check" ? "Checklist" : "Messages", it = findBy(t, "id", b.id); if (!it) throw new Error("Not found.");
     needProject(me, it.project_id);
     update(t, "id", it.id, { pinned: isTrue(it.pinned) ? "" : "yes" }); return { pinned: !isTrue(it.pinned) };
   },
@@ -502,7 +567,7 @@ var ACTIONS = {
     var p = needProject(me, b.projectId), ch = b.channel || "client";
     if (!canRead(me, ch)) throw new Error("You can't start a call there.");
     var c = CacheService.getScriptCache(), k = "calls:" + normEmail(me.email), n = Number(c.get(k) || 0);
-    if (n >= 6) throw new Error("That's a lot of calls in an hour. Use the last link.");
+    if (n >= 20) throw new Error("That's a lot of calls in an hour. Use the last link.");
     var keys = (b.invite || []).map(String), who = membersOf(p).filter(function (x) { return x.email !== me.email && keys.indexOf(pkey(x.email)) > -1 && canRead(x, ch); });
     if (!who.length) throw new Error("Pick at least one person to call.");
     c.put(k, String(n + 1), 3600);
@@ -510,8 +575,12 @@ var ACTIONS = {
     var ev = Calendar.Events.insert({ summary: "Call · " + p.name + " (" + me.name + ")", description: "Started from the Blue Sierra portal.",
       start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
       attendees: who.map(function (x) { return { email: x.email }; }).concat(me.email !== Session.getEffectiveUser().getEmail() ? [{ email: me.email }] : []),
+      guestsCanModify: false, guestsCanInviteOthers: true,
       conferenceData: { createRequest: { requestId: newId("r"), conferenceSolutionKey: { type: "hangoutsMeet" } } } }, "primary", { conferenceDataVersion: 1, sendUpdates: "none" });
-    var url = ev.hangoutLink || ((ev.conferenceData && ev.conferenceData.entryPoints || []).filter(function (e) { return e.entryPointType === "video"; })[0] || {}).uri;
+    var linkOf = function (e) { return e.hangoutLink || ((e.conferenceData && e.conferenceData.entryPoints || []).filter(function (x) { return x.entryPointType === "video"; })[0] || {}).uri; };
+    var url = linkOf(ev);
+    // Google sometimes needs a moment to make the Meet room: wait for it instead of failing.
+    for (var tries = 0; !url && tries < 6; tries++) { Utilities.sleep(600 + tries * 300); ev = Calendar.Events.get("primary", ev.id); url = linkOf(ev); }
     if (!/^https:\/\/meet\.google\.com\//.test(url || "")) throw new Error("Google didn't return a Meet link. Try again.");
     var code = url.split("/").pop();
     who.forEach(function (x) {
@@ -521,8 +590,12 @@ var ACTIONS = {
         "<p style='color:#555'>Or open <b>meet.google.com</b> and enter the code <b>" + esc(code) + "</b>.</p>"); }, "");
     });
     try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
-    postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
-      "Tap Join, or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
+    withLock(function () {                                // only the chat card needs the lock; the Calendar work above didn't
+      _ROWS = {}; prefetch(["People", "Projects", "Messages"]);
+      postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
+        "Tap Join (it opens the Google Meet app on phones), or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
+    });
+    bumpVersion(p.id);
     return { url: url, code: code };
   },
 
@@ -647,13 +720,14 @@ var ACTIONS = {
     }
     var pdfId = patch.pdf_file_id || (old && old.pdf_file_id);
     if (pdfId) try { DriveApp.getFileById(pdfId).setSharing(patch.status === "void" || patch.status === "draft" ? DriveApp.Access.PRIVATE : DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-    var wasVisible = old && ["sent", "paid"].indexOf(old.status) > -1;
+    var wasVisible = old && ["sent", "paid"].indexOf(old.status) > -1, bch = billChannel(p);
+    patch.updated_by = me.email; patch.updated_at = now();
     if (id) update("Invoices", "id", id, patch);
-    else { id = newId("i"); patch.id = id; patch.project_id = p.id; if (patch.notes == null) patch.notes = ""; insert("Invoices", patch); }
+    else { id = newId("i"); patch.id = id; patch.project_id = p.id; patch.created_by = me.email; patch.created_at = now(); if (patch.notes == null) patch.notes = ""; insert("Invoices", patch); }
     var dueNow = num(patch.amount != null ? patch.amount : old && old.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage);
-    if (patch.status === "sent" && !wasVisible) postEvent(p, me, "invoice", "sent invoice " + patch.number, (patch.title ? patch.title + " · " : "") + "$" + money(dueNow) + " due" + (patch.due ? " by " + patch.due : ""), "invoice:" + id);
-    if (patch.status === "paid" && (!old || old.status !== "paid")) postEvent(p, me, "paid", "marked invoice " + patch.number + " as paid", "$" + money(dueNow) + " received. Thank you!", "invoice:" + id);
-    if (b.notify && patch.status === "sent") safeMail(function () {
+    if (patch.status === "sent" && !wasVisible) postEvent(p, me, "invoice", "sent invoice " + patch.number, (patch.title ? patch.title + " · " : "") + "$" + money(dueNow) + " due" + (patch.due ? " by " + patch.due : ""), "invoice:" + id, bch);
+    if (patch.status === "paid" && (!old || old.status !== "paid")) postEvent(p, me, "paid", "marked invoice " + patch.number + " as paid", "$" + money(dueNow) + " received. Thank you!", "invoice:" + id, bch);
+    if (b.notify && patch.status === "sent" && bch === "client") safeMail(function () {
       emailClients(p, "Invoice " + patch.number + " · " + p.name,
         "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(num(patch.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage)) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice", deep(p.id, "invoices")));
     }, "Saved, but the email to the client couldn't be sent.");
@@ -685,16 +759,27 @@ var ACTIONS = {
     if (billedOn(it.project_id, it.id)) throw new Error("Invoices already bill this line. Edit those invoices first.");
     removeWhere("ContractLines", function (r) { return r.id === it.id; }); return {};
   },
+  /* Checklist items carry #tags (who sees them) and can be assigned to one person (it lands in their to-dos and alerts). */
   saveChecklistItem: function (me, b) {
     needStaff(me); var p = needProject(me, b.projectId), f = b.item || {};
-    var patch = { phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : CONFIG.PHASES[0], item: clean(f.item, 300), owner: f.owner === "client" ? "client" : "blue sierra", due: dateOrEmpty(f.due) };
+    var tg = readTags(clean(f.item, 300)), aud = cleanAud(cleanAud(f.aud).concat(tg.aud));
+    var assignee = "", who = null;
+    if (f.assignee) { who = membersOf(p).filter(function (x) { return pkey(x.email) === String(f.assignee); })[0]; if (!who) throw new Error("That person isn't on this project."); assignee = who.email; }
+    if (who && !aud.length) aud = [myAud(who)];
+    var patch = { phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : CONFIG.PHASES[0], item: tg.text, owner: aud.indexOf("client") > -1 || (!aud.length && f.owner === "client") ? "client" : "blue sierra",
+      due: dateOrEmpty(f.due), aud: aud.join(","), assignee: assignee, edited_by: me.email, edited_at: now() };
     if (!patch.item) throw new Error("Write the checklist item.");
-    if (f.id) { var it = findBy("Checklist", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Checklist", "id", f.id, patch); }
+    var old = f.id ? findBy("Checklist", "id", f.id) : null, id = f.id;
+    if (f.id) { if (!old || old.project_id !== p.id) throw new Error("Item not found."); update("Checklist", "id", f.id, patch); }
     else {
-      patch.id = newId("c"); patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); insert("Checklist", patch);
-      if (patch.owner === "client") postEvent(p, me, "todo", "added a to-do for the client", patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + patch.id);
+      id = newId("c"); patch.id = id; patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); patch.created_by = me.email; patch.reactions = ""; patch.pinned = ""; insert("Checklist", patch);
+      if (patch.owner === "client" && !assignee) postEvent(p, me, "todo", "added a to-do for the client", patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + id, "client");
     }
-    return {};
+    if (assignee && (!old || old.assignee !== assignee) && assignee !== me.email) {
+      postEvent(p, me, "todo", "assigned a to-do to " + who.name, patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + id, chanFor(aud.length ? aud : [myAud(who)]));
+      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) sendMail(who.email, me.name + " gave you a to-do · " + p.name, "<p>Hi " + esc(first(who.name)) + ",</p><p><b>" + esc(me.name) + "</b> assigned you a to-do on <b>" + esc(p.name) + "</b>:</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + esc(patch.item) + (patch.due ? "<br><small>Due " + esc(patch.due) + "</small>" : "") + "</blockquote>" + button("Open my to-dos", deep(p.id, "checklist")), ""); } catch (e) {}
+    }
+    return { id: id };
   },
   /* Schedule: Gantt tasks (start + end) and dated events (inspections, payments, decisions, meetings, milestones, deadlines). */
   saveScheduleItem: function (me, b) {
@@ -709,6 +794,7 @@ var ACTIONS = {
     if (!patch.start) throw new Error("Pick a date.");
     if (patch.kind !== "task") patch.end = "";
     if (patch.end && patch.end < patch.start) throw new Error("The end date is before the start date.");
+    patch.edited_by = me.email; patch.edited_at = now(); patch.req_by = ""; patch.req_at = ""; patch.req_note = "";     // a team edit answers any pending request
     if (f.id) { var it = findBy("Schedule", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Schedule", "id", f.id, patch); }
     else {
       patch.id = newId("s"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("Schedule", patch);
@@ -735,24 +821,235 @@ var ACTIONS = {
   toggleChecklist: function (me, b) {
     var it = findBy("Checklist", "id", b.itemId); if (!it) throw new Error("Item not found.");
     var p = needProject(me, it.project_id);
-    if (!isStaff(me) && (it.owner !== "client" || me.role !== "client")) throw new Error(it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
+    if (!canCheck(me, it)) throw new Error(it.assignee ? "Only the person it's assigned to (or Blue Sierra) checks that one." : it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
     var done = !isTrue(it.done);
-    update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_at: done ? now() : "" });
+    update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_email: done ? me.email : "", done_at: done ? now() : "" });
     if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal", deep(p.id, "checklist")));
-    if (done) postEvent(p, me, "done", "checked off a to-do", it.item, "check:" + it.id);
+    if (done && audList(it.aud).indexOf("private") < 0) postEvent(p, me, "done", "checked off a to-do", it.item, "check:" + it.id, chanFor(audList(it.aud)));
+    return {};
+  },
+  /* A like (or any of the reactions) on a checklist item. */
+  reactCheck: function (me, b) {
+    var it = findBy("Checklist", "id", b.itemId); if (!it) throw new Error("Item not found.");
+    needProject(me, it.project_id); if (!audOk(me, it.aud) && it.assignee !== me.email) throw new Error("Item not found.");
+    if (REACTIONS.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
+    var r = parseJson(it.reactions, {}), list = r[b.emoji] || [], i = list.indexOf(me.email);
+    if (i > -1) list.splice(i, 1); else list.push(me.email);
+    if (list.length) r[b.emoji] = list; else delete r[b.emoji];
+    update("Checklist", "id", it.id, { reactions: Object.keys(r).length ? JSON.stringify(r) : "" }); return {};
+  },
+  /* Anyone on the project who can't edit the schedule (client, architect, crew) can ask for a change. */
+  requestScheduleChange: function (me, b) {
+    var it = findBy("Schedule", "id", b.itemId); if (!it) throw new Error("Item not found.");
+    var p = needProject(me, it.project_id), note = clean(b.note, 500);
+    if (!note) throw new Error("Say what should change.");
+    update("Schedule", "id", it.id, { req_by: me.email, req_at: now(), req_note: note });
+    var ch = isStaff(me) ? "team" : channelsFor(me)[me.role === "architect" ? 1 : 0];
+    postEvent(p, me, "date", "asked to change “" + it.title + "”", note, "sched:" + it.id, ch);
+    if (!isStaff(me)) notifyJesus(me.email, me.name + " asked for a schedule change · " + p.name, "<p><b>" + esc(it.title) + "</b></p><p>" + nl2br(esc(note)) + "</p>" + button("Open the schedule", deep(p.id, "schedule")));
+    return {};
+  },
+  /* Admin: start a project over. Everything in it (chat, updates, photos list, invoices, contract, checklist, schedule, plans,
+     and the people added to it) moves to the Wipes tab, so it can be brought back exactly as it was. Drive files are never deleted. */
+  wipeProject: function (me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can start a project over.");
+    var p = needProject(me, b.projectId);
+    if (String(b.confirm || "").trim().toLowerCase() !== String(p.name).trim().toLowerCase()) throw new Error("Type the project name exactly to start it over.");
+    var wid = newId("w"), at = now(), out = [];
+    var push = function (tbl, obj) { var js = JSON.stringify(obj); for (var i = 0, part = 0; i < js.length; i += 45000, part++) out.push([wid, p.id, at, me.email, tbl, String(part), js.slice(i, i + 45000)]); };
+    WIPE_TABLES.forEach(function (t) { rows(t).filter(function (r) { return r.project_id === p.id; }).forEach(function (r) { push(t, r); }); });
+    push("Projects", findBy("Projects", "id", p.id));
+    var outsiders = rows("People").filter(function (x) { return !isStaff(x) && splitIds(x.project_ids).indexOf(p.id) > -1; });
+    outsiders.forEach(function (x) { push("People", x); });
+    if (out.length) { var sh = tableSheet("Wipes"); sh.getRange(sh.getLastRow() + 1, 1, out.length, 7).setNumberFormat("@").setValues(out.map(function (r) { return r.map(safe); })); }
+    WIPE_TABLES.forEach(function (t) { removeAll(t, function (r) { return r.project_id === p.id; }); });
+    outsiders.forEach(function (x) { var ids = splitIds(x.project_ids).filter(function (i) { return i !== p.id; }); if (!ids.length && x.role !== "crew") purgePerson(x); else update("People", "email", x.email, { project_ids: ids.join(",") }); });
+    update("Projects", "id", p.id, { progress: "0", phase: CONFIG.PHASES[0], cover_file_id: "" });
+    return { wipe: wid };
+  },
+  restoreWipe: function (me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can restore a project.");
+    var p = needProject(me, b.projectId), w = lastWipe(p.id); if (!w) throw new Error("There's nothing to restore.");
+    var parts = rows("Wipes").filter(function (r) { return r.wipe_id === w.id; });
+    // Rebuild each saved row from its parts (they were written in order).
+    var objs = [], cur = null;
+    parts.forEach(function (r) { if (r.part === "0") { if (cur) objs.push(cur); cur = { tbl: r.tbl, js: "" }; } cur.js += String(r.data).replace(/^'/, ""); }); if (cur) objs.push(cur);
+    var add = {};
+    objs.forEach(function (o) { var row = JSON.parse(o.js);
+      if (o.tbl === "Projects") { var pr = {}; ["progress", "phase", "cover_file_id", "summary"].forEach(function (k) { pr[k] = row[k] || ""; }); update("Projects", "id", p.id, pr); return; }
+      if (o.tbl === "People") {
+        var ex = findPerson(row.email);
+        if (ex) { var ids = splitIds(ex.project_ids); if (ids.indexOf(p.id) < 0) ids.push(p.id); update("People", "email", ex.email, { project_ids: ids.join(","), active: "yes" }); }
+        else { row.project_ids = p.id; row.active = "yes"; (add.People = add.People || []).push(row); }
+        return;
+      }
+      (add[o.tbl] = add[o.tbl] || []).push(row);
+    });
+    Object.keys(add).forEach(function (t) {
+      var have = {}; rows(t).forEach(function (r) { if (r.id) have[r.id] = 1; });
+      var list = add[t].filter(function (r) { return !r.id || !have[r.id]; }); if (!list.length) return;
+      var sh = tableSheet(t), h = TABLES[t];
+      sh.getRange(sh.getLastRow() + 1, 1, list.length, h.length).setNumberFormat("@").setValues(list.map(function (r) { return h.map(function (k) { return safe(r[k] == null ? "" : String(r[k])); }); }));
+      delete _ROWS[t];
+    });
+    removeAll("Wipes", function (r) { return r.wipe_id === w.id; });
     return {};
   }
 };
+/* ============================ QuickBooks Online ============================
+   Jesús creates an app at developer.intuit.com, pastes its Client ID and Secret into the portal (stored in Script Properties,
+   never shown again), and clicks Connect. The portal can then list a customer's QuickBooks invoices and bring them in,
+   PDF included, so the client sees the real QuickBooks invoice. */
+var QB = { AUTH: "https://appcenter.intuit.com/connect/oauth2", TOKEN: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+  API: { production: "https://quickbooks.api.intuit.com", sandbox: "https://sandbox-quickbooks.api.intuit.com" }, SCOPE: "com.intuit.quickbooks.accounting", MINOR: "75" };
+function qbProps() { return PropertiesService.getScriptProperties(); }
+function qbCfg() { var pr = qbProps(); return { id: pr.getProperty("QB_CLIENT_ID") || "", secret: pr.getProperty("QB_CLIENT_SECRET") || "", redirect: pr.getProperty("QB_REDIRECT") || "",
+  env: pr.getProperty("QB_ENV") || "production", realm: pr.getProperty("QB_REALM") || "", refresh: pr.getProperty("QB_REFRESH") || "", company: pr.getProperty("QB_COMPANY") || "" }; }
+function qbFinishConnect(code, state, realm) {
+  var c = CacheService.getScriptCache(); if (!state || c.get("qbstate:" + state) !== "1") throw new Error("This link expired. Click Connect QuickBooks again.");
+  c.remove("qbstate:" + state);
+  var cfg = qbCfg(), res = qbTokenCall({ grant_type: "authorization_code", code: code, redirect_uri: cfg.redirect });
+  qbProps().setProperties({ QB_REALM: String(realm), QB_REFRESH: res.refresh_token });
+  c.put("qb:access", res.access_token, Math.max(60, (res.expires_in || 3600) - 120));
+  try { var info = qbGet("/companyinfo/" + realm); qbProps().setProperty("QB_COMPANY", info.CompanyInfo.CompanyName || ""); } catch (e) {}
+}
+function qbTokenCall(form) {
+  var cfg = qbCfg(); if (!cfg.id || !cfg.secret) throw new Error("Add the QuickBooks app keys first.");
+  var r = UrlFetchApp.fetch(QB.TOKEN, { method: "post", muteHttpExceptions: true, payload: form, headers: { Accept: "application/json", Authorization: "Basic " + Utilities.base64Encode(cfg.id + ":" + cfg.secret) } });
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+  if (r.getResponseCode() !== 200 || !j.access_token) throw new Error("QuickBooks said: " + (j.error_description || j.error || r.getResponseCode()));
+  return j;
+}
+function qbAccess() {
+  var c = CacheService.getScriptCache(), t = c.get("qb:access"); if (t) return t;
+  var cfg = qbCfg(); if (!cfg.refresh) throw new Error("QuickBooks isn't connected yet.");
+  var j = qbTokenCall({ grant_type: "refresh_token", refresh_token: cfg.refresh });
+  if (j.refresh_token && j.refresh_token !== cfg.refresh) qbProps().setProperty("QB_REFRESH", j.refresh_token);       // Intuit rotates it
+  c.put("qb:access", j.access_token, Math.max(60, (j.expires_in || 3600) - 120)); return j.access_token;
+}
+function qbFetch(path, accept) {
+  var cfg = qbCfg(), url = QB.API[cfg.env] + "/v3/company/" + cfg.realm + path + (path.indexOf("?") > -1 ? "&" : "?") + "minorversion=" + QB.MINOR;
+  var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: accept || "application/json" } });
+  if (r.getResponseCode() === 401) { CacheService.getScriptCache().remove("qb:access"); r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: accept || "application/json" } }); }
+  if (r.getResponseCode() !== 200) throw new Error("QuickBooks error " + r.getResponseCode() + ": " + String(r.getContentText()).slice(0, 200));
+  return r;
+}
+function qbGet(path) { return JSON.parse(qbFetch(path).getContentText()); }
+function qbQuery(sql) { return qbGet("/query?query=" + encodeURIComponent(sql)).QueryResponse || {}; }
+function qbInvoiceOut(i, imported) {
+  return { id: String(i.Id), number: i.DocNumber || "", date: i.TxnDate || "", due: i.DueDate || "", total: num(i.TotalAmt), balance: num(i.Balance), customer: (i.CustomerRef || {}).name || "", imported: imported[String(i.Id)] || "" };
+}
+ACTIONS.qbStatus = function (me) {
+  needStaff(me); var cfg = qbCfg();
+  return { hasKeys: !!(cfg.id && cfg.secret), connected: !!cfg.refresh, company: cfg.company, env: cfg.env, redirect: cfg.redirect, admin: me.role === "admin" };
+};
+ACTIONS.qbSaveKeys = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
+  var id = clean(b.clientId, 200), secret = clean(b.clientSecret, 200), redirect = String(b.redirect || "");
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(redirect)) throw new Error("The portal's address looks wrong. Reload and try again.");
+  var set = { QB_REDIRECT: redirect, QB_ENV: b.env === "sandbox" ? "sandbox" : "production" };
+  if (id) set.QB_CLIENT_ID = id; if (secret) set.QB_CLIENT_SECRET = secret;
+  qbProps().setProperties(set); return ACTIONS.qbStatus(me);
+};
+ACTIONS.qbConnectUrl = function (me) {
+  if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
+  var cfg = qbCfg(); if (!cfg.id || !cfg.secret || !cfg.redirect) throw new Error("Add the QuickBooks app keys first.");
+  var state = newId("q") + newId("s"); CacheService.getScriptCache().put("qbstate:" + state, "1", 900);
+  return { url: QB.AUTH + "?client_id=" + encodeURIComponent(cfg.id) + "&response_type=code&scope=" + encodeURIComponent(QB.SCOPE) + "&redirect_uri=" + encodeURIComponent(cfg.redirect) + "&state=" + state };
+};
+ACTIONS.qbDisconnect = function (me) {
+  if (me.role !== "admin") throw new Error("Only Jesús can disconnect QuickBooks.");
+  var pr = qbProps(); ["QB_REFRESH", "QB_REALM", "QB_COMPANY"].forEach(function (k) { pr.deleteProperty(k); }); CacheService.getScriptCache().remove("qb:access"); return {};
+};
+ACTIONS.qbCustomers = function (me) {
+  needStaff(me);
+  return { customers: (qbQuery("select Id, DisplayName from Customer where Active = true maxresults 1000").Customer || []).map(function (c) { return { id: String(c.Id), name: c.DisplayName }; }) };
+};
+ACTIONS.qbLink = function (me, b) {
+  needStaff(me); var p = needProject(me, b.projectId); update("Projects", "id", p.id, { qb_customer: /^\d{1,12}$/.test(String(b.customerId || "")) ? String(b.customerId) : "" }); return {};
+};
+ACTIONS.qbInvoices = function (me, b) {
+  needStaff(me); var p = needProject(me, b.projectId); if (!p.qb_customer) return { linked: false, invoices: [] };
+  var imported = {}; rows("Invoices").forEach(function (i) { if (i.qb_id && i.project_id === p.id) imported[i.qb_id] = i.id; });
+  var list = qbQuery("select * from Invoice where CustomerRef = '" + p.qb_customer + "' order by TxnDate desc maxresults 100").Invoice || [];
+  return { linked: true, invoices: list.map(function (i) { return qbInvoiceOut(i, imported); }) };
+};
+/* Bring one QuickBooks invoice into the portal: its number, dates, total and status, plus the real PDF from QuickBooks. */
+ACTIONS.qbImport = function (me, b) {
+  needStaff(me); var p = needProject(me, b.projectId); if (!p.qb_customer) throw new Error("Link this project to a QuickBooks customer first.");
+  var qid = String(b.qbId || ""); if (!/^\d{1,12}$/.test(qid)) throw new Error("Pick an invoice.");
+  var inv = qbGet("/invoice/" + qid).Invoice; if (!inv || String((inv.CustomerRef || {}).value) !== String(p.qb_customer)) throw new Error("That invoice isn't for this project's customer.");
+  var pdf = qbFetch("/invoice/" + qid + "/pdf", "application/pdf").getBlob().setName("Invoice " + (inv.DocNumber || qid) + ".pdf");
+  var file = projectFolder(p).createFile(pdf); try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+  var paid = num(inv.Balance) === 0 && num(inv.TotalAmt) > 0, existing = rows("Invoices").filter(function (i) { return i.project_id === p.id && i.qb_id === qid; })[0];
+  var f = { id: existing ? existing.id : undefined, number: inv.DocNumber || ("QB-" + qid), title: (inv.CustomerMemo && inv.CustomerMemo.value) || "QuickBooks invoice", amount: num(inv.TotalAmt), issued: inv.TxnDate || "", due: inv.DueDate || "",
+    status: paid ? "paid" : "sent", paid_date: paid ? today() : "", pay_url: inv.InvoiceLink && /^https:\/\//.test(inv.InvoiceLink) ? inv.InvoiceLink : "" };
+  var r = ACTIONS.saveInvoice(me, { projectId: p.id, invoice: f, notify: !!b.notify });
+  var old = existing && existing.pdf_file_id;
+  update("Invoices", "id", r.id, { qb_id: qid, pdf_file_id: file.getId() });
+  if (old && old !== file.getId()) try { DriveApp.getFileById(old).setTrashed(true); } catch (e) {}
+  return { id: r.id };
+};
 
+var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];
+function lastWipe(pid) {
+  var l = rows("Wipes").filter(function (r) { return r.project_id === pid; }); if (!l.length) return null;
+  var last = l[l.length - 1], n = l.filter(function (r) { return r.wipe_id === last.wipe_id && r.part === "0"; }).length;
+  return { id: last.wipe_id, at: last.at, items: n };
+}
+function canCheck(me, it) {
+  if (isStaff(me)) return true;
+  if (it.assignee) return it.assignee === me.email;
+  var l = audList(it.aud);
+  if (!l.length) return it.owner === "client" && me.role === "client";
+  return l.indexOf(myAud(me)) > -1;
+}
+function peopleIndex() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x; }); return o; }
+function footOf(email, at, ppl) { if (!email) return null; var x = ppl[email] || {}; return { name: x.name || "Someone", key: keyOf(email), avatar: x.avatar || "", role: x.role || "", at: at || "" }; }
+function checkOut(c, me, ppl) {
+  var r = parseJson(c.reactions, {}), names = function (l) { return l.map(function (e) { return (ppl[e] || {}).name || "Someone"; }); };
+  return { id: c.id, phase: c.phase, item: c.item, owner: c.owner, due: c.due, done: c.done, done_by: c.done_by, done_at: c.done_at, sort: c.sort, aud: audList(c.aud), pinned: isTrue(c.pinned),
+    assignee: c.assignee ? footOf(c.assignee, "", ppl) : null, mine: c.assignee === me.email, can: canCheck(me, c),
+    doneFoot: isTrue(c.done) ? footOf(c.done_email || "", c.done_at, ppl) || { name: c.done_by, at: c.done_at } : null,
+    edited: footOf(c.edited_by || c.created_by, c.edited_at, ppl),
+    reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: names(r[e]) }; }) };
+}
+function schedOut(x, team, ppl) {
+  var o = { id: x.id, kind: x.kind, title: x.title, start: x.start, end: x.end, phase: x.phase, owner: x.owner, status: x.status, sort: x.sort,
+    edited: footOf(x.edited_by, x.edited_at, ppl), req: x.req_by ? Object.assign(footOf(x.req_by, x.req_at, ppl), { note: x.req_note }) : null };
+  if (team) o.notes = x.notes;
+  return o;
+}
+/* Pinned things across my projects, for the home dashboard: messages I can read, updates and checklist items tagged for me. */
+function pinsFor(me, names, msgs, tl, ck) {
+  var out = [], ppl = peopleIndex();
+  msgs.forEach(function (m) { if (isTrue(m.pinned) && names[m.project_id] && canRead(me, chOf(m))) out.push({ kind: "msg", id: m.id, pid: m.project_id, project: names[m.project_id], at: m.at, text: String(m.text).slice(0, 220), author: m.author, akey: keyOf(m.author_email), avatar: (ppl[m.author_email] || {}).avatar || "", channel: chOf(m), dm: isDm(chOf(m)) }); });
+  tl.forEach(function (u) { if (isTrue(u.pinned) && names[u.project_id] && audOk(me, u.aud)) out.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: String(u.text).slice(0, 220), author: u.author, akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "", aud: audList(u.aud) }); });
+  ck.forEach(function (c) { if (isTrue(c.pinned) && names[c.project_id] && (audOk(me, c.aud) || c.assignee === me.email)) out.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: isTrue(c.done), aud: audList(c.aud), author: (ppl[c.created_by] || {}).name || "", akey: keyOf(c.created_by), avatar: (ppl[c.created_by] || {}).avatar || "" }); });
+  return out.sort(function (a, b) { return a.at < b.at ? 1 : -1; }).slice(0, 24);
+}
+/* Remove many rows at once (rewrites the tab once instead of deleting row by row). */
+function removeAll(t, test) {
+  var sh = tableSheet(t), all = rows(t), keep = all.filter(function (r) { return !test(r); }), h = TABLES[t]; delete _ROWS[t];
+  if (keep.length === all.length) return;
+  if (all.length) sh.getRange(2, 1, all.length, h.length).clearContent();
+  if (keep.length) sh.getRange(2, 1, keep.length, h.length).setNumberFormat("@").setValues(keep.map(function (r) { return h.map(function (k) { return safe(r[k] == null ? "" : String(r[k])); }); }));
+}
 /* ============================ email replies ============================ */
 
 /** Runs every 10 minutes. Imports a client's email reply only when Gmail verified the sender and the thread began with our email. */
 function checkEmailReplies() {
-  var lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
+  // Look first without holding anything: most runs find nothing new and never block people saving in the portal.
+  var seen = {}; rows("EmailImports").forEach(function (r) { seen[r.gmail_id] = 1; });
+  var threads = GmailApp.search('subject:"' + CONFIG.TAG + '" newer_than:14d -in:spam -in:trash', 0, 50);
+  if (!threads.some(function (th) { return th.getMessages().slice(1).some(function (m) { return !seen[m.getId()]; }); })) return;
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(10000)) return;
+  OUTBOX = [];
   try {
+    _ROWS = {};
     var done = {}; rows("EmailImports").forEach(function (r) { done[r.gmail_id] = 1; });
     var me = normEmail(Session.getEffectiveUser().getEmail()), ours = [me, normEmail(CONFIG.FROM_EMAIL), normEmail(CONFIG.NOTIFY_EMAIL)];
-    GmailApp.search('subject:"' + CONFIG.TAG + '" newer_than:14d -in:spam -in:trash', 0, 50).forEach(function (th) {
+    threads.forEach(function (th) {
       var msgs = th.getMessages(), firstMsg = msgs[0];
       var m = String(firstMsg.getSubject()).match(new RegExp("\\[" + CONFIG.TAG + "-([a-z0-9]+)-([a-z0-9]+)\\]"));
       if (!m || ours.indexOf(senderOf(firstMsg.getFrom())) < 0) return;    // the thread must start with the portal's own email
@@ -779,7 +1076,8 @@ function checkEmailReplies() {
         }
       });
     });
-  } finally { lock.releaseLock(); }
+  } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
+  flushMail(); bumpVersion("");
 }
 
 /* "Name <a@b.com>" or "a@b.com" only; anything with extra angle brackets or an @ in the display name is rejected. */
@@ -898,15 +1196,20 @@ function summary(p, inv, msgs, tl, me, lines, reads) {
 function projectOut(p) {
   return { id: p.id, name: p.name, client_name: p.client_name, address: p.address, city: p.city, phase: p.phase, progress: Number(p.progress || 0),
     start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "",
-    retainage_pct: num(p.retainage_pct), lat: p.lat ? num(p.lat) : null, lon: p.lon ? num(p.lon) : null };
+    retainage_pct: num(p.retainage_pct), lat: p.lat ? num(p.lat) : null, lon: p.lon ? num(p.lon) : null,
+    billing_aud: audList(p.billing_aud), architect_name: p.architect_name || "", architect_logo: p.architect_logo ? img(p.architect_logo, 400) : "" };
 }
 function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: img(ph.file_id, 600), full: img(ph.file_id, 2000), caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
-function invoiceOut(i, staff) {
+function invoiceOut(i, staff, ppl) {
   var st = i.status; if (st === "sent" && i.due && i.due < today()) st = "overdue";
   var lines = {}; try { lines = i.lines ? JSON.parse(String(i.lines).replace(/^'/, "")) : {}; } catch (e) {}
   var o = { id: i.id, number: i.number, title: i.title, amount: num(i.amount), retainage: num(i.retainage), lines: lines, issued: i.issued, due: i.due, status: st, paid_date: i.paid_date,
     pdf: i.pdf_file_id ? "https://drive.google.com/file/d/" + i.pdf_file_id + "/view" : "", pay_url: i.pay_url };
-  if (staff) o.notes = i.notes;                                          // internal notes stay with the team
+  if (staff) {                                                           // internal notes and who made it stay with the team
+    o.notes = i.notes; ppl = ppl || {};
+    o.created_by = (ppl[i.created_by] || {}).name || ""; o.created_at = i.created_at || ""; o.cby_key = i.created_by ? keyOf(i.created_by) : ""; o.cby_avatar = (ppl[i.created_by] || {}).avatar || "";
+    o.updated_by = (ppl[i.updated_by] || {}).name || ""; o.updated_at = i.updated_at || ""; o.qb_id = i.qb_id || "";
+  }
   return o;
 }
 /* Clients and architects see the base contract and change orders that aren't rejected; team notes stay with the team. */
@@ -938,7 +1241,7 @@ function postEvent(p, me, type, action, detail, ref, channel) {
     question_id: "", status: type, via: "portal", channel: channel || "client", thread_id: "", files: "", reactions: "", ref: ref || "" });
 }
 function coEvent(p, me, line, id, verb) {
-  postEvent(p, me, "change", verb + " change order" + (line.number ? " " + line.number : ""), line.title + " · " + (num(line.amount) < 0 ? "−$" + money(-num(line.amount)) : "+$" + money(line.amount)), "co:" + id);
+  postEvent(p, me, "change", verb + " change order" + (line.number ? " " + line.number : ""), line.title + " · " + (num(line.amount) < 0 ? "−$" + money(-num(line.amount)) : "+$" + money(line.amount)), "co:" + id, billChannel(p));
 }
 function planVisible(d, me) { return isTeam(me) || (d.visible === "all") || (d.visible === "architect" && me.role === "architect"); }
 function plansOut(list, me) {
@@ -954,7 +1257,7 @@ function keyOf(email) { return email ? (_KEYS[email] = _KEYS[email] || pkey(emai
 function avatarsByEmail() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x.avatar || ""; }); return o; }
 /* Someone counts as "in the portal" only if their access is on and they're on the team or on a live project. */
 function liveProjectIds() { var ids = {}; rows("Projects").forEach(function (p) { if (p.status !== "deleted") ids[p.id] = 1; }); return ids; }
-function inPortal(x, live) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).some(function (id) { return live[id]; })); }
+function inPortal(x, live) { return isTrue(x.active) && (isTeam(x) || splitIds(x.project_ids).some(function (id) { return live[id]; })); }
 function purgePerson(person) {
   var c = CacheService.getScriptCache();
   rows("Sessions").forEach(function (sn) { if (sn.email === person.email) c.remove("sess:" + sn.token_hash); });
@@ -964,7 +1267,7 @@ function purgePerson(person) {
 }
 /* Leftovers from older versions: people whose access was turned off, or who have no project at all and aren't on the team. */
 function purgeOrphans() {
-  rows("People").filter(function (x) { return x.role !== "admin" && (!isTrue(x.active) || (!isStaff(x) && !splitIds(x.project_ids).length)); }).forEach(purgePerson);
+  rows("People").filter(function (x) { return x.role !== "admin" && (!isTrue(x.active) || (!isTeam(x) && !splitIds(x.project_ids).length)); }).forEach(purgePerson);
 }
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
@@ -991,7 +1294,7 @@ function readsFor(me, pid) { var all = readsAll(me), o = {}; Object.keys(all).fo
 function markReadNow(me, pid, ch) {
   var list = rows("Reads");
   for (var i = 0; i < list.length; i++) if (list[i].email === me.email && list[i].project_id === pid && list[i].channel === ch) {
-    tableSheet("Reads").getRange(i + 2, 4).setNumberFormat("@").setValue(now()); list[i].at = now(); return;
+    tableSheet("Reads").getRange(i + 2, 4).setValue(now()); list[i].at = now(); return;
   }
   insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
 }
@@ -999,9 +1302,11 @@ function unreadOf(me, msgs, reads) {
   return msgs.filter(function (m) { var c = chOf(m); return canRead(me, c) && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
 }
 /* What a project needs from the client soon: open to-dos, dates in the next 14 days, invoices due. Feeds the notification bell. */
-function needsOf(p, ck, sc, inv) {
+function needsOf(p, ck, sc, inv, me) {
   var t = today(), lim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
   return {
+    // Things assigned to me by name (any role): they show up in my alerts and my to-dos.
+    mine: me ? ck.filter(function (c) { return c.project_id === p.id && c.assignee === me.email && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due, aud: audList(c.aud), by: c.created_by }; }).slice(0, 12) : [],
     todos: ck.filter(function (c) { return c.project_id === p.id && c.owner === "client" && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }).slice(0, 8),
     dates: sc.filter(function (x) { return x.project_id === p.id && x.kind !== "task" && x.status !== "done" && x.start >= t && x.start <= lim; })
       .sort(function (a, c) { return a.start < c.start ? -1 : 1; }).map(function (x) { return { id: x.id, kind: x.kind, title: x.title, start: x.start, owner: x.owner }; }).slice(0, 6),
@@ -1024,7 +1329,11 @@ function img(id, w) { return "https://drive.google.com/thumbnail?id=" + encodeUR
 
 /* ============================ email ============================ */
 
-var MAIL_NOTICES = null;
+var MAIL_NOTICES = null, OUTBOX = null;
+function flushMail() {
+  var box = OUTBOX || []; OUTBOX = null;
+  box.forEach(function (m) { try { sendMailNow(m.to, m.subject, m.html); } catch (e) { if (MAIL_NOTICES && m.notice !== "") MAIL_NOTICES.push(m.notice || "Saved, but an email couldn't be sent."); } });
+}
 /* Data is already saved when mail goes out, so a mail failure becomes a notice, never an error that suggests nothing happened. */
 function safeMail(fn, notice) { try { fn(); } catch (e) { if (MAIL_NOTICES && notice) MAIL_NOTICES.push(notice); } }
 function notifyJesus(fromEmail, subject, html) {
@@ -1044,7 +1353,11 @@ function fromAddress() {
   if (v == null) { try { v = GmailApp.getAliases().map(normEmail).indexOf(normEmail(CONFIG.FROM_EMAIL)) > -1 ? CONFIG.FROM_EMAIL : ""; } catch (e) { v = ""; } c.put(k, v, 3600); }
   return v;
 }
-function sendMail(to, subject, html) {
+function sendMail(to, subject, html, notice) {
+  if (OUTBOX) { OUTBOX.push({ to: to, subject: subject, html: html, notice: notice }); return; }   // during a request: send once the lock is free
+  sendMailNow(to, subject, html);
+}
+function sendMailNow(to, subject, html) {
   var from = fromAddress();
   GmailApp.sendEmail(to, subject, html.replace(/<[^>]+>/g, " "), {
     from: from || undefined,
@@ -1106,15 +1419,18 @@ function rows(t) {
   return outR;
 }
 function insert(t, obj) {
-  delete _ROWS[t];
-  var sh = tableSheet(t), h = TABLES[t], r = sh.getLastRow() + 1;
-  sh.getRange(r, 1, 1, h.length).setNumberFormat("@").setValues([h.map(function (k) { return safe(obj[k] == null ? "" : String(obj[k])); })]);
+  var sh = tableSheet(t), h = TABLES[t], r = sh.getLastRow() + 1, vals = h.map(function (k) { return obj[k] == null ? "" : String(obj[k]); });
+  sh.getRange(r, 1, 1, h.length).setNumberFormat("@").setValues([vals.map(safe)]);
+  if (_ROWS[t] && _ROWS[t].length === r - 2) { var o = {}; h.forEach(function (k, c) { o[k] = vals[c]; }); _ROWS[t].push(o); } else delete _ROWS[t];
 }
 function update(t, keyCol, keyVal, patch) {
-  delete _ROWS[t];
-  var sh = tableSheet(t), v = sh.getDataRange().getValues(), h = TABLES[t], kc = h.indexOf(keyCol);
-  for (var i = 1; i < v.length; i++) if (cell(v[i][kc]) === String(keyVal)) {
-    Object.keys(patch).forEach(function (k) { var c = h.indexOf(k); if (c > -1) sh.getRange(i + 1, c + 1).setNumberFormat("@").setValue(safe(String(patch[k] == null ? "" : patch[k]))); });
+  var sh = tableSheet(t), list = rows(t), h = TABLES[t];
+  for (var i = 0; i < list.length; i++) if (list[i][keyCol] === String(keyVal)) {
+    Object.keys(patch).forEach(function (k) {
+      var c = h.indexOf(k); if (c < 0) return;
+      var v = String(patch[k] == null ? "" : patch[k]);
+      sh.getRange(i + 2, c + 1).setValue(safe(v)); list[i][k] = v;      // columns are plain text already; keep our copy in step
+    });
     return true;
   }
   return false;
