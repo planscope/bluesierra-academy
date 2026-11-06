@@ -988,7 +988,7 @@ function qbFinishConnect(code, state, realm) {
   c.put("qb:access", res.access_token, Math.max(60, (res.expires_in || 3600) - 120));
   // Read the company name, and refuse a test company connected on the real setting (or the reverse) right away.
   c.remove("qbok:" + realm);
-  try { qbCheck(); } catch (e) { if (/connected to/.test(String(e.message))) { qbDropConnection(e.message); throw e; } }
+  try { qbCheck(); } catch (e) { if (/TEST company|You're connected to/.test(String(e.message))) { qbDropConnection(e.message); throw e; } }
 }
 function qbTokenCall(form) {
   var cfg = qbCfg(); if (!cfg.id || !cfg.secret) throw new Error("Add the QuickBooks app keys first.");
@@ -1034,12 +1034,18 @@ ACTIONS.qbStatus = function (me) {
 };
 ACTIONS.qbSaveKeys = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
-  var id = clean(b.clientId, 200), secret = clean(b.clientSecret, 200);
+  var id = String(b.clientId || "").trim(), secret = String(b.clientSecret || "").trim();
+  // Intuit's "Copy all" puts both keys in one paste; pull them apart wherever it was pasted.
+  var both = id + "\n" + secret, mi = both.match(/client\s*id\W*([A-Za-z0-9]+?)(?=client\s*secret|[^A-Za-z0-9]|$)/i), ms = both.match(/client\s*secret\W*([A-Za-z0-9]+?)(?=client\s*id|[^A-Za-z0-9]|$)/i);
+  if (mi) id = mi[1]; if (ms) secret = ms[1];
+  if (id && !/^[A-Za-z0-9]{1,100}$/.test(id)) throw new Error("That doesn't look like a Client ID. On Intuit, open Keys and credentials → Production and copy it again.");
+  if (secret && !/^[A-Za-z0-9]{1,100}$/.test(secret)) throw new Error("That doesn't look like a Client Secret. On Intuit, open Keys and credentials → Production and copy it again.");
   var set = { QB_ENV: b.env === "sandbox" ? "sandbox" : "production" };
   if (id) set.QB_CLIENT_ID = id; if (secret) set.QB_CLIENT_SECRET = secret;
   var old = qbCfg(), changed = (id && id !== old.id) || set.QB_ENV !== old.env;
   qbProps().setProperties(set);
   if (changed && old.refresh) { ["QB_REFRESH", "QB_REALM", "QB_COMPANY", "QB_RECONNECT"].forEach(function (k) { qbProps().deleteProperty(k); }); CacheService.getScriptCache().remove("qb:access"); }
+  if (changed) qbProps().deleteProperty("QB_RECONNECT");   // new keys: the old "connect again" note no longer applies
   return ACTIONS.qbStatus(me);
 };
 ACTIONS.qbConnectUrl = function (me) {
@@ -1111,10 +1117,10 @@ function qbCheck() {
       if (r.getResponseCode() === 200) {
         var nm = ((JSON.parse(r.getContentText()) || {}).CompanyInfo || {}).CompanyName || "a company";
         throw new Error(cfg.env === "production"
-          ? "You're connected to \"" + nm + "\", which is a QuickBooks TEST (sandbox) company, not Blue Sierra's real books. That happens when Intuit is signed in as the developer account. Fix: Home → Team → Disconnect, then Connect QuickBooks, click \"Not you?\" on Intuit's page and sign in with the login you use for Blue Sierra's real QuickBooks, and pick the real company."
+          ? "Intuit connected the TEST company \"" + nm + "\", not Blue Sierra's real books. That means the keys saved here are the Development keys (they only open test companies). Fix: on developer.intuit.com → Keys and credentials → Production, click \"Copy all - production keys\", paste it in the Client ID box below, Save keys, then Connect QuickBooks."
           : "You're connected to \"" + nm + "\", a real company, while the portal is on the Sandbox setting. Disconnect, switch to Production, Save keys and Connect again.");
       }
-    } catch (e2) { if (/connected to/.test(String(e2.message))) throw e2; }
+    } catch (e2) { if (/TEST company|You're connected to/.test(String(e2.message))) throw e2; }
     throw new Error(qbExplain(e, cfg));
   }
 }

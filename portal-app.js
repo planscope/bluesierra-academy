@@ -2221,6 +2221,15 @@
     if (e.target.name === "retainage") f.dataset.auto = 0;
     invoiceMath(f);
   });
+  // Intuit's "Copy all - production keys" pastes both keys at once: split them here, before the one-line box squashes the line break.
+  root.addEventListener("paste", function (e) {
+    var box = e.target; if (!box || box.name !== "clientId" && box.name !== "clientSecret") return;
+    var t = ((e.clipboardData || window.clipboardData) || { getData: function () { return ""; } }).getData("text") || "";
+    var id = (t.match(/client\s*id\W*([A-Za-z0-9]+)/i) || [])[1], sec = (t.match(/client\s*secret\W*([A-Za-z0-9]+)/i) || [])[1];
+    if (!id || !sec) { var parts = t.split(/[^A-Za-z0-9]+/).filter(function (x) { return x.length >= 20; }); if (parts.length === 2) { id = parts[0]; sec = parts[1]; } }
+    if (!id || !sec) return;
+    e.preventDefault(); var f = box.form; f.clientId.value = id; f.clientSecret.value = sec; toast("Got both keys. Now click Save keys.");
+  });
   root.addEventListener("change", function (e) {
     if (e.target.matches("[data-fin-link], [data-fin-proj]")) { finLink(e.target); return; }
     if (e.target.matches("[data-att]")) {
