@@ -26,7 +26,8 @@
         { email: "client@example.com", name: "Sample Client", role: "client", project_ids: "p1", active: "yes" },
         { email: "client2@example.com", name: "Second Client", role: "client", project_ids: "p2", active: "yes" },
         { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes" },
-        { email: "maria@example.com", name: "Maria Team", role: "staff", project_ids: "", active: "yes", created_at: "2026-09-01 09:00" }
+        { email: "maria@example.com", name: "Maria Team", role: "staff", project_ids: "", active: "yes", created_at: "2026-09-01 09:00", avatar: "🦉|#e7eef7" },
+        { email: "crew@example.com", name: "Carlos Crew", role: "crew", project_ids: "p1", active: "yes", created_at: "2026-10-01 07:00", avatar: "🚜|#fdf4dc" }
       ],
       photos: [
         ph("ph1", "Sample photo · retaining wall", "#7d6a55", "#2f3a33", "Retaining wall, east side", "2026-11-03 15:20", "u3"),
@@ -82,7 +83,7 @@
         { id: "a1", project_id: "p1", at: "2026-11-04 16:10", author: "Sample Architect", author_email: "architect@example.com", role: "architect", kind: "message", text: "Please send the revised guardrail shop drawings before Friday so I can review them.", channel: "architect", thread_id: "" },
         { id: "a2", project_id: "p1", at: "2026-11-06 09:15", author: "Sample Architect", author_email: "architect@example.com", role: "architect", kind: "message", text: "Also, can you confirm the post spacing on sheet L3.22?", channel: "architect", thread_id: "a1" }
       ],
-      reads: [],
+      reads: [], plans: [],
       events: [
         { id: "e1", project_id: "p1", at: "2026-11-03 17:40", author: "Jesús Toto", author_email: "jesus@example.com", role: "admin", kind: "event", text: "posted a project update with 2 photos\nWest retaining wall is formed and the drainage is in.", status: "update", channel: "client", thread_id: "", ref: "update:u3" },
         { id: "e2", project_id: "p1", at: "2026-11-04 09:05", author: "Jesús Toto", author_email: "jesus@example.com", role: "admin", kind: "event", text: "sent invoice INV-1063\nProgress payment 2: walls and pool deck · $29,640.00 due by 2026-11-18", status: "invoice", channel: "client", thread_id: "", ref: "invoice:i3" },
@@ -101,7 +102,7 @@
     };
   }
   function seedAll() { var d = seed(); d.messages = d.messages.concat(d.chat, d.events); delete d.chat; delete d.events; return d; }
-  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) { if (!d.schedule) d.schedule = seed().schedule; if (!d.reads) { var s0 = seed(); d.reads = []; d.messages = d.messages.concat(s0.chat); d.people = s0.people; } if (!d.contractLines) { var sd = seed(); d.contractLines = sd.contractLines; d.invoices = sd.invoices; d.people = sd.people; d.projects.forEach(function (x) { if (x.id === "p1") x.retainage_pct = "5"; }); } return d; } } catch (e) {} return seedAll(); }
+  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) { if (!d.plans) d.plans = []; if (!d.people.some(function (x) { return x.role === "crew"; })) d.people = d.people.concat(seed().people.filter(function (x) { return x.role === "crew"; })); if (!d.schedule) d.schedule = seed().schedule; if (!d.reads) { var s0 = seed(); d.reads = []; d.messages = d.messages.concat(s0.chat); d.people = s0.people; } if (!d.contractLines) { var sd = seed(); d.contractLines = sd.contractLines; d.invoices = sd.invoices; d.people = sd.people; d.projects.forEach(function (x) { if (x.id === "p1") x.retainage_pct = "5"; }); } return d; } } catch (e) {} return seedAll(); }
   function save(db) { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { throw new Error("Preview storage is full. Clear it with BSP_MOCK.reset()."); } }
   function id() { return Math.random().toString(36).slice(2, 12); }
   function now() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
@@ -124,10 +125,14 @@
       return { token: t, me: meOut(p) };
     }
   };
-  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin" }; }
+  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pk(p.email), avatar: p.avatar || "" }; }
+  function pk(e) { var h = 0; String(e).split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return ("0000000000" + h.toString(16)).slice(-10); }
+  function isTeam(p) { return isStaff(p) || p.role === "crew"; }
+  function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
+  function canRead(me, ch) { return isDm(ch) ? ch.indexOf(pk(me.email)) > -1 : chansFor(me).indexOf(ch) > -1; }
   function auth(db, t) { var e = db.sessions[t]; var p = e && db.people.filter(function (x) { return x.email === e && x.active === "yes"; })[0]; if (!p) throw new Error("Please log in again."); return p; }
   function canSee(me, pid) { return isStaff(me) || ids(me.project_ids).indexOf(pid) > -1; }
-  function needProject(db, me, pid) { var p = db.projects.filter(function (x) { return x.id === pid; })[0]; if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived")) throw new Error("Project not found."); return p; }
+  function needProject(db, me, pid) { var p = db.projects.filter(function (x) { return x.id === pid; })[0]; if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived") || (p.status === "deleted" && me.role !== "admin")) throw new Error("Project not found."); return p; }
   function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
   function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: ph.src, full: ph.src, caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
   function projOut(db, p) { var cover = db.photos.filter(function (x) { return x.file_id === p.cover_file_id; })[0]; return Object.assign({}, p, { progress: Number(p.progress || 0), cover: cover ? cover.src : "" }); }
@@ -144,7 +149,7 @@
   }
 
   var CHANNELS = ["client", "architect", "team"], RX = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
-  function chansFor(me) { return isStaff(me) ? CHANNELS : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+  function chansFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["team"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
   function chOf(m) { return m.channel || "client"; }
   function readKey(me, pid, ch) { return me.email + "|" + pid + "|" + ch; }
   function readsOf(db, me) { var o = {}; db.reads.forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
@@ -154,7 +159,7 @@
   function msgOut(db, m, me) {
     var names = {}; db.people.forEach(function (x) { names[x.email] = x.name; }); var r = m.reactions || {};
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id || "", status: m.status || "", via: m.via || "portal", channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "",
-      mine: m.author_email === me.email, mention: ment(m.text, me.name), files: (m.files || []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: f.mime !== "application/pdf" ? f.src : "", full: f.mime !== "application/pdf" ? f.src : "", url: f.mime === "application/pdf" ? "#preview-pdf" : f.src }; }),
+      mine: m.author_email === me.email, mention: ment(m.text, me.name), avatar: (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || "", files: (m.files || []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: f.mime !== "application/pdf" ? f.src : "", full: f.mime !== "application/pdf" ? f.src : "", url: f.mime === "application/pdf" ? "#preview-pdf" : f.src }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (isStaff(me)) o.author_email = m.author_email; return o;
   }
@@ -177,27 +182,29 @@
   var ACTIONS = {
     logout: function (db, me, b) { delete db.sessions[b.token]; return {}; },
     listProjects: function (db, me) {
-      return { me: meOut(me), projects: db.projects.filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived"); }).map(function (p) {
+      return { me: meOut(me), projects: db.projects.filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && (p.status !== "deleted" || me.role === "admin"); }).map(function (p) {
         var inv = db.invoices.filter(function (i) { return i.project_id === p.id && i.status !== "draft" && i.status !== "void"; });
         var tl = db.timeline.filter(function (t) { return t.project_id === p.id; }).slice(-1)[0];
         return Object.assign(projOut(db, p), { balance: inv.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + num(i.amount) - num(i.retainage); }, 0),
           openQuestions: db.messages.filter(function (m) { return m.project_id === p.id && m.kind === "question" && m.status === "open"; }).length, lastUpdate: tl ? tl.at : "",
-          money: moneyOf(db, p), needs: needsOf(db, p), unread: (function () { var rd = readsOf(db, me), mine = chansFor(me); return db.messages.filter(function (m) { return m.project_id === p.id && mine.indexOf(chOf(m)) > -1 && m.author_email !== me.email && m.at > (rd[p.id + "|" + chOf(m)] || ""); }).length; })() });
+          money: moneyOf(db, p), needs: needsOf(db, p), unread: (function () { var rd = readsOf(db, me), mine = chansFor(me); return db.messages.filter(function (m) { return m.project_id === p.id && canRead(me, chOf(m)) && m.author_email !== me.email && m.at > (rd[p.id + "|" + chOf(m)] || ""); }).length; })() });
       }) };
     },
     getProject: function (db, me, b) {
       var p = needProject(db, me, b.projectId), by = function (list) { return list.filter(function (r) { return r.project_id === p.id; }); };
       var out = { project: projOut(db, p), timeline: by(db.timeline).slice().reverse(), photos: by(db.photos).slice().reverse().map(photoOut),
-        messages: by(db.messages).filter(function (m) { return chansFor(me).indexOf(chOf(m)) > -1; }).map(function (m) { return msgOut(db, m, me); }),
-        reads: (function () { var rd = readsOf(db, me), o = {}; CHANNELS.forEach(function (c) { if (rd[p.id + "|" + c]) o[c] = rd[p.id + "|" + c]; }); return o; })(),
-        members: members(db, p).map(function (x) { return { name: x.name, role: x.role }; }), channels: chansFor(me),
-        invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
+        messages: by(db.messages).filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) { return msgOut(db, m, me); }),
+        reads: (function () { var rd = readsOf(db, me), o = {}; Object.keys(rd).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === p.id) o[k.slice(i + 1)] = rd[k]; }); return o; })(),
+        members: members(db, p).map(function (x) { return { name: x.name, role: x.role, key: pk(x.email), avatar: x.avatar || "" }; }), channels: chansFor(me),
+        plans: db.plans.filter(function (d) { return d.project_id === p.id && (isTeam(me) || d.visible === "all" || (d.visible === "architect" && me.role === "architect")) && (d.status === "ready" || isStaff(me)); })
+          .map(function (d) { return Object.assign({}, d, { pdf: d.status === "ready" ? "#preview-pdf" : "", sheets: d.sheets.map(function (x) { return Object.assign({}, x, { thumb: x.src, full: x.src }); }) }); }),
+        invoices: me.role === "crew" ? [] : by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
         checklist: by(db.checklist).sort(function (a, c) { return Number(a.sort) - Number(c.sort); }), phases: PHASES,
-        contract: { retainage_pct: num(p.retainage_pct), lines: by(db.contractLines).filter(function (l) { return isStaff(me) || l.status !== "rejected"; })
+        contract: { retainage_pct: num(p.retainage_pct), lines: by(db.contractLines).filter(function (l) { return me.role !== "crew" && (isStaff(me) || l.status !== "rejected"); })
           .sort(function (a, c) { return a.kind !== c.kind ? (a.kind === "base" ? -1 : 1) : Number(a.sort) - Number(c.sort); })
           .map(function (l) { var o = Object.assign({}, l, { amount: num(l.amount) }); if (!isStaff(me)) delete o.notes; return o; }) },
-        schedule: by(db.schedule).sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort) - Number(c.sort); }).map(function (x) { var o = Object.assign({}, x); if (!isStaff(me)) delete o.notes; return o; }) };
-      if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes" }; });
+        schedule: by(db.schedule).sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort) - Number(c.sort); }).map(function (x) { var o = Object.assign({}, x); if (!isTeam(me)) delete o.notes; return o; }) };
+      if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", avatar: x.avatar || "" }; });
       return out;
     },
     saveProject: function (db, me, b) {
@@ -231,7 +238,7 @@
       return {};
     },
     addPerson: function (db, me, b) {
-      needStaff(me); var p = b.projectId ? needProject(db, me, b.projectId) : null, e = clean(b.email, 200).toLowerCase(), role = ["staff", "architect"].indexOf(b.role) > -1 ? b.role : "client";
+      needStaff(me); var p = b.projectId ? needProject(db, me, b.projectId) : null, e = clean(b.email, 200).toLowerCase(), role = ["staff", "architect", "crew"].indexOf(b.role) > -1 ? b.role : "client";
       if (role === "staff" && me.role !== "admin") throw new Error("Only Jesús can add team members.");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right.");
       var x = db.people.filter(function (q) { return q.email === e; })[0];
@@ -263,7 +270,9 @@
     },
     sendMessage: function (db, me, b) {
       var p = needProject(db, me, b.projectId), text = clean(b.text, 5000), ch = b.channel || "client";
-      if (chansFor(me).indexOf(ch) < 0) throw new Error("You can't post in that channel.");
+      if (!canRead(me, ch)) throw new Error("You can't post in that channel.");
+      var dmTo = isDm(ch) ? members(db, p).filter(function (x) { return x.email !== me.email && ch.indexOf(pk(x.email)) > -1; })[0] : null;
+      if (isDm(ch) && !dmTo) throw new Error("That person isn't on this project.");
       var rootId = "";
       if (b.threadId) { var par = db.messages.filter(function (m) { return m.id === b.threadId && m.project_id === p.id; })[0]; if (!par || chOf(par) !== ch) throw new Error("That conversation isn't here anymore."); rootId = par.thread_id || par.id; }
       var files = (b.files || []).map(function (f) { if (!/^image\/(jpeg|png|webp)$/.test(f.mime) && f.mime !== "application/pdf") throw new Error("Attach photos (JPG, PNG) or PDFs."); return { id: "f-" + id(), name: clean(f.name, 120), mime: f.mime, src: f.mime === "application/pdf" ? "" : f.data }; });
@@ -271,14 +280,15 @@
       if (!text && !files.length) throw new Error("Write a message.");
       var kind = isStaff(me) && b.kind === "question" && ch === "client" && !rootId ? "question" : "message", mid = id();
       db.messages.push({ id: mid, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: kind, text: text, question_id: "", status: kind === "question" ? "open" : "", via: "portal", channel: ch, thread_id: rootId, files: files, reactions: {} });
-      if (isStaff(me) && ch !== "team") members(db, p).filter(function (x) { return (x.role === "client" && ch === "client") || x.role === "architect"; }).forEach(function (x) { mail(db, x.email, "Message about " + p.name); });
-      else if (!isStaff(me)) mail(db, "jesus@example.com", "New message from " + me.name);
+      if (dmTo) mail(db, dmTo.email, me.name + " sent you a private message");
+      else if (isStaff(me) && ch !== "team") members(db, p).filter(function (x) { return (x.role === "client" && ch === "client") || x.role === "architect"; }).forEach(function (x) { mail(db, x.email, "Message about " + p.name); });
+      else if (!isTeam(me)) mail(db, "jesus@example.com", "New message from " + me.name);
       members(db, p).forEach(function (x) { if (x.email !== me.email && ment(text, x.name) && chansFor(x).indexOf(ch) > -1) mail(db, x.email, me.name + " mentioned you"); });
       markR(db, me, p.id, ch); return { id: mid };
     },
     react: function (db, me, b) {
       var m = db.messages.filter(function (x) { return x.id === b.messageId; })[0]; if (!m) throw new Error("Message not found.");
-      needProject(db, me, m.project_id); if (chansFor(me).indexOf(chOf(m)) < 0) throw new Error("Message not found."); if (RX.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
+      needProject(db, me, m.project_id); if (!canRead(me, chOf(m))) throw new Error("Message not found."); if (RX.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
       var r = m.reactions = m.reactions || {}, l = r[b.emoji] || [], i = l.indexOf(me.email); if (i > -1) l.splice(i, 1); else l.push(me.email); if (l.length) r[b.emoji] = l; else delete r[b.emoji]; return {};
     },
     deleteMessage: function (db, me, b) {
@@ -286,15 +296,36 @@
       if (m.author_email !== me.email && me.role !== "admin") throw new Error("Only the person who wrote it can delete it.");
       db.messages = db.messages.filter(function (x) { return !(x.id === m.id || (!m.thread_id && x.thread_id === m.id) || (m.kind === "question" && x.question_id === m.id)); }); return {};
     },
-    markRead: function (db, me, b) { var p = needProject(db, me, b.projectId); if (chansFor(me).indexOf(b.channel) > -1) markR(db, me, p.id, b.channel); return {}; },
+    markRead: function (db, me, b) { var p = needProject(db, me, b.projectId); if (canRead(me, b.channel)) markR(db, me, p.id, b.channel); return {}; },
     activity: function (db, me, b) {
-      var seen = {}; db.projects.forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived")) seen[p.id] = p; });
-      var rd = readsOf(db, me), mine = chansFor(me);
-      return { items: db.messages.filter(function (m) { return seen[m.project_id] && mine.indexOf(chOf(m)) > -1; }).sort(function (a, c) { return a.at < c.at ? 1 : -1; }).slice(0, Math.min(b.limit || 60, 150)).map(function (m) {
+      var seen = {}; db.projects.forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && p.status !== "deleted") seen[p.id] = p; });
+      var rd = readsOf(db, me);
+      return { items: db.messages.filter(function (m) { return seen[m.project_id] && canRead(me, chOf(m)); }).sort(function (a, c) { return a.at < c.at ? 1 : -1; }).slice(0, Math.min(b.limit || 60, 150)).map(function (m) {
         var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id || "", kind: m.kind, author: m.author, role: m.role, at: m.at, text: String(m.text).slice(0, 400), files: (m.files || []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "" };
-        o.unread = !o.mine && m.at > (rd[m.project_id + "|" + o.channel] || ""); o.mention = ment(m.text, me.name); return o; }) };
+        o.unread = !o.mine && m.at > (rd[m.project_id + "|" + o.channel] || ""); o.mention = ment(m.text, me.name); o.dm = isDm(o.channel); o.avatar = (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || ""; return o; }) };
     },
-    listTeam: function (db, me) { needStaff(me); return { team: db.people.filter(isStaff).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", since: String(x.created_at || "").slice(0, 10) }; }) }; },
+    listTeam: function (db, me) { needStaff(me); return { team: db.people.filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: ids(x.project_ids).length }; }) }; },
+    saveProfile: function (db, me, b) { var x = db.people.filter(function (q) { return q.email === me.email; })[0]; x.avatar = b.avatar || ""; return { avatar: x.avatar }; },
+    deleteProject: function (db, me, b) { if (me.role !== "admin") throw new Error("Only Jesús can delete projects."); var p = needProject(db, me, b.projectId);
+      if (String(b.confirm || "").trim().toLowerCase() !== p.name.trim().toLowerCase()) throw new Error("Type the project name exactly to delete it."); p.status = "deleted"; return {}; },
+    restoreProject: function (db, me, b) { if (me.role !== "admin") throw new Error("Only Jesús can restore projects."); needProject(db, me, b.projectId).status = "active"; return {}; },
+    startCall: function (db, me, b) { var p = needProject(db, me, b.projectId), ch = b.channel || "client"; if (!canRead(me, ch)) throw new Error("You can't start a call there.");
+      var who = members(db, p).filter(function (x) { return x.email !== me.email && (b.invite || []).indexOf(pk(x.email)) > -1 && canRead(x, ch); }); if (!who.length) throw new Error("Pick at least one person to call.");
+      var url = "https://meet.google.com/abc-defg-hij", names = who.map(function (x) { return x.name; }); who.forEach(function (x) { mail(db, x.email, me.name + " is calling you"); });
+      db.messages.push({ id: "e" + id(), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: "is calling " + names.join(", ").replace(/, ([^,]*)$/, " and $1") + "\nTap Join, or open meet.google.com and enter this code. The link works for the next hour.", status: "call", via: "portal", channel: ch, thread_id: "", ref: "meet:" + url });
+      return { url: "about:blank#preview-meet", code: "abc-defg-hij" }; },
+    planStart: function (db, me, b) { needStaff(me); var p = needProject(db, me, b.projectId), pid = "d" + id();
+      db.plans.push({ id: pid, project_id: p.id, set: clean(b.set, 120), rev: clean(b.rev, 40), date: b.date || today(), notes: clean(b.notes, 2000), visible: b.visible || "team", status: "uploading", by: me.name, at: now() + ":" + String(Date.now()).slice(-5), sheets: [] }); return { id: pid, uploadUrl: "" }; },
+    planPages: function (db, me, b) { needStaff(me); var d = db.plans.filter(function (x) { return x.id === b.id; })[0]; (b.pages || []).forEach(function (pg) { d.sheets.push({ n: pg.n, src: pg.data, w: pg.w, h: pg.h, sheet: pg.sheet }); }); return {}; },
+    planFinish: function (db, me, b) { needStaff(me); var d = db.plans.filter(function (x) { return x.id === b.id; })[0], p = needProject(db, me, d.project_id), meta = {};
+      (b.sheets || []).forEach(function (x) { meta[x.n] = x; }); d.sheets.forEach(function (x) { Object.assign(x, { status: meta[x.n].status, score: meta[x.n].score, boxes: meta[x.n].boxes, prev: meta[x.n].prev }); });
+      d.status = "ready"; d.text = b.text || {}; var ch = d.sheets.filter(function (x) { return x.status === "changed"; }).length;
+      var first = db.plans.filter(function (x) { return x.project_id === p.id && x.set === d.set && x.status === "ready"; }).length === 1;
+      ev(db, p, me, "plan", "uploaded " + d.set + " " + d.rev, (first ? d.sheets.length + " sheets" : ch ? ch + " sheet" + (ch > 1 ? "s" : "") + " changed" : "No sheet changes found") + (d.notes ? " · " + d.notes.slice(0, 160) : ""), "plan:" + d.id);
+      db.messages[db.messages.length - 1].channel = "team"; return {}; },
+    planImage: function (db, me, b) { var d = db.plans.filter(function (x) { return x.id === b.id; })[0]; needProject(db, me, d.project_id); return { data: d.sheets.filter(function (x) { return x.n === Number(b.n); })[0].src }; },
+    planText: function (db, me, b) { needStaff(me); var d = db.plans.filter(function (x) { return x.id === b.id; })[0]; return { text: (d && d.text) || {} }; },
+    deletePlan: function (db, me, b) { needStaff(me); db.plans = db.plans.filter(function (x) { return x.id !== b.id; }); return {}; },
     answerQuestion: function (db, me, b) {
       var p = needProject(db, me, b.projectId), q = db.messages.filter(function (m) { return m.id === b.questionId && m.project_id === p.id && m.kind === "question"; })[0];
       if (!q) throw new Error("Question not found."); var text = clean(b.text, 5000); if (!text) throw new Error("Write an answer.");

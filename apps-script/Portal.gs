@@ -19,6 +19,7 @@ var CONFIG = {
   COMPANY: "Blue Sierra Construction",
   PORTAL_URL: "https://www.bluesierracorp.com/portal",
   NOTIFY_EMAIL: "jtoto@bluesierracorp.com",   // where client messages and answers are announced
+  FROM_EMAIL: "info@bluesierracorp.com",      // every portal email goes out from this address once it's a "Send mail as" alias in Gmail
   TZ: "America/Los_Angeles",
   DB_NAME: "Blue Sierra Portal · database",
   ROOT_FOLDER: "Blue Sierra Portal",
@@ -35,7 +36,7 @@ var CONFIG = {
 
 var TABLES = {
   Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct"],
-  People: ["email", "name", "role", "project_ids", "active", "created_at"],
+  People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
@@ -45,14 +46,19 @@ var TABLES = {
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
   Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"],
   // The contract: "base" lines are the schedule of values (they add up to the contract sum); "change" lines are change orders.
-  Reads: ["email", "project_id", "channel", "at"],      // when each person last looked at each channel (unread counts)
+  Reads: ["email", "project_id", "channel", "at"],
+  // Plan sets: one row per uploaded revision. "sheets" is JSON: [{n, sheet, title, img, w, h, status, score, boxes}]
+  Plans: ["id", "project_id", "set", "rev", "date", "notes", "visible", "pdf_file_id", "pdf_name", "pages", "sheets", "status", "by", "at", "text_file_id"],      // when each person last looked at each channel (unread counts)
   ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
-var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1 };
+var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team"];
 var REACTIONS = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
+var AVATARS = ["🦊", "🐻", "🦉", "🐢", "🐙", "🦖", "🐝", "🦄", "🐸", "🐼", "🦁", "🐧", "🌵", "🌲", "🌻", "🍄", "🏗️", "🚜", "🧱", "🔨", "📐", "🛠️", "🏡", "⛰️", "🌊", "🔥", "⭐", "🎸", "🚀", "😎"];
+var AVATAR_COLORS = ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4", "#111111"];
+var PLAN_ORIGINS = ["https://www.bluesierracorp.com", "https://bluesierracorp.com", "https://planscope.github.io", "http://localhost:8765"];
 
 /* ============================ web app ============================ */
 
@@ -130,16 +136,23 @@ function auth(token) {
   p.projects = splitIds(p.project_ids); p.tokenHash = h;
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin" }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pkey(p.email), avatar: p.avatar || "" }; }
+/* Roles: admin (Jesús: everything), staff (project managers), crew (field: their projects, #team, plans and schedule, no money), client, architect. */
+function isTeam(p) { return isStaff(p) || p.role === "crew"; }
+function pkey(email) { return sha("bsp:" + normEmail(email)).slice(0, 10); }      // a person id that never reveals the email
+function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
+function dmOf(a, b) { return "dm:" + [a, b].sort().join("-"); }
+/* Can this person read (and post in) this channel? Normal channels by role; private messages only the two people in them. */
+function canRead(me, ch) { if (isDm(ch)) { me._k = me._k || pkey(me.email); return ch.indexOf(me._k) > -1; } return channelsFor(me).indexOf(ch) > -1; }
 function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
-function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["team"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
 function chOf(m) { return m.channel || "client"; }
 function isOutside(p) { return p.role === "client" || p.role === "architect"; }   // people outside the team: see only their projects
 function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
 function canSee(me, pid) { if (isStaff(me)) return true; return (me.projects || splitIds(me.project_ids)).indexOf(String(pid)) > -1; }
 function needProject(me, pid) {
   var p = rows("Projects").filter(function (r) { return r.id === String(pid); })[0];
-  if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived")) throw new Error("Project not found.");
+  if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived") || (p.status === "deleted" && me.role !== "admin")) throw new Error("Project not found.");
   return p;
 }
 
@@ -150,13 +163,15 @@ var ACTIONS = {
   logout: function (me) { removeWhere("Sessions", function (r) { return r.token_hash === me.tokenHash; }); CacheService.getScriptCache().remove("sess:" + me.tokenHash); return {}; },
 
   listProjects: function (me) {
-    var all = rows("Projects").filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived"); });
+    var all = rows("Projects").filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && (p.status !== "deleted" || me.role === "admin"); });
     var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline"), lines = rows("ContractLines"), reads = readsAll(me), ck = rows("Checklist"), sc = rows("Schedule");
-    return { me: publicMe(me), projects: all.map(function (p) { var o = summary(p, inv, msgs, tl, me, lines, reads); o.needs = needsOf(p, ck, sc, inv); return o; }) };
+    return { me: publicMe(me), projects: all.map(function (p) { var o = summary(p, inv, msgs, tl, me, lines, reads); o.needs = needsOf(p, ck, sc, inv);
+      if (me.role === "crew") { o.money = {}; o.balance = 0; o.needs.invoices = []; o.needs.todos = []; }
+      return o; }) };
   },
 
   getProject: function (me, b) {
-    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me);
+    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me), team = isTeam(me), crew = me.role === "crew";
     var by = function (t) { return rows(t).filter(function (r) { return r.project_id === id; }); };
     var data = {
       project: projectOut(p),
@@ -165,16 +180,17 @@ var ACTIONS = {
       // Clients never receive other people's email addresses.
       messages: messagesOut(by("Messages"), me),
       reads: readsFor(me, id),
-      members: membersOf(p).map(function (x) { return { name: x.name, role: x.role }; }),
+      members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }),
       channels: channelsFor(me),
-      invoices: by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff); }),
+      invoices: crew ? [] : by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff); }),
       checklist: by("Checklist").sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
-        .map(function (x) { var o = Object.assign({}, x); if (!staff) delete o.notes; return o; }),
-      contract: contractOut(by("ContractLines"), p, staff),
+        .map(function (x) { var o = Object.assign({}, x); if (!team) delete o.notes; return o; }),
+      contract: crew ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
+      plans: plansOut(by("Plans"), me),
       phases: CONFIG.PHASES
     };
-    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active) }; });
+    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), avatar: x.avatar || "" }; });
     return data;
   },
 
@@ -205,7 +221,7 @@ var ACTIONS = {
 
   addPerson: function (me, b) {
     needStaff(me);
-    var email = normEmail(b.email), role = ["staff", "architect"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
+    var email = normEmail(b.email), role = ["staff", "architect", "crew"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
     if (role === "staff" && !admin) throw new Error("Only Jesús can add team members.");
     if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) throw new Error("That email doesn't look right.");
     var p = b.projectId ? needProject(me, b.projectId) : null;
@@ -268,7 +284,13 @@ var ACTIONS = {
 
   sendMessage: function (me, b) {
     var p = needProject(me, b.projectId), text = clean(b.text, 5000), channel = b.channel || "client";
-    if (channelsFor(me).indexOf(channel) < 0) throw new Error("You can't post in that channel.");
+    if (!canRead(me, channel)) throw new Error("You can't post in that channel.");
+    var dmTo = null;
+    if (isDm(channel)) {                                  // a private message: the other person must be on this project
+      var other = channel.slice(3).split("-").filter(function (k) { return k !== pkey(me.email); })[0];
+      dmTo = membersOf(p).filter(function (x) { return pkey(x.email) === other; })[0];
+      if (!dmTo) throw new Error("That person isn't on this project.");
+    }
     var root = "";
     if (b.threadId) {
       var parent = findBy("Messages", "id", b.threadId);
@@ -278,20 +300,24 @@ var ACTIONS = {
     var files = saveAttachments(p, b.files || []);
     if (!text && !files.length) throw new Error("Write a message.");
     var kind = isStaff(me) && b.kind === "question" && channel === "client" && !root ? "question" : "message";
+    if (b.kind === "call") throw new Error("Use the call button.");
     var id = newId("m");
     insert("Messages", { id: id, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: kind, text: text, question_id: "", status: kind === "question" ? "open" : "",
       via: "portal", channel: channel, thread_id: root, files: files.length ? JSON.stringify(files) : "", reactions: "" });
     var emailed = {};
     var body = "<p>" + nl2br(esc(text)) + "</p>" + (files.length ? "<p style='color:#666'>" + files.length + " attachment" + (files.length > 1 ? "s" : "") + " in the portal.</p>" : "") + "<p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>";
-    if (isStaff(me) && channel !== "team") {
+    if (dmTo) {
+      emailed[dmTo.email] = 1;
+      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal")); }, ""); } catch (e) {}
+    } else if (isStaff(me) && channel !== "team") {
       // Client channel: the client and the architect. Architect channel: only the architect. Replies by email come back into the same place.
       var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect"); });
       var subj = (kind === "question" ? "Question about " : "Message about ") + p.name + " " + tag(p.id, id);
       safeMail(function () { who.forEach(function (x) { emailed[x.email] = 1; sendMail(x.email, subj, "<p>Hi " + esc(first(x.name)) + ",</p>" + body +
         (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal")); }); },
         "Saved, but the email couldn't be sent.");
-    } else if (!isStaff(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
-    notifyMentions(p, me, text, channel, emailed);
+    } else if (!isTeam(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
+    if (!dmTo) notifyMentions(p, me, text, channel, emailed);
     markReadNow(me, p.id, channel);
     return { id: id };
   },
@@ -299,7 +325,7 @@ var ACTIONS = {
   /* Reactions: one tap adds or removes yours. */
   react: function (me, b) {
     var m = findBy("Messages", "id", b.messageId); if (!m) throw new Error("Message not found.");
-    needProject(me, m.project_id); if (channelsFor(me).indexOf(chOf(m)) < 0) throw new Error("Message not found.");
+    needProject(me, m.project_id); if (!canRead(me, chOf(m))) throw new Error("Message not found.");
     if (REACTIONS.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
     var r = parseJson(m.reactions, {}), list = r[b.emoji] || [], i = list.indexOf(me.email);
     if (i > -1) list.splice(i, 1); else list.push(me.email);
@@ -320,25 +346,153 @@ var ACTIONS = {
   },
   markRead: function (me, b) {
     var p = needProject(me, b.projectId), ch = b.channel || "client";
-    if (channelsFor(me).indexOf(ch) < 0) return {};
+    if (!canRead(me, ch)) return {};
     markReadNow(me, p.id, ch); return {};
   },
   /* Everything new across the projects and channels this person can see, newest first. */
   activity: function (me, b) {
-    var seen = {}; rows("Projects").forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived")) seen[p.id] = p; });
-    var mine = channelsFor(me), reads = readsAll(me), lim = Math.min(Number(b.limit) || 60, 150);
-    var list = rows("Messages").filter(function (m) { return seen[m.project_id] && mine.indexOf(chOf(m)) > -1; }).reverse().slice(0, lim);
+    var seen = {}; rows("Projects").forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && p.status !== "deleted") seen[p.id] = p; });
+    var reads = readsAll(me), lim = Math.min(Number(b.limit) || 60, 150), av = avatarsByEmail();
+    var list = rows("Messages").filter(function (m) { return seen[m.project_id] && canRead(me, chOf(m)); }).reverse().slice(0, lim);
     return { items: list.map(function (m) {
       var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id, kind: m.kind, author: m.author, role: m.role,
-        at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "" };
+        at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "", avatar: av[m.author_email] || "",
+        dm: isDm(chOf(m)) };
       o.unread = !o.mine && m.at > (reads[m.project_id + "|" + o.channel] || "");
       o.mention = mentions(m.text, me.name);
       return o;
     }) };
   },
+  /* Your own profile picture: a fun character on a color. */
+  saveProfile: function (me, b) {
+    var a = String(b.avatar || "").split("|"), emoji = a[0], color = a[1];
+    if (b.avatar && (AVATARS.indexOf(emoji) < 0 || AVATAR_COLORS.indexOf(color) < 0)) throw new Error("Pick one of the characters.");
+    update("People", "email", me.email, { avatar: b.avatar ? emoji + "|" + color : "" });
+    return { avatar: b.avatar ? emoji + "|" + color : "" };
+  },
+  /* Jesús only. Deleting hides the project from everyone (photos and files stay in Drive); it can be restored. */
+  deleteProject: function (me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can delete projects.");
+    var p = needProject(me, b.projectId);
+    if (String(b.confirm || "").trim().toLowerCase() !== String(p.name).trim().toLowerCase()) throw new Error("Type the project name exactly to delete it.");
+    update("Projects", "id", p.id, { status: "deleted" }); return {};
+  },
+  restoreProject: function (me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can restore projects.");
+    var p = needProject(me, b.projectId); update("Projects", "id", p.id, { status: "active" }); return {};
+  },
+  /* A Google Meet call: you pick who you're calling (people who can see this channel); they get an email with the link and the code,
+     they're added as guests on the Calendar event (so Meet lets them straight in), and a "Join" card with the code lands in the channel. */
+  startCall: function (me, b) {
+    var p = needProject(me, b.projectId), ch = b.channel || "client";
+    if (!canRead(me, ch)) throw new Error("You can't start a call there.");
+    var c = CacheService.getScriptCache(), k = "calls:" + normEmail(me.email), n = Number(c.get(k) || 0);
+    if (n >= 6) throw new Error("That's a lot of calls in an hour. Use the last link.");
+    var keys = (b.invite || []).map(String), who = membersOf(p).filter(function (x) { return x.email !== me.email && keys.indexOf(pkey(x.email)) > -1 && canRead(x, ch); });
+    if (!who.length) throw new Error("Pick at least one person to call.");
+    c.put(k, String(n + 1), 3600);
+    var start = new Date(), end = new Date(start.getTime() + 60 * 60000), names = who.map(function (x) { return x.name; });
+    var ev = Calendar.Events.insert({ summary: "Call · " + p.name + " (" + me.name + ")", description: "Started from the Blue Sierra portal.",
+      start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
+      attendees: who.map(function (x) { return { email: x.email }; }).concat(me.email !== Session.getEffectiveUser().getEmail() ? [{ email: me.email }] : []),
+      conferenceData: { createRequest: { requestId: newId("r"), conferenceSolutionKey: { type: "hangoutsMeet" } } } }, "primary", { conferenceDataVersion: 1, sendUpdates: "none" });
+    var url = ev.hangoutLink || ((ev.conferenceData && ev.conferenceData.entryPoints || []).filter(function (e) { return e.entryPointType === "video"; })[0] || {}).uri;
+    if (!/^https:\/\/meet\.google\.com\//.test(url || "")) throw new Error("Google didn't return a Meet link. Try again.");
+    var code = url.split("/").pop();
+    who.forEach(function (x) {
+      try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
+      safeMail(function () { sendMail(x.email, "📹 " + me.name + " is calling you · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> started a video call about <b>" + esc(p.name) + "</b> and is waiting for you.</p>" +
+        "<p><a href='" + url + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p>" +
+        "<p style='color:#555'>Or open <b>meet.google.com</b> and enter the code <b>" + esc(code) + "</b>.</p>"); }, "");
+    });
+    postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
+      "Tap Join, or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
+    return { url: url, code: code };
+  },
+
+  /* ---------- Plans: revisions of the drawing set, with what changed sheet by sheet ---------- */
+  planStart: function (me, b) {
+    needStaff(me); var p = needProject(me, b.projectId);
+    var origin = String(b.origin || ""); if (PLAN_ORIGINS.indexOf(origin) < 0) throw new Error("Uploads only work from the portal page.");
+    var size = Number(b.size) || 0; if (size <= 0 || size > 300 * 1024 * 1024) throw new Error("The PDF must be under 300 MB.");
+    var set = clean(b.set, 120) || "Plans", rev = clean(b.rev, 40) || "Rev 1", name = clean(b.name, 160) || (set + " " + rev + ".pdf");
+    var id = newId("d");
+    insert("Plans", { id: id, project_id: p.id, set: set, rev: rev, date: dateOrEmpty(b.date) || today(), notes: clean(b.notes, 2000), visible: ["team", "architect", "all"].indexOf(b.visible) > -1 ? b.visible : "team",
+      pdf_file_id: "", pdf_name: name, pages: "0", sheets: "[]", status: "uploading", by: me.name, at: now() });
+    // The browser sends the PDF straight to Google Drive (no size limit from this script); we only open the upload.
+    var res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id", {
+      method: "post", contentType: "application/json; charset=UTF-8", muteHttpExceptions: true,
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "X-Upload-Content-Type": "application/pdf", "X-Upload-Content-Length": String(size), Origin: origin },
+      payload: JSON.stringify({ name: name, mimeType: "application/pdf", parents: [projectFolder(p).getId()] }) });
+    var loc = res.getHeaders().Location || res.getHeaders().location;
+    if (res.getResponseCode() !== 200 || !loc) { removeWhere("Plans", function (r) { return r.id === id; }); throw new Error("Google Drive didn't open the upload (" + res.getResponseCode() + ")."); }
+    return { id: id, uploadUrl: loc };
+  },
+  planPages: function (me, b) {
+    needStaff(me); var d = findBy("Plans", "id", b.id); if (!d) throw new Error("Upload not found."); var p = needProject(me, d.project_id);
+    var list = b.pages || []; if (list.length > 4) throw new Error("Up to 4 pages at a time.");
+    var sheets = parseJson(d.sheets, []);
+    list.forEach(function (pg) {
+      var fid = saveFile(p, { mime: "image/jpeg", data: pg.data }, d.set + " " + d.rev + " p" + pg.n + ".jpg", true);
+      sheets = sheets.filter(function (x) { return x.n !== Number(pg.n); });
+      sheets.push({ n: Number(pg.n), img: fid, w: Number(pg.w) || 0, h: Number(pg.h) || 0, sheet: clean(pg.sheet, 30), title: clean(pg.title, 120) });
+    });
+    sheets.sort(function (a, c) { return a.n - c.n; });
+    update("Plans", "id", d.id, { sheets: JSON.stringify(sheets) }); return { count: sheets.length };
+  },
+  planFinish: function (me, b) {
+    needStaff(me); var d = findBy("Plans", "id", b.id); if (!d) throw new Error("Upload not found."); var p = needProject(me, d.project_id);
+    var file; try { file = DriveApp.getFileById(String(b.fileId)); } catch (e) { throw new Error("The PDF didn't reach Drive. Try again."); }
+    var inFolder = false, it = file.getParents(), fid = projectFolder(p).getId(); while (it.hasNext()) if (it.next().getId() === fid) inFolder = true;
+    if (!inFolder || file.getMimeType() !== "application/pdf") throw new Error("That file isn't this project's plan upload.");
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    var meta = {}; (b.sheets || []).forEach(function (x) { meta[Number(x.n)] = x; });
+    var sheets = parseJson(d.sheets, []).map(function (x) {
+      var m = meta[x.n] || {};
+      return Object.assign(x, { sheet: clean(m.sheet != null ? m.sheet : x.sheet, 30), title: clean(m.title != null ? m.title : x.title, 120), status: ["new", "changed", "same"].indexOf(m.status) > -1 ? m.status : "new",
+        prev: m.prev && m.prev.id ? { id: clean(m.prev.id, 20), n: Number(m.prev.n) || 0, rev: clean(m.prev.rev, 40) } : null,
+        score: Math.round((Number(m.score) || 0) * 10000) / 10000, boxes: (m.boxes || []).slice(0, 40).map(function (bx) { return bx.slice(0, 4).map(function (v) { return Math.round(Number(v) * 1000) / 1000; }); }) });
+    });
+    var removed = (b.removed || []).slice(0, 200).map(function (x) { return clean(x, 30); });
+    // The words on each sheet (with positions), so the next revision can spot changed dimensions and notes.
+    var textId = "";
+    if (b.text && typeof b.text === "object") { var tf = projectFolder(p).createFile(Utilities.newBlob(JSON.stringify(b.text).slice(0, 20 * 1024 * 1024), "application/json", d.set + " " + d.rev + " text.json")); textId = tf.getId(); }
+    update("Plans", "id", d.id, { pdf_file_id: file.getId(), pages: String(sheets.length), sheets: JSON.stringify(sheets), status: "ready", text_file_id: textId });
+    var ch = sheets.filter(function (x) { return x.status === "changed"; }).length, nw = sheets.filter(function (x) { return x.status === "new"; }).length;
+    var isFirst = rows("Plans").filter(function (r) { return r.project_id === p.id && r.set === d.set && r.status === "ready"; }).length === 1;
+    var detail = isFirst ? sheets.length + " sheet" + (sheets.length === 1 ? "" : "s") : (ch ? ch + " sheet" + (ch > 1 ? "s" : "") + " changed" : "No sheet changes found") + (nw ? " · " + nw + " new" : "") + (removed.length ? " · " + removed.length + " removed" : "");
+    var text = (d.notes ? " · " + d.notes.slice(0, 160) : "");
+    postEvent(p, me, "plan", "uploaded " + d.set + " " + d.rev, detail + text, "plan:" + d.id, "team");
+    if (d.visible === "architect" || d.visible === "all") postEvent(p, me, "plan", "uploaded " + d.set + " " + d.rev, detail + text, "plan:" + d.id, d.visible === "all" ? "client" : "architect");
+    return {};
+  },
+  planImage: function (me, b) {
+    var d = findBy("Plans", "id", b.id); if (!d) throw new Error("Plan not found."); needProject(me, d.project_id);
+    if (!planVisible(d, me)) throw new Error("Plan not found.");
+    var sh = parseJson(d.sheets, []).filter(function (x) { return x.n === Number(b.n); })[0]; if (!sh) throw new Error("Sheet not found.");
+    return { data: "data:image/jpeg;base64," + Utilities.base64Encode(DriveApp.getFileById(sh.img).getBlob().getBytes()) };
+  },
+  planText: function (me, b) {
+    var d = findBy("Plans", "id", b.id); if (!d) throw new Error("Plan not found."); needProject(me, d.project_id); needStaff(me);
+    if (!d.text_file_id) return { text: {} };
+    return { text: parseJson(DriveApp.getFileById(d.text_file_id).getBlob().getDataAsString(), {}) };
+  },
+  deletePlan: function (me, b) {
+    needStaff(me); var d = findBy("Plans", "id", b.id); if (!d) return {}; needProject(me, d.project_id);
+    [d.pdf_file_id, d.text_file_id].concat(parseJson(d.sheets, []).map(function (x) { return x.img; })).forEach(function (f) { if (f) try { DriveApp.getFileById(f).setTrashed(true); } catch (e) {} });
+    removeWhere("Plans", function (r) { return r.id === d.id; }); return {};
+  },
+
+  /* Jesús only: which address portal emails go out from, and which "Send mail as" aliases Gmail has. */
+  mailStatus: function (me) {
+    if (me.role !== "admin") throw new Error("Only Jesús can see this.");
+    var aliases = []; try { aliases = GmailApp.getAliases(); } catch (e) {}
+    CacheService.getScriptCache().remove("from-alias");
+    return { account: Session.getEffectiveUser().getEmail(), aliases: aliases, sendingFrom: fromAddress() || Session.getEffectiveUser().getEmail(), wanted: CONFIG.FROM_EMAIL };
+  },
   listTeam: function (me) {
     needStaff(me);
-    return { team: rows("People").filter(isStaff).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10) }; }) };
+    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length }; }) };
   },
 
   answerQuestion: function (me, b) {
@@ -481,11 +635,11 @@ function checkEmailReplies() {
   var lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
   try {
     var done = {}; rows("EmailImports").forEach(function (r) { done[r.gmail_id] = 1; });
-    var me = normEmail(Session.getEffectiveUser().getEmail());
+    var me = normEmail(Session.getEffectiveUser().getEmail()), ours = [me, normEmail(CONFIG.FROM_EMAIL), normEmail(CONFIG.NOTIFY_EMAIL)];
     GmailApp.search('subject:"' + CONFIG.TAG + '" newer_than:14d -in:spam -in:trash', 0, 50).forEach(function (th) {
       var msgs = th.getMessages(), firstMsg = msgs[0];
       var m = String(firstMsg.getSubject()).match(new RegExp("\\[" + CONFIG.TAG + "-([a-z0-9]+)-([a-z0-9]+)\\]"));
-      if (!m || senderOf(firstMsg.getFrom()) !== me) return;               // the thread must start with the portal's own email
+      if (!m || ours.indexOf(senderOf(firstMsg.getFrom())) < 0) return;    // the thread must start with the portal's own email
       var p = findBy("Projects", "id", m[1]), q = findBy("Messages", "id", m[2]);
       if (!p || !q || q.project_id !== p.id || p.status === "archived") return;
       msgs.slice(1).forEach(function (msg) {
@@ -493,7 +647,7 @@ function checkEmailReplies() {
         var mark = function (result, mid) { insert("EmailImports", { gmail_id: gid, project_id: p.id, message_id: mid || "", at: now(), result: result }); done[gid] = 1; };
         var from = senderOf(msg.getFrom());
         if (!from) return mark("unreadable sender");
-        if (from === me || from === normEmail(CONFIG.NOTIFY_EMAIL)) return mark("ours");
+        if (ours.indexOf(from) > -1) return mark("ours");
         if (isAutoReply(msg)) return mark("auto-reply");
         if (!verifiedSender(msg, from)) return mark("not verified");
         var person = findPerson(from);
@@ -504,7 +658,7 @@ function checkEmailReplies() {
         var mid = newId("m"); mark("imported", mid);
         if (q.kind === "question" && q.status === "open") addAnswer(p, q, person.name, from, person.role, text, "email", at, mid);
         else {
-          if (channelsFor(person).indexOf(chOf(q)) < 0) return mark("not allowed in that channel");   // e.g. a client replying to an architect-only email: never leak it into their channel
+          if (!canRead(person, chOf(q))) return mark("not allowed in that channel");   // e.g. a client replying to an architect-only email: never leak it into their channel
           addMessage(p, person, text, "email", at, mid, chOf(q), q.thread_id || q.id);
         }
       });
@@ -650,12 +804,12 @@ function billedOn(pid, lineId) {
 }
 /* ---- chat ---- */
 function messagesOut(list, me) {
-  var staff = isStaff(me), mine = channelsFor(me), names = {};
-  rows("People").forEach(function (x) { names[x.email] = x.name; });
-  return list.filter(function (m) { return mine.indexOf(chOf(m)) > -1; }).map(function (m) {
+  var staff = isStaff(me), names = {}, av = {};
+  rows("People").forEach(function (x) { names[x.email] = x.name; av[x.email] = x.avatar || ""; });
+  return list.filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) {
     var r = parseJson(m.reactions, {});
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
-      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name),
+      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "",
       files: parseJson(m.files, []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: /^image\//.test(f.mime) ? img(f.id, 600) : "", full: /^image\//.test(f.mime) ? img(f.id, 2000) : "", url: "https://drive.google.com/file/d/" + f.id + "/view" }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (staff) o.author_email = m.author_email;                                  // clients never receive other people's email addresses
@@ -670,6 +824,16 @@ function postEvent(p, me, type, action, detail, ref, channel) {
 function coEvent(p, me, line, id, verb) {
   postEvent(p, me, "change", verb + " change order" + (line.number ? " " + line.number : ""), line.title + " · " + (num(line.amount) < 0 ? "−$" + money(-num(line.amount)) : "+$" + money(line.amount)), "co:" + id);
 }
+function planVisible(d, me) { return isTeam(me) || (d.visible === "all") || (d.visible === "architect" && me.role === "architect"); }
+function plansOut(list, me) {
+  var cutoff = Utilities.formatDate(new Date(Date.now() - 864e5), CONFIG.TZ, "yyyy-MM-dd HH:mm");
+  return list.filter(function (d) { return planVisible(d, me) && (d.status === "ready" || (isStaff(me) && d.at > cutoff)); }).map(function (d) {
+    return { id: d.id, set: d.set, rev: d.rev, date: d.date, notes: d.notes, visible: d.visible, status: d.status, by: d.by, at: d.at,
+      pdf: d.pdf_file_id ? "https://drive.google.com/file/d/" + d.pdf_file_id + "/view" : "",
+      sheets: parseJson(d.sheets, []).map(function (x) { return Object.assign({}, x, { thumb: img(x.img, 600), full: img(x.img, 2400) }); }) };
+  });
+}
+function avatarsByEmail() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x.avatar || ""; }); return o; }
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
 /* "@Full Name" emails that person if they can see the channel (and didn't already get the message by email). */
@@ -691,15 +855,14 @@ function saveAttachments(p, list) {
   });
 }
 function readsAll(me) { var o = {}; rows("Reads").forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
-function readsFor(me, pid) { var all = readsAll(me), o = {}; CHANNELS.forEach(function (c) { if (all[pid + "|" + c]) o[c] = all[pid + "|" + c]; }); return o; }
+function readsFor(me, pid) { var all = readsAll(me), o = {}; Object.keys(all).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === pid) o[k.slice(i + 1)] = all[k]; }); return o; }
 function markReadNow(me, pid, ch) {
   var sh = tableSheet("Reads"), v = sh.getDataRange().getValues();
   for (var i = 1; i < v.length; i++) if (cell(v[i][0]) === me.email && cell(v[i][1]) === pid && cell(v[i][2]) === ch) { sh.getRange(i + 1, 4).setNumberFormat("@").setValue(now()); return; }
   insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
 }
 function unreadOf(me, msgs, reads) {
-  var mine = channelsFor(me);
-  return msgs.filter(function (m) { var c = chOf(m); return mine.indexOf(c) > -1 && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
+  return msgs.filter(function (m) { var c = chOf(m); return canRead(me, c) && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
 }
 /* What a project needs from the client soon: open to-dos, dates in the next 14 days, invoices due. Feeds the notification bell. */
 function needsOf(p, ck, sc, inv) {
@@ -741,8 +904,16 @@ function emailClients(p, subject, html) {
   rows("People").filter(function (x) { return isOutside(x) && isTrue(x.active) && splitIds(x.project_ids).indexOf(p.id) > -1; })
     .forEach(function (x) { sendMail(x.email, subject, "<p>Hi " + esc(first(x.name)) + ",</p>" + html); });
 }
+/* Send from info@ when Gmail lets this account send as it; otherwise from the account itself (nothing breaks). */
+function fromAddress() {
+  var c = CacheService.getScriptCache(), k = "from-alias", v = c.get(k);
+  if (v == null) { try { v = GmailApp.getAliases().map(normEmail).indexOf(normEmail(CONFIG.FROM_EMAIL)) > -1 ? CONFIG.FROM_EMAIL : ""; } catch (e) { v = ""; } c.put(k, v, 3600); }
+  return v;
+}
 function sendMail(to, subject, html) {
+  var from = fromAddress();
   GmailApp.sendEmail(to, subject, html.replace(/<[^>]+>/g, " "), {
+    from: from || undefined,
     name: CONFIG.COMPANY,
     htmlBody: "<div style='font-family:Arial,sans-serif;font-size:15px;color:#111;line-height:1.5;max-width:560px'>" + html +
       "<p style='color:#999;font-size:12px;margin-top:28px'>" + CONFIG.COMPANY + " · Crafting sites, one space at a time.</p></div>"

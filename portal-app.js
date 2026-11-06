@@ -12,7 +12,7 @@
   var LOGO = '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 33" fill="none" aria-label="Blue Sierra"><path d="M104.849 16.552V16.2315C107.476 14.7578 108.756 14.4372 108.756 9.43255C108.756 4.42785 105.045 1.22217 98.8988 1.22217H86.4151V32.7144H99.7298C106.005 32.7144 109.845 29.4418 109.845 24.2505C109.845 20.7864 108.116 18.1597 104.849 16.552ZM89.5528 4.04508V3.98289H98.8988C103.187 3.98289 105.618 6.16466 105.618 9.62872C105.618 13.0928 103.25 15.2746 98.8988 15.2746H89.5528V4.04508ZM99.7298 29.8293V29.7671H89.5528V18.1597H99.7298C104.209 18.1597 106.645 20.3414 106.645 23.9969C106.645 27.6523 104.147 29.8341 99.7298 29.8341V29.8293Z" fill="currentColor"></path><path d="M117.013 1.22717H114.004V32.7194H117.013V1.22717Z" fill="currentColor"></path><path d="M135.643 23.0957C135.643 27.3301 133.465 29.8277 129.884 29.8277C126.302 29.8277 124.248 27.3923 124.248 23.0957V9.62708H121.24V23.2249C121.24 29.1243 124.248 32.7176 129.115 32.7176C131.741 32.7176 134.11 31.6937 135.39 29.7655H135.648V32.1386H138.595V9.62708H135.648V23.0957H135.643Z" fill="currentColor"></path><path d="M151.776 8.98965C146.016 8.98965 141.728 13.9943 141.728 20.8555C141.728 27.7166 146.016 32.7213 152.034 32.7213C154.402 32.7213 156.389 32.018 158.113 30.6687C159.775 29.3864 160.864 27.7166 161.251 25.664H158.304C157.473 28.2285 156.193 29.9606 151.967 29.9606C147.74 29.9606 144.989 26.6879 144.669 21.621H161.571C161.633 20.9177 161.633 20.3387 161.633 19.9512L161.762 19.889C161.762 13.8604 157.535 8.98486 151.776 8.98486V8.98965ZM144.798 18.9273C145.376 14.4393 147.998 11.7456 151.776 11.7456C155.553 11.7456 158.304 14.6307 158.82 18.9273H144.798Z" fill="currentColor"></path><path d="M261.364 9.62581V13.0229H261.106C259.697 10.3291 259.439 9.04688 253.742 9.04688C248.045 9.04688 243.894 14.0994 243.885 20.8792C243.899 27.6638 247.992 32.7115 253.742 32.7115C256.813 32.7115 259.697 31.4293 261.106 28.7355H261.364V32.1326H264.311V9.62581H261.364ZM254.196 29.8886C249.907 29.8886 247.027 26.2954 247.027 20.9079C247.027 15.5204 249.907 11.9272 254.196 11.9272C258.484 11.9272 261.364 15.5204 261.364 20.9079C261.364 26.2954 258.484 29.8886 254.196 29.8886Z" fill="currentColor"></path><path d="M178.08 14.4352C172.321 13.5356 170.143 12.2534 170.143 8.59793C170.143 4.9425 172.574 2.9521 177.249 2.9521C181.925 2.9521 185.316 5.64583 185.316 9.62184H188.386C188.257 4.36356 183.778 0 177.374 0C170.969 0 167.001 3.59324 167.001 8.66013C167.001 13.727 169.88 16.1002 177.947 17.4447C183.324 18.3442 185.373 19.4303 185.373 23.5355C185.373 27.6407 183.582 29.7555 177.947 29.7555C172.311 29.7555 168.921 25.9086 168.921 21.6121H165.85L165.788 21.6743C165.85 27.5115 171.227 32.7076 177.822 32.7076C184.418 32.7076 188.577 28.7937 188.577 23.5355C188.577 18.2772 185.378 15.5165 178.08 14.4304V14.4352Z" fill="currentColor"></path><path d="M195.235 10.2019H192.226V32.7135H195.235V10.2019Z" fill="currentColor"></path><path d="M195.235 3.79077H192.226V6.35532H195.235V3.79077Z" fill="currentColor"></path><path d="M208.745 8.98965C202.986 8.98965 198.692 13.9943 198.692 20.8555C198.692 27.7166 202.981 32.7213 208.998 32.7213C211.367 32.7213 213.354 32.018 215.078 30.6687C216.744 29.3864 217.828 27.7166 218.215 25.664H215.269C214.438 28.2285 213.158 29.9606 208.931 29.9606C204.705 29.9606 201.954 26.6879 201.634 21.621H218.535C218.597 20.9177 218.597 20.3387 218.597 19.9512L218.726 19.889C218.726 13.8604 214.5 8.98486 208.74 8.98486L208.745 8.98965ZM201.768 18.9273C202.346 14.4393 204.967 11.7456 208.745 11.7456C212.523 11.7456 215.273 14.6307 215.784 18.9273H201.763H201.768Z" fill="currentColor"></path><path d="M225.518 12.8951H225.26V10.2014H222.251V32.7129H225.322V19.3065C225.322 15.5218 226.602 13.0195 229.677 13.0195H232.046V10.0674H230.766C227.886 10.0674 226.415 10.7707 225.518 12.8903V12.8951Z" fill="currentColor"></path><path d="M244.529 10.0772H243.249C240.37 10.0772 238.899 10.7805 238.001 12.9001H237.743V10.2064H234.734V32.7179H237.805V19.3115C237.805 15.5268 239.085 13.0245 242.161 13.0245H244.529V10.0724V10.0772Z" fill="currentColor"></path><path d="M70.1781 11.0273H71.0186V7.48188H72.3749V6.78333H68.8218V7.48188H70.1781V11.0273Z" fill="currentColor"></path><path d="M73.5883 8.52885C73.6026 8.1413 73.6217 7.73461 73.6217 7.34227H73.6695C73.765 7.71547 73.8892 8.21785 73.9656 8.54321L74.7297 10.9594H75.6037L76.3678 8.60541C76.492 8.21785 76.6161 7.71547 76.726 7.34227H76.7737C76.788 7.79202 76.788 8.19871 76.8024 8.52885L76.96 11.0264H77.8005L77.4758 6.78247H76.2627L75.532 8.87334C75.4413 9.18434 75.3458 9.54319 75.2359 9.93553H75.2216C75.1118 9.50013 75.0354 9.18913 74.9398 8.85899L74.2092 6.78726H72.9484L72.6379 11.0312H73.4498L73.6026 8.53364L73.5883 8.52885Z" fill="currentColor"></path><path d="M13.2566 21.4173C13.1553 21.5191 12.9864 21.5191 12.885 21.4173L0.448804 8.8226C0.284725 8.65286 0 8.77411 0 9.01174V32.4504C0 32.5959 0.11582 32.7171 0.260596 32.7171H25.8762C25.8762 32.7171 25.9052 32.7171 25.9196 32.7171V8.30854C25.8424 8.29399 25.7604 8.31823 25.6928 8.38128L13.2566 21.4173Z" fill="currentColor"></path><path d="M56.0472 7.44852C55.9519 7.34675 55.7975 7.34675 55.7022 7.44852L42.1276 21.4306C42.0323 21.5324 41.8779 21.5324 41.7826 21.4306L30.251 8.40328C30.1965 8.34028 30.1239 8.32089 30.0558 8.32574V32.7132C30.0558 32.7132 30.0694 32.7132 30.0785 32.7132H46.5405L46.6131 32.6356L55.7022 22.2593C55.7975 22.1576 55.9519 22.1576 56.0472 22.2593L65.9671 32.6356C66.0125 32.6841 66.0761 32.7132 66.1396 32.7132H79.0196C79.2375 32.7132 79.3465 32.4272 79.1921 32.2576L56.0472 7.44368V7.44852Z" fill="currentColor"></path></svg>';
   var PHASES = ["Design", "Permits", "Pre-construction", "Construction", "Punch list", "Complete"];
   var TOKEN_KEY = API ? "bsp-session" : "bsp-preview-session";   // the preview never touches a real login
-  var S = { sched: { view: "gantt", month: "" }, seq: 0, loadErr: "", token: store("get"), me: null, projects: null, pid: null, data: null, tab: "overview", step: "email", email: "", err: "", busy: false, pending: [], lb: null, modal: null };
+  var S = { sideOff: (function () { try { return !!localStorage.getItem("bsp-side-off"); } catch (e) { return false; } })(), sched: { view: "gantt", month: "" }, seq: 0, loadErr: "", token: store("get"), me: null, projects: null, pid: null, data: null, tab: "overview", step: "email", email: "", err: "", busy: false, pending: [], lb: null, modal: null };
 
   /* ---------------- helpers ---------------- */
   function store(op, v) { try { if (op === "get") return localStorage.getItem(TOKEN_KEY) || ""; if (op === "set") localStorage.setItem(TOKEN_KEY, v); else localStorage.removeItem(TOKEN_KEY); } catch (e) { return ""; } }
@@ -29,6 +29,17 @@
   function bg(url) { return url ? "background-image:url('" + esc(url) + "')" : ""; }
   function toast(msg) { var t = root.querySelector(".toast"); if (!t) { t = document.createElement("div"); t.className = "toast"; root.appendChild(t); } t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2800); }
   function staff() { return !!(S.me && S.me.staff); }
+  function crew() { return !!(S.me && S.me.role === "crew"); }
+  function team() { return staff() || crew(); }
+  var AVATARS = ["🦊", "🐻", "🦉", "🐢", "🐙", "🦖", "🐝", "🦄", "🐸", "🐼", "🦁", "🐧", "🌵", "🌲", "🌻", "🍄", "🏗️", "🚜", "🧱", "🔨", "📐", "🛠️", "🏡", "⛰️", "🌊", "🔥", "⭐", "🎸", "🚀", "😎"];
+  var AV_COLORS = ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4", "#111111"];
+  /* A person's picture: their chosen character on its color, or their initials. */
+  function av(name, avatar, role, cls) {
+    var a = String(avatar || "").split("|");
+    if (a[0] && AVATARS.indexOf(a[0]) > -1) return '<div class="avatar char ' + (cls || "") + '" style="background:' + esc(a[1] || "#f3e7d3") + '" title="' + esc(name) + '">' + a[0] + "</div>";
+    return '<div class="avatar ' + (cls || "") + " " + (role === "client" ? "gold" : role === "architect" ? "arch" : role === "crew" ? "crewc" : "") + '">' + esc(initials(name)) + "</div>";
+  }
+  function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
   function resetState() { S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
@@ -152,9 +163,9 @@
       : !S.data ? '<div class="loading">Loading the project…</div>' : renderProject();
     var snap = snapshot(), oldG = root.querySelector(".gantt-wrap"), gLeft = oldG ? oldG.scrollLeft : -1;
     root.innerHTML =
-      '<header class="topbar"><div class="brand">' + LOGO + "<span>Client portal</span></div>" +
-      '<div class="who">' + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><span class="name">' + esc(S.me.name) + (staff() ? ' <span class="pill">Team</span>' : "") + '</span><div class="avatar">' + esc(initials(S.me.name)) + '</div><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
-      '<div class="wrap' + (S.projects && (staff() || S.projects.length > 1) ? " has-side" : "") + '">' + (S.projects && (staff() || S.projects.length > 1) ? sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
+      '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
+      '<div class="who">' + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
+      '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
     if (S.tour) drawTour();                       // a redraw wipes the overlay: put it back on the same step
@@ -199,7 +210,7 @@
           '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
           '<button class="link" data-a="restart">Use a different email</button>') +
       (S.err ? '<p class="error">' + esc(S.err) + "</p>" : "") +
-      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team) , <b>client@example.com</b> (client) or <b>architect@example.com</b> (architect). The code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
+      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team) , <b>client@example.com</b> (client) or <b>architect@example.com</b> (architect) or <b>crew@example.com</b> (field crew). The code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
       (!API && !window.BSP_MOCK ? '<p class="error">The portal isn\'t connected yet.</p>' : "") +
       "</div></section>";
     S.err = "";
@@ -208,6 +219,7 @@
 
   function renderList() {
     var list = S.projects || [], view = staff() ? (S.home || "projects") : "projects";
+    var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var card = function (p) {
@@ -221,7 +233,7 @@
     };
     var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["team", "Team", 0]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
     var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
-      (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">New project</button>' : "") + "</div>" + chips;
+      (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
     var portfolio = "";
@@ -234,7 +246,8 @@
     }
     return head + portfolio +
       (active.length ? '<div class="projects">' + active.map(card).join("") + "</div>" : '<div class="empty">' + (staff() ? "No projects yet. Create the first one." : "There's no project on your account yet. Blue Sierra will add it soon.") + "</div>") +
-      (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "");
+      (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "") +
+      (deleted.length ? '<div class="section-title"><h2>Recently deleted</h2><span class="muted small">Only you see these.</span></div><div class="card" style="display:flex;flex-direction:column;gap:10px">' + deleted.map(function (p) { return '<div class="team-row"><div style="flex:1"><b style="font-weight:500">' + esc(p.name) + '</b><div class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + '</div></div><button class="btn ghost sm" data-a="restoreProject" data-id="' + esc(p.id) + '">Restore</button></div>'; }).join("") + "</div>" : "");
   }
   function homeActivity() {
     if (!S.activity) { loadHome("activity"); return '<div class="loading" style="min-height:30vh">Loading activity…</div>'; }
@@ -243,7 +256,7 @@
     return '<div class="card act">' + S.activity.map(function (it) {
       var d = String(it.at).slice(0, 10), sep = d !== lastDay ? '<div class="act-day">' + day(d) + "</div>" : ""; lastDay = d;
       return sep + '<button class="act-row' + (it.unread ? " unread" : "") + '" data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '">' +
-        '<div class="avatar sm ' + (it.role === "client" ? "gold" : it.role === "architect" ? "arch" : "") + '">' + esc(initials(it.author)) + "</div><div class=\"act-body\"><div class=\"act-top\"><b>" + esc(it.author) + '</b><span class="muted small">' + esc(it.project) + " · #" + esc(it.channel) + (it.thread_id ? " · thread" : "") + "</span>" +
+        av(it.author, it.avatar, it.role, "sm") + "<div class=\"act-body\"><div class=\"act-top\"><b>" + esc(it.author) + '</b><span class="muted small">' + esc(it.project) + " · " + (it.dm ? "🔒 private" : "#" + esc(it.channel)) + (it.thread_id ? " · thread" : "") + "</span>" +
         (it.mention ? '<span class="pill new">@you</span>' : "") + (it.kind === "question" ? '<span class="pill gold">Question</span>' : "") + '<span class="muted small act-time">' + day(it.at).replace(/^.* · /, "") + "</span></div>" +
         '<div class="act-text">' + esc(it.text || (it.files ? it.files + " attachment" + (it.files > 1 ? "s" : "") : "")) + "</div></div>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
     }).join("") + "</div>";
@@ -252,8 +265,8 @@
     if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
     var admin = S.me && S.me.admin;
     return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
-      return '<div class="team-row' + (x.active ? "" : " off") + '"><div class="avatar">' + esc(initials(x.name)) + '</div><div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
-        '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + (x.role === "admin" ? "Admin" : "Team") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
+      return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
+        '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + roleName(x.role) + (x.role === "crew" ? " · " + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email && x.role !== "admin" ? (x.active ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '">Turn off</button>' : '<button class="btn ghost sm" data-a="teamOn" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Turn back on</button>') : "") + "</div>";
     }).join("") + "</div>" +
       (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email and a 6-digit code.</p>' +
@@ -271,14 +284,15 @@
     S.homeLoading = null; if (!S.pid) keepScroll(render);
   }
   /* Slack-style sidebar (wide screens): home, activity, team, every project with unread counts, and the open project's channels. */
+  function hasSide() { return !!(S.projects && (staff() || S.projects.length > 1)); }
   function sidebar() {
-    var list = (S.projects || []).filter(function (p) { return p.status !== "archived"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
+    var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
         : item('data-a="home"', "All projects", home)) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
-        var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + c + '"># ' + c + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+        var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
         return item('data-a="open" data-id="' + esc(p.id) + '"', esc(p.name), on, on && S.data ? 0 : p.unread, chans);
       }).join("") + "</aside>";
   }
@@ -292,8 +306,10 @@
     var d = S.data, p = d.project, oq = openQuestions().length, todo = clientTodo().length;
     var idx = PHASES.indexOf(p.phase);
     var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Chat", (function () { var n = 0; myChannels().forEach(function (c) { n += unreadIn(c); }); return n || oq; })()], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
+    if (team() || (d.plans || []).length) tabs.splice(2, 0, ["plans", "Plans", (d.plans || []).filter(function (x) { return x.status === "ready"; }).length ? 0 : 0]);
+    if (crew()) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
     if (staff()) tabs.push(["people", "People", 0]);
-    var body = { overview: tabOverview, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
+    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead" style="' + bg(p.cover) + '"><div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
@@ -316,7 +332,7 @@
       '<div class="grid g4">' +
       stat("Progress", Number(p.progress || 0) + "%", '<div class="bar" style="margin-top:10px"><i style="width:' + Number(p.progress || 0) + '%"></i></div>') +
       stat(!asClient() ? "Waiting on the client" : "Waiting on you", String(oq.length + todo.length), oq.length + " question" + (oq.length === 1 ? "" : "s") + " · " + todo.length + " checklist") +
-      stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue") +
+      (crew() ? stat("Plans", String(planSets().length), planSets().length ? "Latest: " + esc(planSets()[0].latest.set + " " + planSets()[0].latest.rev) : "None yet") : stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue")) +
       stat("Target completion", p.target_date ? day(p.target_date) : "—", p.start_date ? "Started " + day(p.start_date) : "") + "</div>" +
       (cm.has ? '<div class="section-title"><h2>Contract</h2><button class="link" data-a="tab" data-t="invoices">Contract & billing</button></div><div class="card contract">' +
         '<div class="c-top"><div><div class="eyebrow">Contract total</div><div class="c-mid">' + money(cm.total) + '</div></div><div class="c-side"><div class="eyebrow">Paid so far</div><div class="c-mid">' + pctOf(cm.paid, cm.total) + "%</div></div></div>" + contractBar(cm, true) + "</div>" : "") +
@@ -363,6 +379,11 @@
   var CH_INFO = { client: ["client", "Client, architect and Blue Sierra"], architect: ["architect", "The architect and Blue Sierra. The client doesn't see this."], team: ["team", "Blue Sierra team only. The client and architect never see this."] };
   var EMOJI = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
   function myChannels() { return (S.data && S.data.channels) || ["client"]; }
+  function isDm(ch) { return /^dm:/.test(String(ch || "")); }
+  function dmWith(ch) { var ks = String(ch).slice(3).split("-"), other = ks[0] === S.me.key ? ks[1] : ks[0]; return ((S.data && S.data.members) || []).filter(function (m) { return m.key === other; })[0] || { name: "Someone", key: other }; }
+  function dmKey(otherKey) { return "dm:" + [S.me.key, otherKey].sort().join("-"); }
+  function myDms() { var seen = {}; (S.data.messages || []).forEach(function (m) { if (isDm(m.channel)) seen[m.channel] = 1; }); if (isDm(S.chan)) seen[S.chan] = 1; return Object.keys(seen); }
+  function chanLabel(ch) { return isDm(ch) ? "@ " + dmWith(ch).name : "# " + CH_INFO[ch][0]; }
   function chanMsgs(ch) { return S.data.messages.filter(function (m) { return (m.channel || "client") === ch; }); }
   function unreadIn(ch) { var r = (S.data.reads || {})[ch] || ""; return chanMsgs(ch).filter(function (m) { return !m.mine && m.at > r; }).length; }
   function roleTag(role) { return role === "client" ? '<span class="pill gold">Client</span>' : role === "architect" ? '<span class="pill arch">Architect</span>' : '<span class="pill">Blue Sierra</span>'; }
@@ -386,7 +407,7 @@
       '<span class="rx-add"><button class="rx ghost" data-a="rxPick" data-id="' + esc(m.id) + '" aria-label="Add a reaction">☺+</button>' +
       (S.picker === m.id ? '<span class="rx-pop">' + EMOJI.map(function (e) { return '<button data-a="react" data-id="' + esc(m.id) + '" data-e="' + e + '">' + e + "</button>"; }).join("") + "</span>" : "") + "</span></div>";
   }
-  var EV = { invoice: ["🧾", "Invoice"], paid: ["💚", "Payment received"], update: ["📸", "Project update"], change: ["✍️", "Change order"], todo: ["✅", "New to-do"], done: ["🎉", "Done"], date: ["📅", "New date"] };
+  var EV = { invoice: ["🧾", "Invoice"], paid: ["💚", "Payment received"], update: ["📸", "Project update"], change: ["✍️", "Change order"], todo: ["✅", "New to-do"], done: ["🎉", "Done"], date: ["📅", "New date"], call: ["📹", "Video call"], plan: ["📐", "Plans"] };
   /* Something happened (an invoice, an update, a to-do): a colored card the client can't miss, with a button straight to it. */
   function eventHtml(m, opts) {
     var ev = EV[m.status] || ["✨", "Update"], lines = String(m.text || "").split("\n"), canDel = S.me && S.me.admin;
@@ -394,12 +415,15 @@
       '<div class="ev-top"><span class="ev-kind">' + ev[1] + '</span><span class="muted small">' + day(m.at) + "</span>" +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Ask about this</button>' : "") + (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
       '<div class="ev-line"><b>' + esc(m.author) + "</b> " + esc(lines[0]) + "</div>" + (lines[1] ? '<div class="ev-detail">' + esc(lines.slice(1).join(" ")).replace(/\d{4}-\d{2}-\d{2}/g, function (d) { return day(d); }) + "</div>" : "") +
-      (m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
+      (m.status === "call" && m.ref ? '<div class="meet-row"><span class="meet-code" title="Meeting code">' + esc(meetCode(m.ref)) + '</span><button class="link small" data-a="copyCode" data-c="' + esc(meetCode(m.ref)) + '">Copy code</button></div>' + (!API ? '<div class="muted small">Preview: this is a sample code, not a real meeting.</div>' : "") : "") +
+      (m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule", meet: "Join the call 📹", plan: "See what changed" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
       reactHtml(m) + (!opts.inThread && opts.replies && opts.replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '">' + opts.replies.length + " repl" + (opts.replies.length > 1 ? "ies" : "y") + "</button>" : "") +
       "</div></div>";
   }
   /* Jump to the thing an event or notification points at, and make it glow for a moment. */
   function openRef(ref, pid) {
+    if (/^meet:/.test(ref)) { window.open(ref.slice(5), "bsp-meet", "width=1180,height=780"); return; }
+    if (/^plan:/.test(ref)) { S.bell = false; S.planOpen = ref.slice(5); return go(pid || S.pid, "plans"); }
     var t = String(ref).split(":"), tab = { invoice: "invoices", co: "invoices", update: "updates", check: "checklist", sched: "schedule" }[t[0]] || "overview";
     var target = { invoice: "inv-", update: "up-", check: "ck-" }[t[0]];
     S.bell = false; S.flash = target ? target + t[1] : null;
@@ -411,7 +435,7 @@
     if (m.kind === "event") return eventHtml(m, opts);
     var q = m.kind === "question", replies = opts.replies || [], answers = opts.answers || [];
     var canDel = m.mine || (S.me && S.me.admin);
-    return '<div class="msg' + (m.mine ? " mine" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '"><div class="avatar ' + (m.role === "client" ? "gold" : m.role === "architect" ? "arch" : "") + '">' + esc(initials(m.author)) + '</div><div class="bubble ' + (q ? "question" : "") + '">' +
+    return '<div class="msg' + (m.mine ? " mine" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '">' + av(m.author, m.avatar, m.role) + '<div class="bubble ' + (q ? "question" : "") + '">' +
       '<div class="who-line"><b>' + esc(m.author) + "</b>" + roleTag(m.role) + "<span>" + day(m.at) + "</span>" + (m.via === "email" ? '<span class="pill">by email</span>' : "") +
       (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Reply in thread</button>' : "") +
@@ -426,15 +450,15 @@
   }
   function composer(ch, root) {
     var key = root ? "thread" : "main", pend = (S.att && S.att[key]) || [];
-    var ph = root ? "Reply in thread…" : ch === "team" ? "Message the team (only Blue Sierra sees this)" : ch === "architect" ? "Message the architect" : staff() ? "Message the client and architect" : "Message Blue Sierra";
+    var ph = root ? "Reply in thread…" : isDm(ch) ? "Private message to " + dmWith(ch).name + " (only the two of you see this)" : ch === "team" ? "Message the team (only Blue Sierra sees this)" : ch === "architect" ? "Message the architect" : staff() ? "Message the client and architect" : "Message Blue Sierra";
     return '<form class="card composer" data-form="chat" data-ch="' + ch + '"' + (root ? ' data-root="' + esc(root) + '"' : "") + '><div class="mention-wrap"><textarea name="text" data-chat placeholder="' + esc(ph) + '"></textarea></div>' +
       (pend.length ? '<div class="att-list">' + pend.map(function (f, i) { return '<span class="att">' + (f.mime === "application/pdf" ? "PDF · " : "") + esc(f.name) + '<button type="button" data-a="unatt" data-k="' + key + '" data-i="' + i + '" aria-label="Remove">×</button></span>'; }).join("") + "</div>" : "") +
       '<div class="actions" style="justify-content:space-between;align-items:center"><div class="c-left"><label class="btn ghost sm attach">Attach<input type="file" data-att="' + key + '" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label>' +
-      (staff() && ch === "client" && !root ? '<label class="check-line small"><input type="checkbox" name="question"> Ask as a question</label>' : "") + '<span class="muted small hint">Enter to send · Shift+Enter for a new line · @ to mention</span></div>' +
+      (staff() && ch === "client" && !root && !isDm(ch) ? '<label class="check-line small"><input type="checkbox" name="question"> Ask as a question</label>' : "") + '<span class="muted small hint">Enter to send · Shift+Enter for a new line · @ to mention</span></div>' +
       '<button class="btn" type="submit">Send</button></div></form>';
   }
   function tabMessages() {
-    var chans = myChannels(); if (chans.indexOf(S.chan) < 0) S.chan = "client";
+    var chans = myChannels(); if (chans.indexOf(S.chan) < 0 && !isDm(S.chan)) S.chan = chans[0];
     var ch = S.chan, list = chanMsgs(ch), answers = {}, replies = {};
     list.forEach(function (m) { if (m.kind === "answer") (answers[m.question_id] = answers[m.question_id] || []).push(m); else if (m.thread_id) (replies[m.thread_id] = replies[m.thread_id] || []).push(m); });
     var top = list.filter(function (m) { return m.kind !== "answer" && !m.thread_id; }), readAt = S.readMark && S.readMark[ch] != null ? S.readMark[ch] : ((S.data.reads || {})[ch] || ""), lastDay = "", newShown = false;
@@ -443,9 +467,13 @@
       var nw = !newShown && !m.mine && m.at > readAt && readAt !== "" ? (newShown = true, '<div class="new-sep"><span>New</span></div>') : "";
       return sep + nw + msgHtml(m, { replies: replies[m.id], answers: answers[m.id] });
     }).join("");
-    var bar = chans.length > 1 ? '<div class="chans">' + chans.map(function (c) { var n = c === ch ? 0 : unreadIn(c); return '<button class="chan' + (c === ch ? " on" : "") + '" data-a="chan" data-c="' + c + '"># ' + CH_INFO[c][0] + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    return bar + '<div class="chan-head"><h2># ' + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Messages are emailed to the client; their email replies show up here." : " Replies by email also show up here.") : "") + "</span></div>" +
-      (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">No messages in #' + CH_INFO[ch][0] + " yet. Say hi.</div>") +
+    var all = chans.concat(myDms());
+    var bar = '<div class="chans">' + all.map(function (c) { var n = c === ch ? 0 : unreadIn(c); return '<button class="chan' + (c === ch ? " on" : "") + (isDm(c) ? " dm" : "") + '" data-a="chan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") +
+      '<button class="chan add" data-a="modal" data-m="dm" title="Message one person privately">＋ Private message</button></div>';
+    var head = isDm(ch) ? '<h2>@ ' + esc(dmWith(ch).name) + '</h2><span class="muted small">🔒 Private: only you and ' + esc(first(dmWith(ch).name)) + " can see this.</span>"
+      : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Messages are emailed to the client; their email replies show up here." : " Replies by email also show up here.") : "") + "</span>";
+    return bar + '<div class="chan-head"><div>' + head + '</div><button class="btn ghost sm call-btn" data-a="call" title="Start a Google Meet video call here">📹 Video call</button></div>' +
+      (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
       '<div class="reply-bar">' + composer(ch) + "</div>";
   }
   /* Opening a channel marks it read on the server; the "New" line stays until you leave it. */
@@ -460,6 +488,23 @@
     var bb = root.querySelector(".bell"); if (bb) bb.outerHTML = bellButton();
     call("markRead", { projectId: S.pid, channel: ch }).catch(function () {});
   }
+  /* Who can be called from this channel: everyone who can read it, except you. */
+  function callable(ch) {
+    return ((S.data && S.data.members) || []).filter(function (mb) {
+      if (!mb.key || mb.key === S.me.key) return false;
+      return isDm(ch) ? mb.key === dmWith(ch).key : ch === "team" ? ["admin", "staff", "crew"].indexOf(mb.role) > -1 : ch === "architect" ? ["admin", "staff", "architect"].indexOf(mb.role) > -1 : mb.role !== "crew";
+    });
+  }
+  /* Open the call window right away (browsers only allow pop-ups straight from a click), then point it at the Meet link. */
+  function startCallNow(btn, keys) {
+    var w = window.open("", "bsp-meet", "width=1180,height=780"); if (w) try { w.document.write('<p style="font:16px sans-serif;padding:30px">Starting your Google Meet…</p>'); } catch (e) {}
+    return run(btn, async function () {
+      try { var r = await call("startCall", { projectId: S.pid, channel: S.chan, invite: keys }); if (w) w.location = r.url; else window.open(r.url, "_blank"); }
+      catch (e) { if (w) w.close(); throw e; }
+      S.modal = null; await refresh(); window.scrollTo(0, document.body.scrollHeight);
+    });
+  }
+  function meetCode(ref) { return String(ref || "").replace(/^meet:/, "").split("/").pop().split("?")[0]; }
   function readFile(file) {
     if (/^image\//.test(file.type)) return resize(file, API ? 1800 : 900);
     return new Promise(function (res, rej) {
@@ -474,7 +519,7 @@
     var before = ta.value.slice(0, ta.selectionStart), mt = before.match(/(^|\s)@([^\s@]{0,20}(?: [^\s@]{0,20})?)$/); if (!mt) return;
     var ch = ta.form.dataset.ch, q = mt[2].toLowerCase();
     var who = ((S.data && S.data.members) || []).filter(function (mb) {
-      var ok = ch === "team" ? (mb.role === "admin" || mb.role === "staff") : ch === "architect" ? mb.role !== "client" : true;
+      var ok = isDm(ch) ? mb.key === dmWith(ch).key : ch === "team" ? ["admin", "staff", "crew"].indexOf(mb.role) > -1 : ch === "architect" ? ["admin", "staff", "architect"].indexOf(mb.role) > -1 : mb.role !== "crew";
       return ok && mb.name && mb.name !== S.me.name && mb.name.toLowerCase().indexOf(q) > -1;
     }).slice(0, 6);
     if (!who.length) return;
@@ -519,7 +564,7 @@
     var m = notifModel();
     var row = function (it) {
       var ev = it.kind === "event" ? (EV[it.status] || ["✨"])[0] : it.kind === "question" ? "❓" : it.files ? "📎" : "💬";
-      var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> in #" + esc(it.channel) + ": " + esc(String(it.text || "").slice(0, 120));
+      var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> " + (it.dm ? "🔒 privately" : "in #" + esc(it.channel)) + ": " + esc(String(it.text || "").slice(0, 120));
       return '<button class="n-row' + (it.unread ? " new" : "") + '" ' + (it.kind === "event" && it.ref ? 'data-a="ref" data-ref="' + esc(it.ref) + '" data-p="' + esc(it.project_id) + '"' : 'data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '"') + '>' +
         '<span class="n-ico">' + ev + '</span><span class="n-txt">' + line + '<small>' + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
     };
@@ -624,6 +669,205 @@
     if (e.key === "ArrowLeft" && S.tour.i) { S.tour.i--; drawTour(); }
   }, true);
 
+  /* ---------------- plans: revisions of the drawing set, and what changed ---------------- */
+  var PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  function planSets() {
+    var by = {}; ((S.data && S.data.plans) || []).filter(function (d) { return d.status === "ready"; }).forEach(function (d) { (by[d.set] = by[d.set] || []).push(d); });
+    return Object.keys(by).map(function (k) { var revs = by[k].sort(function (a, b) { return a.at < b.at ? 1 : -1; }); return { set: k, revs: revs, latest: revs[0] }; })
+      .sort(function (a, b) { return a.latest.at < b.latest.at ? 1 : -1; });
+  }
+  function planById(id) { return ((S.data && S.data.plans) || []).filter(function (d) { return d.id === id; })[0]; }
+  function sheetLabel(x) { return x.sheet || "Page " + x.n; }
+  var VIS = { team: "Team only", architect: "Team + architect", all: "Everyone on the project" };
+  function boxesHtml(x) { return (x.boxes || []).map(function (bx) { return '<i class="cbox" style="left:' + bx[0] * 100 + "%;top:" + bx[1] * 100 + "%;width:" + bx[2] * 100 + "%;height:" + bx[3] * 100 + '%"></i>'; }).join(""); }
+  function tabPlans() {
+    var sets = planSets(), open = S.planOpen && planById(S.planOpen);
+    var unfinished = ((S.data.plans) || []).filter(function (d) { return d.status !== "ready"; });
+    var head = '<div class="section-title" style="margin-top:0"><div><h2>Plans</h2><span class="muted small">Every revision of the drawings. Each new upload is compared with the last one, and changed sheets are highlighted.</span></div>' +
+      (staff() ? '<button class="btn sm" data-a="modal" data-m="planUp">＋ Upload a revision</button>' : "") + "</div>";
+    if (!sets.length) return head + '<div class="empty">' + (staff() ? "No plans yet. Upload the current set (a PDF) and the field crew will always have the latest sheets." : "No plans have been shared yet.") + "</div>" +
+      unfinished.map(function (d) { return '<p class="muted small">Unfinished upload: ' + esc(d.set + " " + d.rev) + ' · <button class="link small" data-a="delPlan" data-id="' + esc(d.id) + '">remove</button></p>'; }).join("");
+    return head + sets.map(function (st) {
+      var cur = (open && open.set === st.set) ? open : (S.planRev && planById(S.planRev[st.set])) || st.latest;
+      var sh = cur.sheets || [], nCh = sh.filter(function (x) { return x.status === "changed"; }).length, nNew = sh.filter(function (x) { return x.status === "new"; }).length;
+      var isFirstRev = st.revs[st.revs.length - 1].id === cur.id, filt = (S.planFilter || {})[cur.id] || "all";
+      var shown = sh.filter(function (x) { return filt === "all" || x.status === filt; });
+      return '<section class="card planset" id="plan-' + esc(st.set) + '"><div class="ps-head"><div><div class="eyebrow">Plan set</div><h3>' + esc(st.set) + "</h3>" +
+        '<div class="ps-meta"><span class="pill dark">' + esc(cur.rev) + (cur.id === st.latest.id ? " · latest" : "") + '</span><span class="muted small">' + day(cur.date) + " · uploaded by " + esc(cur.by) + '</span><span class="pill">' + esc(VIS[cur.visible] || "") + "</span></div></div>" +
+        '<div class="actions">' + (cur.pdf ? '<a class="btn ghost sm" href="' + esc(cur.pdf) + '" target="_blank" rel="noopener noreferrer">Download PDF</a>' : "") + (staff() ? '<button class="btn ghost sm" data-a="delPlan" data-id="' + esc(cur.id) + '">Delete revision</button>' : "") + "</div></div>" +
+        (cur.notes ? '<p class="ps-notes">“' + esc(cur.notes) + "”</p>" : "") +
+        (st.revs.length > 1 ? '<div class="chips revs">' + st.revs.map(function (r) { return '<button class="chip' + (r.id === cur.id ? " on" : "") + '" data-a="planRev" data-set="' + esc(st.set) + '" data-id="' + esc(r.id) + '">' + esc(r.rev) + "</button>"; }).join("") + "</div>" : "") +
+        (!isFirstRev ? '<div class="ps-sum">' + (nCh ? '<span class="tag t-changed">' + nCh + " changed</span>" : '<span class="tag t-same">No changes found</span>') + (nNew ? '<span class="tag t-new">' + nNew + " new</span>" : "") +
+          '<span class="ps-filter">' + [["all", "All sheets"], ["changed", "Changed"], ["new", "New"]].map(function (o) { return '<button class="link small' + (filt === o[0] ? " on" : "") + '" data-a="planFilter" data-id="' + esc(cur.id) + '" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join(" · ") + "</span></div>" : "") +
+        '<div class="sheets">' + shown.map(function (x) {
+          return '<button class="sheet s-' + esc(isFirstRev ? "none" : x.status) + '" data-a="sheet" data-id="' + esc(cur.id) + '" data-n="' + x.n + '"><span class="sh-img"><img src="' + esc(x.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + (isFirstRev || x.status !== "changed" ? "" : boxesHtml(x)) + "</span>" +
+            '<span class="sh-cap"><b>' + esc(sheetLabel(x)) + "</b>" + (isFirstRev ? "" : x.status === "changed" ? '<span class="tag t-changed">Changed</span>' : x.status === "new" ? '<span class="tag t-new">New</span>' : '<span class="tag t-same">Same</span>') + "</span></button>";
+        }).join("") + (shown.length ? "" : '<div class="empty" style="grid-column:1/-1">No sheets in this filter.</div>') + "</div></section>";
+    }).join("");
+  }
+  /* The sheet viewer: the sheet with its changes boxed in red, or an overlay against the previous revision (red = removed, blue = added). */
+  function sheetModal(m) {
+    var d = planById(m.id); if (!d) return "<p>That revision was deleted.</p>";
+    var list = d.sheets || [], i = list.map(function (x) { return x.n; }).indexOf(m.n), x = list[i] || list[0]; if (!x) return "<p>No sheets.</p>";
+    var st = planSets().filter(function (s2) { return s2.set === d.set; })[0], firstRev = st && st.revs[st.revs.length - 1].id === d.id;
+    var mode = S.sheetMode || "hl", key = d.id + ":" + x.n, cmp = S.cmpCache && S.cmpCache[key];
+    var canCmp = !!(x.prev && x.prev.id && planById(x.prev.id));
+    var stage = mode === "cmp" && canCmp ? (cmp ? '<img src="' + cmp + '" alt="Comparison">' : '<div class="loading" style="min-height:40vh">Comparing with ' + esc(x.prev.rev || "the last revision") + "…</div>")
+      : '<span class="sh-wrap"><img src="' + esc(x.full) + '" alt="' + esc(sheetLabel(x)) + '" referrerpolicy="no-referrer">' + (mode === "hl" && !firstRev && x.status === "changed" ? boxesHtml(x) : "") + "</span>";
+    if (mode === "cmp" && canCmp && !cmp) setTimeout(function () { buildCompare(d, x); }, 0);
+    return '<div class="sv-bar"><div><div class="eyebrow">' + esc(d.set + " · " + d.rev) + "</div><h2>" + esc(sheetLabel(x)) + (firstRev ? "" : ' <span class="tag t-' + esc(x.status) + '">' + esc({ changed: "Changed", new: "New", same: "Same" }[x.status] || "") + "</span>") + "</h2></div>" +
+      '<div class="sv-tools"><div class="chips">' + [["hl", "Highlights"], ["plain", "Clean"]].concat(canCmp ? [["cmp", "Compare with " + (x.prev.rev || "last")]] : []).map(function (o) { return '<button class="chip' + (mode === o[0] ? " on" : "") + '" data-a="sheetMode" data-v="' + o[0] + '">' + esc(o[1]) + "</button>"; }).join("") + "</div>" +
+      '<button class="icon-btn" data-a="zoom" data-z="-1" aria-label="Zoom out">−</button><button class="icon-btn" data-a="zoom" data-z="1" aria-label="Zoom in">+</button>' +
+      '<button class="icon-btn" data-a="sheetNav" data-d="-1" aria-label="Previous sheet"' + (i <= 0 ? " disabled" : "") + '>‹</button><span class="muted small">' + (i + 1) + " / " + list.length + '</span><button class="icon-btn" data-a="sheetNav" data-d="1" aria-label="Next sheet"' + (i >= list.length - 1 ? " disabled" : "") + ">›</button>" +
+      '<button class="icon-btn" data-a="close" aria-label="Close">✕</button></div></div>' +
+      (mode === "cmp" ? '<div class="sv-legend"><span><i style="background:#e5484d"></i>Removed</span><span><i style="background:#1f6fe5"></i>Added</span><span><i style="background:#9a958c"></i>Same</span></div>' : mode === "hl" && !firstRev && x.status === "changed" && (x.boxes || []).length ? '<div class="sv-legend"><span><i class="cl"></i>' + x.boxes.length + " area" + (x.boxes.length > 1 ? "s" : "") + " changed since " + esc((x.prev && x.prev.rev) || "the last revision") + "</span></div>" : "") +
+      '<div class="sv-stage" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' + stage + "</div></div>";
+  }
+  function loadScript(src) { return new Promise(function (res, rej) { var sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = function () { rej(new Error("Couldn't load the PDF reader. Check your connection.")); }; document.head.appendChild(sc); }); }
+  async function pdfjs() { if (!window.pdfjsLib) { await loadScript(PDFJS + "pdf.min.js"); window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; } return window.pdfjsLib; }
+  function imgFromSrc(src) { return new Promise(function (res, rej) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { rej(new Error("Couldn't read a sheet image.")); }; im.src = src; }); }
+  /* Grayscale at a fixed width so two revisions line up pixel for pixel. */
+  function inkMask(src, W, H) {
+    var c = document.createElement("canvas"); c.width = W; c.height = H; var g = c.getContext("2d", { willReadFrequently: true });
+    g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.drawImage(src, 0, 0, W, H);
+    var px = g.getImageData(0, 0, W, H).data, L = new Uint8Array(W * H), ink = 0;
+    for (var i = 0, j = 0; j < L.length; i += 4, j++) { L[j] = px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11; if (L[j] < 150) ink++; }
+    return { L: L, w: W, h: H, ink: ink };
+  }
+  /* Darkest value within r pixels: lets a line move by a pixel (rendering, compression) without counting as a change. */
+  function minFilter(a, w, h, r) {
+    var t = new Uint8Array(a.length), o = new Uint8Array(a.length), x, y, k, m;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) { m = 255; for (k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) m = Math.min(m, a[y * w + k]); t[y * w + x] = m; }
+    for (x = 0; x < w; x++) for (y = 0; y < h; y++) { m = 255; for (k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) m = Math.min(m, t[k * w + x]); o[y * w + x] = m; }
+    return o;
+  }
+  /* A pixel changed when it's clearly dark in one revision and clearly light everywhere near it in the other.
+     Faint gray lines and compression noise don't count; a moved wall, a new note or a changed dimension does. */
+  function changeMap(A, B) {
+    var w = B.w, h = B.h, mA = minFilter(A.L, w, h, 1), mB = minFilter(B.L, w, h, 1), out = new Uint8Array(w * h);
+    for (var i = 0; i < out.length; i++) { if (B.L[i] < 150 && B.L[i] < mA[i] - 70) out[i] = 1; else if (A.L[i] < 150 && A.L[i] < mB[i] - 70) out[i] = 2; }
+    return out;
+  }
+  /* Compare two sheets and box the areas where linework appeared or disappeared. */
+  function diffSheets(A, B) {
+    var w = B.w, h = B.h, ch = changeMap(A, B), G = 48, cell = w / G, rows = Math.ceil(h / cell), cnt = new Uint16Array(G * rows), changed = 0;
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) if (ch[y * w + x]) { changed++; cnt[Math.floor(y / cell) * G + Math.floor(x / cell)]++; }
+    var thr = Math.max(4, cell * cell * 0.006), hot = new Uint8Array(G * rows), seen = new Uint8Array(G * rows), boxes = [];
+    for (var c = 0; c < cnt.length; c++) if (cnt[c] > thr) hot[c] = 1;
+    for (c = 0; c < hot.length; c++) if (hot[c] && !seen[c]) {
+      var st = [c], x0 = G, y0 = rows, x1 = 0, y1 = 0, n = 0; seen[c] = 1;
+      while (st.length) { var q = st.pop(), qx = q % G, qy = (q - qx) / G; n++; x0 = Math.min(x0, qx); x1 = Math.max(x1, qx); y0 = Math.min(y0, qy); y1 = Math.max(y1, qy);
+        [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].forEach(function (dd) { var nx = qx + dd[0], ny = qy + dd[1], ni = ny * G + nx; if (nx >= 0 && ny >= 0 && nx < G && ny < rows && hot[ni] && !seen[ni]) { seen[ni] = 1; st.push(ni); } }); }
+      boxes.push([Math.max(0, (x0 - 0.6) / G), Math.max(0, (y0 - 0.6) * cell / h), Math.min(1, (x1 - x0 + 2.2) / G), Math.min(1, (y1 - y0 + 2.2) * cell / h), n]);
+    }
+    boxes.sort(function (a, b) { return b[4] - a[4]; });
+    var score = changed / Math.max(1, A.ink + B.ink);
+    return { score: score, status: boxes.length && changed > 20 ? "changed" : "same", boxes: boxes.slice(0, 30).map(function (b) { return b.slice(0, 4); }) };
+  }
+  /* Words on a sheet with their position (0–1 from the top left): [text, x, y, w, h]. */
+  function sheetWords(tc, vw, vh) {
+    var out = [];
+    tc.items.forEach(function (it) {
+      var t = String(it.str || "").trim(); if (!t) return;
+      var size = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]);
+      out.push([t.slice(0, 80), +(it.transform[4] / vw).toFixed(4), +(1 - (it.transform[5] + size) / vh).toFixed(4), +((it.width || size * t.length * 0.5) / vw).toFixed(4), +(size * 1.2 / vh).toFixed(4)]);
+    });
+    return out.slice(0, 6000);
+  }
+  /* Text that's new or gone between two revisions of a sheet (a changed dimension, a new note), as boxes. */
+  function textChanges(oldW, newW) {
+    var near = function (a, b) { return a[0] === b[0] && Math.abs(a[1] - b[1]) < 0.006 && Math.abs(a[2] - b[2]) < 0.006; };
+    var gone = function (list, other) { return list.filter(function (a) { return !other.some(function (b) { return near(a, b); }); }); };
+    return gone(newW, oldW).concat(gone(oldW, newW)).slice(0, 40).map(function (a) { var p2 = 0.006; return [Math.max(0, a[1] - p2), Math.max(0, a[2] - p2), Math.min(1, a[3] + p2 * 2), Math.min(1, a[4] + p2 * 2)]; });
+  }
+  /* Sheet number from the title block: short codes like A101, L3.22 or S-2.1, preferring big text near the bottom right. */
+  function sheetId(tc, vw, vh) {
+    var best = null;
+    tc.items.forEach(function (it) {
+      var t = String(it.str || "").trim().replace(/\s+/g, ""); if (!/^[A-Z]{1,3}[-.]?\d{1,3}(\.\d{1,3})?[A-Z]?$/.test(t)) return;
+      var x = it.transform[4], y = it.transform[5], size = Math.hypot(it.transform[0], it.transform[1]);
+      if (x < vw * 0.55 && y > vh * 0.45) return;
+      var sc = size * 2 + (x / vw) * 10 + (1 - y / vh) * 10; if (!best || sc > best.sc) best = { t: t, sc: sc };
+    });
+    return best ? best.t : "";
+  }
+  async function buildCompare(d, x) {
+    var key = d.id + ":" + x.n; if (S.cmpBusy === key) return; S.cmpBusy = key;
+    try {
+      var a = await call("planImage", { id: x.prev.id, n: x.prev.n }), b = await call("planImage", { id: d.id, n: x.n });
+      var ia = await imgFromSrc(a.data), ib = await imgFromSrc(b.data), W = Math.min(2000, ib.naturalWidth), H = Math.round(W * ib.naturalHeight / ib.naturalWidth);
+      var A = inkMask(ia, W, H), B = inkMask(ib, W, H), chg = changeMap(A, B);
+      var c = document.createElement("canvas"); c.width = W; c.height = H; var g = c.getContext("2d"), out = g.createImageData(W, H), o = out.data;
+      for (var i = 0; i < B.L.length; i++) {
+        var r = 255, gg = 255, bb = 255;
+        if (chg[i] === 1) { r = 31; gg = 111; bb = 229; } else if (chg[i] === 2) { r = 229; gg = 72; bb = 77; } else if (B.L[i] < 200) { var k2 = 255 - (255 - B.L[i]) * 0.45; r = gg = bb = k2; }
+        o[i * 4] = r; o[i * 4 + 1] = gg; o[i * 4 + 2] = bb; o[i * 4 + 3] = 255;
+      }
+      g.putImageData(out, 0, 0); S.cmpCache = S.cmpCache || {}; S.cmpCache[key] = c.toDataURL("image/png");
+    } catch (e) { toast(e.message); S.sheetMode = "hl"; }
+    S.cmpBusy = null; if (S.modal && S.modal.type === "sheet") keepScroll(render);
+  }
+  function planUpModal(d) {
+    var sets = planSets(), last = sets[0], nextRev = function (st) { var m2 = String(st.latest.rev).match(/(\d+)\s*$/); return m2 ? String(st.latest.rev).replace(/(\d+)\s*$/, String(Number(m2[1]) + 1)) : st.latest.rev + " 2"; };
+    return "<h2>Upload a plan revision</h2><p class=\"muted\" style=\"margin:4px 0 12px\">Pick the PDF. The portal reads every sheet, compares it with the last revision of the same set, and highlights what changed. Big sets can take a minute.</p>" +
+      '<form class="form" data-form="planUp"><label class="f">Plan set<input type="text" name="set" list="bsp-sets" required maxlength="120" value="' + esc(last ? last.set : "Construction set") + '"><datalist id="bsp-sets">' + sets.map(function (st) { return '<option value="' + esc(st.set) + '">'; }).join("") + "</datalist></label>" +
+      '<div class="row2"><label class="f">Revision<input type="text" name="rev" required maxlength="40" value="' + esc(last ? nextRev(last) : "Rev 1") + '"></label><label class="f">Date on the set<input type="date" name="date" value="' + today() + '"></label></div>' +
+      '<label class="f">Who can see it<select name="visible"><option value="team">Team and field crew only</option><option value="architect">Team, crew and the architect</option><option value="all">Everyone on the project, including the client</option></select></label>' +
+      '<label class="f">What changed (optional)<textarea name="notes" maxlength="2000" placeholder="e.g. Architect revised the deck framing and moved the fire pit 2 ft east"></textarea></label>' +
+      '<label class="f">PDF<input type="file" name="pdf" accept="application/pdf" required></label>' +
+      '<div class="plan-prog" id="plan-prog" hidden><div class="pp-bar"><i></i></div><span></span></div>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Upload and compare</button></div></form>';
+  }
+  function prog(txt, frac) { var el = document.getElementById("plan-prog"); if (!el) return; el.hidden = false; el.querySelector("span").textContent = txt; el.querySelector("i").style.width = Math.round((frac || 0) * 100) + "%"; }
+  /* The upload: read the PDF here in the browser, compare sheet by sheet, then send the file straight to Drive and the sheet images to the portal. */
+  async function uploadPlan(f, fd, v) {
+    var file = f.pdf.files[0]; if (!file || file.type !== "application/pdf") throw new Error("Pick a PDF.");
+    var set = v("set"), rev = v("rev");
+    if (planSets().some(function (st) { return st.set === set && st.revs.some(function (r) { return r.rev === rev; }); })) throw new Error(set + " already has a " + rev + ". Use a new revision name.");
+    prog("Opening the PDF…", 0.02);
+    var lib = await pdfjs(), pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise, N = pdf.numPages, W = API ? 2000 : 1400, pages = [];
+    if (N > 120) throw new Error("That PDF has " + N + " pages. Split it into sets under 120 pages.");
+    for (var i = 1; i <= N; i++) {
+      prog("Reading sheet " + i + " of " + N + "…", 0.05 + 0.45 * i / N);
+      var page = await pdf.getPage(i), vp1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: W / vp1.width });
+      var c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: g, viewport: vp }).promise;
+      var tc = await page.getTextContent();
+      pages.push({ n: i, data: c.toDataURL("image/jpeg", API ? 0.82 : 0.7), w: c.width, h: c.height, sheet: sheetId(tc, vp1.width, vp1.height), words: sheetWords(tc, vp1.width, vp1.height), canvas: c });
+    }
+    // Compare with the latest revision of the same set.
+    var prev = planSets().filter(function (st) { return st.set === set; })[0], prevRev = prev && prev.latest, used = {}, prevText = {};
+    if (prevRev) { try { prevText = (await call("planText", { id: prevRev.id })).text || {}; } catch (e) { prevText = {}; } }
+    for (i = 0; i < pages.length; i++) {
+      var pg = pages[i]; pg.status = "new";
+      if (!prevRev) continue;
+      var match = (prevRev.sheets || []).filter(function (x) { return pg.sheet && x.sheet === pg.sheet; })[0] || (!pg.sheet ? (prevRev.sheets || []).filter(function (x) { return x.n === pg.n && !x.sheet; })[0] : null);
+      if (!match) continue; used[match.n] = 1;
+      prog("Comparing " + (pg.sheet || "sheet " + pg.n) + " with " + prevRev.rev + "…", 0.5 + 0.3 * (i + 1) / pages.length);
+      var old = await imgFromSrc((await call("planImage", { id: prevRev.id, n: match.n })).data), Wd = Math.min(1600, pg.w), Hd = Math.round(Wd * pg.h / pg.w);
+      var r = diffSheets(inkMask(old, Wd, Hd), inkMask(pg.canvas, Wd, Hd));
+      var tb = prevText[match.n] ? textChanges(prevText[match.n], pg.words) : [];        // changed words: dimensions, notes, labels
+      pg.status = r.status === "changed" || tb.length ? "changed" : "same"; pg.score = r.score; pg.boxes = tb.concat(r.boxes).slice(0, 40); pg.prev = { id: prevRev.id, n: match.n, rev: prevRev.rev };
+    }
+    var removed = prevRev ? (prevRev.sheets || []).filter(function (x) { return !used[x.n]; }).map(sheetLabel) : [];
+    prog("Sending the PDF to Google Drive…", 0.82);
+    var start = await call("planStart", { projectId: S.pid, set: set, rev: rev, date: v("date"), notes: v("notes"), visible: v("visible"), name: file.name, size: file.size, origin: location.origin }), fileId = "preview";
+    if (start.uploadUrl) {
+      var up = await fetch(start.uploadUrl, { method: "PUT", headers: { "Content-Type": "application/pdf" }, body: file });
+      if (!up.ok) throw new Error("Google Drive refused the upload (" + up.status + "). Try again.");
+      fileId = (await up.json()).id;
+    }
+    for (i = 0; i < pages.length; i += 3) {
+      prog("Saving sheets " + (i + 1) + "–" + Math.min(pages.length, i + 3) + " of " + pages.length + "…", 0.85 + 0.12 * i / pages.length);
+      await call("planPages", { id: start.id, pages: pages.slice(i, i + 3).map(function (x) { return { n: x.n, data: x.data, w: x.w, h: x.h, sheet: x.sheet }; }) });
+    }
+    prog("Finishing…", 0.98);
+    var text = {}; pages.forEach(function (x) { text[x.n] = x.words; });
+    await call("planFinish", { id: start.id, fileId: fileId, removed: removed, text: text, sheets: pages.map(function (x) { return { n: x.n, sheet: x.sheet, status: x.status, score: x.score || 0, boxes: x.boxes || [], prev: x.prev || null }; }) });
+    S.planOpen = start.id; return { changed: pages.filter(function (x) { return x.status === "changed"; }).length, first: !prevRev, n: pages.length };
+  }
+
   /* ---------------- contract & billing ---------------- */
   // Every number comes from the same math, so the overview, the bar, the breakdown and the invoices always agree.
   function contractMath() {
@@ -715,10 +959,10 @@
   function tabPeople() {
     var ppl = S.data.people || [];
     return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2></div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
-      ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px"><div class="avatar ' + (x.role === "client" ? "gold" : "") + '">' + esc(initials(x.name)) + '</div><div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + esc(x.email) + "</div></div>" +
-        '<span class="pill">' + esc({ client: "Client", architect: "Architect", admin: "Admin" }[x.role] || "Team") + "</span>" + (x.role === "client" || x.role === "architect" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
+      ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + esc(x.email) + "</div></div>" +
+        '<span class="pill">' + esc(roleName(x.role)) + "</span>" + (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
       '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
-      '<label class="f">Role<select name="role"><option value="client">Client: sees this project only</option><option value="architect">Architect: sees this project only, like the client</option>' + (S.me.admin ? '<option value="staff">Blue Sierra team: sees all projects</option>' : "") + "</select></label>" +
+      '<label class="f">Role<select name="role"><option value="client">Client: sees this project only</option><option value="architect">Architect: sees this project only, like the client</option><option value="crew">Field crew: this project\'s plans, schedule, photos and #team (no money)</option>' + (S.me.admin ? '<option value="staff">Blue Sierra team: sees all projects</option>' : "") + "</select></label>" +
       '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>';
   }
 
@@ -847,6 +1091,7 @@
         '<label class="f">Short description<textarea name="summary">' + esc(p.summary) + "</textarea></label>" +
         '<label class="f">Retainage % held from each invoice (0 if none)<input type="number" name="retainage_pct" min="0" max="20" step="0.5" value="' + esc(p.retainage_pct || 0) + '"></label>' +
         (m.id ? '<label class="f">Status<select name="status"><option value="active"' + (p.status !== "archived" ? " selected" : "") + '>Active</option><option value="archived"' + (p.status === "archived" ? " selected" : "") + ">Archived (hidden from the client)</option></select></label>" : "") +
+        (m.id && S.me.admin ? '<details class="danger"><summary>Delete this project</summary><p class="muted small">It disappears for everyone, including the client. Photos and files stay in Google Drive, and you can restore it from Home → Recently deleted.</p><label class="f">Type <b>' + esc(p.name) + '</b> to confirm<input type="text" data-del-confirm autocomplete="off"></label><button type="button" class="btn danger-btn" data-a="delProject" data-id="' + esc(p.id) + '">Delete project</button></details>' : "") +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "invoice") {
@@ -896,12 +1141,35 @@
         '<label class="f">Notes (team only)<textarea name="notes" maxlength="1000">' + esc(x.notes) + "</textarea></label>" +
         '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delSched" data-id="' + esc(m.id) + '" style="margin-right:auto">Delete</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
+    if (m.type === "planUp") body = planUpModal(d);
+    if (m.type === "call") {
+      var pp = callable(S.chan);
+      body = "<h2>📹 Who are you calling?</h2><p class=\"muted\" style=\"margin:4px 0 14px\">They get an email with the link and the code, and a Join card shows up in " + esc(chanLabel(S.chan)) + ".</p>" +
+        (pp.length ? '<form class="form" data-form="call"><div class="dm-list">' + pp.map(function (x) { return '<label class="dm-row pick"><input type="checkbox" name="k" value="' + esc(x.key) + '" checked>' + av(x.name, x.avatar, x.role) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></label>"; }).join("") + "</div>" +
+          '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn call-go" type="submit">📹 Call ' + (pp.length === 1 ? "1 person" : pp.length + " people") + "</button></div></form>"
+          : '<div class="empty">Nobody else can see this channel yet.</div><div class="actions"><button class="btn ghost" data-a="close">Close</button></div>');
+    }
+    if (m.type === "sheet") body = sheetModal(m);
+    if (m.type === "dm") {
+      var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key; });
+      body = "<h2>Private message</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Only you and the person you pick will see it. Nobody else on the project, not even the team.</p>" +
+        '<div class="dm-list">' + (ppl2.length ? ppl2.map(function (x) { return '<button class="dm-row" data-a="dmPick" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></button>"; }).join("") : '<div class="empty">Nobody else is on this project yet.</div>') + "</div>" +
+        '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-a="close">Cancel</button></div>';
+    }
+    if (m.type === "profile") {
+      var cur = String(S.me.avatar || "").split("|"), ce = cur[0] || "", cc = cur[1] || AV_COLORS[0];
+      body = "<h2>Pick your character</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Everyone on your projects sees it next to your messages.</p>" +
+        '<form class="form" data-form="profile" data-emoji="' + esc(ce) + '" data-color="' + esc(cc) + '"><div class="av-top"><div class="avatar char av-preview" style="background:' + esc(cc) + '">' + (ce || esc(initials(S.me.name))) + "</div><div><b>" + esc(S.me.name) + '</b><div class="muted small">' + esc(roleName(S.me.role)) + " · " + esc(S.me.email) + "</div></div></div>" +
+        '<div class="av-grid">' + AVATARS.map(function (e) { return '<button type="button" class="av-opt' + (e === ce ? " on" : "") + '" data-a="pickAv" data-e="' + e + '">' + e + "</button>"; }).join("") + "</div>" +
+        '<div class="col-grid">' + AV_COLORS.map(function (c) { return '<button type="button" class="col-opt' + (c === cc ? " on" : "") + '" data-a="pickCol" data-c="' + c + '" style="background:' + c + '" aria-label="Color"></button>'; }).join("") + "</div>" +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
     if (m.type === "thread") {
       var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
       if (!rootM) body = '<p>That conversation was deleted.</p><div class="actions"><button class="btn" data-a="close">Close</button></div>';
       else {
         var reps = d.messages.filter(function (x) { return x.thread_id === rootM.id; });
-        body = '<div class="eyebrow"># ' + esc(CH_INFO[rootM.channel || "client"][0]) + " · thread</div>" + '<div class="thread chat in-thread" style="margin-top:12px">' + msgHtml(rootM, { inThread: true }) +
+        body = '<div class="eyebrow">' + esc(chanLabel(rootM.channel || "client")) + " · thread</div>" + '<div class="thread chat in-thread" style="margin-top:12px">' + msgHtml(rootM, { inThread: true }) +
           (reps.length ? '<div class="day-sep"><span>' + reps.length + " repl" + (reps.length > 1 ? "ies" : "y") + "</span></div>" : "") + reps.map(function (r) { return msgHtml(r, { inThread: true }); }).join("") + "</div>" +
           composer(rootM.channel || "client", rootM.id) + '<div class="actions" style="margin-top:10px"><button class="btn ghost" data-a="close">Close</button></div>';
       }
@@ -927,7 +1195,7 @@
         '<label class="f">Due (optional)<input type="date" name="due" value="' + esc(c.due) + '"></label>' +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
-    return '<div class="modal-bg" data-a="bg" data-lenis-prevent><div class="modal" role="dialog" aria-modal="true">' + body + "</div></div>";
+    return '<div class="modal-bg" data-a="bg" data-lenis-prevent><div class="modal m-' + esc(m.type) + '" role="dialog" aria-modal="true">' + body + "</div></div>";
   }
   function renderLightbox() {
     var ph = S.data.photos[S.lb.i]; if (!ph) return "";
@@ -941,6 +1209,7 @@
   /* ---------------- events ---------------- */
   root.addEventListener("click", function (e) {
     var b = e.target.closest("[data-a]"); if (!b || !root.contains(b)) return;
+    if (S.drawer && b.closest(".side") && b.dataset.a !== "sideTog") S.drawer = false;      // picking something in the phone drawer closes it
     var a = b.dataset.a;
     if (a === "bg") { if (e.target === b && S.downOnBg) { S.modal = null; keepScroll(render); } return; }
     if (b.tagName === "A") return;
@@ -1005,6 +1274,31 @@
       case "bellClose": S.bell = false; return keepScroll(render);
       case "markAll": markAllRead(); return;
       case "tour": S.bell = false; keepScroll(render); return startTour(true);
+      case "call":
+        if (isDm(S.chan)) return startCallNow(b, [dmWith(S.chan).key]);      // a private chat: you're calling that one person
+        S.modal = { type: "call" }; return keepScroll(render);
+      case "copyCode": try { navigator.clipboard.writeText(b.dataset.c); toast("Code copied: " + b.dataset.c); } catch (e) { toast(b.dataset.c); } return;
+      case "sideTog":
+        if (matchMedia("(max-width:1080px)").matches) S.drawer = !S.drawer;
+        else { S.sideOff = !S.sideOff; try { localStorage.setItem("bsp-side-off", S.sideOff ? "1" : ""); } catch (e) {} }
+        return keepScroll(render);
+      case "dmPick": S.modal = null; S.chan = dmKey(b.dataset.k); S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); return;
+      case "pickAv": var fp = b.closest("form"); fp.querySelectorAll(".av-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fp.dataset.emoji = b.dataset.e; fp.querySelector(".av-preview").innerHTML = b.dataset.e; return;
+      case "pickCol": var fc = b.closest("form"); fc.querySelectorAll(".col-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fc.dataset.color = b.dataset.c; fc.querySelector(".av-preview").style.background = b.dataset.c; return;
+      case "delProject":
+        var cf = root.querySelector("[data-del-confirm]");
+        run(b, async function () { await call("deleteProject", { projectId: b.dataset.id, confirm: cf ? cf.value : "" }); S.modal = null; S.projects = null; toast("Project deleted. You can restore it from Home."); go(null); });
+        return;
+      case "restoreProject": run(b, async function () { await call("restoreProject", { projectId: b.dataset.id }); S.projects = null; refreshList(); toast("Project restored"); }); return;
+      case "sheet": S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.modal = { type: "sheet", id: b.dataset.id, n: +b.dataset.n }; return keepScroll(render);
+      case "sheetMode": S.sheetMode = b.dataset.v; return keepScroll(render);
+      case "zoom": S.zoom = Math.max(100, Math.min(400, (S.zoom || 100) + (+b.dataset.z) * 50)); return keepScroll(render);
+      case "sheetNav":
+        var dd = planById(S.modal.id), li = dd.sheets.map(function (x) { return x.n; }).indexOf(S.modal.n) + (+b.dataset.d);
+        if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; } return keepScroll(render);
+      case "planRev": S.planRev = S.planRev || {}; S.planRev[b.dataset.set] = b.dataset.id; S.planOpen = null; return keepScroll(render);
+      case "planFilter": S.planFilter = S.planFilter || {}; S.planFilter[b.dataset.id] = b.dataset.v; return keepScroll(render);
+      case "delPlan": if (confirm("Delete this revision and its sheets?")) run(b, async function () { await call("deletePlan", { id: b.dataset.id }); S.planOpen = null; await refresh(); toast("Revision deleted"); }); return;
       case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
@@ -1031,6 +1325,7 @@
   }
   root.addEventListener("input", function (e) {
     if (e.target.matches("[data-chat]")) return mentionPop(e.target);
+    if (e.target.form && e.target.form.dataset.form === "call") { var nn = e.target.form.querySelectorAll("input[name=k]:checked").length, cb = e.target.form.querySelector(".call-go"); cb.textContent = nn ? "📹 Call " + (nn === 1 ? "1 person" : nn + " people") : "Pick someone"; cb.disabled = !nn; return; }
     var f = e.target.form; if (!f || f.dataset.form !== "invoice") return;
     if (e.target.name === "retainage") f.dataset.auto = 0;
     invoiceMath(f);
@@ -1077,6 +1372,11 @@
   root.addEventListener("submit", function (e) {
     var f = e.target.closest("form[data-form]"); if (!f) return; e.preventDefault();
     var kind = f.dataset.form, fd = new FormData(f), btn = f.querySelector("[type=submit]"), v = function (k) { return String(fd.get(k) || "").trim(); };
+    if (kind === "call") {
+      var keys = [].slice.call(f.querySelectorAll("input[name=k]:checked")).map(function (x) { return x.value; });
+      if (!keys.length) return toast("Pick at least one person.");
+      return startCallNow(btn, keys);
+    }
     run(btn, async function () {
       if (kind === "email") {
         S.email = v("email").toLowerCase(); await call("requestCode", { email: S.email }); S.step = "code"; return render();
@@ -1097,6 +1397,16 @@
         await call("uploadPhotos", { projectId: S.pid, photos: sentP, caption: v("caption") });
         S.pending = S.pending.filter(function (x) { return sentP.indexOf(x) < 0; }); f.reset();
         await refresh(true); toast("Photos uploaded"); return;
+      }
+      if (kind === "planUp") {
+        f.querySelectorAll("input,select,textarea,button").forEach(function (x) { x.disabled = true; });
+        try { var res = await uploadPlan(f, fd, v); }
+        catch (e) { f.querySelectorAll("input,select,textarea,button").forEach(function (x) { x.disabled = false; }); prog("", 0); var pe = document.getElementById("plan-prog"); if (pe) pe.hidden = true; throw e; }
+        S.modal = null; await refresh(); toast(res.first ? res.n + " sheets uploaded" : res.changed ? res.changed + " sheet" + (res.changed > 1 ? "s" : "") + " changed. They're highlighted." : "Uploaded. No sheet changes found."); return;
+      }
+      if (kind === "profile") {
+        var avv = f.dataset.emoji ? f.dataset.emoji + "|" + (f.dataset.color || AV_COLORS[0]) : "";
+        var rp = await call("saveProfile", { avatar: avv }); S.me.avatar = rp.avatar; S.modal = null; await refresh(); toast("Looking good " + (f.dataset.emoji || "✨")); return;
       }
       if (kind === "team") {
         await call("addPerson", { name: v("name"), email: v("email"), role: "staff", invite: !!fd.get("invite") });
