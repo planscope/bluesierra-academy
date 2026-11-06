@@ -1,11 +1,11 @@
 #!/bin/bash
-# Uploads the latest changes to GitHub and clears the jsDelivr cache so /academy shows them right away.
+# Uploads the latest changes to GitHub and GitHub Pages publishes them for /academy and /portal (about 10 minutes).
 # Usage: ./publicar.sh "what changed"
 set -euo pipefail
 cd "$(dirname "$0")"
 
 msg="${1:-Update Blue Sierra Academy}"
-for f in academy-app.js academy-calls.js academy-content.js portal-app.js; do node --check "$f"; done
+for f in academy-app.js academy-phone.js academy-workspace.js academy-content.js portal-app.js; do node --check "$f"; done
 
 git add -A
 if git diff --cached --quiet; then
@@ -16,8 +16,4 @@ else
   echo "Uploaded: $msg"
 fi
 
-base="https://purge.jsdelivr.net/gh/planscope/bluesierra-academy@main"
-for f in academy.css academy-content.js academy-calls.js academy-app.js portal.css portal-app.js; do
-  status=$(curl -s -o /dev/null -w '%{http_code}' "$base/$f")
-  echo "cache cleared $f ($status)"
-done
+echo "GitHub Pages updates the live files within about 10 minutes."

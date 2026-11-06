@@ -39,25 +39,62 @@
   /* ---------- storage: Memberstack JSON, or localStorage in demo ---------- */
   var KEY = "bsa-demo-progress";
   function blank() { return { started: today(), modules: {}, final: null, sim: null, drill: null, checks: {}, certified: null, events: [] }; }
+  var loaded = false, hadRemote = false;            // never write to Memberstack until a load has succeeded
+  async function readRemote() {
+    var lastErr;
+    for (var i = 0; i < 3; i++) {
+      try { var r = await ms.getMemberJSON(); return (r && r.data) || {}; }
+      catch (e) { lastErr = e; await new Promise(function (res) { setTimeout(res, 600 * (i + 1)); }); }
+    }
+    throw lastErr || new Error("Could not load your progress.");
+  }
   async function load() {
     if (ms) {
-      try { var r = await ms.getMemberJSON(); var d = (r && r.data) || {}; return Object.assign(blank(), d.academy || {}); } catch (e) { return blank(); }
+      var d = await readRemote();                    // throws after 3 tries: the caller shows "Retry", it never saves a blank record
+      hadRemote = !!d.academy; loaded = true;
+      return Object.assign(blank(), d.academy || {});
     }
+    loaded = true;
     try { return Object.assign(blank(), JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) { return blank(); }
   }
-  var saving = null;
+  /* Progress only moves forward, so two tabs (or a stale tab) merge instead of overwriting each other. */
+  function earliest(a, b) { return !a ? b || null : !b ? a : (a < b ? a : b); }
+  function mergeRec(a, b) {
+    if (!a) return b || null; if (!b) return a;
+    var more = (b.tries || 0) > (a.tries || 0) ? b : a;
+    return { tries: Math.max(a.tries || 0, b.tries || 0), best: Math.max(a.best || 0, b.best || 0), passed: earliest(a.passed, b.passed) || undefined, last: more.last };
+  }
+  function mergeProgress(remote, local) {
+    var out = Object.assign(blank(), remote || {}, local || {});
+    out.started = earliest((remote || {}).started, (local || {}).started) || today();
+    out.modules = {};
+    Object.keys(Object.assign({}, (remote || {}).modules, (local || {}).modules)).forEach(function (k) { out.modules[k] = mergeRec(((remote || {}).modules || {})[k], ((local || {}).modules || {})[k]); });
+    ["final", "sim", "drill"].forEach(function (k) { out[k] = mergeRec((remote || {})[k], (local || {})[k]); });
+    ["certified", "acknowledged"].forEach(function (k) { out[k] = earliest((remote || {})[k], (local || {})[k]); });
+    out.checks = Object.assign({}, (remote || {}).checks, (local || {}).checks);
+    var seen = {}; out.events = [].concat((remote || {}).events || [], (local || {}).events || []).filter(function (e) { var k = e.at + "|" + e.event + "|" + e.detail; if (seen[k]) return false; seen[k] = 1; return true; })
+      .sort(function (a, b) { return a.at < b.at ? -1 : 1; });
+    return out;
+  }
+  var saveChain = Promise.resolve(), saveTimer = null;
   function save() {
-    if (ms) {
-      clearTimeout(saving);
-      saving = setTimeout(async function () {
-        try { var r = await ms.getMemberJSON(); var d = (r && r.data) || {}; d.academy = S; await ms.updateMemberJSON({ json: d }); }
-        catch (e) { toast("Could not save. Check your connection."); }
-      }, 300);
-    } else { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+    if (!ms) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} return; }
+    if (!loaded) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      saveChain = saveChain.then(async function () {      // one save at a time from this tab
+        try {
+          var d = await readRemote(), merged = mergeProgress(d.academy, S);
+          d.academy = merged; S = merged;
+          await ms.updateMemberJSON({ json: d });
+        } catch (e) { toast("Could not save. Check your connection."); }
+      });
+    }, 300);
   }
 
   /* Sends an event to the Webflow form "Academy Progress" if it is on the page (Jesús gets an email per event). */
   function report(event, detail, score) {
+    if (ms && !loaded) return;
     S.events.push({ at: new Date().toISOString(), event: event, detail: detail || "", score: score == null ? "" : score });
     save();
     submitWebflowForm(C.webflowForms.progress, {
@@ -127,7 +164,7 @@
       ["checklist", "First week", checksDone() + "/" + C.checklist.length],
       ["cert", "Certificate", certReady() ? "✓" : ""]
     ];
-    // Extra tabs from other files (academy-calls.js): window.BSA_TABS = [{ id, label, count(ctx), visible(ctx), render(ctx), mounted(el, ctx) }]
+    // Extra tabs from other files (academy-workspace.js): window.BSA_TABS = [{ id, label, count(ctx), visible(ctx), render(ctx), mounted(el, ctx) }]
     var cx = ctx(), ext = (window.BSA_TABS || []).filter(function (t) { return !t.visible || t.visible(cx); });
     ext.forEach(function (t) { tabs.push([t.id, t.label, t.count ? t.count(cx) : ""]); });
     var extTab = ext.filter(function (t) { return t.id === view.tab; })[0];
@@ -444,13 +481,28 @@
       case "drill-next": view.drill.i++; view.drill.picked = null; if (view.drill.i >= view.drill.cards.length) finishDrill(); return render();
       case "leave-practice": view.tab = "practice"; view.sim = null; view.drill = null; return render();
       case "print": window.print(); return;
+      case "reload-progress": boot(); return;
       case "certify":
         var ack = root.querySelector("#bsa-ack");
         if (!ack || !ack.checked) { toast("Check the box first"); return; }
         var results = [member.roleLabel].concat(MODS.map(function (m, k) { return "M" + (k + 1) + " " + (modState(m.id).best || 0) + "%"; }))
           .concat(["Drill " + (S.drill ? S.drill.best + "%" : "not taken"), "Simulator " + (S.sim ? S.sim.best + "%" : "not taken"), "Final " + (S.final ? S.final.best : 0) + "%"]).join(" · ");
-        submitWebflowForm(C.webflowForms.certification, { "Full-Name": member.name, Email: member.email, "Course-Results": results, Acknowledge: ack.checked });
-        S.acknowledged = today(); save(); toast("Sent to Jesús"); return render();
+        // Only mark it sent once Webflow shows its success message.
+        var cform = document.querySelector('form[data-name="' + C.webflowForms.certification + '"]');
+        if (!cform) { toast("Could not send. Tell Jesús the certification form is missing on this page."); return; }
+        b.disabled = true; b.textContent = "Sending…";
+        var wrap = cform.closest(".w-form") || cform.parentNode, done = false;
+        var finish = function (ok) {
+          if (done) return; done = true; obs.disconnect(); clearTimeout(timer);
+          if (ok) { S.acknowledged = today(); save(); toast("Sent to Jesús"); render(); }
+          else { b.disabled = false; b.textContent = "Send certification"; toast("Could not send. Try again in a minute."); }
+        };
+        var visible = function (sel) { var el = wrap.querySelector(sel); return el && getComputedStyle(el).display !== "none"; };
+        var obs = new MutationObserver(function () { if (visible(".w-form-done")) finish(true); else if (visible(".w-form-fail")) finish(false); });
+        obs.observe(wrap, { attributes: true, subtree: true, attributeFilter: ["style", "class"] });
+        var timer = setTimeout(function () { finish(false); }, 12000);
+        if (!submitWebflowForm(C.webflowForms.certification, { "Full-Name": member.name, Email: member.email, "Course-Results": results, Acknowledge: ack.checked })) finish(false);
+        return;
     }
   });
 
@@ -506,8 +558,13 @@
         roleLabel: cf[C.memberFields.role && C.memberFields.role.ms] || C.course.roleLabel
       };
       member.isAdmin = /admin|owner|principal/i.test(member.roleLabel);
-      S = await load(); render();
-      if (!S.events.length) report("Started", C.course.title);
+      try { S = await load(); }
+      catch (le) {
+        root.innerHTML = '<div class="loading"><div style="text-align:center"><p>We couldn\'t load your progress, so nothing was changed.</p><p style="margin-top:14px"><button class="btn" data-act="reload-progress">Try again</button></p></div></div>';
+        return;
+      }
+      render();
+      if (!hadRemote) report("Started", C.course.title);
     } catch (e) { member = null; render(); }
   }
   if (ms === null && window.$memberstackDom && window.$memberstackDom.onAuthChange) window.$memberstackDom.onAuthChange(function () { boot(); });

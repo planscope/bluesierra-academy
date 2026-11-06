@@ -172,6 +172,16 @@
 #bs-portal .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;opacity:0;transition:all .25s;z-index:70;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
 #bs-portal .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+
+/* Inside the Webflow site: undo site-wide styles that would leak in */
+#bs-ft-links{display:none!important}
+#bs-portal .logo{color:inherit!important}
+#bs-portal h1,#bs-portal h2,#bs-portal h3,#bs-portal h4{font-family:inherit}
+#bs-portal label{font-weight:400;margin-bottom:0}
+#bs-portal input,#bs-portal select,#bs-portal textarea{margin-bottom:0;height:auto}
+#bs-portal .lightbox .lb-bar{flex-wrap:wrap;row-gap:8px}
+#bs-portal .lightbox .lb-bar>span:last-child{flex-wrap:wrap}
+
 @media (max-width:900px){
   #bs-portal .reply-bar{position:static}
   #bs-portal .g4{grid-template-columns:repeat(2,1fr)}

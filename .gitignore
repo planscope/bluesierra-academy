@@ -6,3 +6,5 @@ webflow/
 # Local test page for the Webflow snippet
 loader-test.html
 portal-loader-test.html
+site-test-*.html
+site-harness.js

@@ -1,13 +1,13 @@
 <!--
   Blue Sierra · what goes in the Webflow pages /academy (team) and /portal (clients).
-  The page loads the code from GitHub (planscope/bluesierra-academy) through jsDelivr,
+  The page loads the code from GitHub (planscope/bluesierra-academy) through GitHub Pages,
   so every push to the repo updates the site. You never paste the big files again.
 -->
 
 <!-- 1) Page settings → Custom code → Inside <head> -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Cormorant+Garamond:wght@400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy.css">
+<link rel="stylesheet" href="https://planscope.github.io/bluesierra-academy/academy.css">
 
 <!-- 2) A Code Embed in the page body, full width -->
 <div id="bs-academy"></div>
@@ -20,12 +20,14 @@
   window.BSA_SETTINGS = {
     loginPhoto: "",
     heroPhoto: "",
-    callsApi: ""
+    callsApi: "",
+    ringcentralClientId: ""   // optional: RingCentral app client ID, so calls happen inside the dashboard
   };
 </script>
-<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-content.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-calls.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-app.js"></script>
+<script src="https://planscope.github.io/bluesierra-academy/academy-content.js"></script>
+<script src="https://planscope.github.io/bluesierra-academy/academy-phone.js"></script>
+<script src="https://planscope.github.io/bluesierra-academy/academy-workspace.js"></script>
+<script src="https://planscope.github.io/bluesierra-academy/academy-app.js"></script>
 
 
 <!-- ================================================================
@@ -35,7 +37,7 @@
 <!-- A) /portal Page settings → Custom code → Inside <head> -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/portal.css">
+<link rel="stylesheet" href="https://planscope.github.io/bluesierra-academy/portal.css">
 
 <!-- B) A Code Embed in the /portal page body, full width -->
 <div id="bs-portal"></div>
@@ -48,4 +50,4 @@
     loginPhoto: ""
   };
 </script>
-<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/portal-app.js"></script>
+<script src="https://planscope.github.io/bluesierra-academy/portal-app.js"></script>

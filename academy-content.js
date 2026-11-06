@@ -250,7 +250,7 @@ window.BSA_CONTENT = {
       "answer": 2
      },
      {
-      "q": "May you tell a prospect \"we only take jobs over $500K\"?",
+      "q": "May you tell a prospect \"we only take jobs over our minimum size\"?",
       "options": [
        "Yes, it saves time",
        "No — the floor is internal; qualify with discovery; Jesús discusses fit",
@@ -349,7 +349,7 @@ window.BSA_CONTENT = {
       "options": [
        "Jesús Toto / Blue Sierra / San José",
        "A 20-minute intro request",
-       "Prices or the $500K figure",
+       "Prices or our internal minimum project size",
        "Since 2005"
       ],
       "answer": 2
@@ -375,7 +375,7 @@ window.BSA_CONTENT = {
        "Give a rough range",
        "\"Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.\"",
        "\"We're the cheapest\"",
-       "\"Over $500K\""
+       "\"Only big jobs, over our minimum\""
       ],
       "answer": 1
      },
@@ -649,7 +649,7 @@ window.BSA_CONTENT = {
       "feedback": "Off-scope pitch and quoting are not allowed."
      },
      {
-      "text": "Hi, we only take jobs over $500K — do you have any?",
+      "text": "Hi, we only take jobs over our minimum size — do you have any?",
       "points": -3,
       "feedback": "Never say the internal floor or any price."
      }

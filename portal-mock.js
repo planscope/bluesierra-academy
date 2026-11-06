@@ -86,11 +86,11 @@
   function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin" }; }
   function auth(db, t) { var e = db.sessions[t]; var p = e && db.people.filter(function (x) { return x.email === e && x.active === "yes"; })[0]; if (!p) throw new Error("Please log in again."); return p; }
   function canSee(me, pid) { return isStaff(me) || ids(me.project_ids).indexOf(pid) > -1; }
-  function needProject(db, me, pid) { var p = db.projects.filter(function (x) { return x.id === pid; })[0]; if (!p || !canSee(me, pid)) throw new Error("Project not found."); return p; }
+  function needProject(db, me, pid) { var p = db.projects.filter(function (x) { return x.id === pid; })[0]; if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived")) throw new Error("Project not found."); return p; }
   function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
   function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: ph.src, full: ph.src, caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
   function projOut(db, p) { var cover = db.photos.filter(function (x) { return x.file_id === p.cover_file_id; })[0]; return Object.assign({}, p, { progress: Number(p.progress || 0), cover: cover ? cover.src : "" }); }
-  function invOut(i) { var st = i.status === "sent" && i.due && i.due < today() ? "overdue" : i.status; return Object.assign({}, i, { amount: Number(i.amount || 0), status: st, pdf: i.pdf_file_id ? "#preview-pdf" : "" }); }
+  function invOut(i, staff) { var st = i.status === "sent" && i.due && i.due < today() ? "overdue" : i.status; var o = Object.assign({}, i, { amount: Number(i.amount || 0), status: st, pdf: i.pdf_file_id ? "#preview-pdf" : "" }); if (!staff) delete o.notes; return o; }
   function emailClients(db, p, subject) { db.people.filter(function (x) { return x.role === "client" && x.active === "yes" && ids(x.project_ids).indexOf(p.id) > -1; }).forEach(function (x) { mail(db, x.email, subject); }); }
   function savePhotos(db, me, p, list, caption, upd) {
     if (list.length > 12) throw new Error("Up to 12 photos at a time.");
@@ -114,8 +114,9 @@
     },
     getProject: function (db, me, b) {
       var p = needProject(db, me, b.projectId), by = function (list) { return list.filter(function (r) { return r.project_id === p.id; }); };
-      var out = { project: projOut(db, p), timeline: by(db.timeline).slice().reverse(), photos: by(db.photos).slice().reverse().map(photoOut), messages: by(db.messages),
-        invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(invOut),
+      var out = { project: projOut(db, p), timeline: by(db.timeline).slice().reverse(), photos: by(db.photos).slice().reverse().map(photoOut),
+        messages: by(db.messages).map(function (m) { var o = Object.assign({}, m); o.mine = m.author_email === me.email; if (!isStaff(me)) delete o.author_email; return o; }),
+        invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
         checklist: by(db.checklist).sort(function (a, c) { return Number(a.sort) - Number(c.sort); }), phases: PHASES };
       if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes" }; });
       return out;
@@ -145,7 +146,13 @@
       if (b.notify) emailClients(db, p, "Project update: " + p.name); return {};
     },
     uploadPhotos: function (db, me, b) { needStaff(me); var p = needProject(db, me, b.projectId); return { count: savePhotos(db, me, p, b.photos || [], clean(b.caption, 300), "").length }; },
-    deletePhoto: function (db, me, b) { needStaff(me); db.photos = db.photos.filter(function (x) { return x.id !== b.photoId; }); return {}; },
+    deletePhoto: function (db, me, b) {
+      needStaff(me); var ph = db.photos.filter(function (x) { return x.id === b.photoId; })[0]; if (!ph) return {};
+      db.photos = db.photos.filter(function (x) { return x.id !== b.photoId; });
+      var p = db.projects.filter(function (x) { return x.id === ph.project_id; })[0];
+      if (p && p.cover_file_id === ph.file_id) { var rest = db.photos.filter(function (x) { return x.project_id === p.id; }); p.cover_file_id = rest.length ? rest[rest.length - 1].file_id : ""; }
+      return {};
+    },
     sendMessage: function (db, me, b) {
       var p = needProject(db, me, b.projectId), text = clean(b.text, 5000); if (!text) throw new Error("Write a message.");
       var kind = isStaff(me) && b.kind === "question" ? "question" : "message";
