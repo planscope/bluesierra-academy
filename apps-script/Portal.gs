@@ -34,16 +34,18 @@ var CONFIG = {
 };
 
 var TABLES = {
-  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at"],
+  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct"],
   People: ["email", "name", "role", "project_ids", "active", "created_at"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
   Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via"],
-  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes"],
+  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
-  Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"]
+  Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"],
+  // The contract: "base" lines are the schedule of values (they add up to the contract sum); "change" lines are change orders.
+  ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1 };
@@ -126,6 +128,7 @@ function auth(token) {
 }
 function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin" }; }
 function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
+function isOutside(p) { return p.role === "client" || p.role === "architect"; }   // people outside the team: see only their projects
 function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
 function canSee(me, pid) { if (isStaff(me)) return true; return (me.projects || splitIds(me.project_ids)).indexOf(String(pid)) > -1; }
 function needProject(me, pid) {
@@ -159,6 +162,7 @@ var ACTIONS = {
       checklist: by("Checklist").sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
         .map(function (x) { var o = Object.assign({}, x); if (!staff) delete o.notes; return o; }),
+      contract: contractOut(by("ContractLines"), p, staff),
       phases: CONFIG.PHASES
     };
     if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active) }; });
@@ -167,13 +171,14 @@ var ACTIONS = {
 
   saveProject: function (me, b) {
     needStaff(me);
-    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status"];
+    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct"];
     if (!clean(f.name, 200)) throw new Error("The project needs a name.");
     if (f.phase && CONFIG.PHASES.indexOf(f.phase) < 0) throw new Error("Unknown phase.");
     var patch = {}; fields.forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
     if (patch.progress != null) patch.progress = String(Math.max(0, Math.min(100, Number(patch.progress) || 0)));
     if (patch.status != null && ["active", "archived"].indexOf(patch.status) < 0) patch.status = "active";
     ["start_date", "target_date"].forEach(function (k) { if (patch[k] != null) patch[k] = dateOrEmpty(patch[k]); });
+    if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
     if (f.id) { needProject(me, f.id); update("Projects", "id", f.id, patch); return { project: projectOut(findBy("Projects", "id", f.id)) }; }
     var id = newId("p");
     patch.id = id; patch.folder_id = rootFolder().createFolder(patch.name + " · " + id).getId(); patch.created_at = now(); patch.status = patch.status || "active";
@@ -191,7 +196,7 @@ var ACTIONS = {
 
   addPerson: function (me, b) {
     needStaff(me);
-    var email = normEmail(b.email), role = b.role === "staff" ? "staff" : "client", admin = me.role === "admin";
+    var email = normEmail(b.email), role = ["staff", "architect"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
     if (role === "staff" && !admin) throw new Error("Only Jesús can add team members.");
     if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) throw new Error("That email doesn't look right.");
     var p = b.projectId ? needProject(me, b.projectId) : null;
@@ -199,13 +204,13 @@ var ACTIONS = {
     if (existing) {
       if (isStaff(existing) && !admin) throw new Error("Only Jesús can change team members.");
       if (!isTrue(existing.active) && !admin) throw new Error("This person's access was turned off. Ask Jesús to turn it back on.");
-      var ids = splitIds(existing.project_ids); if (p && role === "client" && ids.indexOf(p.id) < 0) ids.push(p.id);
+      var ids = splitIds(existing.project_ids); if (p && role !== "staff" && ids.indexOf(p.id) < 0) ids.push(p.id);
       var patch = { project_ids: ids.join(","), active: "yes" };
-      if (admin && existing.role !== role && existing.role !== "admin") patch.role = role;   // only admins change roles
+      if (existing.role !== role && existing.role !== "admin" && (admin || (!isStaff(existing) && role !== "staff"))) patch.role = role;   // only admins touch team roles
       if (!existing.name && b.name) patch.name = clean(b.name, 120);
       update("People", "email", email, patch);
     } else {
-      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role === "client" ? p.id : "", active: "yes", created_at: now() });
+      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
     }
     if (b.invite && p) safeMail(function () {
       sendMail(email, "Your project portal for " + p.name,
@@ -278,6 +283,16 @@ var ACTIONS = {
       paid_date: f.status === "paid" ? (dateOrEmpty(f.paid_date) || today()) : "", pay_url: /^https:\/\//.test(f.pay_url || "") ? String(f.pay_url).slice(0, 500) : ""
     };
     if (f.notes != null) patch.notes = clean(f.notes, 1000);       // never blank notes the form didn't send
+    // Work billed by contract line (AIA G703 style). When it's given, the invoice amount is its total.
+    if (f.lines != null) {
+      var valid = {}; rows("ContractLines").forEach(function (l) { if (l.project_id === p.id && l.status !== "rejected") valid[l.id] = 1; });
+      var lines = {}, sum = 0;
+      Object.keys(f.lines || {}).forEach(function (k) { var a = cents(f.lines[k]); if (!a) return; if (!valid[k]) throw new Error("That contract line isn't on this project."); lines[k] = a; sum += a; });
+      patch.lines = Object.keys(lines).length ? JSON.stringify(lines) : "";
+      if (patch.lines) patch.amount = String(cents(sum));
+    }
+    if (f.retainage != null) patch.retainage = String(cents(f.retainage));
+    if (num(patch.retainage) > num(patch.amount) && num(patch.amount) > 0) throw new Error("Retainage can't be more than the work billed.");
     var id = f.id, old = id ? findBy("Invoices", "id", id) : null;
     if (id && (!old || old.project_id !== p.id)) throw new Error("Invoice not found.");
     if (f.pdf && f.pdf.data) {
@@ -290,11 +305,32 @@ var ACTIONS = {
     else { id = newId("i"); patch.id = id; patch.project_id = p.id; if (patch.notes == null) patch.notes = ""; insert("Invoices", patch); }
     if (b.notify && patch.status === "sent") safeMail(function () {
       emailClients(p, "Invoice " + patch.number + " · " + p.name,
-        "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(patch.amount) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice"));
+        "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(num(patch.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage)) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice"));
     }, "Saved, but the email to the client couldn't be sent.");
     return { id: id };
   },
 
+  /* Contract: schedule-of-values lines and change orders. */
+  saveContractLine: function (me, b) {
+    needStaff(me); var p = needProject(me, b.projectId), f = b.line || {}, kind = f.kind === "change" ? "change" : "base";
+    var patch = { kind: kind, number: clean(f.number, 20), title: clean(f.title, 200), amount: String(cents(f.amount)), date: dateOrEmpty(f.date),
+      status: kind === "base" ? "approved" : (["proposed", "approved", "rejected"].indexOf(f.status) > -1 ? f.status : "proposed") };
+    if (f.notes != null) patch.notes = clean(f.notes, 1000);
+    if (!patch.title) throw new Error("Give the line a name.");
+    if (kind === "base" && num(patch.amount) <= 0) throw new Error("A contract line needs an amount above zero.");
+    if (f.id) {
+      var it = findBy("ContractLines", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Line not found.");
+      if (patch.status === "rejected" && billedOn(p.id, it.id)) throw new Error("Invoices already bill this change order, so it can't be rejected.");
+      update("ContractLines", "id", f.id, patch);
+    } else { patch.id = newId("c"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("ContractLines", patch); }
+    return {};
+  },
+  deleteContractLine: function (me, b) {
+    needStaff(me); var it = findBy("ContractLines", "id", b.lineId); if (!it) return {};
+    needProject(me, it.project_id);
+    if (billedOn(it.project_id, it.id)) throw new Error("Invoices already bill this line. Edit those invoices first.");
+    removeWhere("ContractLines", function (r) { return r.id === it.id; }); return {};
+  },
   saveChecklistItem: function (me, b) {
     needStaff(me); var p = needProject(me, b.projectId), f = b.item || {};
     var patch = { phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : CONFIG.PHASES[0], item: clean(f.item, 300), owner: f.owner === "client" ? "client" : "blue sierra", due: dateOrEmpty(f.due) };
@@ -339,7 +375,7 @@ var ACTIONS = {
   toggleChecklist: function (me, b) {
     var it = findBy("Checklist", "id", b.itemId); if (!it) throw new Error("Item not found.");
     var p = needProject(me, it.project_id);
-    if (!isStaff(me) && it.owner !== "client") throw new Error("Blue Sierra checks off that one.");
+    if (!isStaff(me) && (it.owner !== "client" || me.role !== "client")) throw new Error(it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
     var done = !isTrue(it.done);
     update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_at: done ? now() : "" });
     if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal"));
@@ -370,7 +406,7 @@ function checkEmailReplies() {
         if (isAutoReply(msg)) return mark("auto-reply");
         if (!verifiedSender(msg, from)) return mark("not verified");
         var person = findPerson(from);
-        if (!person || !isTrue(person.active) || person.role !== "client" || splitIds(person.project_ids).indexOf(p.id) < 0) return mark("not a client on this project");
+        if (!person || !isTrue(person.active) || !isOutside(person) || splitIds(person.project_ids).indexOf(p.id) < 0) return mark("not a client on this project");
         var text = replyText(msg.getPlainBody()); if (!text) return mark("empty");
         var at = Utilities.formatDate(msg.getDate(), CONFIG.TZ, "yyyy-MM-dd HH:mm");
         // Record the import first, so a failed notice can't make the same reply import again.
@@ -413,7 +449,7 @@ function addAnswer(p, q, name, email, role, text, via, at, id) {
   id = id || newId("m");
   insert("Messages", { id: id, project_id: p.id, at: at || now(), author: name, author_email: email, role: role, kind: "answer", text: text, question_id: q.id, status: "", via: via });
   update("Messages", "id", q.id, { status: "answered" });
-  if (role === "client") notifyJesus(email, name + " answered: " + q.text.slice(0, 60), "<p><b>Question:</b> " + esc(q.text) + "</p><p><b>Answer:</b> " + nl2br(esc(text)) + "</p><p style='color:#666'>" + esc(p.name) + " · via " + via + "</p>" + button("Open the portal"));
+  if (role === "client" || role === "architect") notifyJesus(email, name + " answered: " + q.text.slice(0, 60), "<p><b>Question:</b> " + esc(q.text) + "</p><p><b>Answer:</b> " + nl2br(esc(text)) + "</p><p style='color:#666'>" + esc(p.name) + " · via " + via + "</p>" + button("Open the portal"));
   return id;
 }
 function addMessage(p, person, text, via, at, id) {
@@ -487,22 +523,33 @@ function summary(p, inv, msgs, tl) {
   var invs = mine(inv).filter(function (i) { return i.status !== "void" && i.status !== "draft"; });
   var last = mine(tl).slice(-1)[0];
   return Object.assign(projectOut(p), {
-    balance: invs.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + Number(i.amount || 0); }, 0),
+    balance: invs.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + num(i.amount) - num(i.retainage); }, 0),
     openQuestions: mine(msgs).filter(function (m) { return m.kind === "question" && m.status === "open"; }).length,
     lastUpdate: last ? last.at : ""
   });
 }
 function projectOut(p) {
   return { id: p.id, name: p.name, client_name: p.client_name, address: p.address, city: p.city, phase: p.phase, progress: Number(p.progress || 0),
-    start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "" };
+    start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "",
+    retainage_pct: num(p.retainage_pct) };
 }
 function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: img(ph.file_id, 600), full: img(ph.file_id, 2000), caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
 function invoiceOut(i, staff) {
   var st = i.status; if (st === "sent" && i.due && i.due < today()) st = "overdue";
-  var o = { id: i.id, number: i.number, title: i.title, amount: Number(i.amount || 0), issued: i.issued, due: i.due, status: st, paid_date: i.paid_date,
+  var lines = {}; try { lines = i.lines ? JSON.parse(String(i.lines).replace(/^'/, "")) : {}; } catch (e) {}
+  var o = { id: i.id, number: i.number, title: i.title, amount: num(i.amount), retainage: num(i.retainage), lines: lines, issued: i.issued, due: i.due, status: st, paid_date: i.paid_date,
     pdf: i.pdf_file_id ? "https://drive.google.com/file/d/" + i.pdf_file_id + "/view" : "", pay_url: i.pay_url };
   if (staff) o.notes = i.notes;                                          // internal notes stay with the team
   return o;
+}
+/* Clients and architects see the base contract and change orders that aren't rejected; team notes stay with the team. */
+function contractOut(list, p, staff) {
+  return { retainage_pct: num(p.retainage_pct), lines: list.filter(function (l) { return staff || l.status !== "rejected"; })
+    .sort(function (a, c) { return a.kind !== c.kind ? (a.kind === "base" ? -1 : 1) : Number(a.sort || 0) - Number(c.sort || 0); })
+    .map(function (l) { var o = { id: l.id, kind: l.kind, number: l.number, title: l.title, amount: num(l.amount), status: l.status, date: l.date }; if (staff) o.notes = l.notes; return o; }) };
+}
+function billedOn(pid, lineId) {
+  return rows("Invoices").some(function (i) { if (i.project_id !== pid || i.status === "void" || !i.lines) return false; try { return !!JSON.parse(String(i.lines).replace(/^'/, ""))[lineId]; } catch (e) { return false; } });
 }
 function img(id, w) { return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(id) + "&sz=w" + w; }
 
@@ -519,7 +566,7 @@ function notifyJesus(fromEmail, subject, html) {
   safeMail(function () { sendMail(CONFIG.NOTIFY_EMAIL, subject, html); }, "");
 }
 function emailClients(p, subject, html) {
-  rows("People").filter(function (x) { return x.role === "client" && isTrue(x.active) && splitIds(x.project_ids).indexOf(p.id) > -1; })
+  rows("People").filter(function (x) { return isOutside(x) && isTrue(x.active) && splitIds(x.project_ids).indexOf(p.id) > -1; })
     .forEach(function (x) { sendMail(x.email, subject, "<p>Hi " + esc(first(x.name)) + ",</p>" + html); });
 }
 function sendMail(to, subject, html) {
@@ -546,15 +593,20 @@ function ss() {
 function tableSheet(t) {
   var book = ss(), sh = book.getSheetByName(t);
   if (!sh) sh = book.insertSheet(t, book.getNumSheets());
+  var n = TABLES[t].length;
   if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, sh.getMaxRows(), TABLES[t].length).setNumberFormat("@");
-    sh.getRange(1, 1, 1, TABLES[t].length).setValues([TABLES[t]]); sh.setFrozenRows(1);
+    sh.getRange(1, 1, sh.getMaxRows(), n).setNumberFormat("@");
+    sh.getRange(1, 1, 1, n).setValues([TABLES[t]]); sh.setFrozenRows(1);
+  } else if (sh.getLastColumn() < n) {                     // a newer version added columns: label them, keep them as text
+    var from = sh.getLastColumn() + 1;
+    sh.getRange(1, from, sh.getMaxRows(), n - from + 1).setNumberFormat("@");
+    sh.getRange(1, from, 1, n - from + 1).setValues([TABLES[t].slice(from - 1)]);
   }
   return sh;
 }
 function rows(t) {
   var sh = tableSheet(t), v = sh.getDataRange().getValues(), h = TABLES[t], outR = [];
-  for (var i = 1; i < v.length; i++) { var o = {}; h.forEach(function (k, c) { o[k] = cell(v[i][c]); }); outR.push(o); }
+  for (var i = 1; i < v.length; i++) { var o = {}; h.forEach(function (k, c) { o[k] = v[i][c] == null ? "" : cell(v[i][c]); }); outR.push(o); }
   return outR;
 }
 function insert(t, obj) {
@@ -587,6 +639,8 @@ function cell(v) {
   var tz = ss().getSpreadsheetTimeZone() || CONFIG.TZ, hm = Utilities.formatDate(v, tz, "HH:mm");
   return Utilities.formatDate(v, tz, "yyyy-MM-dd") + (hm !== "00:00" ? " " + hm : "");
 }
+function num(v) { var n = Number(String(v == null ? "" : v).replace(/^'/, "").replace(/[$,\s]/g, "")); return isFinite(n) ? n : 0; }   // a stored "-500" can come back as "'-500"
+function cents(v) { return Math.round(num(v) * 100) / 100; }
 function safe(v) { return typeof v === "string" && /^[=+@\-\t\r]/.test(v) ? "'" + v : v; }
 function clean(v, max) { return String(v == null ? "" : v).replace(/\r/g, "").trim().slice(0, max); }
 function normEmail(e) { return String(e || "").trim().toLowerCase(); }

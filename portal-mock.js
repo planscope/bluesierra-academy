@@ -1,6 +1,6 @@
 /* Blue Sierra client portal — PREVIEW backend only. Never load this on the live site.
    It imitates apps-script/Portal.gs (same actions, same permission rules) with fictional sample data kept in this browser.
-   Logins: jesus@example.com (admin), client@example.com (client) · code 123456. */
+   Logins: jesus@example.com (admin), client@example.com (client), architect@example.com (architect) · code 123456. */
 (function () {
   "use strict";
   var KEY = "bsp-mock-db";
@@ -16,7 +16,7 @@
     var ph = function (id, label, a, b, cap, at, upd) { return { id: id, project_id: "p1", file_id: "f-" + id, src: svgPhoto(label, a, b), caption: cap, at: at, author: "Jesús Toto", update_id: upd || "" }; };
     return {
       projects: [
-        { id: "p1", name: "Hillside Residence", client_name: "Sample Client", address: "123 Example Lane", city: "Los Altos Hills", phase: "Construction", progress: "55", start_date: "2026-08-18", target_date: "2027-02-26",
+        { id: "p1", retainage_pct: "5", name: "Hillside Residence", client_name: "Sample Client", address: "123 Example Lane", city: "Los Altos Hills", phase: "Construction", progress: "55", start_date: "2026-08-18", target_date: "2027-02-26",
           summary: "Full site package: grading, drainage, retaining walls, pool deck and planting.", cover_file_id: "f-ph1", status: "active", created_at: "2026-08-01 09:00" },
         { id: "p2", name: "Garden Courtyard", client_name: "Second Client", address: "456 Sample Ave", city: "Menlo Park", phase: "Design", progress: "15", start_date: "2026-10-20", target_date: "2027-05-14",
           summary: "Courtyard redesign with new paving, lighting and drought-tolerant planting.", cover_file_id: "", status: "active", created_at: "2026-10-15 10:00" }
@@ -24,7 +24,8 @@
       people: [
         { email: "jesus@example.com", name: "Jesús Toto", role: "admin", project_ids: "", active: "yes" },
         { email: "client@example.com", name: "Sample Client", role: "client", project_ids: "p1", active: "yes" },
-        { email: "client2@example.com", name: "Second Client", role: "client", project_ids: "p2", active: "yes" }
+        { email: "client2@example.com", name: "Second Client", role: "client", project_ids: "p2", active: "yes" },
+        { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes" }
       ],
       photos: [
         ph("ph1", "Sample photo · retaining wall", "#7d6a55", "#2f3a33", "Retaining wall, east side", "2026-11-03 15:20", "u3"),
@@ -46,10 +47,10 @@
         { id: "m5", project_id: "p1", at: "2026-11-04 08:15", author: "Jesús Toto", author_email: "jesus@example.com", role: "admin", kind: "question", text: "For the pool coping, do you prefer the honed limestone or the darker basalt sample we left on the patio?", question_id: "", status: "open", via: "portal" }
       ],
       invoices: [
-        { id: "i1", project_id: "p1", number: "INV-1041", title: "Deposit", amount: "18500", issued: "2026-08-04", due: "2026-08-11", status: "paid", paid_date: "2026-08-09", pdf_file_id: "", pay_url: "", notes: "" },
-        { id: "i2", project_id: "p1", number: "INV-1052", title: "Progress payment 1: grading and drainage", amount: "24750", issued: "2026-10-15", due: "2026-10-29", status: "paid", paid_date: "2026-10-24", pdf_file_id: "", pay_url: "", notes: "" },
-        { id: "i3", project_id: "p1", number: "INV-1063", title: "Progress payment 2: walls and pool deck", amount: "31200", issued: "2026-11-04", due: "2026-11-18", status: "sent", paid_date: "", pdf_file_id: "", pay_url: "https://example.com/pay", notes: "" },
-        { id: "i4", project_id: "p1", number: "INV-1070", title: "Progress payment 3 (draft)", amount: "22000", issued: "", due: "", status: "draft", paid_date: "", pdf_file_id: "", pay_url: "", notes: "" }
+        { id: "i1", project_id: "p1", number: "INV-1041", title: "Deposit", amount: "18500", issued: "2026-08-04", due: "2026-08-11", status: "paid", paid_date: "2026-08-09", pdf_file_id: "", pay_url: "", notes: "", retainage: "0", lines: { cl1: 18500 } },
+        { id: "i2", project_id: "p1", number: "INV-1052", title: "Progress payment 1: grading and drainage", amount: "24750", issued: "2026-10-15", due: "2026-10-29", status: "paid", paid_date: "2026-10-24", pdf_file_id: "", pay_url: "", notes: "", retainage: "1237.5", lines: { cl1: 20000, cl2: 4750 } },
+        { id: "i3", project_id: "p1", number: "INV-1063", title: "Progress payment 2: walls and pool deck", amount: "31200", issued: "2026-11-04", due: "2026-11-18", status: "sent", paid_date: "", pdf_file_id: "", pay_url: "https://example.com/pay", notes: "", retainage: "1560", lines: { cl2: 10000, cl3: 21200 } },
+        { id: "i4", project_id: "p1", number: "INV-1070", title: "Progress payment 3 (draft)", amount: "22000", issued: "", due: "", status: "draft", paid_date: "", pdf_file_id: "", pay_url: "", notes: "", retainage: "1100", lines: { cl3: 12000, cl4: 10000 } }
       ],
       checklist: [
         { id: "c1", project_id: "p1", phase: "Design", item: "Approve the planting plan", owner: "client", due: "", done: "yes", done_by: "Sample Client", done_at: "2026-08-02 19:10", sort: "1" },
@@ -74,10 +75,19 @@
         { id: "s12", project_id: "p1", kind: "milestone", title: "Pool deck complete", start: "2026-12-18", end: "", phase: "Construction", owner: "blue sierra", status: "planned", notes: "", sort: "12" },
         { id: "s13", project_id: "p1", kind: "inspection", title: "Final inspection", start: "2027-02-24", end: "", phase: "Punch list", owner: "blue sierra", status: "planned", notes: "", sort: "13" }
       ],
+      contractLines: [
+        { id: "cl1", project_id: "p1", kind: "base", number: "1", title: "Site work and grading", amount: "48000", status: "approved", date: "", notes: "", sort: "1" },
+        { id: "cl2", project_id: "p1", kind: "base", number: "2", title: "Drainage", amount: "18500", status: "approved", date: "", notes: "", sort: "2" },
+        { id: "cl3", project_id: "p1", kind: "base", number: "3", title: "Retaining walls", amount: "62000", status: "approved", date: "", notes: "", sort: "3" },
+        { id: "cl4", project_id: "p1", kind: "base", number: "4", title: "Pool deck", amount: "74000", status: "approved", date: "", notes: "", sort: "4" },
+        { id: "cl5", project_id: "p1", kind: "base", number: "5", title: "Planting and irrigation", amount: "41500", status: "approved", date: "", notes: "", sort: "5" },
+        { id: "cl6", project_id: "p1", kind: "change", number: "CO-1", title: "Add gas line to the fire pit", amount: "3800", status: "approved", date: "2026-10-30", notes: "", sort: "6" },
+        { id: "cl7", project_id: "p1", kind: "change", number: "CO-2", title: "Upgrade coping to basalt", amount: "2450", status: "proposed", date: "2026-11-04", notes: "Waiting on the client's pick.", sort: "7" }
+      ],
       sessions: {}, codes: {}, outbox: []
     };
   }
-  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) { if (!d.schedule) d.schedule = seed().schedule; return d; } } catch (e) {} return seed(); }
+  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) { if (!d.schedule) d.schedule = seed().schedule; if (!d.contractLines) { var sd = seed(); d.contractLines = sd.contractLines; d.invoices = sd.invoices; d.people = sd.people; d.projects.forEach(function (x) { if (x.id === "p1") x.retainage_pct = "5"; }); } return d; } } catch (e) {} return seed(); }
   function save(db) { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { throw new Error("Preview storage is full. Clear it with BSP_MOCK.reset()."); } }
   function id() { return Math.random().toString(36).slice(2, 12); }
   function now() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
@@ -85,6 +95,8 @@
   function clean(v, max) { return String(v == null ? "" : v).trim().slice(0, max); }
   function ids(s) { return String(s || "").split(",").filter(Boolean); }
   function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
+  function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+  function cents(v) { return Math.round(num(v) * 100) / 100; }
   function mail(db, to, subject) { db.outbox.push({ to: to, subject: subject, at: now() }); }
 
   var PUBLIC = {
@@ -105,8 +117,8 @@
   function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
   function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: ph.src, full: ph.src, caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
   function projOut(db, p) { var cover = db.photos.filter(function (x) { return x.file_id === p.cover_file_id; })[0]; return Object.assign({}, p, { progress: Number(p.progress || 0), cover: cover ? cover.src : "" }); }
-  function invOut(i, staff) { var st = i.status === "sent" && i.due && i.due < today() ? "overdue" : i.status; var o = Object.assign({}, i, { amount: Number(i.amount || 0), status: st, pdf: i.pdf_file_id ? "#preview-pdf" : "" }); if (!staff) delete o.notes; return o; }
-  function emailClients(db, p, subject) { db.people.filter(function (x) { return x.role === "client" && x.active === "yes" && ids(x.project_ids).indexOf(p.id) > -1; }).forEach(function (x) { mail(db, x.email, subject); }); }
+  function invOut(i, staff) { var st = i.status === "sent" && i.due && i.due < today() ? "overdue" : i.status; var o = Object.assign({}, i, { amount: num(i.amount), retainage: num(i.retainage), lines: i.lines || {}, status: st, pdf: i.pdf_file_id ? "#preview-pdf" : "" }); if (!staff) delete o.notes; return o; }
+  function emailClients(db, p, subject) { db.people.filter(function (x) { return (x.role === "client" || x.role === "architect") && x.active === "yes" && ids(x.project_ids).indexOf(p.id) > -1; }).forEach(function (x) { mail(db, x.email, subject); }); }
   function savePhotos(db, me, p, list, caption, upd) {
     if (list.length > 12) throw new Error("Up to 12 photos at a time.");
     return list.map(function (f) {
@@ -117,13 +129,14 @@
     });
   }
 
+  function billed(db, lineId) { return db.invoices.some(function (i) { return i.status !== "void" && i.lines && i.lines[lineId]; }); }
   var ACTIONS = {
     logout: function (db, me, b) { delete db.sessions[b.token]; return {}; },
     listProjects: function (db, me) {
       return { me: meOut(me), projects: db.projects.filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived"); }).map(function (p) {
         var inv = db.invoices.filter(function (i) { return i.project_id === p.id && i.status !== "draft" && i.status !== "void"; });
         var tl = db.timeline.filter(function (t) { return t.project_id === p.id; }).slice(-1)[0];
-        return Object.assign(projOut(db, p), { balance: inv.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + Number(i.amount); }, 0),
+        return Object.assign(projOut(db, p), { balance: inv.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + num(i.amount) - num(i.retainage); }, 0),
           openQuestions: db.messages.filter(function (m) { return m.project_id === p.id && m.kind === "question" && m.status === "open"; }).length, lastUpdate: tl ? tl.at : "" });
       }) };
     },
@@ -133,13 +146,17 @@
         messages: by(db.messages).map(function (m) { var o = Object.assign({}, m); o.mine = m.author_email === me.email; if (!isStaff(me)) delete o.author_email; return o; }),
         invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
         checklist: by(db.checklist).sort(function (a, c) { return Number(a.sort) - Number(c.sort); }), phases: PHASES,
+        contract: { retainage_pct: num(p.retainage_pct), lines: by(db.contractLines).filter(function (l) { return isStaff(me) || l.status !== "rejected"; })
+          .sort(function (a, c) { return a.kind !== c.kind ? (a.kind === "base" ? -1 : 1) : Number(a.sort) - Number(c.sort); })
+          .map(function (l) { var o = Object.assign({}, l, { amount: num(l.amount) }); if (!isStaff(me)) delete o.notes; return o; }) },
         schedule: by(db.schedule).sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort) - Number(c.sort); }).map(function (x) { var o = Object.assign({}, x); if (!isStaff(me)) delete o.notes; return o; }) };
       if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes" }; });
       return out;
     },
     saveProject: function (db, me, b) {
       needStaff(me); var f = b.project || {}; if (!clean(f.name, 200)) throw new Error("The project needs a name.");
-      var patch = {}; ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status"].forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
+      var patch = {}; ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct"].forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
+      if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
       if (f.id) { var p = needProject(db, me, f.id); Object.assign(p, patch); return { project: projOut(db, p) }; }
       var np = Object.assign({ id: id(), phase: PHASES[0], progress: "0", status: "active", cover_file_id: "", created_at: now() }, patch); db.projects.push(np); return { project: projOut(db, np) };
     },
@@ -166,7 +183,7 @@
       return {};
     },
     addPerson: function (db, me, b) {
-      needStaff(me); var p = needProject(db, me, b.projectId), e = clean(b.email, 200).toLowerCase(), role = b.role === "staff" ? "staff" : "client";
+      needStaff(me); var p = needProject(db, me, b.projectId), e = clean(b.email, 200).toLowerCase(), role = ["staff", "architect"].indexOf(b.role) > -1 ? b.role : "client";
       if (role === "staff" && me.role !== "admin") throw new Error("Only Jesús can add team members.");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right.");
       var x = db.people.filter(function (q) { return q.email === e; })[0];
@@ -201,7 +218,7 @@
       var p = needProject(db, me, b.projectId), q = db.messages.filter(function (m) { return m.id === b.questionId && m.project_id === p.id && m.kind === "question"; })[0];
       if (!q) throw new Error("Question not found."); var text = clean(b.text, 5000); if (!text) throw new Error("Write an answer.");
       db.messages.push({ id: id(), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "answer", text: text, question_id: q.id, status: "", via: "portal" });
-      q.status = "answered"; if (me.role === "client") mail(db, "jesus@example.com", me.name + " answered a question"); return {};
+      q.status = "answered"; if (!isStaff(me)) mail(db, "jesus@example.com", me.name + " answered a question"); return {};
     },
     closeQuestion: function (db, me, b) { needStaff(me); var q = db.messages.filter(function (m) { return m.id === b.questionId; })[0]; if (q) { needProject(db, me, q.project_id); q.status = "answered"; } return {}; },
     saveInvoice: function (db, me, b) {
@@ -209,10 +226,33 @@
       var patch = { number: clean(f.number, 40), title: clean(f.title, 200), amount: String(Math.round((Number(f.amount) || 0) * 100) / 100), issued: clean(f.issued, 10), due: clean(f.due, 10),
         status: ["draft", "sent", "paid", "void"].indexOf(f.status) > -1 ? f.status : "sent", pay_url: /^https:\/\//.test(f.pay_url || "") ? f.pay_url : "", notes: clean(f.notes, 1000) };
       patch.paid_date = patch.status === "paid" ? (clean(f.paid_date, 10) || today()) : "";
+      if (f.lines != null) {
+        var valid = {}; db.contractLines.forEach(function (l) { if (l.project_id === p.id && l.status !== "rejected") valid[l.id] = 1; });
+        var lines = {}, sum = 0; Object.keys(f.lines || {}).forEach(function (k) { var a = cents(f.lines[k]); if (!a) return; if (!valid[k]) throw new Error("That contract line isn't on this project."); lines[k] = a; sum += a; });
+        patch.lines = lines; if (Object.keys(lines).length) patch.amount = String(cents(sum));
+      }
+      if (f.retainage != null) patch.retainage = String(cents(f.retainage));
+      if (num(patch.retainage) > num(patch.amount) && num(patch.amount) > 0) throw new Error("Retainage can't be more than the work billed.");
       if (f.pdf && f.pdf.data) { if (f.pdf.mime !== "application/pdf") throw new Error("Invoices must be PDF."); patch.pdf_file_id = "pdf-" + id(); }
       if (f.id) { var inv = db.invoices.filter(function (i) { return i.id === f.id && i.project_id === p.id; })[0]; if (!inv) throw new Error("Invoice not found."); Object.assign(inv, patch); }
       else db.invoices.push(Object.assign({ id: id(), project_id: p.id, pdf_file_id: "" }, patch));
       if (b.notify && patch.status === "sent") emailClients(db, p, "Invoice " + patch.number); return {};
+    },
+    saveContractLine: function (db, me, b) {
+      needStaff(me); var p = needProject(db, me, b.projectId), f = b.line || {}, kind = f.kind === "change" ? "change" : "base";
+      var patch = { kind: kind, number: clean(f.number, 20), title: clean(f.title, 200), amount: String(cents(f.amount)), date: clean(f.date, 10),
+        status: kind === "base" ? "approved" : (["proposed", "approved", "rejected"].indexOf(f.status) > -1 ? f.status : "proposed") };
+      if (f.notes != null) patch.notes = clean(f.notes, 1000);
+      if (!patch.title) throw new Error("Give the line a name.");
+      if (kind === "base" && num(patch.amount) <= 0) throw new Error("A contract line needs an amount above zero.");
+      if (f.id) { var it = db.contractLines.filter(function (l) { return l.id === f.id && l.project_id === p.id; })[0]; if (!it) throw new Error("Line not found.");
+        if (patch.status === "rejected" && billed(db, it.id)) throw new Error("Invoices already bill this change order, so it can't be rejected."); Object.assign(it, patch); }
+      else db.contractLines.push(Object.assign({ id: "c" + id(), project_id: p.id, sort: String(Date.now()), notes: "" }, patch));
+      return {};
+    },
+    deleteContractLine: function (db, me, b) {
+      needStaff(me); if (billed(db, b.lineId)) throw new Error("Invoices already bill this line. Edit those invoices first.");
+      db.contractLines = db.contractLines.filter(function (l) { return l.id !== b.lineId; }); return {};
     },
     saveChecklistItem: function (db, me, b) {
       needStaff(me); var p = needProject(db, me, b.projectId), f = b.item || {};
@@ -226,7 +266,7 @@
     toggleChecklist: function (db, me, b) {
       var it = db.checklist.filter(function (c) { return c.id === b.itemId; })[0]; if (!it) throw new Error("Item not found.");
       needProject(db, me, it.project_id);
-      if (!isStaff(me) && it.owner !== "client") throw new Error("Blue Sierra checks off that one.");
+      if (!isStaff(me) && (it.owner !== "client" || me.role !== "client")) throw new Error(it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
       var done = it.done !== "yes"; it.done = done ? "yes" : ""; it.done_by = done ? me.name : ""; it.done_at = done ? now() : "";
       if (done && !isStaff(me)) mail(db, "jesus@example.com", me.name + " checked off: " + it.item); return {};
     }

@@ -11,7 +11,7 @@
   var API = SET.api && !/^PASTE_/.test(SET.api) ? SET.api : "";
   var LOGO = '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 33" fill="none" aria-label="Blue Sierra"><path d="M104.849 16.552V16.2315C107.476 14.7578 108.756 14.4372 108.756 9.43255C108.756 4.42785 105.045 1.22217 98.8988 1.22217H86.4151V32.7144H99.7298C106.005 32.7144 109.845 29.4418 109.845 24.2505C109.845 20.7864 108.116 18.1597 104.849 16.552ZM89.5528 4.04508V3.98289H98.8988C103.187 3.98289 105.618 6.16466 105.618 9.62872C105.618 13.0928 103.25 15.2746 98.8988 15.2746H89.5528V4.04508ZM99.7298 29.8293V29.7671H89.5528V18.1597H99.7298C104.209 18.1597 106.645 20.3414 106.645 23.9969C106.645 27.6523 104.147 29.8341 99.7298 29.8341V29.8293Z" fill="currentColor"></path><path d="M117.013 1.22717H114.004V32.7194H117.013V1.22717Z" fill="currentColor"></path><path d="M135.643 23.0957C135.643 27.3301 133.465 29.8277 129.884 29.8277C126.302 29.8277 124.248 27.3923 124.248 23.0957V9.62708H121.24V23.2249C121.24 29.1243 124.248 32.7176 129.115 32.7176C131.741 32.7176 134.11 31.6937 135.39 29.7655H135.648V32.1386H138.595V9.62708H135.648V23.0957H135.643Z" fill="currentColor"></path><path d="M151.776 8.98965C146.016 8.98965 141.728 13.9943 141.728 20.8555C141.728 27.7166 146.016 32.7213 152.034 32.7213C154.402 32.7213 156.389 32.018 158.113 30.6687C159.775 29.3864 160.864 27.7166 161.251 25.664H158.304C157.473 28.2285 156.193 29.9606 151.967 29.9606C147.74 29.9606 144.989 26.6879 144.669 21.621H161.571C161.633 20.9177 161.633 20.3387 161.633 19.9512L161.762 19.889C161.762 13.8604 157.535 8.98486 151.776 8.98486V8.98965ZM144.798 18.9273C145.376 14.4393 147.998 11.7456 151.776 11.7456C155.553 11.7456 158.304 14.6307 158.82 18.9273H144.798Z" fill="currentColor"></path><path d="M261.364 9.62581V13.0229H261.106C259.697 10.3291 259.439 9.04688 253.742 9.04688C248.045 9.04688 243.894 14.0994 243.885 20.8792C243.899 27.6638 247.992 32.7115 253.742 32.7115C256.813 32.7115 259.697 31.4293 261.106 28.7355H261.364V32.1326H264.311V9.62581H261.364ZM254.196 29.8886C249.907 29.8886 247.027 26.2954 247.027 20.9079C247.027 15.5204 249.907 11.9272 254.196 11.9272C258.484 11.9272 261.364 15.5204 261.364 20.9079C261.364 26.2954 258.484 29.8886 254.196 29.8886Z" fill="currentColor"></path><path d="M178.08 14.4352C172.321 13.5356 170.143 12.2534 170.143 8.59793C170.143 4.9425 172.574 2.9521 177.249 2.9521C181.925 2.9521 185.316 5.64583 185.316 9.62184H188.386C188.257 4.36356 183.778 0 177.374 0C170.969 0 167.001 3.59324 167.001 8.66013C167.001 13.727 169.88 16.1002 177.947 17.4447C183.324 18.3442 185.373 19.4303 185.373 23.5355C185.373 27.6407 183.582 29.7555 177.947 29.7555C172.311 29.7555 168.921 25.9086 168.921 21.6121H165.85L165.788 21.6743C165.85 27.5115 171.227 32.7076 177.822 32.7076C184.418 32.7076 188.577 28.7937 188.577 23.5355C188.577 18.2772 185.378 15.5165 178.08 14.4304V14.4352Z" fill="currentColor"></path><path d="M195.235 10.2019H192.226V32.7135H195.235V10.2019Z" fill="currentColor"></path><path d="M195.235 3.79077H192.226V6.35532H195.235V3.79077Z" fill="currentColor"></path><path d="M208.745 8.98965C202.986 8.98965 198.692 13.9943 198.692 20.8555C198.692 27.7166 202.981 32.7213 208.998 32.7213C211.367 32.7213 213.354 32.018 215.078 30.6687C216.744 29.3864 217.828 27.7166 218.215 25.664H215.269C214.438 28.2285 213.158 29.9606 208.931 29.9606C204.705 29.9606 201.954 26.6879 201.634 21.621H218.535C218.597 20.9177 218.597 20.3387 218.597 19.9512L218.726 19.889C218.726 13.8604 214.5 8.98486 208.74 8.98486L208.745 8.98965ZM201.768 18.9273C202.346 14.4393 204.967 11.7456 208.745 11.7456C212.523 11.7456 215.273 14.6307 215.784 18.9273H201.763H201.768Z" fill="currentColor"></path><path d="M225.518 12.8951H225.26V10.2014H222.251V32.7129H225.322V19.3065C225.322 15.5218 226.602 13.0195 229.677 13.0195H232.046V10.0674H230.766C227.886 10.0674 226.415 10.7707 225.518 12.8903V12.8951Z" fill="currentColor"></path><path d="M244.529 10.0772H243.249C240.37 10.0772 238.899 10.7805 238.001 12.9001H237.743V10.2064H234.734V32.7179H237.805V19.3115C237.805 15.5268 239.085 13.0245 242.161 13.0245H244.529V10.0724V10.0772Z" fill="currentColor"></path><path d="M70.1781 11.0273H71.0186V7.48188H72.3749V6.78333H68.8218V7.48188H70.1781V11.0273Z" fill="currentColor"></path><path d="M73.5883 8.52885C73.6026 8.1413 73.6217 7.73461 73.6217 7.34227H73.6695C73.765 7.71547 73.8892 8.21785 73.9656 8.54321L74.7297 10.9594H75.6037L76.3678 8.60541C76.492 8.21785 76.6161 7.71547 76.726 7.34227H76.7737C76.788 7.79202 76.788 8.19871 76.8024 8.52885L76.96 11.0264H77.8005L77.4758 6.78247H76.2627L75.532 8.87334C75.4413 9.18434 75.3458 9.54319 75.2359 9.93553H75.2216C75.1118 9.50013 75.0354 9.18913 74.9398 8.85899L74.2092 6.78726H72.9484L72.6379 11.0312H73.4498L73.6026 8.53364L73.5883 8.52885Z" fill="currentColor"></path><path d="M13.2566 21.4173C13.1553 21.5191 12.9864 21.5191 12.885 21.4173L0.448804 8.8226C0.284725 8.65286 0 8.77411 0 9.01174V32.4504C0 32.5959 0.11582 32.7171 0.260596 32.7171H25.8762C25.8762 32.7171 25.9052 32.7171 25.9196 32.7171V8.30854C25.8424 8.29399 25.7604 8.31823 25.6928 8.38128L13.2566 21.4173Z" fill="currentColor"></path><path d="M56.0472 7.44852C55.9519 7.34675 55.7975 7.34675 55.7022 7.44852L42.1276 21.4306C42.0323 21.5324 41.8779 21.5324 41.7826 21.4306L30.251 8.40328C30.1965 8.34028 30.1239 8.32089 30.0558 8.32574V32.7132C30.0558 32.7132 30.0694 32.7132 30.0785 32.7132H46.5405L46.6131 32.6356L55.7022 22.2593C55.7975 22.1576 55.9519 22.1576 56.0472 22.2593L65.9671 32.6356C66.0125 32.6841 66.0761 32.7132 66.1396 32.7132H79.0196C79.2375 32.7132 79.3465 32.4272 79.1921 32.2576L56.0472 7.44368V7.44852Z" fill="currentColor"></path></svg>';
   var PHASES = ["Design", "Permits", "Pre-construction", "Construction", "Punch list", "Complete"];
-  var TOKEN_KEY = "bsp-session";
+  var TOKEN_KEY = API ? "bsp-session" : "bsp-preview-session";   // the preview never touches a real login
   var S = { sched: { view: "gantt", month: "" }, seq: 0, loadErr: "", token: store("get"), me: null, projects: null, pid: null, data: null, tab: "overview", step: "email", email: "", err: "", busy: false, pending: [], lb: null, modal: null };
 
   /* ---------------- helpers ---------------- */
@@ -29,6 +29,7 @@
   function bg(url) { return url ? "background-image:url('" + esc(url) + "')" : ""; }
   function toast(msg) { var t = root.querySelector(".toast"); if (!t) { t = document.createElement("div"); t.className = "toast"; root.appendChild(t); } t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2800); }
   function staff() { return !!(S.me && S.me.staff); }
+  function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
   function resetState() { S.token = ""; S.me = null; S.projects = null; S.data = null; S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
@@ -178,7 +179,7 @@
           '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
           '<button class="link" data-a="restart">Use a different email</button>') +
       (S.err ? '<p class="error">' + esc(S.err) + "</p>" : "") +
-      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team) or <b>client@example.com</b> (client). The code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
+      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team) , <b>client@example.com</b> (client) or <b>architect@example.com</b> (architect). The code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
       (!API && !window.BSP_MOCK ? '<p class="error">The portal isn\'t connected yet.</p>' : "") +
       "</div></section>";
     S.err = "";
@@ -203,13 +204,13 @@
 
   /* ---------------- project ---------------- */
   function openQuestions() { return S.data.messages.filter(function (m) { return m.kind === "question" && m.status === "open"; }); }
-  function clientTodo() { return S.data.checklist.filter(function (c) { return c.owner === "client" && !isDone(c.done); }); }
+  function clientTodo() { if (!asClient() && !staff()) return []; return S.data.checklist.filter(function (c) { return c.owner === "client" && !isDone(c.done); }); }
   function visibleInvoices() { return S.data.invoices.filter(function (i) { return staff() || (i.status !== "draft" && i.status !== "void"); }); }
 
   function renderProject() {
     var d = S.data, p = d.project, oq = openQuestions().length, todo = clientTodo().length;
     var idx = PHASES.indexOf(p.phase);
-    var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Messages", oq], ["invoices", "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
+    var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Messages", oq], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (staff()) tabs.push(["people", "People", 0]);
     var body = { overview: tabOverview, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
@@ -225,17 +226,19 @@
 
   function tabOverview() {
     var d = S.data, p = d.project, inv = visibleInvoices().filter(function (i) { return i.status !== "draft" && i.status !== "void"; });
-    var due = inv.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + i.amount; }, 0);
+    var due = inv.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + i.amount - (i.retainage || 0); }, 0), cm = contractMath();
     var overdue = inv.filter(function (i) { return i.status === "overdue"; }).length;
     var oq = openQuestions(), todo = clientTodo(), last = d.timeline[0];
-    var waiting = oq.map(function (q) { return '<div class="msg"><div class="avatar gold">?</div><div class="bubble question"><div class="who-line"><b>' + esc(q.author) + "</b> asked · " + day(q.at) + '</div><div class="text">' + esc(q.text) + "</div>" + (staff() ? "" : answerBox(q)) + "</div></div>"; }).join("") +
+    var waiting = oq.map(function (q) { return '<div class="msg"><div class="avatar gold">?</div><div class="bubble question"><div class="who-line"><b>' + esc(q.author) + "</b> asked · " + day(q.at) + '</div><div class="text">' + esc(q.text) + "</div>" + (!asClient() ? "" : answerBox(q)) + "</div></div>"; }).join("") +
       todo.map(function (c) { return checkRow(c); }).join("");
     return '<div class="grid g4">' +
       stat("Progress", Number(p.progress || 0) + "%", '<div class="bar" style="margin-top:10px"><i style="width:' + Number(p.progress || 0) + '%"></i></div>') +
-      stat(staff() ? "Waiting on the client" : "Waiting on you", String(oq.length + todo.length), oq.length + " question" + (oq.length === 1 ? "" : "s") + " · " + todo.length + " checklist") +
+      stat(!asClient() ? "Waiting on the client" : "Waiting on you", String(oq.length + todo.length), oq.length + " question" + (oq.length === 1 ? "" : "s") + " · " + todo.length + " checklist") +
       stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue") +
       stat("Target completion", p.target_date ? day(p.target_date) : "—", p.start_date ? "Started " + day(p.start_date) : "") + "</div>" +
-      '<div class="section-title"><h2>' + (staff() ? "Waiting on the client" : "Waiting on you") + "</h2></div>" +
+      (cm.has ? '<div class="section-title"><h2>Contract</h2><button class="link" data-a="tab" data-t="invoices">Contract & billing</button></div><div class="card contract">' +
+        '<div class="c-top"><div><div class="eyebrow">Contract total</div><div class="c-mid">' + money(cm.total) + '</div></div><div class="c-side"><div class="eyebrow">Paid so far</div><div class="c-mid">' + pctOf(cm.paid, cm.total) + "%</div></div></div>" + contractBar(cm, true) + "</div>" : "") +
+      '<div class="section-title"><h2>' + (!asClient() ? "Waiting on the client" : "Waiting on you") + "</h2></div>" +
       (waiting ? '<div class="thread">' + waiting + "</div>" : '<div class="empty">' + (staff() ? "Nothing pending from the client." : "You're all caught up. Nothing needs your answer right now.") + "</div>") +
       (upcoming(30).length ? '<div class="section-title"><h2>Coming up</h2><button class="link" data-a="tab" data-t="schedule">Full schedule</button></div><div class="sch-list">' + upcoming(30).slice(0, 4).map(itemRow).join("") + "</div>" : "") +
       '<div class="section-title"><h2>Latest update</h2>' + (d.timeline.length ? '<button class="link" data-a="tab" data-t="updates">All updates</button>' : "") + "</div>" +
@@ -295,33 +298,90 @@
       '<button class="btn" type="submit">Send</button></div></form></div>';
   }
 
+  /* ---------------- contract & billing ---------------- */
+  // Every number comes from the same math, so the overview, the bar, the breakdown and the invoices always agree.
+  function contractMath() {
+    var c = S.data.contract || { lines: [], retainage_pct: 0 }, lines = c.lines || [];
+    var sum = function (list, f) { return list.reduce(function (a, x) { return a + f(x); }, 0); };
+    var base = lines.filter(function (l) { return l.kind === "base"; }), cos = lines.filter(function (l) { return l.kind === "change"; });
+    var approved = cos.filter(function (l) { return l.status === "approved"; }), proposed = cos.filter(function (l) { return l.status === "proposed"; });
+    var inv = visibleInvoices().filter(function (i) { return i.status !== "draft" && i.status !== "void"; })
+      .sort(function (a, b) { return (a.issued || "") < (b.issued || "") ? -1 : (a.issued || "") > (b.issued || "") ? 1 : String(a.number).localeCompare(String(b.number)); });
+    var due = function (i) { return i.amount - (i.retainage || 0); };
+    var m = { pct: Number(c.retainage_pct || 0), base: base, cos: cos, original: sum(base, function (l) { return l.amount; }), changes: sum(approved, function (l) { return l.amount; }),
+      proposed: sum(proposed, function (l) { return l.amount; }), inv: inv, billed: sum(inv, function (i) { return i.amount; }), held: sum(inv, function (i) { return i.retainage || 0; }),
+      paid: sum(inv.filter(function (i) { return i.status === "paid"; }), due), waiting: sum(inv.filter(function (i) { return i.status !== "paid"; }), due), byLine: {}, unsplit: 0, after: {} };
+    m.total = m.original + m.changes; m.left = m.total - m.billed; m.has = lines.length > 0;
+    var run = 0;
+    inv.forEach(function (i) {
+      var split = 0; Object.keys(i.lines || {}).forEach(function (k) { m.byLine[k] = (m.byLine[k] || 0) + Number(i.lines[k]); split += Number(i.lines[k]); });
+      m.unsplit += i.amount - split; run += i.amount; m.after[i.id] = m.total - run;
+    });
+    return m;
+  }
+  function pctOf(a, b) { return b > 0 ? Math.round(a / b * 1000) / 10 : 0; }
+  function contractBar(m, compact) {
+    var whole = Math.max(m.total, m.billed, 1), seg = function (cls, v, label) { var w = Math.max(0, v) / whole * 100; return w > 0 ? '<i class="' + cls + '" style="width:' + w + '%" title="' + esc(label + ": " + money(v)) + '"></i>' : ""; };
+    var key = [["paid", "Paid", m.paid, ""], ["wait", "Billed, waiting for payment", m.waiting, ""], ["held", "Retainage held" + (m.pct ? " (" + m.pct + "%)" : ""), m.held, "Paid at completion"], ["left", "Left to bill", m.left, ""]]
+      .filter(function (k) { return k[0] === "paid" || k[0] === "left" || Math.abs(k[2]) > 0.004; });
+    return '<div class="cbar" role="img" aria-label="' + esc(key.map(function (k) { return k[1] + " " + money(k[2]); }).join(", ")) + '">' +
+      seg("paid", m.paid, "Paid") + seg("wait", m.waiting, "Billed, waiting for payment") + seg("held", m.held, "Retainage held") + seg("left", m.left, "Left to bill") + "</div>" +
+      '<div class="ckey' + (compact ? " compact" : "") + '">' + key.map(function (k) {
+        return '<div><span class="sw ' + k[0] + '"></span><span class="ck-l">' + k[1] + (k[3] && !compact ? '<small>' + k[3] + "</small>" : "") + '</span><b>' + money(k[2]) + '</b><span class="muted small">' + pctOf(k[2], m.total) + "%</span></div>";
+      }).join("") + "</div>";
+  }
+  function contractCard(m) {
+    return '<div class="card contract"><div class="c-top"><div><div class="eyebrow">Contract total</div><div class="c-big">' + money(m.total) + "</div>" +
+      (m.changes || m.cos.length ? '<div class="muted small">Original ' + money(m.original) + " · approved change orders " + (m.changes >= 0 ? "+" : "−") + money(Math.abs(m.changes)) + "</div>" : "") +
+      (m.proposed ? '<div class="muted small">Proposed change orders, not in the total yet: ' + (m.proposed >= 0 ? "+" : "−") + money(Math.abs(m.proposed)) + "</div>" : "") + "</div>" +
+      '<div class="c-side"><div class="eyebrow">Paid so far</div><div class="c-mid">' + pctOf(m.paid, m.total) + '%</div><div class="muted small">' + money(m.paid) + " of " + money(m.total) + "</div></div></div>" +
+      contractBar(m) + "</div>";
+  }
+  function lineRow(l, m) {
+    var billed = m.byLine[l.id] || 0, counts = l.kind === "base" || l.status === "approved", p = pctOf(billed, l.amount);
+    return "<tr" + (counts ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + (l.number ? esc(l.number) + " · " : "") + esc(l.title) + "</b>" +
+      (l.kind === "change" ? ' <span class="pill ' + ({ approved: "ok", proposed: "gold", rejected: "bad" }[l.status] || "") + '">' + esc(l.status === "proposed" ? "Proposed, not in total" : l.status === "approved" ? "Approved" : "Rejected") + "</span>" + (l.date ? "<div class='muted small'>" + day(l.date) + "</div>" : "") : "") + "</td>" +
+      '<td class="num">' + (l.amount < 0 ? "−" + money(-l.amount) : money(l.amount)) + '</td><td class="num">' + money(billed) + '</td><td class="pc"><div class="mini"><i style="width:' + Math.min(100, Math.max(0, p)) + '%"></i></div><span>' + p + '%</span></td><td class="num">' + money(l.amount - billed) + "</td>" +
+      (staff() ? '<td><button class="icon-btn" data-a="modal" data-m="cline" data-id="' + esc(l.id) + '" aria-label="Edit">✎</button></td>' : "") + "</tr>";
+  }
   function tabInvoices() {
-    var list = visibleInvoices(), billed = list.filter(function (i) { return i.status !== "draft" && i.status !== "void"; });
-    var paid = billed.filter(function (i) { return i.status === "paid"; }).reduce(function (a, i) { return a + i.amount; }, 0);
-    var total = billed.reduce(function (a, i) { return a + i.amount; }, 0);
+    var m = contractMath(), list = visibleInvoices().slice().sort(function (a, b) { return (b.issued || "9") < (a.issued || "9") ? -1 : (b.issued || "9") > (a.issued || "9") ? 1 : 0; });
+    var showRet = m.pct > 0 || m.inv.some(function (i) { return i.retainage; });
     var pill = function (s) { return '<span class="pill ' + ({ paid: "ok", overdue: "bad", sent: "gold" }[s] || "") + '">' + esc({ sent: "Due", paid: "Paid", overdue: "Overdue", draft: "Draft", void: "Void" }[s] || s) + "</span>"; };
-    return '<div class="grid g3">' + stat("Billed", money(total), billed.length + " invoice" + (billed.length === 1 ? "" : "s")) + stat("Paid", money(paid), "") + stat("Balance due", money(total - paid), "") + "</div>" +
-      '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" +
-      (list.length ? '<div class="card tbl"><table class="t"><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>' +
-        list.map(function (i) {
-          return "<tr><td><b style='font-weight:500'>" + esc(i.number) + "</b><div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + "</td><td>" + day(i.due) + '</td><td class="num">' + money(i.amount) + "</td><td>" + pill(i.status) + (i.paid_date ? '<div class="muted small">' + day(i.paid_date) + "</div>" : "") + "</td>" +
-            '<td><div class="row-actions">' + (i.pdf ? '<a class="btn ghost sm" href="' + esc(i.pdf) + '" target="_blank" rel="noopener noreferrer">PDF</a>' : "") +
-            (i.pay_url && i.status !== "paid" && !staff() ? '<a class="btn sm" href="' + esc(i.pay_url) + '" target="_blank" rel="noopener noreferrer">Pay</a>' : "") +
-            (staff() ? '<button class="btn ghost sm" data-a="modal" data-m="invoice" data-id="' + esc(i.id) + '">Edit</button>' : "") + "</div></td></tr>";
-        }).join("") + "</tbody></table></div>" : '<div class="empty">No invoices yet.</div>');
+    var head = m.has ? contractCard(m) : (staff() ? '<div class="empty">Add the contract lines (the schedule of values) and the client and architect will see the contract total and how each invoice draws it down.<div style="margin-top:14px"><button class="btn sm" data-a="modal" data-m="cline" data-kind="base">Add the first contract line</button></div></div>'
+      : '<div class="grid g3">' + stat("Billed", money(m.billed), m.inv.length + " invoice" + (m.inv.length === 1 ? "" : "s")) + stat("Paid", money(m.paid), "") + stat("Balance due", money(m.waiting), "") + "</div>");
+    var breakdown = !m.has ? "" : '<div class="section-title"><div><h2>Where the contract goes</h2><span class="muted small">Each line of the contract, what has been billed against it and what is left.</span></div>' +
+      (staff() ? '<div class="actions"><button class="btn ghost sm" data-a="modal" data-m="cline" data-kind="base">Add line</button><button class="btn ghost sm" data-a="modal" data-m="cline" data-kind="change">Add change order</button></div>' : "") + "</div>" +
+      '<div class="card tbl" data-lenis-prevent><table class="t sov"><thead><tr><th>Contract line</th><th class="num">Value</th><th class="num">Billed to date</th><th>Billed</th><th class="num">Left to bill</th>' + (staff() ? "<th></th>" : "") + "</tr></thead><tbody>" +
+      m.base.map(function (l) { return lineRow(l, m); }).join("") +
+      (m.cos.length ? '<tr class="grp"><td colspan="' + (staff() ? 6 : 5) + '">Change orders</td></tr>' + m.cos.map(function (l) { return lineRow(l, m); }).join("") : "") +
+      (Math.abs(m.unsplit) > 0.004 ? '<tr class="muted-row"><td>Billed without a line split</td><td class="num">—</td><td class="num">' + money(m.unsplit) + '</td><td></td><td class="num">—</td>' + (staff() ? "<td></td>" : "") + "</tr>" : "") +
+      '</tbody><tfoot><tr><td>Contract total</td><td class="num">' + money(m.total) + '</td><td class="num">' + money(m.billed) + '</td><td class="pc"><div class="mini"><i style="width:' + Math.min(100, pctOf(m.billed, m.total)) + '%"></i></div><span>' + pctOf(m.billed, m.total) + '%</span></td><td class="num">' + money(m.left) + "</td>" + (staff() ? "<td></td>" : "") + "</tr></tfoot></table></div>";
+    var table = list.length ? '<div class="card tbl" data-lenis-prevent><table class="t inv"><thead><tr><th>Invoice</th><th>Issued</th><th class="num">Work billed</th>' + (showRet ? '<th class="num">Retainage</th>' : "") + '<th class="num">Amount due</th>' + (m.has ? '<th class="num">Contract left after</th>' : "") + "<th>Status</th><th></th></tr></thead><tbody>" +
+      list.map(function (i) {
+        var counted = m.after[i.id] != null;
+        return "<tr" + (counted ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + esc(i.number) + "</b><div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + (i.due ? "<div class='muted small'>Due " + day(i.due) + "</div>" : "") + "</td>" +
+          '<td class="num">' + money(i.amount) + "</td>" + (showRet ? '<td class="num">' + (i.retainage ? (i.retainage > 0 ? "−" : "+") + money(Math.abs(i.retainage)) + (i.retainage < 0 ? "<div class='muted small'>released</div>" : "") : "—") + "</td>" : "") +
+          '<td class="num"><b style="font-weight:500">' + money(i.amount - (i.retainage || 0)) + "</b></td>" + (m.has ? '<td class="num">' + (counted ? money(m.after[i.id]) : "—") + "</td>" : "") + "<td>" + pill(i.status) + "</td>" +
+          '<td><div class="row-actions">' + (i.pdf ? '<a class="btn ghost sm" href="' + esc(i.pdf) + '" target="_blank" rel="noopener noreferrer">PDF</a>' : "") +
+          (i.pay_url && i.status !== "paid" && !staff() ? '<a class="btn sm" href="' + esc(i.pay_url) + '" target="_blank" rel="noopener noreferrer">Pay</a>' : "") +
+          (staff() ? '<button class="btn ghost sm" data-a="modal" data-m="invoice" data-id="' + esc(i.id) + '">Edit</button>' : "") + "</div></td></tr>";
+      }).join("") + "</tbody></table></div>" + (m.has ? '<p class="muted small" style="margin-top:8px">“Work billed” counts against the contract. ' + (showRet ? "Retainage is held back from each payment and paid at completion, so “Amount due” is what gets paid now. " : "") + "Drafts and void invoices don't count.</p>" : "")
+      : '<div class="empty">No invoices yet.</div>';
+    return head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table;
   }
 
   function checkRow(c) {
-    var done = isDone(c.done), can = staff() || c.owner === "client";
+    var done = isDone(c.done), can = staff() || (c.owner === "client" && asClient());
     return '<div class="ck ' + (done ? "done" : "") + '"><button class="box" data-a="toggle" data-id="' + esc(c.id) + '"' + (can ? "" : " disabled") + ' aria-label="' + (done ? "Mark not done" : "Mark done") + '">' + (done ? "✓" : "") + "</button>" +
       '<div><span class="txt">' + esc(c.item) + "</span>" + (done && c.done_by ? "<small>Done by " + esc(c.done_by) + " · " + day(c.done_at) + "</small>" : c.due ? "<small>Due " + day(c.due) + "</small>" : "") + "</div>" +
-      '<span class="pill ' + (c.owner === "client" ? "gold" : "") + '">' + (c.owner === "client" ? (staff() ? "Client" : "You") : "Blue Sierra") + "</span>" +
+      '<span class="pill ' + (c.owner === "client" ? "gold" : "") + '">' + (c.owner === "client" ? (!asClient() ? "Client" : "You") : "Blue Sierra") + "</span>" +
       (staff() ? '<span style="display:flex;gap:6px"><button class="icon-btn" data-a="modal" data-m="check" data-id="' + esc(c.id) + '" aria-label="Edit">✎</button><button class="icon-btn" data-a="delCheck" data-id="' + esc(c.id) + '" aria-label="Delete">×</button></span>' : "<span></span>") + "</div>";
   }
   function tabChecklist() {
     var list = S.data.checklist, groups = PHASES.map(function (ph) { return [ph, list.filter(function (c) { return c.phase === ph; })]; }).filter(function (g) { return g[1].length; });
     var done = list.filter(function (c) { return isDone(c.done); }).length;
-    return '<div class="section-title" style="margin-top:0"><div><h2>Checklist</h2><span class="muted small">' + done + " of " + list.length + " done" + (staff() ? "" : " · you can check off the items marked “You”") + "</span></div>" +
+    return '<div class="section-title" style="margin-top:0"><div><h2>Checklist</h2><span class="muted small">' + done + " of " + list.length + " done" + (!asClient() ? "" : " · you can check off the items marked “You”") + "</span></div>" +
       (staff() ? '<button class="btn sm" data-a="modal" data-m="check">Add item</button>' : "") + "</div>" +
       (groups.length ? groups.map(function (g) { return '<div class="phase-group"><h3>' + esc(g[0]) + (g[0] === S.data.project.phase ? ' <span class="pill dark">Current phase</span>' : "") + "</h3>" + g[1].map(checkRow).join("") + "</div>"; }).join("") : '<div class="empty">No checklist items yet.</div>');
   }
@@ -330,9 +390,9 @@
     var ppl = S.data.people || [];
     return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2></div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
       ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px"><div class="avatar ' + (x.role === "client" ? "gold" : "") + '">' + esc(initials(x.name)) + '</div><div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + esc(x.email) + "</div></div>" +
-        '<span class="pill">' + esc(x.role === "client" ? "Client" : x.role === "admin" ? "Admin" : "Team") + "</span>" + (x.role === "client" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
+        '<span class="pill">' + esc({ client: "Client", architect: "Architect", admin: "Admin" }[x.role] || "Team") + "</span>" + (x.role === "client" || x.role === "architect" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
       '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
-      (S.me.admin ? '<label class="f">Role<select name="role"><option value="client">Client: sees this project only</option><option value="staff">Blue Sierra team: sees all projects</option></select></label>' : "") +
+      '<label class="f">Role<select name="role"><option value="client">Client: sees this project only</option><option value="architect">Architect: sees this project only, like the client</option>' + (S.me.admin ? '<option value="staff">Blue Sierra team: sees all projects</option>' : "") + "</select></label>" +
       '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>';
   }
 
@@ -365,7 +425,7 @@
   }
   function itemRow(x) {
     var when = day(x.start) + (x.end && x.end !== x.start ? " → " + day(x.end) : "");
-    return '<button class="sch-row" data-a="schedView" data-id="' + esc(x.id) + '"><span class="sch-dot k-' + esc(x.kind) + '"></span><span class="sch-when">' + when + "</span><span><b>" + esc(x.title) + '</b><span class="muted small">' + esc(kindLabel(x.kind)) + (x.owner === "client" ? (staff() ? " · client" : " · you") : "") + (x.derived ? " · from " + esc(x.derived) : "") + "</span></span>" +
+    return '<button class="sch-row" data-a="schedView" data-id="' + esc(x.id) + '"><span class="sch-dot k-' + esc(x.kind) + '"></span><span class="sch-when">' + when + "</span><span><b>" + esc(x.title) + '</b><span class="muted small">' + esc(kindLabel(x.kind)) + (x.owner === "client" ? (!asClient() ? " · client" : " · you") : "") + (x.derived ? " · from " + esc(x.derived) : "") + "</span></span>" +
       (x.status === "done" ? '<span class="pill ok">Done</span>' : x.status === "in progress" ? '<span class="pill gold">In progress</span>' : "<span></span>") + "</button>";
   }
   function tabSchedule() {
@@ -459,21 +519,44 @@
         '<div class="row2"><label class="f">Phase<select name="phase">' + PHASES.map(function (ph) { return "<option" + (ph === p.phase ? " selected" : "") + ">" + ph + "</option>"; }).join("") + '</select></label><label class="f">Progress %<input type="number" name="progress" min="0" max="100" value="' + esc(p.progress || 0) + '"></label></div>' +
         '<div class="row2"><label class="f">Start date<input type="date" name="start_date" value="' + esc(p.start_date) + '"></label><label class="f">Target completion<input type="date" name="target_date" value="' + esc(p.target_date) + '"></label></div>' +
         '<label class="f">Short description<textarea name="summary">' + esc(p.summary) + "</textarea></label>" +
+        '<label class="f">Retainage % held from each invoice (0 if none)<input type="number" name="retainage_pct" min="0" max="20" step="0.5" value="' + esc(p.retainage_pct || 0) + '"></label>' +
         (m.id ? '<label class="f">Status<select name="status"><option value="active"' + (p.status !== "archived" ? " selected" : "") + '>Active</option><option value="archived"' + (p.status === "archived" ? " selected" : "") + ">Archived (hidden from the client)</option></select></label>" : "") +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "invoice") {
       var i = m.id ? d.invoices.filter(function (x) { return x.id === m.id; })[0] || {} : { issued: today(), status: "sent" };
-      var st = i.status === "overdue" ? "sent" : i.status;
-      body = "<h2>" + (m.id ? "Edit invoice" : "New invoice") + '</h2><form class="form" data-form="invoice">' +
-        '<div class="row2"><label class="f">Invoice number<input type="text" name="number" required value="' + esc(i.number) + '"></label><label class="f">Amount (USD)<input type="number" name="amount" step="0.01" min="0" required value="' + esc(i.amount) + '"></label></div>' +
-        '<label class="f">Description<input type="text" name="title" value="' + esc(i.title) + '" placeholder="e.g. Progress payment 2: walls and drainage"></label>' +
+      var st = i.status === "overdue" ? "sent" : i.status, cm2 = contractMath(), billable = cm2.base.concat(cm2.cos.filter(function (l) { return l.status === "approved" || (i.lines && i.lines[l.id]); }));
+      var heldElsewhere = cm2.held - (cm2.after[i.id] != null ? (i.retainage || 0) : 0);
+      var auto = !m.id;                      // a new invoice suggests retainage from the project's percentage
+      body = "<h2>" + (m.id ? "Edit invoice" : "New invoice") + '</h2><form class="form" data-form="invoice" data-pct="' + cm2.pct + '" data-auto="' + (auto ? 1 : 0) + '">' +
+        '<div class="row2"><label class="f">Invoice number<input type="text" name="number" required value="' + esc(i.number) + '"></label><label class="f">Description<input type="text" name="title" value="' + esc(i.title) + '" placeholder="e.g. Pay application 2"></label></div>' +
+        (billable.length ? '<fieldset class="lines"><legend>Work billed this period, by contract line</legend>' + billable.map(function (l) {
+          var left = l.amount - (cm2.byLine[l.id] || 0) + (cm2.after[i.id] != null && i.lines ? Number(i.lines[l.id] || 0) : 0);
+          return '<label class="lrow"><span>' + (l.number ? esc(l.number) + " · " : "") + esc(l.title) + '<small>Left to bill ' + money(left) + " of " + money(l.amount) + '</small></span><input type="number" step="0.01" name="line:' + esc(l.id) + '" value="' + esc(i.lines && i.lines[l.id] ? i.lines[l.id] : "") + '" placeholder="0.00"></label>';
+        }).join("") + "</fieldset>" : "") +
+        '<div class="row2"><label class="f">Work billed (USD)' + (billable.length ? " · or fill in the lines above" : "") + '<input type="number" name="amount" step="0.01" required value="' + esc(i.amount == null ? "" : i.amount) + '"' + (i.lines && Object.keys(i.lines).length ? " readonly" : "") + "></label>" +
+        '<label class="f">Retainage held (USD)' + (cm2.pct ? " · " + cm2.pct + "%" : "") + '<input type="number" name="retainage" step="0.01" value="' + esc(i.retainage || "") + '" placeholder="0.00"></label></div>' +
+        '<p class="inv-due">Amount due: <b data-due>' + money((i.amount || 0) - (i.retainage || 0)) + "</b>" + (heldElsewhere > 0 ? ' · <button type="button" class="link" data-a="releaseRet" data-held="' + heldElsewhere + '">Release the ' + money(heldElsewhere) + " retainage held</button>" : "") + "</p>" +
         '<div class="row2"><label class="f">Issued<input type="date" name="issued" value="' + esc(i.issued) + '"></label><label class="f">Due<input type="date" name="due" value="' + esc(i.due) + '"></label></div>' +
-        '<div class="row2"><label class="f">Status<select name="status">' + [["draft", "Draft (client can't see it)"], ["sent", "Sent / due"], ["paid", "Paid"], ["void", "Void"]].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === st ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select></label><label class="f">Paid on<input type="date" name="paid_date" value="' + esc(i.paid_date) + '"></label></div>' +
+        '<div class="row2"><label class="f">Status<select name="status">' + [["draft", "Draft (client can't see it)"], ["sent", "Sent / due"], ["paid", "Paid"], ["void", "Void"]].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === st ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
+        '<label class="f">Paid on<input type="date" name="paid_date" value="' + esc(i.paid_date) + '"></label></div>' +
         '<label class="f">Payment link (optional, https)<input type="url" name="pay_url" value="' + esc(i.pay_url) + '" placeholder="Stripe or QuickBooks payment link"></label>' +
         '<label class="f">PDF' + (i.pdf ? ' (one is attached; choose a file to replace it)' : "") + '<input type="file" name="pdf" accept="application/pdf"></label>' +
+        '<label class="f">Notes (team only)<textarea name="notes">' + esc(i.notes) + "</textarea></label>" +
         '<label class="check-line"><input type="checkbox" name="notify"' + (m.id ? "" : " checked") + "> Email the client that it's ready</label>" +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
+    }
+    if (m.type === "cline") {
+      var cl = m.id ? ((d.contract && d.contract.lines) || []).filter(function (x) { return x.id === m.id; })[0] || {} : { kind: m.kind || "base", status: "proposed", date: today() };
+      var isCO = cl.kind === "change";
+      body = "<h2>" + (m.id ? "Edit " : "Add ") + (isCO ? "change order" : "contract line") + '</h2><form class="form" data-form="cline" data-kind="' + (isCO ? "change" : "base") + '">' +
+        '<div class="row2"><label class="f">' + (isCO ? "CO number" : "Number (optional)") + '<input type="text" name="number" maxlength="20" value="' + esc(cl.number) + '" placeholder="' + (isCO ? "CO-1" : "e.g. 2") + '"></label>' +
+        '<label class="f">Amount (USD)' + (isCO ? " · negative for a credit" : "") + '<input type="number" name="amount" step="0.01" required value="' + esc(cl.amount == null ? "" : cl.amount) + '"></label></div>' +
+        '<label class="f">Name<input type="text" name="title" required maxlength="200" value="' + esc(cl.title) + '" placeholder="' + (isCO ? "e.g. Add gas line to fire pit" : "e.g. Deck") + '"></label>' +
+        (isCO ? '<div class="row2"><label class="f">Status<select name="status">' + [["proposed", "Proposed (not in the total yet)"], ["approved", "Approved (adds to the contract)"], ["rejected", "Rejected (hidden from the client)"]].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === cl.status ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
+          '<label class="f">Date<input type="date" name="date" value="' + esc(cl.date) + '"></label></div>' : "") +
+        '<label class="f">Notes (team only)<textarea name="notes" maxlength="1000">' + esc(cl.notes) + "</textarea></label>" +
+        '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delLine" data-id="' + esc(m.id) + '" style="margin-right:auto">Delete</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "sched") {
       var x = m.id ? (d.schedule || []).filter(function (y) { return y.id === m.id; })[0] || {} : { kind: "inspection", start: today(), owner: "blue sierra", status: "planned" };
@@ -496,7 +579,7 @@
       var v = scheduleItems().filter(function (y) { return y.id === m.id; })[0];
       body = v ? '<div class="eyebrow"><span class="sch-dot k-' + esc(v.kind) + '"></span> ' + esc(kindLabel(v.kind)) + (v.derived ? " · from " + esc(v.derived) : "") + "</div><h2 style=\"margin-top:6px\">" + esc(v.title) + "</h2>" +
         '<p class="muted">' + day(v.start) + (v.end && v.end !== v.start ? " → " + day(v.end) : "") + (v.phase ? " · " + esc(v.phase) : "") + (v.status ? " · " + esc(v.status) : "") + "</p>" +
-        (v.owner === "client" ? '<p style="margin-top:10px">' + (staff() ? "The client handles this one." : "This one is yours.") + "</p>" : "") +
+        (v.owner === "client" ? '<p style="margin-top:10px">' + (!asClient() ? "The client handles this one." : "This one is yours.") + "</p>" : "") +
         '<div class="actions" style="margin-top:18px">' + (v.derived ? '<button class="btn ghost" data-a="tab" data-t="' + (v.derived === "Invoices" ? "invoices" : "checklist") + '">Open ' + esc(v.derived) + "</button>" : "") + '<button class="btn" data-a="close">Close</button></div>' : "<p>Not found.</p>";
     }
     if (m.type === "check") {
@@ -534,7 +617,7 @@
       case "home": return go(null);
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
-      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null }; return keepScroll(render);
+      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
       case "close": S.modal = null; return keepScroll(render);
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
@@ -552,6 +635,10 @@
         if (!n) S.sched.month = today().slice(0, 7);
         else { var dd = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1 + n, 1)); S.sched.month = dd.getUTCFullYear() + "-" + String(dd.getUTCMonth() + 1).padStart(2, "0"); }
         return keepScroll(render);
+      case "delLine": if (confirm("Delete this line?")) run(b, async function () { await call("deleteContractLine", { lineId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); return;
+      case "releaseRet":
+        var rf = b.closest("form"); rf.querySelectorAll("[name^='line:']").forEach(function (x) { x.value = ""; });
+        rf.amount.value = 0; rf.retainage.value = -Number(b.dataset.held); rf.dataset.auto = 0; if (!rf.title.value) rf.title.value = "Retainage release"; invoiceMath(rf); return;
       case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
@@ -566,6 +653,21 @@
   });
 
   root.addEventListener("mousedown", function (e) { S.downOnBg = !!(e.target.classList && e.target.classList.contains("modal-bg")); });
+  /* Invoice form: the lines add up to the work billed, retainage follows the project's % until someone types it, and the amount due updates live. */
+  function invoiceMath(f) {
+    var lines = f.querySelectorAll("[name^='line:']"), pct = Number(f.dataset.pct || 0);
+    var split = [].some.call(lines, function (x) { return x.value !== ""; });     // typing in any line makes the total automatic
+    if (split) { var t = 0; lines.forEach(function (x) { t += Number(x.value) || 0; }); f.amount.value = Math.round(t * 100) / 100; }
+    f.amount.readOnly = split;
+    var amt = Number(f.amount.value) || 0;
+    if (f.dataset.auto === "1" && pct) f.retainage.value = amt ? Math.round(amt * pct) / 100 : "";
+    var out = f.querySelector("[data-due]"); if (out) out.textContent = money(amt - (Number(f.retainage.value) || 0));
+  }
+  root.addEventListener("input", function (e) {
+    var f = e.target.form; if (!f || f.dataset.form !== "invoice") return;
+    if (e.target.name === "retainage") f.dataset.auto = 0;
+    invoiceMath(f);
+  });
   root.addEventListener("change", function (e) {
     if (!e.target.matches("[data-pick]")) return;
     var files = [].slice.call(e.target.files || []), room = Math.max(0, 12 - S.pending.length);
@@ -625,14 +727,19 @@
       }
       if (kind === "project") {
         var proj = { id: S.modal && S.modal.id || undefined };
-        ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status"].forEach(function (k) { if (fd.has(k)) proj[k] = v(k); });
+        ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct"].forEach(function (k) { if (fd.has(k)) proj[k] = v(k); });
         var r2 = await call("saveProject", { project: proj }); S.modal = null;
         if (!proj.id) { S.projects = null; return go(r2.project.id); }
         await refresh(true); toast("Project saved"); return;
       }
+      if (kind === "cline") {
+        await call("saveContractLine", { projectId: S.pid, line: { id: S.modal.id || undefined, kind: f.dataset.kind, number: v("number"), title: v("title"), amount: v("amount"), status: v("status"), date: v("date"), notes: v("notes") } });
+        S.modal = null; await refresh(); toast("Contract updated"); return;
+      }
       if (kind === "invoice") {
-        var file = f.querySelector("[name=pdf]").files[0], pdf = file ? await readPdf(file) : null;
-        await call("saveInvoice", { projectId: S.pid, notify: !!fd.get("notify"), invoice: { id: S.modal.id || undefined, number: v("number"), title: v("title"), amount: v("amount"), issued: v("issued"), due: v("due"), status: v("status"), paid_date: v("paid_date"), pay_url: v("pay_url"), pdf: pdf } });
+        var file = f.querySelector("[name=pdf]").files[0], pdf = file ? await readPdf(file) : null, lineVals = null;
+        if (f.querySelector("[name^='line:']")) { lineVals = {}; f.querySelectorAll("[name^='line:']").forEach(function (x) { if (Number(x.value)) lineVals[x.name.slice(5)] = x.value; }); }
+        await call("saveInvoice", { projectId: S.pid, notify: !!fd.get("notify"), invoice: { id: S.modal.id || undefined, number: v("number"), title: v("title"), amount: v("amount"), issued: v("issued"), due: v("due"), status: v("status"), paid_date: v("paid_date"), pay_url: v("pay_url"), pdf: pdf, notes: v("notes"), retainage: fd.has("retainage") ? v("retainage") || 0 : undefined, lines: lineVals || undefined } });
         S.modal = null; await refresh(true); toast("Invoice saved"); return;
       }
       if (kind === "sched") {

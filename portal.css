@@ -272,3 +272,51 @@
 #bs-portal .g-mark.many.diamond span{transform:rotate(-45deg)}
 #bs-portal .g-mark.many.k-decision,#bs-portal .g-mark.many.k-meeting{color:#111}
 #bs-portal .sch-chip.off i{background:repeating-linear-gradient(135deg,#b9b2a6 0 2px,#e9e3d8 2px 4px)}
+
+/* ---------------- contract & billing ---------------- */
+#bs-portal .contract{padding:22px}
+#bs-portal .contract .c-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+#bs-portal .contract .c-big{font-size:clamp(30px,5vw,44px);font-weight:500;letter-spacing:-.01em;line-height:1.1;margin:4px 0 2px}
+#bs-portal .contract .c-mid{font-size:26px;font-weight:500;line-height:1.2;margin-top:2px}
+#bs-portal .contract .c-side{text-align:right}
+#bs-portal .cbar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:#efe9df;box-shadow:inset 0 0 0 1px var(--line);gap:2px}
+#bs-portal .cbar i{display:block;height:100%;min-width:2px}
+#bs-portal .cbar .paid,#bs-portal .ckey .sw.paid{background:var(--ok)}
+#bs-portal .cbar .wait,#bs-portal .ckey .sw.wait{background:var(--gold)}
+#bs-portal .cbar .held,#bs-portal .ckey .sw.held{background:repeating-linear-gradient(135deg,#8f887c 0 3px,#d8d1c4 3px 6px)}
+#bs-portal .cbar .left{background:transparent}
+#bs-portal .ckey .sw.left{background:#efe9df;box-shadow:inset 0 0 0 1px #cfc6b6}
+#bs-portal .ckey{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px;margin-top:16px}
+#bs-portal .ckey>div{display:grid;grid-template-columns:12px 1fr;column-gap:8px;align-items:baseline;align-content:start}
+#bs-portal .ckey b{grid-column:2;font-size:18px!important;margin-top:2px}
+#bs-portal .ckey .sw{width:12px;height:12px;border-radius:3px;align-self:center}
+#bs-portal .ckey .ck-l{font-size:14px;color:var(--ink-2)}
+#bs-portal .ckey .ck-l small{display:block;font-size:12px;color:var(--muted)}
+#bs-portal .ckey b{font-weight:500;font-size:15px;font-variant-numeric:tabular-nums}
+#bs-portal .ckey .muted.small{grid-column:2}
+#bs-portal .ckey.compact{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+#bs-portal .ckey.compact .muted.small{display:none}
+#bs-portal .tbl{overflow-x:auto}
+#bs-portal table.sov,#bs-portal table.inv{min-width:640px}
+#bs-portal .t td.num,#bs-portal .t th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#bs-portal .t td.pc{white-space:nowrap}
+#bs-portal .t td.pc span{font-size:13px;color:var(--ink-2);margin-left:8px;font-variant-numeric:tabular-nums}
+#bs-portal .mini{display:inline-block;vertical-align:middle;width:70px;height:6px;border-radius:99px;background:#efe9df;overflow:hidden}
+#bs-portal .mini i{display:block;height:100%;background:var(--ok);border-radius:99px}
+#bs-portal .t tr.grp td{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:16px}
+#bs-portal .t tr.muted-row td{color:var(--muted)}
+#bs-portal .t tfoot td{font-weight:500;border-top:2px solid var(--ink);border-bottom:0}
+#bs-portal fieldset.lines{border:1px solid var(--line);border-radius:10px;padding:10px 14px 12px;margin:0;display:flex;flex-direction:column;gap:8px}
+#bs-portal fieldset.lines legend{font-size:13px;color:var(--muted);padding:0 6px}
+#bs-portal .lrow{display:grid;grid-template-columns:1fr 150px;gap:12px;align-items:center;font-size:14px;color:var(--ink)}
+#bs-portal .lrow small{display:block;font-size:12px;color:var(--muted)}
+#bs-portal .inv-due{font-size:15px;margin:-2px 0 0}
+#bs-portal .inv-due b{font-weight:600}
+#bs-portal input[readonly]{background:var(--paper);color:var(--ink-2)}
+@media (max-width:620px){
+  #bs-portal .contract{padding:16px}
+  #bs-portal .contract .c-side{text-align:left}
+  #bs-portal .ckey,#bs-portal .ckey.compact{grid-template-columns:1fr 1fr}
+  #bs-portal .lrow{grid-template-columns:1fr 120px}
+}
+#bs-portal table.inv td:first-child{min-width:190px}#bs-portal table.inv td:nth-child(2){white-space:nowrap}
