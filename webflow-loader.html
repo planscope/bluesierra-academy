@@ -1,5 +1,5 @@
 <!--
-  Blue Sierra Academy · what goes in the Webflow page /academy.
+  Blue Sierra · what goes in the Webflow pages /academy (team) and /portal (clients).
   The page loads the code from GitHub (planscope/bluesierra-academy) through jsDelivr,
   so every push to the repo updates the site. You never paste the big files again.
 -->
@@ -26,3 +26,26 @@
 <script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-content.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-calls.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/academy-app.js"></script>
+
+
+<!-- ================================================================
+     CLIENT PORTAL · Webflow page /portal (no Memberstack: clients log in with an email code)
+     ================================================================ -->
+
+<!-- A) /portal Page settings → Custom code → Inside <head> -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/portal.css">
+
+<!-- B) A Code Embed in the /portal page body, full width -->
+<div id="bs-portal"></div>
+
+<!-- C) /portal Page settings → Custom code → Before </body>
+     api: the Portal Apps Script web app URL (ends in /exec). loginPhoto: a Blue Sierra photo from Webflow Assets. -->
+<script>
+  window.BSP_SETTINGS = {
+    api: "",
+    loginPhoto: ""
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/gh/planscope/bluesierra-academy@main/portal-app.js"></script>

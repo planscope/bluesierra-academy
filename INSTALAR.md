@@ -85,3 +85,49 @@ Las preguntas, módulos, checklist y textos están en `academy-content.js`. Ojo:
 ## Probarlo sin Webflow
 
 Abre `preview.html` con un servidor local. Entra en modo vista previa, guarda el avance solo en ese navegador, y la pestaña Calls usa 12 firmas ficticias en lugar de la hoja real.
+
+---
+
+# Portal de clientes · bluesierracorp.com/portal
+
+Cada cliente entra con su correo (le llega un código de 6 dígitos, sin contraseña) y ve **solo su proyecto**: fase y avance, actualizaciones con fotos, galería, mensajes y preguntas, facturas y checklist. Tú y tu equipo ven todos los proyectos y pueden subir fotos, publicar actualizaciones, hacer preguntas, agregar facturas con PDF y manejar el checklist.
+
+- **Preguntas por correo:** cuando le haces una pregunta al cliente, le llega un correo desde tu Gmail. Si contesta respondiendo el correo, su respuesta aparece sola en el portal (se revisa cada 10 minutos).
+- **Avisos para ti:** te llega un correo cuando un cliente te escribe, contesta una pregunta o marca algo del checklist.
+- **Facturas:** las agregas tú (número, monto, fechas, estado, PDF y, si quieres, un link de pago de Stripe o QuickBooks). Los borradores no los ve el cliente.
+- **No usa Memberstack** y no cuesta nada por cliente. Todo vive en una hoja privada de Google y una carpeta de Drive tuyas.
+
+## 1. Google (una sola vez)
+
+1. Crea una hoja nueva en Google Sheets llamada **Blue Sierra Portal**. No la compartas con clientes.
+2. **Extensions → Apps Script**. Borra lo que haya, pega todo `apps-script/Portal.gs` y guarda. Revisa arriba `NOTIFY_EMAIL` (tu correo) y `PORTAL_URL`.
+3. Elige **setup** y dale **Run**. Acepta los permisos con tu cuenta: hoja, Drive (fotos y PDFs) y Gmail (mandar correos y leer las respuestas de los clientes a las preguntas). Esto crea las pestañas, la carpeta **Blue Sierra Portal** en tu Drive, te agrega como admin y deja corriendo la revisión de correos cada 10 minutos.
+4. **Deploy → New deployment → Web app**. Execute as: **Me**. Who has access: **Anyone**. Copia la URL que termina en `/exec`.
+5. Para agregar a alguien de tu equipo: en Apps Script corre `addStaff("Nombre", "correo")`. Los clientes los agregas desde el portal (pestaña **People** de cada proyecto).
+
+## 2. Webflow
+
+1. Crea una página nueva **/portal** (no `/projects`: ahí ya están tus proyectos del portafolio).
+2. Pega la sección **CLIENT PORTAL** de `webflow-loader.html`: la parte A en el head de la página, la parte B en un Code Embed a todo lo ancho y la parte C antes de `</body>`.
+3. En la parte C pon la URL del paso 1.4 en `api` y una foto de Blue Sierra (de Assets) en `loginPhoto`.
+4. Marca la página como **noindex** (Page settings → SEO) para que Google no la muestre.
+5. Publica cuando lo hayas probado.
+
+## Cómo se usa
+
+- **Proyecto nuevo:** entra a /portal con tu correo → **New project** → nombre, cliente, ciudad, fase, fechas.
+- **Dar acceso al cliente:** en el proyecto, pestaña **People** → nombre y correo → **Add** (con "Email them an invitation" le llega el aviso).
+- **Fotos:** pestaña **Updates** (con texto y fotos, y opción de avisarle al cliente por correo) o **Photos** (solo fotos). Se achican solas antes de subir. Desde la foto puedes ponerla de portada o borrarla.
+- **Preguntas:** pestaña **Messages** → marca "Ask as a question". Quedan "waiting" hasta que contesten.
+- **Quitar acceso:** pestaña **People** → ×. Para archivar un proyecto: **Edit project → Status → Archived** (el cliente deja de verlo).
+
+## Privacidad
+
+- El cliente solo ve proyectos donde está en People. El servidor lo revisa en cada acción, no solo la pantalla.
+- Los códigos duran 15 minutos y aguantan 5 intentos; las sesiones se guardan cifradas (hash) y duran 30 días.
+- Las fotos y PDFs se guardan en tu Drive y se comparten "con el enlace" para que el portal pueda mostrarlas. Los enlaces son largos e imposibles de adivinar y solo aparecen dentro del portal. Si tu Google Workspace no permite compartir con enlace, las fotos no se verán: avísame y lo cambiamos.
+- Nada de esto está en GitHub: el repositorio solo tiene el código.
+
+## Probarlo sin Google
+
+Abre `portal-preview.html` con un servidor local. Entra como **jesus@example.com** (equipo) o **client@example.com** (cliente), código **123456**. Todo es ficticio y se guarda solo en ese navegador.
