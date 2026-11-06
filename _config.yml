@@ -1,0 +1,13 @@
+# GitHub Pages serves only the files the live pages load (CSS, JS, logo).
+# Previews, the fake backend, Apps Script sources and docs stay in the repo but are not hosted as pages.
+exclude:
+  - README.md
+  - INSTALAR.md
+  - preview.html
+  - portal-preview.html
+  - portal-mock.js
+  - webflow-loader.html
+  - publicar.sh
+  - apps-script
+  - loader-test.html
+  - portal-loader-test.html
