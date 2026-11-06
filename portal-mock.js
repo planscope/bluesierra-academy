@@ -546,6 +546,25 @@
       recent: [{ date: "2026-11-04", who: "Home Depot", what: "Framing lumber, hangers", amount: 1284.55, bucket: "materials" }, { date: "2026-11-01", who: "Payroll", what: "Payroll Expenses:Wages", amount: 6240, bucket: "labor" }, { date: "2026-10-28", who: "Peninsula Electric", what: "Rough-in progress billing", amount: 8400, bucket: "subs" }, { date: "2026-10-24", who: "Sunbelt Rentals", what: "Mini excavator, 3 days", amount: 1080, bucket: "other" }],
       hours: { total: 612, people: [{ name: "Miguel R.", hours: 214 }, { name: "Luis P.", hours: 188 }, { name: "Andrés G.", hours: 141 }, { name: "Chris T.", hours: 69 }] }, warnings: [] });
   };
+  ACTIONS.qbFinance = function (db, me, b) {
+    if (!meOut(me).money) throw new Error("That's #money. Ask Jesús to tag you #money.");
+    var q = db.qb || {}, projects = db.projects.filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, qb: p.qb_customer || "", status: p.status }; });
+    var base = { connected: !!q.connected, env: q.env || "production", projects: projects, admin: me.role === "admin" }; if (!base.connected) return base;
+    var mk = function (lbl, i, o) { return { label: lbl, income: i, expenses: o }; };
+    return Object.assign(base, { company: "Blue Sierra Construction (sample)", updated: now(), cached: !b.refresh,
+      cash: { total: 124250.5, accounts: [{ name: "Chase Business Checking", balance: 84250.5 }, { name: "Chase Savings", balance: 40000 }] },
+      cards: { total: 6200, accounts: [{ name: "Amex Business Gold", balance: 6200 }] },
+      ar: { open: 48140, overdue: 2797.5, count: 4 }, ap: { open: 18980, overdue: 3120, count: 7, soon: [{ vendor: "Golden State Lumber", due: "2026-10-30", amount: 3120, late: true }, { vendor: "Peninsula Electric", due: "2026-11-14", amount: 8400, late: false }, { vendor: "Ferguson Plumbing", due: "2026-11-18", amount: 2740, late: false }] },
+      months: [mk("Dec 2025", 61000, 52000), mk("Jan 2026", 38000, 47000), mk("Feb 2026", 72000, 55000), mk("Mar 2026", 84000, 61000), mk("Apr 2026", 91000, 70000), mk("May 2026", 76000, 68000), mk("Jun 2026", 99000, 73000), mk("Jul 2026", 112000, 81000), mk("Aug 2026", 88000, 79000), mk("Sep 2026", 104000, 76000), mk("Oct 2026", 121000, 88000), mk("Nov 2026", 34000, 21000)],
+      ytd: { income: 919000, expenses: 719000, labor: 286000, materials: 221000, subs: 158000, other: 54000, top: [{ name: "Payroll Expenses: Wages", amount: 251000, bucket: "labor" }, { name: "Job Materials", amount: 221000, bucket: "materials" }, { name: "Subcontractors", amount: 158000, bucket: "subs" }, { name: "Payroll Expenses: Taxes", amount: 35000, bucket: "labor" }, { name: "Equipment Rental", amount: 21000, bucket: "other" }, { name: "Truck fuel", amount: 14000, bucket: "other" }] },
+      jobs: [{ id: "58", name: "Sample Client", income: 140500, costs: 112340, net: 28160 }, { id: "61", name: "Second Client", income: 96000, costs: 101500, net: -5500 }, { id: "64", name: "Hillcrest ADU", income: 210000, costs: 158000, net: 52000 }, { id: "66", name: "Palo Alto Kitchen", income: 48000, costs: 31000, net: 17000 }],
+      customers: [{ id: "58", name: "Sample Client", short: "Sample Client" }, { id: "61", name: "Second Client", short: "Second Client" }, { id: "64", name: "Hillcrest ADU", short: "Hillcrest ADU" }, { id: "66", name: "Palo Alto Kitchen", short: "Palo Alto Kitchen" }, { id: "70", name: "Morales: Backyard", short: "Backyard", parent: "69" }],
+      warnings: [] });
+  };
+  ACTIONS.qbNewProject = function (db, me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús creates projects from QuickBooks.");
+    var r = ACTIONS.saveProject(db, me, { project: { name: b.name, client_name: b.client } }); var p = db.projects.filter(function (x) { return x.id === r.project.id; })[0]; p.qb_customer = String(b.customerId); return { project: r.project };
+  };
   var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   function previewMe(db, role) {
     if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");

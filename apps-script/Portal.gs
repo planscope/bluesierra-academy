@@ -60,9 +60,9 @@ var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone"
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
-var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
@@ -1061,7 +1061,105 @@ ACTIONS.qbDisconnect = function (me) {
 };
 ACTIONS.qbCustomers = function (me) {
   needStaff(me);
-  return { customers: (qbQuery("select Id, DisplayName from Customer where Active = true maxresults 1000").Customer || []).map(function (c) { return { id: String(c.Id), name: c.DisplayName }; }) };
+  return { customers: qbCustomerList() };
+};
+function qbCustomerList() {
+  return (qbQuery("select * from Customer where Active = true maxresults 1000").Customer || []).map(function (c) {
+    return { id: String(c.Id), name: c.FullyQualifiedName || c.DisplayName, short: c.DisplayName, parent: c.ParentRef ? String(c.ParentRef.value) : "" };
+  }).sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+}
+/* Totals per top-level P&L group (Income, COGS, Expenses, ...) for every column of a report. */
+function qbReportGroups(rep) {
+  var cols = (((rep || {}).Columns || {}).Column || []).slice(1), out = { cols: cols.map(function (c) { return c.ColTitle || ""; }),
+    keys: cols.map(function (c) { var m = (c.MetaData || []).filter(function (x) { return x.Name === "ColKey"; })[0]; return m ? String(m.Value) : ""; }), g: {} };
+  (((rep || {}).Rows || {}).Row || []).forEach(function (r) { if (r.group && r.Summary && r.Summary.ColData) out.g[r.group] = r.Summary.ColData.slice(1).map(function (c) { return num(c.value); }); });
+  var at = function (g, i) { return (out.g[g] || [])[i] || 0; };
+  out.inc = function (i) { return at("Income", i) + at("OtherIncome", i); };
+  out.cost = function (i) { return at("COGS", i) + at("Expenses", i) + at("OtherExpenses", i); };
+  return out;
+}
+/* Every account line with an amount in the last column of a P&L, sub-accounts named "Parent: Child". */
+function qbPLAccounts(rep) {
+  var accounts = [];
+  var walk = function (list, group, parent) {
+    (list || []).forEach(function (r) {
+      var g = r.group || group, hd = r.Header && r.Header.ColData, own = hd ? (hd[0] || {}).value || "" : "", path = function (n) { return parent ? parent + ": " + n : n; };
+      if (r.ColData) { var cd = r.ColData; accounts.push({ group: g, name: path((cd[0] || {}).value || ""), amount: num((cd[cd.length - 1] || {}).value) }); }
+      if (hd && hd.length > 1 && num(hd[hd.length - 1].value)) accounts.push({ group: g, name: path(own), amount: num(hd[hd.length - 1].value) });
+      if (r.Rows && r.Rows.Row) walk(r.Rows.Row, g, r.group ? "" : path(own));
+    });
+  };
+  walk(((rep || {}).Rows || {}).Row, "", "");
+  return accounts.filter(function (a) { return a.amount; });
+}
+/* The whole company at a glance (Home → Finances): cash, cards, who owes us, what we owe, 12 months of money in/out,
+   where this year's money went, and every QuickBooks customer/job with its profit, linked to its portal project. */
+function qbCompanyFinance() {
+  var t = today(), warn = [], tryIt = function (label, fn, dflt) { try { return fn(); } catch (e) { warn.push(label); return dflt; } };
+  var r2 = function (n) { return Math.round(n * 100) / 100; }, d = new Date();
+  var acc = tryIt("accounts", function () { return qbQuery("select * from Account where Active = true maxresults 1000").Account || []; }, []);
+  var cash = { total: 0, accounts: [] }, cards = { total: 0, accounts: [] };
+  acc.forEach(function (a) {
+    if (a.AccountType === "Bank") { cash.total += num(a.CurrentBalance); cash.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
+    if (a.AccountType === "Credit Card") { cards.total += num(a.CurrentBalance); cards.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
+  });
+  var ar = { open: 0, overdue: 0, count: 0 };
+  tryIt("open invoices", function () { (qbQuery("select * from Invoice where Balance > '0' maxresults 1000").Invoice || []).forEach(function (i) { var b = num(i.Balance); ar.open += b; ar.count++; if (i.DueDate && i.DueDate < t) ar.overdue += b; }); });
+  var ap = { open: 0, overdue: 0, count: 0, soon: [] }, soonLim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
+  tryIt("bills", function () { (qbQuery("select * from Bill where Balance > '0' maxresults 1000").Bill || []).forEach(function (b) {
+    var bal = num(b.Balance), late = !!(b.DueDate && b.DueDate < t); ap.open += bal; ap.count++; if (late) ap.overdue += bal;
+    if (late || (b.DueDate && b.DueDate <= soonLim)) ap.soon.push({ vendor: (b.VendorRef || {}).name || "Vendor", due: b.DueDate || "", amount: r2(bal), late: late });
+  }); });
+  ap.soon.sort(function (a, b) { return (a.due || "9") < (b.due || "9") ? -1 : 1; });
+  // 12 months of money in and out
+  var start = Utilities.formatDate(new Date(d.getFullYear(), d.getMonth() - 11, 1), CONFIG.TZ, "yyyy-MM-dd"), months = [];
+  tryIt("monthly report", function () {
+    var g = qbReportGroups(qbGet("/reports/ProfitAndLoss?start_date=" + start + "&end_date=" + t + "&summarize_column_by=Month&accounting_method=Accrual"));
+    g.cols.forEach(function (c, i) { if (/total/i.test(c)) return; months.push({ label: c, income: r2(g.inc(i)), expenses: r2(g.cost(i)) }); });
+  });
+  // This year: totals and where it went
+  var yStart = d.getFullYear() + "-01-01", ytd = { income: 0, expenses: 0, labor: 0, materials: 0, subs: 0, other: 0, top: [] };
+  tryIt("this year's report", function () {
+    qbPLAccounts(qbGet("/reports/ProfitAndLoss?start_date=" + yStart + "&end_date=" + t + "&accounting_method=Accrual")).forEach(function (a) {
+      if (a.group === "Income" || a.group === "OtherIncome") { ytd.income += a.amount; return; }
+      if (["COGS", "Expenses", "OtherExpenses"].indexOf(a.group) < 0) return;
+      var bk = qbBucket(a.name); ytd[bk] += a.amount; ytd.expenses += a.amount; ytd.top.push({ name: a.name, amount: r2(a.amount), bucket: bk });
+    });
+  });
+  ytd.top = ytd.top.sort(function (a, b) { return b.amount - a.amount; }).slice(0, 8);
+  ["income", "expenses", "labor", "materials", "subs", "other"].forEach(function (k) { ytd[k] = r2(ytd[k]); });
+  // Every customer/job, all time: billed, cost, profit
+  var jobs = [];
+  tryIt("jobs report", function () {
+    var g = qbReportGroups(qbGet("/reports/ProfitAndLoss?start_date=2010-01-01&end_date=" + t + "&summarize_column_by=Customers&accounting_method=Accrual"));
+    g.cols.forEach(function (c, i) { if (/^total$/i.test(c) || !g.keys[i]) return; var inc = g.inc(i), cost = g.cost(i); if (!inc && !cost) return;
+      jobs.push({ id: g.keys[i], name: c, income: r2(inc), costs: r2(cost), net: r2(inc - cost) }); });
+  });
+  jobs.sort(function (a, b) { return b.income - a.income; });
+  var customers = tryIt("customers", qbCustomerList, []);
+  return { company: qbCfg().company, updated: now(), cash: { total: r2(cash.total), accounts: cash.accounts }, cards: { total: r2(cards.total), accounts: cards.accounts },
+    ar: { open: r2(ar.open), overdue: r2(ar.overdue), count: ar.count }, ap: { open: r2(ap.open), overdue: r2(ap.overdue), count: ap.count, soon: ap.soon.slice(0, 12) },
+    months: months, ytd: ytd, jobs: jobs.slice(0, 60), customers: customers, warnings: warn };
+}
+ACTIONS.qbFinance = function (me, b) {
+  if (!canMoney(me)) throw new Error("That's #money. Ask Jesús to tag you #money.");
+  var cfg = qbCfg(), projects = rows("Projects").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, qb: p.qb_customer || "", status: p.status }; });
+  var base = { connected: !!cfg.refresh, env: cfg.env, projects: projects, admin: me.role === "admin" };
+  if (!base.connected) return base;
+  var c = CacheService.getScriptCache(), ck = "qbf:" + cfg.realm, hit = !b.refresh && c.get(ck);
+  if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
+  var data = qbCompanyFinance();
+  try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
+  return Object.assign(data, base);
+};
+/* From Finances: a QuickBooks customer/job with no project yet becomes a new portal project, already linked. */
+ACTIONS.qbNewProject = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús creates projects from QuickBooks.");
+  if (!/^\d{1,12}$/.test(String(b.customerId || ""))) throw new Error("Pick a QuickBooks customer.");
+  var name = clean(b.name, 200); if (!name) throw new Error("The project needs a name.");
+  var r = ACTIONS.saveProject(me, { project: { name: name, client_name: clean(b.client, 200) } });
+  update("Projects", "id", r.project.id, { qb_customer: String(b.customerId) });
+  return { project: projectOut(findBy("Projects", "id", r.project.id)) };
 };
 ACTIONS.qbLink = function (me, b) {
   needStaff(me); var p = needProject(me, b.projectId); update("Projects", "id", p.id, { qb_customer: /^\d{1,12}$/.test(String(b.customerId || "")) ? String(b.customerId) : "" }); return {};

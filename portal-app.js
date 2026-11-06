@@ -412,11 +412,12 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["team", "Team", 0]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
     var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
+    if (view === "finance" && S.me.money) return head + homeFinance();
     var portfolio = "";
     if (staff() && active.length) {
       var t = { total: 0, billed: 0, paid: 0, waiting: 0, overdue: 0, held: 0 }, withC = 0;
@@ -531,7 +532,7 @@
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
         : item('data-a="home"', "All projects", home)) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
@@ -1529,6 +1530,114 @@
       '<p class="muted small m-foot">From QuickBooks' + (m.company ? " (" + esc(m.company) + ")" : "") + " · updated " + day(m.updated) + (m.cached ? " · saved copy, Refresh for the latest" : "") + ((m.warnings || []).length ? " · couldn’t read: " + esc(m.warnings.join(", ")) : "") + ".</p>";
   }
 
+  /* ---------------- Home → Finances (#money): the whole company, Monarch-style, from QuickBooks ---------------- */
+  async function loadFin(refresh) {
+    if (S.finBusy) return; S.finBusy = 1; if (refresh && S.fin) S.fin.refreshing = true;
+    try { S.fin = await call("qbFinance", { refresh: !!refresh }); } catch (e) { S.fin = { err: e.message }; }
+    S.finBusy = 0; if (!S.pid && S.home === "finance") keepScroll(render);
+  }
+  async function finLink(sel) {
+    var v = sel.value; if (!v) return; sel.disabled = true;
+    try {
+      if (sel.dataset.finLink != null) {
+        var job = (S.fin.jobs || []).concat(S.fin.customers || []).filter(function (j) { return j.id === sel.dataset.finLink; })[0] || {};
+        if (v === "new") { var r = await call("qbNewProject", { customerId: sel.dataset.finLink, name: job.short || job.name || "New project", client: job.short || job.name || "" }); S.projects = null; refreshList(); toast("Project created and linked: " + r.project.name); }
+        else { await call("qbLink", { projectId: v, customerId: sel.dataset.finLink }); toast("Linked"); }
+      } else { await call("qbLink", { projectId: sel.dataset.finProj, customerId: v }); toast("Linked"); }
+      await loadFin(false);
+    } catch (e) { sel.disabled = false; sel.value = ""; toast(e.message); }
+  }
+  function m0(n) { return (n < 0 ? "−" : "") + "$" + Math.abs(Math.round(n || 0)).toLocaleString("en-US"); }
+  function mK(n) { var a = Math.abs(n || 0); return (n < 0 ? "−" : "") + "$" + (a >= 1e6 ? (a / 1e6).toFixed(1) + "M" : a >= 1e3 ? Math.round(a / 1e3) + "k" : Math.round(a)); }
+  function finChart(months) {
+    if (!months.length) return '<div class="empty small">No monthly numbers yet.</div>';
+    var W = 720, H = 230, L = 52, B = 30, T = 14, n = months.length, gw = (W - L - 8) / n, bw = Math.max(4, Math.min(18, gw * 0.32));
+    var nets = months.map(function (m) { return m.income - m.expenses; });
+    var hi = Math.max.apply(null, months.map(function (m) { return Math.max(m.income, m.expenses); }).concat(nets, [1])), lo = Math.min(0, Math.min.apply(null, nets));
+    var y = function (v) { return T + (hi - v) / (hi - lo) * (H - T - B); }, y0 = y(0), out = [];
+    [hi, hi / 2].forEach(function (g) { out.push('<line x1="' + L + '" x2="' + W + '" y1="' + y(g).toFixed(1) + '" y2="' + y(g).toFixed(1) + '" class="fc-grid"/><text x="' + (L - 8) + '" y="' + (y(g) + 4).toFixed(1) + '" class="fc-ax" text-anchor="end">' + esc(mK(g)) + "</text>"); });
+    if (lo < 0) out.push('<text x="' + (L - 8) + '" y="' + (y(lo) + 4).toFixed(1) + '" class="fc-ax" text-anchor="end">' + esc(mK(lo)) + "</text>");
+    out.push('<line x1="' + L + '" x2="' + W + '" y1="' + y0.toFixed(1) + '" y2="' + y0.toFixed(1) + '" class="fc-zero"/>');
+    var pts = [];
+    months.forEach(function (m, i) {
+      var cx = L + gw * i + gw / 2, xi = cx - bw - 1, xo = cx + 1, net = m.income - m.expenses;
+      var bar = function (x, v, cls) { var top = y(Math.max(v, 0)), h = Math.max(0, y0 - top); return h ? '<path class="' + cls + '" d="M' + x + "," + y0 + "V" + (top + Math.min(4, h)) + "Q" + x + "," + top + " " + (x + Math.min(4, bw / 2)) + "," + top + "H" + (x + bw - Math.min(4, bw / 2)) + "Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + Math.min(4, h)) + "V" + y0 + 'Z"/>' : ""; };
+      out.push(bar(xi, m.income, "fc-in") + bar(xo, m.expenses, "fc-out"));
+      out.push('<text x="' + cx + '" y="' + (H - 9) + '" class="fc-ax" text-anchor="middle">' + esc(String(m.label).split(" ")[0].slice(0, 3)) + "</text>");
+      out.push('<rect class="fc-hit" x="' + (L + gw * i) + '" y="' + T + '" width="' + gw + '" height="' + (H - T - B) + '" tabindex="0" data-tip="' + esc(m.label + "|In " + m0(m.income) + "|Out " + m0(m.expenses) + "|" + (net >= 0 ? "Kept " : "Lost ") + m0(Math.abs(net))) + '"/>');
+      pts.push(cx.toFixed(1) + "," + y(net).toFixed(1));
+    });
+    out.push('<polyline class="fc-net" points="' + pts.join(" ") + '"/>' + pts.map(function (pt) { var c = pt.split(","); return '<circle class="fc-dot" cx="' + c[0] + '" cy="' + c[1] + '" r="3.5"/>'; }).join(""));
+    var last = months[months.length - 1];
+    return '<div class="fc-legend"><span><i class="fc-k in"></i>Money in</span><span><i class="fc-k out"></i>Money out</span><span><i class="fc-k net"></i>What we kept</span></div>' +
+      '<svg class="fin-chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc("Last " + n + " months of money in and out. " + last.label + ": in " + m0(last.income) + ", out " + m0(last.expenses)) + '">' + out.join("") + "</svg>" +
+      '<details class="fc-table"><summary>See the numbers</summary><table><tr><th>Month</th><th>In</th><th>Out</th><th>Kept</th></tr>' + months.map(function (m) { return "<tr><td>" + esc(m.label) + "</td><td>" + m0(m.income) + "</td><td>" + m0(m.expenses) + "</td><td>" + m0(m.income - m.expenses) + "</td></tr>"; }).join("") + "</table></details>";
+  }
+  function homeFinance() {
+    var f = S.fin;
+    if (!f) { loadFin(false); return '<div class="loading" style="min-height:30vh">Counting every dollar…</div>'; }
+    if (f.err) return '<div class="empty">' + esc(f.err) + ' <button class="link" data-a="finRefresh">Try again</button></div>';
+    if (!f.connected) return '<div class="card fin-empty">' + qbLogo() + "<div><b>Connect QuickBooks to see the whole picture</b><p class=\"muted small\">Cash, what clients owe us, bills due, payroll and profit for every job, all in one place.</p></div><button class=\"btn\" data-a=\"homeView\" data-v=\"team\">Connect it</button></div>";
+    var cash = f.cash || { total: 0, accounts: [] }, cards = f.cards || { total: 0, accounts: [] }, ar = f.ar || {}, ap = f.ap || {}, y = f.ytd || {};
+    var stand = cash.total + (ar.open || 0) - (ap.open || 0) - cards.total, mood = moneyMood(y.income || 0, y.expenses || 0), kept = (y.income || 0) - (y.expenses || 0);
+    var margin = y.income ? Math.round(kept / y.income * 1000) / 10 : null;
+    var hero = '<div class="card fin-hero mood-' + mood[0] + '"><div class="fh-main"><div class="eyebrow">Where Blue Sierra stands today</div><b class="fh-big' + (stand < 0 ? " neg" : "") + '">' + m0(stand) + "</b>" +
+      '<p class="muted small">Cash in the bank + what clients owe us − bills we owe − credit cards.</p>' +
+      '<div class="fh-pills"><span class="fp in">' + ICON.paid + " Bank <b>" + m0(cash.total) + '</b></span><span class="fp ar">' + ICON.receipt + " Owed to us <b>" + m0(ar.open) + "</b>" + (ar.overdue ? ' <em>' + m0(ar.overdue) + " late</em>" : "") + "</span>" +
+      '<span class="fp ap">' + ICON.receipt + " We owe <b>" + m0(ap.open) + "</b>" + (ap.overdue ? " <em>" + m0(ap.overdue) + " late</em>" : "") + '</span><span class="fp cc">' + ICON.dollar + " Cards <b>" + m0(cards.total) + "</b></span></div></div>" +
+      '<div class="fh-side">' + piggy(mood[0], margin == null ? 0 : margin * 2.5) + "<b>" + esc(mood[1]) + '</b><span class="muted small">This year: ' + m0(y.income) + " in, " + m0(y.expenses) + " out" + (margin == null ? "" : " · " + margin + "% kept") + "</span></div></div>";
+    var segs = BUCKETS.filter(function (b) { return y[b[0]] > 0; });
+    var year = '<div class="card fin-year"><div class="section-mini"><h3>Where this year’s money went</h3><span class="muted small">' + m0(y.expenses) + "</span></div>" +
+      (y.expenses ? '<div class="mbar">' + segs.map(function (b) { return '<i class="mb-' + b[0] + '" style="width:' + pctOf(y[b[0]], y.expenses) + '%" data-tip="' + esc(b[1] + "|" + m0(y[b[0]]) + "|" + pctOf(y[b[0]], y.expenses) + "% of spending") + '"></i>'; }).join("") + "</div>" +
+        '<div class="mlegend">' + BUCKETS.map(function (b) { return '<div class="ml-row' + (y[b[0]] ? "" : " zero") + '"><i class="mb-' + b[0] + '"></i><span>' + b[1] + "</span><b>" + m0(y[b[0]] || 0) + '</b><small class="muted">' + pctOf(y[b[0]] || 0, y.expenses) + "%</small></div>"; }).join("") + "</div>" +
+        ((y.top || []).length ? '<div class="fin-top">' + y.top.map(function (a) { return '<div class="ft-row"><i class="mdot mb-' + a.bucket + '"></i><span>' + esc(a.name) + "</span><b>" + m0(a.amount) + "</b></div>"; }).join("") + "</div>" : "")
+        : '<p class="muted small">No spending recorded in QuickBooks this year yet.</p>') + "</div>";
+    var flow = '<div class="card fin-flow"><div class="section-mini"><h3>Money in vs out</h3><span class="muted small">Last 12 months</span></div>' + finChart(f.months || []) + "</div>";
+    var accts = '<div class="card fin-acc"><div class="section-mini"><h3>Accounts</h3><span class="muted small">' + m0(cash.total - cards.total) + " net</span></div>" +
+      (cash.accounts.length + cards.accounts.length ? cash.accounts.map(function (a) { return '<div class="fa-row"><span class="fa-ico bank">' + ICON.paid + "</span><span>" + esc(a.name) + "</span><b>" + m0(a.balance) + "</b></div>"; }).join("") +
+        cards.accounts.map(function (a) { return '<div class="fa-row"><span class="fa-ico cc">' + ICON.dollar + "</span><span>" + esc(a.name) + '</span><b class="neg">−' + m0(a.balance).replace("−", "") + "</b></div>"; }).join("") : '<p class="muted small">No bank or card accounts in QuickBooks.</p>') + "</div>";
+    var bills = '<div class="card fin-bills"><div class="section-mini"><h3>Bills knocking on the door</h3><span class="muted small">' + (ap.count || 0) + " open</span></div>" +
+      ((ap.soon || []).length ? ap.soon.map(function (b) { return '<div class="fa-row' + (b.late ? " late" : "") + '"><span class="fa-ico ' + (b.late ? "late" : "soon") + '">' + ICON.calendar + "</span><span>" + esc(b.vendor) + "<small>" + (b.late ? "Late! was due " : "Due ") + day(b.due) + "</small></span><b>" + m0(b.amount) + "</b></div>"; }).join("") : '<p class="muted small">Nothing due in the next two weeks. Nice.</p>') + "</div>";
+    // Jobs ↔ projects
+    var projects = f.projects || [], byQb = {}; projects.forEach(function (p) { if (p.qb) byQb[p.qb] = p; });
+    var free = projects.filter(function (p) { return !p.qb && p.status !== "archived"; });
+    var ff = S.finFilter || "all", jobs = (f.jobs || []).filter(function (j) { return ff === "all" || (ff === "linked" ? byQb[j.id] : !byQb[j.id]); });
+    var linkSel = function (j) { return '<select class="fin-sel" data-fin-link="' + esc(j.id) + '"><option value="">Link to a project…</option>' + free.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + "</option>"; }).join("") + (f.admin ? '<option value="new">＋ New project “' + esc(j.name) + "”</option>" : "") + "</select>"; };
+    var jobRow = function (j) {
+      var p = byQb[j.id], mg = j.income ? Math.round(j.net / j.income * 100) : null, tone = j.net < 0 ? "bad" : mg != null && mg >= 15 ? "good" : "tight";
+      return '<div class="fj-row"><div class="fj-name"><b>' + esc(j.name) + "</b><small>" + m0(j.income) + " billed · " + m0(j.costs) + " spent</small>" +
+        '<div class="fj-bar" data-tip="' + esc(j.name + "|Billed " + m0(j.income) + "|Spent " + m0(j.costs) + "|" + (j.net >= 0 ? "Kept " : "Lost ") + m0(Math.abs(j.net))) + '"><i style="width:' + Math.min(100, pctOf(j.costs, Math.max(j.income, j.costs))) + '%"></i></div></div>' +
+        '<div class="fj-net ' + tone + '"><b>' + (j.net >= 0 ? "+" : "") + m0(j.net) + "</b>" + (mg != null ? "<small>" + mg + "% margin</small>" : "") + "</div>" +
+        '<div class="fj-link">' + (p ? '<button class="fj-proj" data-a="open" data-id="' + esc(p.id) + '">' + ICON.ruler + " " + esc(p.name) + '</button><button class="icon-btn sm" data-a="finUnlink" data-pid="' + esc(p.id) + '" title="Unlink" aria-label="Unlink">' + ICON.x + "</button>" : linkSel(j)) + "</div></div>";
+    };
+    var unlinkedJobs = (f.customers || []).filter(function (c) { return !byQb[c.id]; });
+    var jobsCard = '<div class="section-title"><div><h2>Jobs</h2><span class="muted small">Every QuickBooks customer and job, all time. Link each one to its project and its #money tab fills itself.</span></div></div>' +
+      '<div class="chips ck-filter">' + [["all", "All"], ["linked", "Linked"], ["free", "Not linked"]].map(function (o) { return '<button class="chip' + (ff === o[0] ? " on" : "") + '" data-a="finFilter" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="card fin-jobs">' + (jobs.length ? jobs.map(jobRow).join("") : '<p class="muted small">' + (ff === "all" ? "No customers with income or costs yet." : "Nothing here.") + "</p>") + "</div>" +
+      (free.length ? '<div class="section-title"><div><h2>Projects without QuickBooks</h2><span class="muted small">Pick the customer or job each one belongs to.</span></div></div><div class="card fin-jobs">' +
+        free.map(function (p) { return '<div class="fj-row"><div class="fj-name"><b>' + esc(p.name) + '</b><small>Portal project</small></div><div></div><div class="fj-link"><select class="fin-sel" data-fin-proj="' + esc(p.id) + '"><option value="">Pick its QuickBooks customer…</option>' + unlinkedJobs.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + "</option>"; }).join("") + "</select></div></div>"; }).join("") + "</div>" : "");
+    return '<div class="section-title fin-head"><div><h2>Finances</h2><span class="muted small">' + esc(f.company || "From QuickBooks") + (f.env === "sandbox" ? " · sandbox" : "") + " · only you and #money see this</span></div>" +
+      '<button class="btn ghost sm" data-a="finRefresh"' + (f.refreshing ? " disabled" : "") + ">" + (f.refreshing ? "Counting…" : "Refresh") + "</button></div>" +
+      hero + '<div class="fin-grid">' + flow + year + "</div>" + '<div class="fin-grid">' + accts + bills + "</div>" + jobsCard +
+      '<p class="muted small m-foot">From QuickBooks · updated ' + day(f.updated) + (f.cached ? " · saved copy, Refresh for the latest" : "") + ((f.warnings || []).length ? " · couldn’t read: " + esc(f.warnings.join(", ")) : "") + ".</p>";
+  }
+  /* One small tooltip for every chart mark with data-tip="Title|line|line" (hover or keyboard focus). */
+  (function () {
+    var tip = null;
+    function show(el) {
+      if (!tip) { tip = document.createElement("div"); tip.className = "bsp-tip"; tip.setAttribute("role", "tooltip"); document.body.appendChild(tip); }
+      var parts = String(el.getAttribute("data-tip")).split("|"); tip.textContent = "";
+      parts.forEach(function (t, i) { var d = document.createElement(i ? "span" : "b"); d.textContent = t; tip.appendChild(d); });
+      var r = el.getBoundingClientRect(); tip.style.display = "flex";
+      var x = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - tip.offsetWidth / 2)), yy = r.top - tip.offsetHeight - 8;
+      tip.style.left = x + "px"; tip.style.top = (yy < 8 ? r.bottom + 8 : yy) + "px";
+    }
+    function hide() { if (tip) tip.style.display = "none"; }
+    root.addEventListener("mouseover", function (e) { var el = e.target.closest && e.target.closest("[data-tip]"); if (el) show(el); else hide(); });
+    root.addEventListener("focusin", function (e) { var el = e.target.closest && e.target.closest("[data-tip]"); if (el) show(el); });
+    root.addEventListener("focusout", hide); window.addEventListener("scroll", hide, { passive: true });
+  })();
+
   function checkRow(c) {
     var done = isDone(c.done), can = c.can != null ? c.can : staff() || (c.owner === "client" && asClient()), pinned = isPinned(c);
     var mineTxt = c.mine ? '<span class="pill gold">Yours</span>' : "";
@@ -1927,6 +2036,9 @@
         run(b, async function () { var rr = await call("purgeProject", { projectId: b.dataset.id, confirm: pc ? pc.value : "" }); S.modal = null; S.projects = null; await route(); toast(rr.trashed ? "Erased. Its Drive folder is in the Drive trash." : "Erased."); });
         return;
       case "moneyRefresh": loadMoney(true); keepScroll(render); return;
+      case "finRefresh": loadFin(true); keepScroll(render); return;
+      case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
+      case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
       case "close": S.modal = null; S.scDraft = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
@@ -1968,6 +2080,7 @@
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
         S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
+        if (b.dataset.v === "finance" && S.fin && S.fin.err) S.fin = null;
         refreshList(); if (S.pid) return go(null); return keepScroll(render);
       case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
       case "actOpen": var pp = document.getElementById("bsp-pop"); if (pp && b === pp) pp.remove();
@@ -2109,6 +2222,7 @@
     invoiceMath(f);
   });
   root.addEventListener("change", function (e) {
+    if (e.target.matches("[data-fin-link], [data-fin-proj]")) { finLink(e.target); return; }
     if (e.target.matches("[data-att]")) {
       var k = e.target.dataset.att, fl = [].slice.call(e.target.files || []); S.att = S.att || { main: [], thread: [] };
       var roomA = Math.max(0, 5 - S.att[k].length); if (fl.length > roomA) toast("Up to 5 files per message.");
