@@ -38,7 +38,7 @@ var CONFIG = {
 
 var TABLES = {
   Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon", "billing_aud", "architect_name", "architect_logo", "qb_customer"],
-  People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar", "pin_hash", "pin_salt", "pin_fails", "pin_lock"],
+  People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar", "pin_hash", "pin_salt", "pin_fails", "pin_lock", "money"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned", "aud", "author_email"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
@@ -60,9 +60,9 @@ var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone"
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
-var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
@@ -102,6 +102,11 @@ function doPost(e) {
     else {
       prefetch(["People"].concat(PREFETCH[b.action] || []));
       var me = auth(b.token);
+      if (b.viewAs) {
+        if (me.role !== "admin") throw new Error("Only Jesús can preview the portal.");
+        if (!READ_ONLY[b.action]) throw new Error("You're in preview. Exit the preview to change things.");
+        me = previewMe(b.viewAs);
+      }
       fn = ACTIONS[b.action];
       if (!fn) throw new Error("Unknown action.");
       if (READ_ONLY[b.action] || NO_LOCK[b.action]) res = fn(me, b);
@@ -207,18 +212,34 @@ function auth(token) {
   p.projects = splitIds(p.project_ids); p.tokenHash = h;
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "" }; }
+/* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
+function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
+/* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
+function previewMe(role) {
+  if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");
+  var ids = rows("Projects").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return p.id; });
+  return { email: "preview-" + role + "@preview.invalid", name: { client: "Client preview", architect: "Architect preview", crew: "Crew preview" }[role], role: role,
+    project_ids: ids.join(","), projects: ids, active: "yes", avatar: "", preview: role };
+}
 /* Roles: admin (Jesús: everything), staff (project managers), crew (field: their projects, #team, plans and schedule, no money), client, architect. */
 function isTeam(p) { return isStaff(p) || p.role === "crew"; }
 function pkey(email) { return sha("bsp:" + normEmail(email)).slice(0, 10); }      // a person id that never reveals the email
 function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
 function dmOf(a, b) { return "dm:" + [a, b].sort().join("-"); }
 /* Can this person read (and post in) this channel? Normal channels by role; private messages only the two people in them. */
+/* Invoice and change-order cards live in a chat, but only people who can see Contract & billing see them
+   (e.g. billing tagged #client only: the architect reads #client but never sees the amounts). */
+function moneyEvent(m) { return m.kind === "event" && /^(invoice|inv|co):/.test(String(m.ref || "")); }
+function projIndex() { var l = rows("Projects"); if (!l._idx) { var o = {}; l.forEach(function (p) { o[p.id] = p; }); l._idx = o; } return l._idx; }
+function seesMsg(me, m) { if (!canRead(me, chOf(m))) return false; if (isStaff(me) || !moneyEvent(m)) return true; var p = projIndex()[m.project_id]; return !!p && canBill(me, p); }
 function canRead(me, ch) { if (isDm(ch)) { me._k = me._k || pkey(me.email); return ch.indexOf(me._k) > -1; } return channelsFor(me).indexOf(ch) > -1; }
 function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
 function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "crew" ? ["crew"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
 function audOf(me) { return isStaff(me) ? AUDS : channelsFor(me); }
 function audList(v) { return splitIds(v).filter(function (a) { return AUDS.indexOf(a) > -1; }); }
+/* Outside Blue Sierra you only see the tags that include you (a client never learns an item is also #team). */
+function audView(me, v) { var l = audList(v); if (isStaff(me)) return l; var mine = audOf(me); return l.filter(function (a) { return mine.indexOf(a) > -1; }); }
 function audOk(me, v) { var l = audList(v); if (!l.length) return true; var mine = audOf(me); return l.some(function (a) { return mine.indexOf(a) > -1; }); }
 function myAud(me) { return me.role === "crew" ? "crew" : me.role === "architect" ? "architect" : me.role === "client" ? "client" : "team"; }
 /* "#team #client" in a text → ["team","client"], and the text without the tags. */
@@ -267,7 +288,7 @@ var ACTIONS = {
     by("Timeline").forEach(function (u) { if (!audOk(me, u.aud)) hiddenU[u.id] = 1; });
     var data = {
       project: projectOut(p),
-      timeline: tl.reverse().map(function (u) { var o = Object.assign({}, u, { aud: audList(u.aud), akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "" }); delete o.author_email; return o; }),
+      timeline: tl.reverse().map(function (u) { var o = Object.assign({}, u, { aud: audView(me, u.aud), akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "" }); delete o.author_email; return o; }),
       photos: by("Photos").filter(function (ph) { return !hiddenU[ph.update_id]; }).reverse().map(photoOut),
       billing: bill,
       // Clients never receive other people's email addresses.
@@ -276,7 +297,7 @@ var ACTIONS = {
       members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }),
       channels: channelsFor(me),
       invoices: !bill ? [] : by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff, ppl); }),
-      checklist: by("Checklist").filter(function (c) { return audOk(me, c.aud) || c.assignee === me.email; }).sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }).map(function (c) { return checkOut(c, me, ppl); }),
+      checklist: by("Checklist").filter(function (c) { return audOk(me, c.aud) || isAssigned(c, me.email); }).sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }).map(function (c) { return checkOut(c, me, ppl); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
         .map(function (x) { return schedOut(x, team, ppl); }),
       contract: !bill ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
@@ -284,7 +305,7 @@ var ACTIONS = {
       phases: CONFIG.PHASES
     };
     if (me.role === "admin") data.wipe = lastWipe(id);
-    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), avatar: x.avatar || "" }; });
+    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), avatar: x.avatar || "" }; });
     return data;
   },
 
@@ -334,9 +355,10 @@ var ACTIONS = {
       var patch = { project_ids: ids.join(","), active: "yes" };
       if (existing.role !== role && existing.role !== "admin" && (admin || (!isStaff(existing) && role !== "staff"))) patch.role = role;   // only admins touch team roles
       if (b.name && clean(b.name, 120) && (!isStaff(existing) || admin)) patch.name = clean(b.name, 120);     // the name you type now wins
+      if (admin && b.money != null) patch.money = (patch.role || existing.role) === "staff" && b.money ? "yes" : "";
       update("People", "email", email, patch);
     } else {
-      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
+      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now(), money: admin && role === "staff" && b.money ? "yes" : "" });
     }
     if (b.invite && !p && (role === "staff" || role === "crew")) safeMail(function () {
       sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
@@ -349,6 +371,38 @@ var ACTIONS = {
         button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
     }, "Added, but the invitation email couldn't be sent.");
     return {};
+  },
+
+  /* Change someone's role (#client, #architect, #crew, #team, #admin) and, for the team, #money. */
+  setRole: function (me, b) {
+    needStaff(me);
+    var person = findPerson(b.email), admin = me.role === "admin", role = String(b.role || "");
+    if (!person) throw new Error("Person not found.");
+    if (["admin", "staff", "crew", "client", "architect"].indexOf(role) < 0) throw new Error("Pick a role.");
+    if (person.email === me.email && role !== person.role) throw new Error("You can't change your own role.");
+    if (!admin && (isStaff(person) || role === "staff" || role === "admin")) throw new Error("Only Jesús changes team roles.");
+    var p = b.projectId ? needProject(me, b.projectId) : null, ids = splitIds(person.project_ids);
+    if (p && ["client", "architect", "crew"].indexOf(role) > -1 && ids.indexOf(p.id) < 0) ids.push(p.id);
+    if ((role === "client" || role === "architect") && !ids.length) throw new Error("Clients and architects need a project. Change it from that project's People tab.");
+    var patch = { role: role, project_ids: ids.join(",") };
+    if (b.money != null && !admin) throw new Error("Only Jesús decides who sees #money.");
+    patch.money = role === "staff" && (b.money != null ? !!b.money : isTrue(person.money)) ? "yes" : "";
+    update("People", "email", person.email, patch);
+    return {};
+  },
+
+  /* Recently deleted → Delete forever: the project's rows go away for good and its Drive folder goes to the Drive trash. */
+  purgeProject: function (me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can erase projects.");
+    var p = needProject(me, b.projectId);
+    if (p.status !== "deleted") throw new Error("Delete the project first. Then you can erase it from Recently deleted.");
+    if (String(b.confirm || "").trim().toLowerCase() !== String(p.name).trim().toLowerCase()) throw new Error("Type the project name exactly to erase it.");
+    WIPE_TABLES.concat(["Wipes", "EmailImports"]).forEach(function (t) { removeAll(t, function (r) { return r.project_id === p.id; }); });
+    rows("People").forEach(function (x) { var ids = splitIds(x.project_ids); if (ids.indexOf(p.id) > -1) update("People", "email", x.email, { project_ids: ids.filter(function (i) { return i !== p.id; }).join(",") }); });
+    removeWhere("Projects", function (r) { return r.id === p.id; });
+    var trashed = false; try { if (p.folder_id) { DriveApp.getFolderById(p.folder_id).setTrashed(true); trashed = true; } } catch (e) {}
+    purgeOrphans();
+    return { trashed: trashed };
   },
 
   removePerson: function (me, b) {
@@ -435,7 +489,7 @@ var ACTIONS = {
   /* Reactions: one tap adds or removes yours. */
   react: function (me, b) {
     var m = findBy("Messages", "id", b.messageId); if (!m) throw new Error("Message not found.");
-    needProject(me, m.project_id); if (!canRead(me, chOf(m))) throw new Error("Message not found.");
+    needProject(me, m.project_id); if (!seesMsg(me, m)) throw new Error("Message not found.");
     if (REACTIONS.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
     var r = parseJson(m.reactions, {}), list = r[b.emoji] || [], i = list.indexOf(me.email);
     if (i > -1) list.splice(i, 1); else list.push(me.email);
@@ -463,7 +517,7 @@ var ACTIONS = {
   activity: function (me, b) {
     var seen = {}; rows("Projects").forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && p.status !== "deleted") seen[p.id] = p; });
     var reads = readsAll(me), lim = Math.min(Number(b.limit) || 60, 150), av = avatarsByEmail();
-    var list = rows("Messages").filter(function (m) { return seen[m.project_id] && canRead(me, chOf(m)); }).reverse().slice(0, lim);
+    var list = rows("Messages").filter(function (m) { return seen[m.project_id] && seesMsg(me, m); }).reverse().slice(0, lim);
     return { items: list.map(function (m) {
       var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id, kind: m.kind, author: m.author, role: m.role,
         at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "", avatar: av[m.author_email] || "",
@@ -509,7 +563,7 @@ var ACTIONS = {
     // Pulse: the newest message someone else wrote where I can read it, plus how many I haven't read.
     var reads = readsAll(me), newest = null, unread = 0;
     rows("Messages").forEach(function (m) {
-      if (!names[m.project_id] || m.author_email === me.email || !canRead(me, chOf(m))) return;
+      if (!names[m.project_id] || m.author_email === me.email || !seesMsg(me, m)) return;
       if (m.at > (reads[m.project_id + "|" + chOf(m)] || "")) unread++;
       newest = m;                                         // sheet order = the order things were written
     });
@@ -681,7 +735,7 @@ var ACTIONS = {
   },
   listTeam: function (me) {
     needStaff(me);
-    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length }; }) };
+    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length }; }) };
   },
 
   answerQuestion: function (me, b) {
@@ -763,21 +817,25 @@ var ACTIONS = {
   saveChecklistItem: function (me, b) {
     needStaff(me); var p = needProject(me, b.projectId), f = b.item || {};
     var tg = readTags(clean(f.item, 300)), aud = cleanAud(cleanAud(f.aud).concat(tg.aud));
-    var assignee = "", who = null;
-    if (f.assignee) { who = membersOf(p).filter(function (x) { return pkey(x.email) === String(f.assignee); })[0]; if (!who) throw new Error("That person isn't on this project."); assignee = who.email; }
-    if (who && !aud.length) aud = [myAud(who)];
+    var keys = (Array.isArray(f.assignees) ? f.assignees : f.assignee ? [f.assignee] : []).map(String).filter(function (k, i, l) { return k && l.indexOf(k) === i; }).slice(0, 12);
+    var mem = membersOf(p), who = keys.map(function (k) { var x = mem.filter(function (m) { return pkey(m.email) === k; })[0]; if (!x) throw new Error("Someone you picked isn't on this project."); return x; });
+    var assignee = who.map(function (x) { return x.email; }).join(",");
+    if (who.length && !aud.length) aud = who.map(myAud).filter(function (a, i, l) { return l.indexOf(a) === i; });
     var patch = { phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : CONFIG.PHASES[0], item: tg.text, owner: aud.indexOf("client") > -1 || (!aud.length && f.owner === "client") ? "client" : "blue sierra",
       due: dateOrEmpty(f.due), aud: aud.join(","), assignee: assignee, edited_by: me.email, edited_at: now() };
     if (!patch.item) throw new Error("Write the checklist item.");
-    var old = f.id ? findBy("Checklist", "id", f.id) : null, id = f.id;
+    var old = f.id ? findBy("Checklist", "id", f.id) : null, id = f.id, before = old ? splitIds(old.assignee) : [];   // read before saving: the row object changes in place
     if (f.id) { if (!old || old.project_id !== p.id) throw new Error("Item not found."); update("Checklist", "id", f.id, patch); }
     else {
       id = newId("c"); patch.id = id; patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); patch.created_by = me.email; patch.reactions = ""; patch.pinned = ""; insert("Checklist", patch);
       if (patch.owner === "client" && !assignee) postEvent(p, me, "todo", "added a to-do for the client", patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + id, "client");
     }
-    if (assignee && (!old || old.assignee !== assignee) && assignee !== me.email) {
-      postEvent(p, me, "todo", "assigned a to-do to " + who.name, patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + id, chanFor(aud.length ? aud : [myAud(who)]));
-      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) sendMail(who.email, me.name + " gave you a to-do · " + p.name, "<p>Hi " + esc(first(who.name)) + ",</p><p><b>" + esc(me.name) + "</b> assigned you a to-do on <b>" + esc(p.name) + "</b>:</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + esc(patch.item) + (patch.due ? "<br><small>Due " + esc(patch.due) + "</small>" : "") + "</blockquote>" + button("Open my to-dos", deep(p.id, "checklist")), ""); } catch (e) {}
+    var fresh = who.filter(function (x) { return before.indexOf(x.email) < 0 && x.email !== me.email; });
+    if (fresh.length) {
+      postEvent(p, me, "todo", "assigned a to-do to " + fresh.map(function (x) { return x.name; }).join(", "), patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + id, chanFor(aud));
+      fresh.forEach(function (x) {
+        try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) sendMail(x.email, me.name + " gave you a to-do · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> assigned you a to-do on <b>" + esc(p.name) + "</b>" + (who.length > 1 ? " (with " + esc(who.filter(function (y) { return y.email !== x.email; }).map(function (y) { return first(y.name); }).join(", ")) + ")" : "") + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + esc(patch.item) + (patch.due ? "<br><small>Due " + esc(patch.due) + "</small>" : "") + "</blockquote>" + button("Open my to-dos", deep(p.id, "checklist")), ""); } catch (e) {}
+      });
     }
     return { id: id };
   },
@@ -821,7 +879,7 @@ var ACTIONS = {
   toggleChecklist: function (me, b) {
     var it = findBy("Checklist", "id", b.itemId); if (!it) throw new Error("Item not found.");
     var p = needProject(me, it.project_id);
-    if (!canCheck(me, it)) throw new Error(it.assignee ? "Only the person it's assigned to (or Blue Sierra) checks that one." : it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
+    if (!canCheck(me, it)) throw new Error(it.assignee ? "Only the people it's assigned to (or Blue Sierra) check that one." : it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
     var done = !isTrue(it.done);
     update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_email: done ? me.email : "", done_at: done ? now() : "" });
     if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal", deep(p.id, "checklist")));
@@ -831,7 +889,7 @@ var ACTIONS = {
   /* A like (or any of the reactions) on a checklist item. */
   reactCheck: function (me, b) {
     var it = findBy("Checklist", "id", b.itemId); if (!it) throw new Error("Item not found.");
-    needProject(me, it.project_id); if (!audOk(me, it.aud) && it.assignee !== me.email) throw new Error("Item not found.");
+    needProject(me, it.project_id); if (!audOk(me, it.aud) && !isAssigned(it, me.email)) throw new Error("Item not found.");
     if (REACTIONS.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
     var r = parseJson(it.reactions, {}), list = r[b.emoji] || [], i = list.indexOf(me.email);
     if (i > -1) list.splice(i, 1); else list.push(me.email);
@@ -971,7 +1029,7 @@ ACTIONS.qbLink = function (me, b) {
 ACTIONS.qbInvoices = function (me, b) {
   needStaff(me); var p = needProject(me, b.projectId); if (!p.qb_customer) return { linked: false, invoices: [] };
   var imported = {}; rows("Invoices").forEach(function (i) { if (i.qb_id && i.project_id === p.id) imported[i.qb_id] = i.id; });
-  var list = qbQuery("select * from Invoice where CustomerRef = '" + p.qb_customer + "' order by TxnDate desc maxresults 100").Invoice || [];
+  var list = (qbQuery("select * from Invoice where CustomerRef = '" + p.qb_customer + "' maxresults 1000").Invoice || []).sort(function (x, y) { return String(x.TxnDate) < String(y.TxnDate) ? 1 : -1; }).slice(0, 100);
   return { linked: true, invoices: list.map(function (i) { return qbInvoiceOut(i, imported); }) };
 };
 /* Bring one QuickBooks invoice into the portal: its number, dates, total and status, plus the real PDF from QuickBooks. */
@@ -991,6 +1049,97 @@ ACTIONS.qbImport = function (me, b) {
   return { id: r.id };
 };
 
+/* ---- #money: one job's real numbers from QuickBooks (only the admin and team members Jesús tags #money) ----
+   Money in = this customer's QuickBooks invoices. Money out = the job's Profit & Loss (bills, checks, card charges and payroll
+   tagged to this customer), sorted into labor, materials, subs and other by account name. Open bills = what we still owe. */
+function qbBucket(name) {
+  var s = String(name || "").toLowerCase();
+  if (/subcontract|sub-contract|\bsubs?\b|contract labou?r|contractors?\b/.test(s)) return "subs";
+  if (/payroll|wage|salar|labou?r|worker'?s'? comp|employee|benefit|401k|officer/.test(s)) return "labor";
+  if (/material|supplies|supply|lumber|hardware|cost of goods|cogs|concrete|fixture|appliance|tile|paint|plumbing|electrical/.test(s)) return "materials";
+  return "other";
+}
+function qbLinesFor(txn, cust) {
+  return (txn.Line || []).filter(function (l) { var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail || {}; return d.CustomerRef && String(d.CustomerRef.value) === String(cust); });
+}
+function qbLineAccount(l) { var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail || {}; return ((d.AccountRef || d.ItemRef || {}).name) || ""; }
+function qbJobMoney(cust) {
+  var t = today(), warn = [], tryIt = function (label, fn, dflt) { try { return fn(); } catch (e) { warn.push(label); return dflt; } };
+  var r2 = function (n) { return Math.round(n * 100) / 100; };
+  // Money in
+  var invs = tryIt("invoices", function () { return qbQuery("select * from Invoice where CustomerRef = '" + cust + "' maxresults 1000").Invoice || []; }, []);
+  var inn = { billed: 0, collected: 0, open: 0, overdue: 0, count: invs.length };
+  invs.forEach(function (i) { var tot = num(i.TotalAmt), bal = num(i.Balance); inn.billed += tot; inn.open += bal; if (bal > 0 && i.DueDate && i.DueDate < t) inn.overdue += bal; });
+  inn.collected = inn.billed - inn.open;
+  // Money out: the job's Profit & Loss, every account with an amount
+  var out = { total: 0, labor: 0, materials: 0, subs: 0, other: 0 }, accounts = [], income = 0;
+  tryIt("profit & loss", function () {
+    var rep = qbGet("/reports/ProfitAndLoss?customer=" + cust + "&start_date=2010-01-01&end_date=" + t + "&accounting_method=Accrual");
+    // Sub-accounts carry their parent's name ("Payroll Expenses: Taxes"), so they sort with it.
+    var walk = function (list, group, parent) {
+      (list || []).forEach(function (r) {
+        var g = r.group || group, hd = r.Header && r.Header.ColData, own = hd ? (hd[0] || {}).value || "" : "", path = function (n) { return parent ? parent + ": " + n : n; };
+        if (r.ColData) { var cd = r.ColData; accounts.push({ group: g, name: path((cd[0] || {}).value || ""), amount: num((cd[cd.length - 1] || {}).value) }); }
+        if (hd && hd.length > 1 && num(hd[hd.length - 1].value)) accounts.push({ group: g, name: path(own), amount: num(hd[hd.length - 1].value) });
+        if (r.Rows && r.Rows.Row) walk(r.Rows.Row, g, r.group ? "" : path(own));
+      });
+    };
+    walk(((rep || {}).Rows || {}).Row, "", "");
+  });
+  accounts = accounts.filter(function (a) { return a.amount; });
+  accounts.forEach(function (a) {
+    if (a.group === "Income" || a.group === "OtherIncome") { income += a.amount; return; }
+    if (["COGS", "Expenses", "OtherExpenses"].indexOf(a.group) < 0) return;
+    a.bucket = qbBucket(a.name); out[a.bucket] += a.amount; out.total += a.amount;
+  });
+  // What we owe: open bills with lines on this job (only this job's share)
+  var bills = [], owe = { open: 0, overdue: 0 };
+  tryIt("bills", function () {
+    (qbQuery("select * from Bill where Balance > '0' maxresults 1000").Bill || []).forEach(function (b) {
+      var job = qbLinesFor(b, cust).reduce(function (a, l) { return a + num(l.Amount); }, 0); if (!job) return;
+      var share = num(b.TotalAmt) ? job / num(b.TotalAmt) : 1, due = r2(num(b.Balance) * share), late = !!(b.DueDate && b.DueDate < t);
+      owe.open += due; if (late) owe.overdue += due;
+      bills.push({ vendor: (b.VendorRef || {}).name || "Vendor", number: b.DocNumber || "", due: b.DueDate || "", amount: due, late: late, what: qbLineAccount(qbLinesFor(b, cust)[0] || {}) });
+    });
+  });
+  bills.sort(function (a, b) { return (a.due || "9") < (b.due || "9") ? -1 : 1; });
+  // Latest spending on this job (last 6 months of checks, card charges and bills)
+  var since = Utilities.formatDate(new Date(Date.now() - 183 * 864e5), CONFIG.TZ, "yyyy-MM-dd"), recent = [];
+  [["Purchase", "EntityRef"], ["Bill", "VendorRef"]].forEach(function (k) {
+    tryIt("recent " + k[0].toLowerCase() + "s", function () {
+      (qbQuery("select * from " + k[0] + " where TxnDate >= '" + since + "' maxresults 1000")[k[0]] || []).forEach(function (x) {
+        qbLinesFor(x, cust).forEach(function (l) { var acc = qbLineAccount(l); recent.push({ date: x.TxnDate || "", who: (x[k[1]] || {}).name || "", what: l.Description || acc, account: acc, amount: r2(num(l.Amount)), bucket: qbBucket(acc) }); });
+      });
+    });
+  });
+  recent.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  // Crew hours logged to this job (QuickBooks Time / timesheets)
+  var hrs = {}, hours = 0;
+  tryIt("timesheets", function () {
+    (qbQuery("select * from TimeActivity where CustomerRef = '" + cust + "' maxresults 1000").TimeActivity || []).forEach(function (a) {
+      var h = num(a.Hours) + num(a.Minutes) / 60, n = ((a.EmployeeRef || a.VendorRef || {}).name) || "Someone"; hours += h; hrs[n] = (hrs[n] || 0) + h;
+    });
+  });
+  var name = tryIt("customer", function () { return (qbGet("/customer/" + cust).Customer || {}).DisplayName || ""; }, "");
+  Object.keys(out).forEach(function (k) { out[k] = r2(out[k]); }); Object.keys(inn).forEach(function (k) { inn[k] = r2(inn[k]); });
+  return { customer: name, company: qbCfg().company, updated: now(), inn: inn, out: out, income: r2(income),
+    accounts: accounts.filter(function (a) { return a.bucket; }).sort(function (a, b) { return b.amount - a.amount; }).slice(0, 12).map(function (a) { return { name: a.name, amount: r2(a.amount), bucket: a.bucket }; }),
+    owe: { open: r2(owe.open), overdue: r2(owe.overdue) }, bills: bills.slice(0, 25), recent: recent.slice(0, 15),
+    hours: { total: Math.round(hours * 10) / 10, people: Object.keys(hrs).map(function (n) { return { name: n, hours: Math.round(hrs[n] * 10) / 10 }; }).sort(function (a, b) { return b.hours - a.hours; }).slice(0, 8) },
+    warnings: warn };
+}
+ACTIONS.qbMoney = function (me, b) {
+  if (!canMoney(me)) throw new Error("That's #money. Ask Jesús to tag you #money.");
+  var p = needProject(me, b.projectId), mo = moneyOf(p, rows("Invoices").filter(function (i) { return i.project_id === p.id; }), rows("ContractLines").filter(function (l) { return l.project_id === p.id; }));
+  var base = { contract: mo.total, connected: !!qbCfg().refresh, linked: !!p.qb_customer };
+  if (!base.connected || !base.linked) return base;
+  var c = CacheService.getScriptCache(), ck = "qbm:" + p.id + ":" + p.qb_customer, hit = !b.refresh && c.get(ck);
+  if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
+  var data = qbJobMoney(p.qb_customer);
+  try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
+  return Object.assign(data, base);
+};
+
 var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];
 function lastWipe(pid) {
   var l = rows("Wipes").filter(function (r) { return r.project_id === pid; }); if (!l.length) return null;
@@ -999,17 +1148,18 @@ function lastWipe(pid) {
 }
 function canCheck(me, it) {
   if (isStaff(me)) return true;
-  if (it.assignee) return it.assignee === me.email;
+  if (it.assignee) return isAssigned(it, me.email);
   var l = audList(it.aud);
   if (!l.length) return it.owner === "client" && me.role === "client";
   return l.indexOf(myAud(me)) > -1;
 }
+function isAssigned(c, email) { return !!email && splitIds(c.assignee).indexOf(email) > -1; }
 function peopleIndex() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x; }); return o; }
 function footOf(email, at, ppl) { if (!email) return null; var x = ppl[email] || {}; return { name: x.name || "Someone", key: keyOf(email), avatar: x.avatar || "", role: x.role || "", at: at || "" }; }
 function checkOut(c, me, ppl) {
   var r = parseJson(c.reactions, {}), names = function (l) { return l.map(function (e) { return (ppl[e] || {}).name || "Someone"; }); };
-  return { id: c.id, phase: c.phase, item: c.item, owner: c.owner, due: c.due, done: c.done, done_by: c.done_by, done_at: c.done_at, sort: c.sort, aud: audList(c.aud), pinned: isTrue(c.pinned),
-    assignee: c.assignee ? footOf(c.assignee, "", ppl) : null, mine: c.assignee === me.email, can: canCheck(me, c),
+  return { id: c.id, phase: c.phase, item: c.item, owner: c.owner, due: c.due, done: c.done, done_by: c.done_by, done_at: c.done_at, sort: c.sort, aud: audView(me, c.aud), pinned: isTrue(c.pinned),
+    assignees: splitIds(c.assignee).map(function (e) { return footOf(e, "", ppl); }), mine: isAssigned(c, me.email), can: canCheck(me, c),
     doneFoot: isTrue(c.done) ? footOf(c.done_email || "", c.done_at, ppl) || { name: c.done_by, at: c.done_at } : null,
     edited: footOf(c.edited_by || c.created_by, c.edited_at, ppl),
     reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: names(r[e]) }; }) };
@@ -1023,9 +1173,9 @@ function schedOut(x, team, ppl) {
 /* Pinned things across my projects, for the home dashboard: messages I can read, updates and checklist items tagged for me. */
 function pinsFor(me, names, msgs, tl, ck) {
   var out = [], ppl = peopleIndex();
-  msgs.forEach(function (m) { if (isTrue(m.pinned) && names[m.project_id] && canRead(me, chOf(m))) out.push({ kind: "msg", id: m.id, pid: m.project_id, project: names[m.project_id], at: m.at, text: String(m.text).slice(0, 220), author: m.author, akey: keyOf(m.author_email), avatar: (ppl[m.author_email] || {}).avatar || "", channel: chOf(m), dm: isDm(chOf(m)) }); });
-  tl.forEach(function (u) { if (isTrue(u.pinned) && names[u.project_id] && audOk(me, u.aud)) out.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: String(u.text).slice(0, 220), author: u.author, akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "", aud: audList(u.aud) }); });
-  ck.forEach(function (c) { if (isTrue(c.pinned) && names[c.project_id] && (audOk(me, c.aud) || c.assignee === me.email)) out.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: isTrue(c.done), aud: audList(c.aud), author: (ppl[c.created_by] || {}).name || "", akey: keyOf(c.created_by), avatar: (ppl[c.created_by] || {}).avatar || "" }); });
+  msgs.forEach(function (m) { if (isTrue(m.pinned) && names[m.project_id] && seesMsg(me, m)) out.push({ kind: "msg", id: m.id, pid: m.project_id, project: names[m.project_id], at: m.at, text: String(m.text).slice(0, 220), author: m.author, akey: keyOf(m.author_email), avatar: (ppl[m.author_email] || {}).avatar || "", channel: chOf(m), dm: isDm(chOf(m)) }); });
+  tl.forEach(function (u) { if (isTrue(u.pinned) && names[u.project_id] && audOk(me, u.aud)) out.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: String(u.text).slice(0, 220), author: u.author, akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "", aud: audView(me, u.aud) }); });
+  ck.forEach(function (c) { if (isTrue(c.pinned) && names[c.project_id] && (audOk(me, c.aud) || isAssigned(c, me.email))) out.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: isTrue(c.done), aud: audView(me, c.aud), author: (ppl[c.created_by] || {}).name || "", akey: keyOf(c.created_by), avatar: (ppl[c.created_by] || {}).avatar || "" }); });
   return out.sort(function (a, b) { return a.at < b.at ? 1 : -1; }).slice(0, 24);
 }
 /* Remove many rows at once (rewrites the tab once instead of deleting row by row). */
@@ -1225,7 +1375,7 @@ function billedOn(pid, lineId) {
 function messagesOut(list, me) {
   var staff = isStaff(me), names = {}, av = {};
   rows("People").forEach(function (x) { names[x.email] = x.name; av[x.email] = x.avatar || ""; });
-  return list.filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) {
+  return list.filter(function (m) { return seesMsg(me, m); }).map(function (m) {
     var r = parseJson(m.reactions, {});
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
       channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "", akey: keyOf(m.author_email), pinned: isTrue(m.pinned),
@@ -1299,14 +1449,14 @@ function markReadNow(me, pid, ch) {
   insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
 }
 function unreadOf(me, msgs, reads) {
-  return msgs.filter(function (m) { var c = chOf(m); return canRead(me, c) && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
+  return msgs.filter(function (m) { var c = chOf(m); return seesMsg(me, m) && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
 }
 /* What a project needs from the client soon: open to-dos, dates in the next 14 days, invoices due. Feeds the notification bell. */
 function needsOf(p, ck, sc, inv, me) {
   var t = today(), lim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
   return {
     // Things assigned to me by name (any role): they show up in my alerts and my to-dos.
-    mine: me ? ck.filter(function (c) { return c.project_id === p.id && c.assignee === me.email && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due, aud: audList(c.aud), by: c.created_by }; }).slice(0, 12) : [],
+    mine: me ? ck.filter(function (c) { return c.project_id === p.id && isAssigned(c, me.email) && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due, aud: audView(me, c.aud), by: c.created_by }; }).slice(0, 12) : [],
     todos: ck.filter(function (c) { return c.project_id === p.id && c.owner === "client" && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }).slice(0, 8),
     dates: sc.filter(function (x) { return x.project_id === p.id && x.kind !== "task" && x.status !== "done" && x.start >= t && x.start <= lim; })
       .sort(function (a, c) { return a.start < c.start ? -1 : 1; }).map(function (x) { return { id: x.id, kind: x.kind, title: x.title, start: x.start, owner: x.owner }; }).slice(0, 6),

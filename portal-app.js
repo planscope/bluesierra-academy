@@ -35,6 +35,7 @@
   /* Little line icons (24×24, drawn for the portal) instead of emoji, so buttons look the same on every phone. */
   function ico(d, cls) { return '<svg class="ico ' + (cls || "") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>"; }
   var ICON = {
+    eye: ico('<path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>'),
     people: ico('<circle cx="9" cy="8.5" r="3.2"/><path d="M3.2 19.5c.7-3.3 3-5 5.8-5s5.1 1.7 5.8 5"/><circle cx="16.8" cy="9.3" r="2.6"/><path d="M16.2 14.6c2.4.1 4 1.7 4.6 4.9"/>'),
     wave: ico('<path d="M7.5 12.5 5.6 10.6a1.6 1.6 0 0 0-2.3 2.3l4.5 4.6A7 7 0 0 0 19.6 13V7.6a1.5 1.5 0 0 0-3 0V11"/><path d="M16.6 10.5V5.6a1.5 1.5 0 0 0-3 0v4.9"/><path d="M13.6 10V4.6a1.5 1.5 0 0 0-3 0V10"/><path d="M10.6 10.2V6.6a1.5 1.5 0 0 0-3 0v6"/>', "wave"),
     chat: ico('<path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.6 3.4V16.5H4.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z"/>'),
@@ -116,7 +117,7 @@
   loadCrew();
   function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
-  function resetState() { cacheClear(); S.dis = null; S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
+  function resetState() { S.viewAs = null; S.realMe = null; cacheClear(); S.dis = null; S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
   /* "Are you sure?" drawn by the portal itself: the browser's confirm() box is blocked in some apps and embedded views. */
   function sure(text, yes) {
@@ -132,8 +133,15 @@
   }
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
+  /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
+  var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
+    if (S.viewAs) {
+      if (VIEWABLE[action]) payload.viewAs = S.viewAs;
+      else if (action === "markRead") return { ok: true };
+      else if (action !== "logout") throw new Error("You're previewing as #" + S.viewAs + ". Exit the preview to change things.");
+    }
     if (API) {
       for (var tries = 0; ; tries++) {
         var r = await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
@@ -202,7 +210,7 @@
       if (!S.projects) {
         var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); }      // show the last copy instantly
         var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping();
-        try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects });
+        if (!S.viewAs) { try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects }); }
       }
       if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
       S.tab = h.t || "overview";
@@ -225,6 +233,19 @@
     if (S.flash) { var fl = document.getElementById(S.flash); S.flash = null; if (fl) { fl.scrollIntoView({ block: "center" }); fl.classList.add("flash"); setTimeout(function () { fl.classList.remove("flash"); }, 2400); } }
     setTimeout(function () { startTour(false); }, 400);
     if (S.tab === "messages" && S.data && !S.modal) window.scrollTo(0, document.body.scrollHeight);
+  }
+  function enterPreview(role) {
+    if (!S.viewAs) S.realMe = S.me;
+    S.viewAs = role; S.modal = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; S.peopleOpen = false; S.presence = null; S.team = null;
+    if (S.tab === "money" || S.tab === "people") history.replaceState(null, "", S.pid ? "#p=" + S.pid : location.pathname + location.search);
+    window.scrollTo(0, 0); route();
+  }
+  function exitPreview() { S.viewAs = null; if (S.realMe) S.me = S.realMe; S.realMe = null; S.projects = null; S.data = null; S.notif = null; route(); ping(); }
+  function previewBar() {
+    if (!S.viewAs) return "";
+    return '<div class="viewas-bar"><span class="va-txt">' + ICON.eye + ' Previewing as <span class="tg tg-' + S.viewAs + '">#' + S.viewAs + "</span> · exactly what they see. Nothing saves.</span>" +
+      '<span class="va-btns">' + ["client", "architect", "crew"].filter(function (r) { return r !== S.viewAs; }).map(function (r) { return '<button class="chip" data-a="viewAs" data-v="' + r + '">#' + r + "</button>"; }).join("") +
+      '<button class="btn sm light" data-a="exitPreview">Exit preview</button></span></div>';
   }
   async function reload(projectsToo) {
     var pid = S.pid, seq = S.seq;
@@ -275,8 +296,8 @@
     OVER.forEach(function (q) { var el = root.querySelector(q); if (el) kept[q] = el.scrollTop; });
     var floaters = [].slice.call(root.querySelectorAll("#bsp-pop, .toast, #bsp-sure"));   // live cards survive the redraw
     root.innerHTML =
-      '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
-      '<div class="who">' + peopleButton() + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
+      previewBar() + '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
+      '<div class="who">' + ((S.me.admin || S.viewAs) && !S.viewAs ? '<button class="icon-btn eye-btn" data-a="modal" data-m="viewAs" aria-label="Preview as client, architect or crew" title="Preview as #client, #architect or #crew">' + ICON.eye + "</button>" : "") + peopleButton() + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.peopleOpen ? peoplePanel() : "") + (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
@@ -366,8 +387,7 @@
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var card = function (p) {
       var mo = p.money || {}, paidPct = mo.total ? pctOf(mo.paid, mo.total) : 0;
-      var cv = p.cover ? bg(p.cover) : "", mapBg = !p.cover && p.lat != null ? '<img class="cv-map" alt="" loading="lazy" src="' + tileUrl(p.lat, p.lon, 16) + '">' : "";
-      var logo = p.architect_logo ? '<span class="arch-logo" title="' + esc(p.architect_name || "Architect") + '"><img src="' + esc(p.architect_logo) + '" alt="' + esc(p.architect_name || "Architect") + '"></span>' : p.architect_name ? '<span class="arch-logo txt">' + esc(p.architect_name) + "</span>" : "";
+      var cv = p.cover ? bg(p.cover) : "", mapBg = !p.cover && p.lat != null ? cardMap(p) : "", logo = "";
       return '<button class="pcard" data-a="open" data-id="' + esc(p.id) + '"><div class="cover' + (!p.cover ? " no-photo" : "") + '" style="' + cv + '">' + mapBg + (!p.cover ? '<span class="cv-name">' + esc(p.name) + "</span>" : "") + '<span class="pill dark">' + esc(p.phase) + "</span>" + (p.unread ? '<span class="pill new">' + p.unread + " new</span>" : "") + logo + "</div>" +
         '<div class="body"><h3>' + esc(p.name) + '</h3><span class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + "</span>" +
         (mo.total ? '<div class="pc-money"><b>' + money(mo.total) + '</b><span class="muted small">' + paidPct + "% paid</span></div>" + '<div class="cbar slim"><i class="paid" style="width:' + pctOf(mo.paid, mo.total) + '%"></i><i class="wait" style="width:' + pctOf(mo.waiting, mo.total) + '%"></i><i class="held" style="width:' + pctOf(mo.held, mo.total) + '%"></i></div>'
@@ -391,7 +411,15 @@
     return head + portfolio + homePins() +
       (active.length ? '<div class="projects">' + active.map(card).join("") + "</div>" : '<div class="empty">' + (staff() ? "No projects yet. Create the first one." : "There's no project on your account yet. Blue Sierra will add it soon.") + "</div>") +
       (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "") +
-      (deleted.length ? '<div class="section-title"><h2>Recently deleted</h2><span class="muted small">Only you see these.</span></div><div class="card" style="display:flex;flex-direction:column;gap:10px">' + deleted.map(function (p) { return '<div class="team-row"><div style="flex:1"><b style="font-weight:500">' + esc(p.name) + '</b><div class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + '</div></div><button class="btn ghost sm" data-a="restoreProject" data-id="' + esc(p.id) + '">Restore</button></div>'; }).join("") + "</div>" : "");
+      (deleted.length ? '<div class="section-title"><h2>Recently deleted</h2><span class="muted small">Only you see these.</span></div><div class="card" style="display:flex;flex-direction:column;gap:10px">' + deleted.map(function (p) { return '<div class="team-row"><div style="flex:1"><b style="font-weight:500">' + esc(p.name) + '</b><div class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + '</div></div><button class="btn ghost sm" data-a="restoreProject" data-id="' + esc(p.id) + '">Restore</button><button class="btn ghost sm danger-txt" data-a="modal" data-m="purge" data-id="' + esc(p.id) + '">Delete forever</button></div>'; }).join("") + "</div>" : "");
+  }
+  /* The job site on the card: map tiles around the property, the gold pin right where it is. The page sends no referrer
+     (Webflow setting) and OpenStreetMap blocks tiles without one, so each tile asks for the origin explicitly. */
+  function cardMap(p) {
+    var z = 16, n = Math.pow(2, z), lat = p.lat * Math.PI / 180, fx = (p.lon + 180) / 360 * n, fy = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * n, out = [];
+    for (var tx = Math.floor(fx) - 2; tx <= Math.floor(fx) + 1; tx++) for (var ty = Math.floor(fy) - 1; ty <= Math.floor(fy) + 1; ty++)
+      out.push('<img src="https://tile.openstreetmap.org/' + z + "/" + tx + "/" + ty + '.png" alt="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="left:calc(var(--mx) + ' + Math.round((tx - fx) * 256) + "px);top:calc(var(--my) + " + Math.round((ty - fy) * 256) + 'px)">');
+    return '<div class="cv-map" aria-hidden="true">' + out.join("") + '</div><span class="cv-pin" aria-hidden="true"><i class="pulse"></i><svg viewBox="0 0 48 60"><path d="M24 58C24 58 4 36.5 4 22.5a20 20 0 0 1 40 0C44 36.5 24 58 24 58Z" fill="#c39a5a" stroke="#fff" stroke-width="2.5"/><circle cx="24" cy="22" r="7.5" fill="#fff"/></svg></span>';
   }
   function tileUrl(lat, lon, z) { var n = Math.pow(2, z), r = lat * Math.PI / 180; return "https://tile.openstreetmap.org/" + z + "/" + Math.floor((lon + 180) / 360 * n) + "/" + Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n) + ".png"; }
   /* Pinned across all my projects: what the team (or I) pinned in chat, updates and checklists, filtered by #tags. */
@@ -455,14 +483,16 @@
   function homeTeam() {
     if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
     var admin = S.me && S.me.admin;
-    return qbSettings() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
+    return (admin ? '<div class="card va-card"><div><b>See what everyone else sees</b><div class="muted small">Preview the portal as #client, #architect or #crew to check nothing private is leaking.</div></div><button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview</button></div>" : "") +
+      qbSettings() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
       return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
-        '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + roleName(x.role) + (x.role === "crew" ? " · " + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
+        '<span class="role-chips">' + roleChip(x.role, x.money) + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
+        (admin && x.email !== S.me.email ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="team">Change</button>' : "") +
         (admin && x.email !== S.me.email && x.role !== "admin" ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Remove</button>' : "") + "</div>";
     }).join("") + "</div>" +
       (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
         '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
-        '<label class="f">Role<select name="role"><option value="staff">#team · Project manager / office: every project, contract and billing, #team chat</option><option value="crew">#crew · Field crew: only the projects you add them to, #crew chat, plans and schedule (no money, can\'t change the schedule)</option></select></label>' +
+        '<div class="f"><span>Role</span>' + rolePicker("staff", ["staff", "crew"], false) + "</div>" +
         '<p class="muted small">Clients and architects are added from each project’s People tab, so they only ever see their project.</p>' +
         '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>'
         : '<p class="muted small" style="margin-top:12px">Only Jesús can add or remove team members. Clients and architects are added from each project’s People tab.</p>');
@@ -501,8 +531,9 @@
     var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Chat", (function () { var n = 0; myChannels().forEach(function (c) { n += unreadIn(c); }); return n || oq; })()], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (team() || (d.plans || []).length) tabs.splice(2, 0, ["plans", "Plans", (d.plans || []).filter(function (x) { return x.status === "ready"; }).length ? 0 : 0]);
     if (crew() || d.billing === false) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
+    if (S.me.money && !S.viewAs) tabs.splice(tabs.findIndex(function (t) { return t[0] === "checklist"; }), 0, ["money", "#money", 0]);
     if (staff()) tabs.push(["people", "People", 0]);
-    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
+    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, money: S.me.money && !S.viewAs ? tabMoney : tabOverview, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead' + (p.lat != null ? " has-map" : "") + '" style="' + (p.lat != null ? "" : bg(p.cover)) + '">' + mapHtml(p) + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
@@ -588,7 +619,23 @@
   function tagChips(list) { return (list || []).map(function (a) { return '<span class="tg tg-' + esc(a) + '" title="' + esc(TAGS[a] || "") + '">#' + esc(a) + "</span>"; }).join(""); }
   function tagPicker(name, sel, allowed) {
     sel = sel || [];
-    return '<div class="tag-pick">' + allowed.map(function (a) { return '<label class="tg-opt tg-' + a + '" title="' + esc(TAGS[a]) + '"><input type="checkbox" name="' + name + '" value="' + a + '"' + (sel.indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") + "</div>";
+    return '<div class="tag-pick">' + allowed.map(function (a) { return '<label class="tg-opt o-' + a + '" title="' + esc(TAGS[a]) + '"><input type="checkbox" name="' + name + '" value="' + a + '"' + (sel.indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") + "</div>";
+  }
+  /* Roles are #tags too: the same colors everywhere (team list, people, the role picker). */
+  var ROLES = {
+    client: ["client", "Client", "Only their project: updates, photos, schedule, the #client chat and their to-dos. Invoices only if billing is tagged #client."],
+    architect: ["architect", "Architect", "Only their project, like the client, plus the #architect chat and the plans you share with them."],
+    crew: ["crew", "Field crew", "Only the projects you add them to: plans, schedule, photos and the #crew chat. No money, and they can't change the schedule."],
+    staff: ["team", "Team", "Blue Sierra project manager or office: every project, the #team chat, contract and billing."],
+    admin: ["admin", "Admin", "Everything, plus permissions, #money, deleting projects and starting them over."]
+  };
+  function roleChip(role, money) { var r = ROLES[role] || ROLES.client; return '<span class="tg tg-' + r[0] + '" title="' + esc(r[1] + ": " + r[2]) + '">#' + r[0] + "</span>" + (money && role !== "admin" ? '<span class="tg tg-money" title="Sees #money: what each job costs and makes">#money</span>' : ""); }
+  function rolePicker(sel, allowed, money) {
+    var m = money !== undefined;
+    return '<div class="role-pick"><div class="tag-pick">' + allowed.map(function (r) { return '<label class="tg-opt o-' + ROLES[r][0] + '"><input type="radio" name="role" value="' + r + '"' + (sel === r ? " checked" : "") + ' required><span>#' + ROLES[r][0] + "</span></label>"; }).join("") +
+      (m ? '<label class="tg-opt o-money rp-money" title="Sees what each job costs and makes"><input type="checkbox" name="money"' + (money ? " checked" : "") + "><span>#money</span></label>" : "") + "</div>" +
+      allowed.map(function (r) { return '<p class="rp-desc rp-' + r + '"><b>#' + ROLES[r][0] + "</b> · " + esc(ROLES[r][2]) + "</p>"; }).join("") +
+      (m ? '<p class="rp-desc rp-mdesc"><b>#money</b> · Also sees the #money tab: payroll, materials, bills due and profit for every job, straight from QuickBooks. Only for #team. Handle with care.</p>' : "") + "</div>";
   }
   /* A tiny face that says who did something (and when). */
   function foot(f, verb, cls) { if (!f || !f.name) return ""; return '<span class="foot ' + (cls || "") + '" title="' + esc(verb + " " + f.name + (f.at ? " · " + day(f.at) : "")) + '">' + av(f.name, f.avatar, f.role, "xs", f.key) + "</span>"; }
@@ -764,10 +811,10 @@
     return ((S.presence && S.presence.people) || []).filter(function (x) { return x.key === key; })[0];
   }
   function presDot(key) { var p = presOf(key); return p ? '<i class="pres p-' + p.state + '" title="' + STATE_TXT[p.state] + '"></i>' : ""; }
-  var TABN = { overview: "Overview", plans: "Plans", schedule: "Schedule", updates: "Updates", photos: "Photos", messages: "Chat", invoices: "Contract", checklist: "Checklist", people: "People" };
+  var TABN = { overview: "Overview", plans: "Plans", schedule: "Schedule", updates: "Updates", photos: "Photos", messages: "Chat", invoices: "Contract", checklist: "Checklist", money: "#money", people: "People" };
   function ago(t) { if (!t) return ""; var m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; }
   async function ping() {
-    if (!S.token || !S.me) return;
+    if (!S.token || !S.me || S.viewAs) return;
     try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible" });
       S.presence = r; if (!S.myStatus && r.me) S.myStatus = r.me.s;
       if (r.pulse) onPulse(r.pulse);
@@ -903,7 +950,7 @@
   }
 
   /* ---------------- instant screens: show the last copy right away, then refresh it ---------------- */
-  function ckey(name) { var e = S.me && S.me.email || (function () { try { return localStorage.getItem("bsp-last-email"); } catch (x) { return ""; } })(); return e ? "bsp-c:" + e + ":" + name : ""; }
+  function ckey(name) { if (S.viewAs) return ""; var e = S.me && S.me.email || (function () { try { return localStorage.getItem("bsp-last-email"); } catch (x) { return ""; } })(); return e ? "bsp-c:" + e + ":" + name : ""; }
   function cacheGet(name) { try { var k = ckey(name); return k ? JSON.parse(localStorage.getItem(k) || "null") : null; } catch (e) { return null; } }
   function cacheSet(name, v) { try { var k = ckey(name); if (k) localStorage.setItem(k, JSON.stringify(v)); } catch (e) { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e2) {} } }
   function cacheClear() { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0 || x === "bsp-last-email"; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e) {} }
@@ -1401,10 +1448,73 @@
     return head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
   }
 
+  /* ---------------- #money: what this job costs and makes, from QuickBooks (admin + people tagged #money) ---------------- */
+  async function loadMoney(refresh) {
+    var pid = S.pid; S.moneyBusy = S.moneyBusy || {}; if (S.moneyBusy[pid]) return; S.moneyBusy[pid] = 1; S.money = S.money || {};
+    if (refresh && S.money[pid]) S.money[pid].refreshing = true;
+    try { S.money[pid] = await call("qbMoney", { projectId: pid, refresh: !!refresh }); } catch (e) { S.money[pid] = { err: e.message }; }
+    S.moneyBusy[pid] = 0; if (S.pid === pid && S.tab === "money") keepScroll(render);
+  }
+  var BUCKETS = [["labor", "Labor & payroll"], ["materials", "Materials"], ["subs", "Subs"], ["other", "Everything else"]];
+  function moneyMood(billed, spent) {
+    var mg = billed ? (billed - spent) / billed * 100 : null;
+    if (!billed && !spent) return ["calm", "Fresh start.", "Nothing in QuickBooks for this job yet. Bills, checks and payroll show up here once they’re tagged to this customer."];
+    if (!spent) return ["good", "Money in, nothing out (yet).", "No costs are tagged to this job in QuickBooks. If that sounds too good to be true, it is: tag the bills to this customer."];
+    if (!billed) return ["bad", "All out, nothing in.", "We’re spending and haven’t billed yet. Time to send an invoice."];
+    if (mg >= 25) return ["great", "Chef’s kiss. This job is printing money.", "Keep doing whatever you’re doing."];
+    if (mg >= 15) return ["good", "Looking healthy.", "Solid margin. Keep an eye on the change orders."];
+    if (mg >= 5) return ["tight", "Tight, but alive.", "Every extra Home Depot run counts on this one."];
+    if (mg >= 0) return ["tight", "Breaking even.", "We’re working for free right now. Coffee’s on you."];
+    return ["bad", "Ouch. This job is eating our lunch.", "Costs are higher than what we billed. Time for a change order?"];
+  }
+  function piggy(mood, fill) {
+    var c = { great: "#2f6b4a", good: "#2f6b4a", tight: "#c39a5a", bad: "#9a3b2e", calm: "#77736c" }[mood], h = Math.max(4, Math.min(100, fill)) * 0.36;
+    return '<svg class="piggy" viewBox="0 0 64 56" aria-hidden="true"><defs><clipPath id="pg-c"><ellipse cx="30" cy="30" rx="22" ry="17"/></clipPath></defs>' +
+      '<ellipse cx="30" cy="30" rx="22" ry="17" fill="#fff" stroke="' + c + '" stroke-width="2.5"/><rect x="6" y="' + (47 - h) + '" width="48" height="' + h + '" fill="' + c + '" opacity=".25" clip-path="url(#pg-c)"/>' +
+      '<path d="M18 16l-3-8 9 5" fill="#fff" stroke="' + c + '" stroke-width="2.5" stroke-linejoin="round"/><rect x="50" y="24" width="9" height="11" rx="4" fill="#fff" stroke="' + c + '" stroke-width="2.5"/>' +
+      '<circle cx="54.5" cy="29.5" r="1" fill="' + c + '"/><circle cx="41" cy="24" r="2" fill="' + c + '"/><path d="M24 14h10" stroke="' + c + '" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<path d="M18 45v6M40 45v6" stroke="' + c + '" stroke-width="3" stroke-linecap="round"/>' + (mood === "great" ? '<circle cx="30" cy="5" r="4" fill="#c39a5a" class="coin"/>' : "") + "</svg>";
+  }
+  function tabMoney() {
+    var m = (S.money || {})[S.pid];
+    var head = '<div class="section-title" style="margin-top:0"><div><h2>#money</h2><span class="muted small">Only Jesús and people tagged #money see this tab.</span></div>' +
+      (m && m.linked ? '<button class="btn ghost sm" data-a="moneyRefresh"' + (m.refreshing ? " disabled" : "") + ">" + (m.refreshing ? "Counting…" : "Refresh") + "</button>" : "") + "</div>";
+    if (!m) { loadMoney(false); return head + '<div class="loading" style="min-height:30vh">Counting the money…</div>'; }
+    if (m.err) return head + '<div class="empty">' + esc(m.err) + ' <button class="link" data-a="moneyRefresh">Try again</button></div>';
+    if (!m.connected) return head + '<div class="empty">QuickBooks isn’t connected yet. ' + (S.me.admin ? '<button class="link" data-a="homeTeamQb">Connect it in Home → Team</button>.' : "Jesús can connect it from Home → Team.") + "</div>";
+    if (!m.linked) return head + '<div class="empty">This job isn’t linked to its QuickBooks customer yet. <button class="link" data-a="tab" data-t="invoices">Link it in Contract & billing → From QuickBooks</button>.</div>';
+    var inn = m.inn || {}, out = m.out || {}, owe = m.owe || {}, billed = inn.billed || 0, spent = out.total || 0, profit = billed - spent, mood = moneyMood(billed, spent);
+    var margin = billed ? Math.round(profit / billed * 1000) / 10 : null;
+    var hero = '<div class="card money-hero mood-' + mood[0] + '">' + piggy(mood[0], margin == null ? 0 : margin * 2.5) +
+      '<div class="mh-txt"><div class="eyebrow">' + esc(m.customer || "This job") + " in QuickBooks</div><h2>" + esc(mood[1]) + '</h2><p class="muted">' + esc(mood[2]) + "</p></div>" +
+      '<div class="mh-num"><div class="eyebrow">Profit so far</div><b class="' + (profit < 0 ? "neg" : "") + '">' + money(profit) + "</b><span>" + (margin == null ? "nothing billed yet" : margin + "% of what we billed") + "</span></div></div>";
+    var tiles = '<div class="grid g4 money-tiles">' +
+      stat("Money in", money(billed), money(inn.collected || 0) + " collected" + (m.contract ? " · contract " + money(m.contract) : "")) +
+      stat("Still owed to us", money(inn.open || 0), inn.overdue ? '<span style="color:var(--bad)">' + money(inn.overdue) + " overdue. Go get it.</span>" : "Nobody’s late") +
+      stat("Money out", money(spent), out.labor ? money(out.labor) + " of it is labor" : "Labor, materials, subs and more") +
+      stat("We owe", money(owe.open || 0), owe.overdue ? '<span style="color:var(--bad)">' + money(owe.overdue) + " past due</span>" : (m.bills || []).length ? (m.bills || []).length + " open bill" + ((m.bills || []).length === 1 ? "" : "s") : "All bills paid") + "</div>";
+    var segs = BUCKETS.filter(function (b) { return out[b[0]] > 0; });
+    var where = '<div class="section-title"><h2>Where the money went</h2><span class="muted small">' + money(spent) + " so far</span></div>" + (spent > 0 ?
+      '<div class="card"><div class="mbar" role="img" aria-label="' + esc(segs.map(function (b) { return b[1] + " " + money(out[b[0]]); }).join(", ")) + '">' + segs.map(function (b) { return '<i class="mb-' + b[0] + '" style="width:' + pctOf(out[b[0]], spent) + '%" title="' + esc(b[1] + " · " + money(out[b[0]])) + '"></i>'; }).join("") + "</div>" +
+      '<div class="mlegend">' + BUCKETS.map(function (b) { return '<div class="ml-row' + (out[b[0]] ? "" : " zero") + '"><i class="mb-' + b[0] + '"></i><span>' + b[1] + "</span><b>" + money(out[b[0]] || 0) + '</b><small class="muted">' + pctOf(out[b[0]] || 0, spent) + "%</small></div>"; }).join("") + "</div>" +
+      ((m.accounts || []).length ? '<details class="m-acc"><summary>How it was sorted</summary>' + m.accounts.map(function (a) { return '<div class="ml-row"><i class="mb-' + a.bucket + '"></i><span>' + esc(a.name) + "</span><b>" + money(a.amount) + "</b><small></small></div>"; }).join("") + '<p class="muted small">Sorted by the QuickBooks account name (payroll and wages = labor, materials and supplies = materials, subcontractors = subs).</p></details>' : "") + "</div>"
+      : '<div class="empty">No costs tagged to this job yet. In QuickBooks, pick this customer in the “Customer/project” column of bills, checks, card charges and payroll.</div>');
+    var mx = Math.max(billed, inn.collected || 0, spent, 1);
+    var vs = '<div class="section-title"><h2>In vs out</h2></div><div class="card vs">' + [["Billed", billed, "in"], ["Collected", inn.collected || 0, "got"], ["Spent", spent, "out"]].map(function (r) { return '<div class="vs-row"><span>' + r[0] + '</span><div class="vs-track"><i class="vs-' + r[2] + '" style="width:' + pctOf(r[1], mx) + '%"></i></div><b>' + money(r[1]) + "</b></div>"; }).join("") + "</div>";
+    var bills = (m.bills || []).length ? '<div class="section-title"><h2>Bills knocking on the door</h2><span class="muted small">' + money(owe.open || 0) + " for this job</span></div><div class=\"card m-list\">" + m.bills.map(function (b) {
+      return '<div class="m-row' + (b.late ? " late" : "") + '"><div><b>' + esc(b.vendor) + '</b><small class="muted">' + esc([b.what, b.number ? "#" + b.number : ""].filter(Boolean).join(" · ")) + '</small></div><span class="m-due">' + (b.due ? (b.late ? '<span class="pill bad">Late! was due ' + day(b.due) + "</span>" : "Due " + day(b.due)) : "") + "</span><b>" + money(b.amount) + "</b></div>"; }).join("") + "</div>" : "";
+    var hrs = m.hours && m.hours.total ? '<div class="section-title"><h2>Crew hours</h2><span class="muted small">' + m.hours.total + " hours logged to this job</span></div><div class=\"card vs\">" + m.hours.people.map(function (h) { return '<div class="vs-row"><span>' + esc(h.name) + '</span><div class="vs-track"><i class="vs-hrs" style="width:' + pctOf(h.hours, m.hours.people[0].hours) + '%"></i></div><b>' + h.hours + " h</b></div>"; }).join("") + "</div>" : "";
+    var recent = (m.recent || []).length ? '<div class="section-title"><h2>Latest spending</h2><span class="muted small">Last 6 months</span></div><div class="card m-list">' + m.recent.map(function (r) {
+      return '<div class="m-row"><div><b>' + esc(r.who || r.what) + '</b><small class="muted">' + esc(r.what) + "</small></div><span class=\"m-due\"><i class=\"mdot mb-" + r.bucket + '"></i>' + day(r.date) + "</span><b>" + money(r.amount) + "</b></div>"; }).join("") + "</div>" : "";
+    return head + hero + tiles + where + vs + bills + hrs + recent +
+      '<p class="muted small m-foot">From QuickBooks' + (m.company ? " (" + esc(m.company) + ")" : "") + " · updated " + day(m.updated) + (m.cached ? " · saved copy, Refresh for the latest" : "") + ((m.warnings || []).length ? " · couldn’t read: " + esc(m.warnings.join(", ")) : "") + ".</p>";
+  }
+
   function checkRow(c) {
     var done = isDone(c.done), can = c.can != null ? c.can : staff() || (c.owner === "client" && asClient()), pinned = isPinned(c);
     var mineTxt = c.mine ? '<span class="pill gold">Yours</span>' : "";
-    var who = c.assignee ? '<span class="assignee" title="Assigned to ' + esc(c.assignee.name) + '">' + av(c.assignee.name, c.assignee.avatar, c.assignee.role, "xs", c.assignee.key) + "<span>" + esc(first(c.assignee.name)) + "</span></span>" :
+    var as = c.assignees || (c.assignee ? [c.assignee] : []);
+    var who = as.length ? '<span class="assignee" title="Assigned to ' + esc(as.map(function (a) { return a.name; }).join(", ")) + '"><span class="faces">' + as.slice(0, 4).map(function (a) { return av(a.name, a.avatar, a.role, "xs", a.key); }).join("") + "</span><span>" + esc(first(as[0].name) + (as.length > 1 ? " +" + (as.length - 1) : "")) + "</span></span>" :
       (c.aud && c.aud.length ? "" : '<span class="pill ' + (c.owner === "client" ? "gold" : "") + '">' + (c.owner === "client" ? (!asClient() ? "Client" : "You") : "Blue Sierra") + "</span>");
     var df = c.doneFoot, ef = c.edited;
     return '<div class="ck ' + (done ? "done" : "") + (pinned ? " pinned" : "") + (c.mine && !done ? " mine" : "") + '" id="ck-' + esc(c.id) + '"><button class="box" data-a="toggle" data-id="' + esc(c.id) + '"' + (can ? "" : " disabled") + ' aria-label="' + (done ? "Mark not done" : "Mark done") + '">' + (done ? "✓" : "") + "</button>" +
@@ -1432,11 +1542,12 @@
 
   function tabPeople() {
     var ppl = S.data.people || [];
-    return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2></div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
+    return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2>' + (S.me.admin ? '<button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview as…</button>" : "") + '</div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
       ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + esc(x.email) + "</div></div>" +
-        '<span class="pill">' + esc(roleName(x.role)) + "</span>" + (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
+        '<span class="role-chips">' + roleChip(x.role, x.money) + "</span>" + (x.email !== S.me.email && (S.me.admin || ["client", "architect", "crew"].indexOf(x.role) > -1) ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="project">Change</button>' : "") +
+        (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
       '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
-      '<label class="f">Role<select name="role"><option value="client">Client: sees this project only</option><option value="architect">Architect: sees this project only, like the client</option><option value="crew">#crew · Field crew: this project\'s plans, schedule, photos and #crew chat (no money)</option>' + (S.me.admin ? '<option value="staff">#team · Blue Sierra project manager: sees all projects</option>' : "") + "</select></label>" +
+      '<div class="f"><span>Role</span>' + rolePicker("client", ["client", "architect", "crew"].concat(S.me.admin ? ["staff"] : [])) + "</div>" +
       '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>';
   }
 
@@ -1612,9 +1723,9 @@
         '<label class="f">Short description<textarea name="summary">' + esc(p.summary) + "</textarea></label>" +
         '<label class="f">Retainage % held from each invoice (0 if none)<input type="number" name="retainage_pct" min="0" max="20" step="0.5" value="' + esc(p.retainage_pct || 0) + '"></label>' +
         '<div class="row2"><label class="f">Architect (firm)<input type="text" name="architect_name" value="' + esc(p.architect_name) + '" placeholder="e.g. Studio Name Architects"></label>' +
-        (m.id ? '<div class="f"><span>Architect logo (shows on the project card)</span><div class="logo-row">' + (p.architect_logo ? '<img src="' + esc(p.architect_logo) + '" alt=""><button type="button" class="link small" data-a="dropLogo">Remove</button>' : "") + '<input type="file" name="logo" accept="image/*"></div></div>' : '<span class="muted small" style="align-self:end">You can add the architect\'s logo after creating the project.</span>') + "</div>" +
+        '<span class="muted small" style="align-self:end">Home shows the job’s map until you pick a cover photo.</span></div>' +
         (m.id && S.me.admin ? '<div class="f"><span>Who sees Contract & billing</span><input type="hidden" name="billing_set" value="1"><div class="tag-pick"><span class="tg tg-team">#team</span>' +
-          ["client", "architect"].map(function (a) { return '<label class="tg-opt tg-' + a + '"><input type="checkbox" name="billing_aud" value="' + a + '"' + ((p.billing_aud || []).indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") +
+          ["client", "architect"].map(function (a) { return '<label class="tg-opt o-' + a + '"><input type="checkbox" name="billing_aud" value="' + a + '"' + ((p.billing_aud || []).indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") +
           '<span class="tg off">#crew never</span></div><span class="muted small">Blue Sierra always sees it. Tag #client and/or #architect to show it to them too.</span></div>' : "") +
         (m.id ? '<label class="f">Status<select name="status"><option value="active"' + (p.status !== "archived" ? " selected" : "") + '>Active</option><option value="archived"' + (p.status === "archived" ? " selected" : "") + ">Archived (hidden from the client)</option></select></label>" : "") +
         (m.id && S.me.admin ? '<details class="danger"><summary>Start this project over</summary><p class="muted small">Clears the chat, updates, photos list, invoices, contract, checklist, schedule, plans and the people added to it, so you can start from zero. Nothing is lost: you can restore it right here. Files stay in Google Drive.</p>' +
@@ -1725,15 +1836,39 @@
         (!v.derived && staff() && v.req ? '<div class="actions" style="margin-top:6px"><button class="btn" data-a="schedEdit" data-id="' + esc(v.id) + '">Edit the date</button></div>' : "") +
         '<div class="actions" style="margin-top:18px">' + (v.derived ? '<button class="btn ghost" data-a="tab" data-t="' + (v.derived === "Invoices" ? "invoices" : "checklist") + '">Open ' + esc(v.derived) + "</button>" : "") + '<button class="btn" data-a="close">Close</button></div>' : "<p>Not found.</p>";
     }
+    if (m.type === "role") {
+      var rx = (m.from === "team" ? S.team : d && d.people || []).filter(function (x) { return x.email === m.email; })[0];
+      if (!rx) body = "<p>Not found.</p>";
+      else {
+        var rAllowed = m.from === "team" ? ["staff", "crew", "admin"] : ["client", "architect", "crew"].concat(S.me.admin ? ["staff", "admin"] : []);
+        if (rAllowed.indexOf(rx.role) < 0) rAllowed.unshift(rx.role);
+        body = '<h2>Role and permissions</h2><div class="role-who">' + av(rx.name, rx.avatar, rx.role) + "<div><b>" + esc(rx.name) + '</b><div class="muted small">' + esc(rx.email) + "</div></div></div>" +
+          '<form class="form" data-form="role">' + rolePicker(rx.role, rAllowed, S.me.admin ? !!rx.money : undefined) +
+          (m.from === "team" ? '<p class="muted small">To make someone a #client or #architect, change it from their project’s People tab, so they only see that project.</p>' : "") +
+          '<p class="muted small">It takes effect right away, the next time their portal loads.</p><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+      }
+    }
+    if (m.type === "viewAs") {
+      body = '<h2>Preview the portal</h2><p class="muted">See exactly what the server sends to each role, on every project. Read-only: nothing you click here saves. Use it to check nothing private is leaking.</p>' +
+        '<div class="va-pick">' + ["client", "architect", "crew"].map(function (r) { return '<button class="va-opt" data-a="viewAs" data-v="' + r + '"><span class="tg tg-' + r + '">#' + r + "</span><small>" + esc(ROLES[r][2]) + "</small></button>"; }).join("") + "</div>" +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div>';
+    }
+    if (m.type === "purge") {
+      var pp0 = (S.projects || []).filter(function (x) { return x.id === m.id; })[0] || {};
+      body = '<h2>Delete forever</h2><p>This erases <b>' + esc(pp0.name) + "</b> from the portal for good: chat, updates, invoices, contract, checklist, schedule, plans and the saved “start over” copy. People who were only on this project lose access.</p>" +
+        '<p class="muted small">Its Google Drive folder (photos, PDFs, plans) goes to the Drive trash, where Google keeps it 30 days before it’s gone.</p>' +
+        '<label class="f">Type <b>' + esc(pp0.name) + '</b> to confirm<input type="text" data-purge-confirm autocomplete="off"></label>' +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button type="button" class="btn danger-btn" data-a="purgeProject" data-id="' + esc(m.id) + '">Delete forever</button></div>';
+    }
     if (m.type === "check") {
       var c = m.id ? d.checklist.filter(function (x) { return x.id === m.id; })[0] || {} : { phase: d.project.phase, owner: "blue sierra", aud: [] };
       var ppl3 = (d.members || []);
       body = "<h2>" + (m.id ? "Edit item" : "Add checklist item") + '</h2><form class="form" data-form="check">' +
         '<label class="f">Item<input type="text" name="item" required value="' + esc(c.item) + '" placeholder="e.g. Check the arborist permit #team"></label>' +
         '<div class="f"><span>Who sees it</span>' + tagPicker("aud", c.aud || (c.owner === "client" ? ["client"] : []), ["client", "architect", "team", "crew", "private"]) + '<span class="muted small">#client: everyone on the project · #team: Blue Sierra only · #crew: crew + Blue Sierra. None picked = everyone.</span></div>' +
-        '<div class="row2"><label class="f">Assign to (it goes to their to-dos and alerts)<select name="assignee"><option value="">Nobody in particular</option>' + ppl3.map(function (x) { return '<option value="' + esc(x.key) + '"' + (c.assignee && c.assignee.key === x.key ? " selected" : "") + ">" + esc(x.name) + " · " + esc(roleName(x.role)) + "</option>"; }).join("") + "</select></label>" +
-        '<label class="f">Phase<select name="phase">' + PHASES.map(function (ph) { return "<option" + (ph === c.phase ? " selected" : "") + ">" + ph + "</option>"; }).join("") + "</select></label></div>" +
-        '<label class="f">Due (optional)<input type="date" name="due" value="' + esc(c.due) + '"></label>' +
+        '<div class="f"><span>Assign to <small class="muted">(pick as many as you like: it goes to their to-dos and alerts)</small></span><div class="assign-pick">' + ppl3.map(function (x) { var on = (c.assignees || []).some(function (a) { return a.key === x.key; }); return '<label class="ap-opt"><input type="checkbox" name="assignees" value="' + esc(x.key) + '"' + (on ? " checked" : "") + "><span>" + av(x.name, x.avatar, x.role, "xs", x.key) + "<b>" + esc(x.name) + "</b>" + roleChip(x.role) + "</span></label>"; }).join("") + "</div></div>" +
+        '<div class="row2"><label class="f">Phase<select name="phase">' + PHASES.map(function (ph) { return "<option" + (ph === c.phase ? " selected" : "") + ">" + ph + "</option>"; }).join("") + "</select></label>" +
+        '<label class="f">Due (optional)<input type="date" name="due" value="' + esc(c.due) + '"></label></div>' +
         (c.edited && c.edited.name ? '<p class="muted small foot-line">' + foot(c.edited, "Last edited by") + " Last edited by " + esc(c.edited.name) + (c.edited.at ? " · " + day(c.edited.at) : "") + "</p>" : "") +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
@@ -1766,7 +1901,14 @@
       case "home": refreshList(); return go(null);
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
-      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
+      case "viewAs": enterPreview(b.dataset.v); return;
+      case "exitPreview": exitPreview(); return;
+      case "purgeProject":
+        var pc = root.querySelector("[data-purge-confirm]");
+        run(b, async function () { var rr = await call("purgeProject", { projectId: b.dataset.id, confirm: pc ? pc.value : "" }); S.modal = null; S.projects = null; await route(); toast(rr.trashed ? "Erased. Its Drive folder is in the Drive trash." : "Erased."); });
+        return;
+      case "moneyRefresh": loadMoney(true); keepScroll(render); return;
+      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
       case "close": S.modal = null; S.scDraft = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
@@ -2038,7 +2180,7 @@
         var rp = await call("saveProfile", { avatar: scEncode(S.scDraft) }); S.me.avatar = rp.avatar; S.scDraft = null; S.modal = null; if (S.pid) await refresh(); else { keepScroll(render); refreshList(); } toast("Looking good ✨"); return;
       }
       if (kind === "team") {
-        await call("addPerson", { name: v("name"), email: v("email"), role: v("role") || "staff", invite: !!fd.get("invite") });
+        await call("addPerson", { name: v("name"), email: v("email"), role: v("role") || "staff", money: !!fd.get("money"), invite: !!fd.get("invite") });
         f.reset(); S.team = null; render(); toast(fd.get("invite") ? "Added and invited" : "Added to the team"); return;
       }
       if (kind === "chat") {
@@ -2095,8 +2237,14 @@
         await call("requestScheduleChange", { itemId: f.dataset.id, note: v("note") });
         S.modal = null; await refresh(); toast("Sent to Blue Sierra"); return;
       }
+      if (kind === "role") {
+        await call("setRole", { email: S.modal.email, role: v("role"), money: S.me.admin && fd.has("role") ? !!fd.get("money") : undefined, projectId: S.modal.from === "project" ? S.pid : undefined });
+        var fromTeam = S.modal.from === "team"; S.modal = null;
+        if (fromTeam) { S.team = null; render(); } else await refresh();
+        toast("Role updated"); return;
+      }
       if (kind === "check") {
-        await call("saveChecklistItem", { projectId: S.pid, item: { id: S.modal.id || undefined, item: v("item"), phase: v("phase"), due: v("due"), aud: fd.getAll("aud"), assignee: v("assignee") } });
+        await call("saveChecklistItem", { projectId: S.pid, item: { id: S.modal.id || undefined, item: v("item"), phase: v("phase"), due: v("due"), aud: fd.getAll("aud"), assignees: fd.getAll("assignees") } });
         S.modal = null; await refresh(); toast("Checklist updated"); return;
       }
     }

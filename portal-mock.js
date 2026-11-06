@@ -134,7 +134,9 @@
       p.pinLock = 0; return { token: t, me: meOut(p), needPin: !p.pin || !!b.resetPin };
     }
   };
-  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pk(p.email), avatar: p.avatar || "", hasPin: !!p.pin }; }
+  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: !p.preview && (p.role === "admin" || (p.role === "staff" && p.money === "yes")), key: pk(p.email), avatar: p.avatar || "", hasPin: !!p.pin, preview: p.preview || "" }; }
+  function asg(c) { return String(c.assignee || "").split(",").filter(Boolean); }
+  function isAsg(c, e) { return asg(c).indexOf(e) > -1; }
   function pk(e) { var h = 0; String(e).split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return ("0000000000" + h.toString(16)).slice(-10); }
   function isTeam(p) { return isStaff(p) || p.role === "crew"; }
   function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
@@ -213,7 +215,7 @@
           .sort(function (a, c) { return a.kind !== c.kind ? (a.kind === "base" ? -1 : 1) : Number(a.sort) - Number(c.sort); })
           .map(function (l) { var o = Object.assign({}, l, { amount: num(l.amount) }); if (!isStaff(me)) delete o.notes; return o; }) },
         schedule: by(db.schedule).sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort) - Number(c.sort); }).map(function (x) { var o = Object.assign({}, x); if (!isTeam(me)) delete o.notes; return o; }) };
-      if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", avatar: x.avatar || "" }; });
+      if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: meOut(x).money, active: x.active === "yes", avatar: x.avatar || "" }; });
       return out;
     },
     saveProject: function (db, me, b) {
@@ -317,7 +319,7 @@
         var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id || "", kind: m.kind, author: m.author, role: m.role, at: m.at, text: String(m.text).slice(0, 400), files: (m.files || []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "" };
         o.unread = !o.mine && m.at > (rd[m.project_id + "|" + o.channel] || ""); o.mention = ment(m.text, me.name); o.dm = isDm(o.channel); o.akey = pk(m.author_email); o.avatar = (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || ""; return o; }) };
     },
-    listTeam: function (db, me) { needStaff(me); return { team: db.people.filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: ids(x.project_ids).length }; }) }; },
+    listTeam: function (db, me) { needStaff(me); return { team: db.people.filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: meOut(x).money, active: x.active === "yes", since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: ids(x.project_ids).length }; }) }; },
     presence: function (db, me, b) {
       // Preview: a few sample people "online" so the panel has something to show.
       var sample = { "maria@example.com": ["online", "p1", "plans"], "architect@example.com": ["busy", "p1", "messages"], "crew@example.com": ["away", "p1", "schedule"] };
@@ -427,25 +429,26 @@
   function audOf(me) { return isStaff(me) ? AUDS : me.role === "crew" ? ["crew"] : me.role === "architect" ? ["client", "architect"] : ["client"]; }
   function audList(v) { return (Array.isArray(v) ? v : String(v || "").split(",")).map(String).filter(function (a) { return AUDS.indexOf(a) > -1; }); }
   function audOk(me, v) { var l = audList(v); return !l.length || l.some(function (a) { return audOf(me).indexOf(a) > -1; }); }
+  function audView(me, v) { var l = audList(v); if (isStaff(me)) return l; var mine = audOf(me); return l.filter(function (a) { return mine.indexOf(a) > -1; }); }
   function myAud(me) { return me.role === "crew" ? "crew" : me.role === "architect" ? "architect" : me.role === "client" ? "client" : "team"; }
   function readTags(t) { var W = { client: "client", cliente: "client", architect: "architect", arquitecto: "architect", team: "team", equipo: "team", crew: "crew", private: "private", privado: "private" }, aud = [];
     var rest = String(t || "").replace(/(^|\s)#([a-z]+)\b/gi, function (all, sp, w) { var a = W[w.toLowerCase()]; if (!a) return all; if (aud.indexOf(a) < 0) aud.push(a); return sp; }); return { aud: aud, text: rest.replace(/\s{2,}/g, " ").trim() }; }
   function canBill(me, p) { return isStaff(me) ? true : me.role === "crew" ? false : audList(p.billing_aud).indexOf(me.role) > -1; }
   function foot(db, email, at) { if (!email) return null; var x = db.people.filter(function (q) { return q.email === email; })[0] || {}; return { name: x.name || "Someone", key: pk(email), avatar: x.avatar || "", role: x.role || "", at: at || "" }; }
-  function canCheck(me, it) { if (isStaff(me)) return true; if (it.assignee) return it.assignee === me.email; var l = audList(it.aud); if (!l.length) return it.owner === "client" && me.role === "client"; return l.indexOf(myAud(me)) > -1; }
+  function canCheck(me, it) { if (isStaff(me)) return true; if (it.assignee) return isAsg(it, me.email); var l = audList(it.aud); if (!l.length) return it.owner === "client" && me.role === "client"; return l.indexOf(myAud(me)) > -1; }
   var baseGet = ACTIONS.getProject, baseList = ACTIONS.listProjects;
   ACTIONS.getProject = function (db, me, b) {
     var out = baseGet(db, me, b), p = db.projects.filter(function (x) { return x.id === b.projectId; })[0], bill = canBill(me, p);
     out.billing = bill; if (!bill) { out.invoices = []; out.contract = { retainage_pct: 0, lines: [] }; }
     out.channels = audOf(me).filter(function (a) { return a !== "private"; });
-    out.messages = db.messages.filter(function (m) { return m.project_id === p.id && (isDm(chOf(m)) ? m.channel.indexOf(pk(me.email)) > -1 : out.channels.indexOf(chOf(m)) > -1); }).map(function (m) { return msgOut(db, m, me); });
+    out.messages = db.messages.filter(function (m) { return m.project_id === p.id && (bill || !(m.kind === "event" && /^(invoice|inv|co):/.test(m.ref || ""))) && (isDm(chOf(m)) ? m.channel.indexOf(pk(me.email)) > -1 : out.channels.indexOf(chOf(m)) > -1); }).map(function (m) { return msgOut(db, m, me); });
     out.project.billing_aud = audList(p.billing_aud);
     var hid = {}; db.timeline.forEach(function (u) { if (u.project_id === p.id && !audOk(me, u.aud)) hid[u.id] = 1; });
-    out.timeline = out.timeline.filter(function (u) { return !hid[u.id]; }).map(function (u) { return Object.assign({}, u, { aud: audList(u.aud) }); });
+    out.timeline = out.timeline.filter(function (u) { return !hid[u.id]; }).map(function (u) { return Object.assign({}, u, { aud: audView(me, u.aud) }); });
     out.photos = out.photos.filter(function (ph) { return !hid[ph.update_id]; });
     var rx = function (r) { r = r || {}; return Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e] }; }); };
-    out.checklist = out.checklist.filter(function (c) { return audOk(me, c.aud) || c.assignee === me.email; }).map(function (c) {
-      return Object.assign({}, c, { aud: audList(c.aud), assignee: c.assignee ? foot(db, c.assignee) : null, mine: c.assignee === me.email, can: canCheck(me, c), pinned: c.pinned === "yes",
+    out.checklist = out.checklist.filter(function (c) { return audOk(me, c.aud) || isAsg(c, me.email); }).map(function (c) {
+      return Object.assign({}, c, { aud: audView(me, c.aud), assignee: undefined, assignees: asg(c).map(function (e) { return foot(db, e); }), mine: isAsg(c, me.email), can: canCheck(me, c), pinned: c.pinned === "yes",
         doneFoot: c.done === "yes" ? foot(db, c.done_email, c.done_at) || { name: c.done_by, at: c.done_at } : null, edited: foot(db, c.edited_by || c.created_by, c.edited_at), reactions: rx(c.reactions) }); });
     out.schedule = out.schedule.map(function (x) { return Object.assign({}, x, { edited: foot(db, x.edited_by, x.edited_at), req: x.req_by ? Object.assign(foot(db, x.req_by, x.req_at), { note: x.req_note }) : null }); });
     if (me.role === "admin") { var w = (db.wipes || []).filter(function (x) { return x.pid === p.id; }).slice(-1)[0]; out.wipe = w ? { id: w.id, at: w.at, items: w.n } : null; }
@@ -453,11 +456,11 @@
   };
   ACTIONS.listProjects = function (db, me) {
     var out = baseList(db, me), names = {}; out.projects.forEach(function (p) { names[p.id] = p.name; var raw = db.projects.filter(function (x) { return x.id === p.id; })[0]; if (!canBill(me, raw)) { p.money = {}; p.balance = 0; if (p.needs) p.needs.invoices = []; }
-      p.needs = p.needs || {}; p.needs.mine = db.checklist.filter(function (c) { return c.project_id === p.id && c.assignee === me.email && c.done !== "yes"; }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }); });
+      p.needs = p.needs || {}; p.needs.mine = db.checklist.filter(function (c) { return c.project_id === p.id && isAsg(c, me.email) && c.done !== "yes"; }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }); });
     var pins = [];
     db.messages.forEach(function (m) { if (m.pinned === "yes" && names[m.project_id] && canRead(me, chOf(m))) pins.push({ kind: "msg", id: m.id, pid: m.project_id, project: names[m.project_id], at: m.at, text: m.text, author: m.author, akey: pk(m.author_email), channel: chOf(m) }); });
-    db.timeline.forEach(function (u) { if (u.pinned === "yes" && names[u.project_id] && audOk(me, u.aud)) pins.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: u.text, author: u.author, aud: audList(u.aud) }); });
-    db.checklist.forEach(function (c) { if (c.pinned === "yes" && names[c.project_id] && (audOk(me, c.aud) || c.assignee === me.email)) pins.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: c.done === "yes", aud: audList(c.aud) }); });
+    db.timeline.forEach(function (u) { if (u.pinned === "yes" && names[u.project_id] && audOk(me, u.aud)) pins.push({ kind: "update", id: u.id, pid: u.project_id, project: names[u.project_id], at: u.at, text: u.text, author: u.author, aud: audView(me, u.aud) }); });
+    db.checklist.forEach(function (c) { if (c.pinned === "yes" && names[c.project_id] && (audOk(me, c.aud) || isAsg(c, me.email))) pins.push({ kind: "check", id: c.id, pid: c.project_id, project: names[c.project_id], at: c.edited_at || "", text: c.item, done: c.done === "yes", aud: audView(me, c.aud) }); });
     out.pins = pins; return out;
   };
   ACTIONS.postUpdate = function (db, me, b) {
@@ -470,12 +473,14 @@
   };
   ACTIONS.saveChecklistItem = function (db, me, b) {
     needStaff(me); var p = needProject(db, me, b.projectId), f = b.item || {}, tg = readTags(f.item), aud = audList((f.aud || []).concat(tg.aud));
-    var who = f.assignee ? db.people.filter(function (x) { return pk(x.email) === f.assignee; })[0] : null;
-    var patch = { phase: PHASES.indexOf(f.phase) > -1 ? f.phase : PHASES[0], item: tg.text, owner: aud.indexOf("client") > -1 ? "client" : "blue sierra", due: clean(f.due, 10), aud: aud.join(","), assignee: who ? who.email : "", edited_by: me.email, edited_at: now() };
+    var who = (f.assignees || []).map(function (k) { return db.people.filter(function (x) { return pk(x.email) === k; })[0]; }).filter(Boolean), old = f.id ? db.checklist.filter(function (c) { return c.id === f.id; })[0] : null, before = old ? asg(old) : [];
+    var patch = { phase: PHASES.indexOf(f.phase) > -1 ? f.phase : PHASES[0], item: tg.text, owner: aud.indexOf("client") > -1 ? "client" : "blue sierra", due: clean(f.due, 10), aud: aud.join(","), assignee: who.map(function (x) { return x.email; }).join(","), edited_by: me.email, edited_at: now() };
     if (!patch.item) throw new Error("Write the checklist item.");
     if (f.id) Object.assign(db.checklist.filter(function (c) { return c.id === f.id; })[0] || {}, patch);
     else { var nc = Object.assign({ id: id(), project_id: p.id, done: "", sort: String(Date.now()), created_by: me.email }, patch); db.checklist.push(nc);
-      if (who) ev(db, p, me, "todo", "assigned a to-do to " + who.name, nc.item, "check:" + nc.id, aud.indexOf("client") > -1 ? "client" : aud.indexOf("crew") > -1 ? "crew" : "team"); }
+    }
+    var fresh = who.filter(function (x) { return before.indexOf(x.email) < 0 && x.email !== me.email; });
+    if (fresh.length) ev(db, p, me, "todo", "assigned a to-do to " + fresh.map(function (x) { return x.name; }).join(", "), patch.item, "check:" + (f.id || nc.id), aud.indexOf("client") > -1 ? "client" : aud.indexOf("crew") > -1 ? "crew" : "team");
     return {};
   };
   ACTIONS.toggleChecklist = function (db, me, b) {
@@ -510,6 +515,44 @@
     var paid = b.qbId === "1032", f = { id: ex ? ex.id : undefined, number: b.qbId, title: "QuickBooks invoice", amount: paid ? 22000 : 18500, issued: paid ? "2026-10-01" : "2026-11-01", due: paid ? "2026-10-15" : "2026-11-15", status: paid ? "paid" : "sent" };
     var r = ACTIONS.saveInvoice(db, me, { projectId: p.id, invoice: f }); var it = db.invoices.filter(function (i) { return i.id === (r.id || (db.invoices[db.invoices.length - 1] || {}).id); })[0] || db.invoices[db.invoices.length - 1]; it.qb_id = b.qbId; it.pdf_file_id = "qb"; return { id: it.id }; };
 
+  ACTIONS.setRole = function (db, me, b) {
+    needStaff(me); var x = db.people.filter(function (q) { return q.email === b.email; })[0], admin = me.role === "admin", role = b.role;
+    if (!x) throw new Error("Person not found."); if (["admin", "staff", "crew", "client", "architect"].indexOf(role) < 0) throw new Error("Pick a role.");
+    if (x.email === me.email && role !== x.role) throw new Error("You can't change your own role.");
+    if (!admin && (isStaff(x) || role === "staff" || role === "admin")) throw new Error("Only Jesús changes team roles.");
+    var l = ids(x.project_ids); if (b.projectId && ["client", "architect", "crew"].indexOf(role) > -1 && l.indexOf(b.projectId) < 0) l.push(b.projectId);
+    if ((role === "client" || role === "architect") && !l.length) throw new Error("Clients and architects need a project.");
+    if (b.money != null && !admin) throw new Error("Only Jesús decides who sees #money.");
+    x.role = role; x.project_ids = l.join(","); x.money = role === "staff" && (b.money != null ? b.money : x.money === "yes") ? "yes" : ""; return {};
+  };
+  ACTIONS.purgeProject = function (db, me, b) {
+    if (me.role !== "admin") throw new Error("Only Jesús can erase projects."); var p = db.projects.filter(function (x) { return x.id === b.projectId; })[0];
+    if (!p || p.status !== "deleted") throw new Error("Delete the project first."); if (String(b.confirm || "").trim().toLowerCase() !== p.name.toLowerCase()) throw new Error("Type the project name exactly to erase it.");
+    ["messages", "timeline", "photos", "invoices", "checklist", "schedule", "contractLines", "plans"].forEach(function (t) { if (db[t]) db[t] = db[t].filter(function (r) { return r.project_id !== p.id; }); });
+    db.people.forEach(function (x) { x.project_ids = ids(x.project_ids).filter(function (i) { return i !== p.id; }).join(","); });
+    db.people = db.people.filter(function (x) { return isTeam(x) || ids(x.project_ids).length; });
+    db.projects = db.projects.filter(function (x) { return x !== p; }); return { trashed: true };
+  };
+  ACTIONS.qbMoney = function (db, me, b) {
+    if (!meOut(me).money) throw new Error("That's #money. Ask Jesús to tag you #money.");
+    var p = needProject(db, me, b.projectId), q = db.qb || {};
+    var contract = db.contractLines.filter(function (l) { return l.project_id === p.id && (l.kind === "base" || l.status === "approved"); }).reduce(function (a, l) { return a + num(l.amount); }, 0);
+    var base = { contract: contract, connected: !!q.connected, linked: !!p.qb_customer }; if (!base.connected || !base.linked) return base;
+    return Object.assign(base, { customer: "Sample Client", company: "Blue Sierra Construction (sample)", updated: now(), cached: !b.refresh,
+      inn: { billed: 140500, collected: 122000, open: 18500, overdue: 0, count: 6 }, income: 140500,
+      out: { total: 112340, labor: 46200, materials: 38900, subs: 21800, other: 5440 },
+      accounts: [{ name: "Payroll Expenses:Wages", amount: 39800, bucket: "labor" }, { name: "Job Materials", amount: 38900, bucket: "materials" }, { name: "Subcontractors", amount: 21800, bucket: "subs" }, { name: "Payroll Expenses:Taxes", amount: 6400, bucket: "labor" }, { name: "Equipment Rental", amount: 3240, bucket: "other" }, { name: "Dump fees", amount: 2200, bucket: "other" }],
+      owe: { open: 14260, overdue: 3120 }, bills: [{ vendor: "Golden State Lumber", number: "88231", due: "2026-10-30", amount: 3120, late: true, what: "Job Materials" }, { vendor: "Peninsula Electric", number: "1207", due: "2026-11-14", amount: 8400, late: false, what: "Subcontractors" }, { vendor: "Ferguson Plumbing", number: "55-901", due: "2026-11-22", amount: 2740, late: false, what: "Job Materials" }],
+      recent: [{ date: "2026-11-04", who: "Home Depot", what: "Framing lumber, hangers", amount: 1284.55, bucket: "materials" }, { date: "2026-11-01", who: "Payroll", what: "Payroll Expenses:Wages", amount: 6240, bucket: "labor" }, { date: "2026-10-28", who: "Peninsula Electric", what: "Rough-in progress billing", amount: 8400, bucket: "subs" }, { date: "2026-10-24", who: "Sunbelt Rentals", what: "Mini excavator, 3 days", amount: 1080, bucket: "other" }],
+      hours: { total: 612, people: [{ name: "Miguel R.", hours: 214 }, { name: "Luis P.", hours: 188 }, { name: "Andrés G.", hours: 141 }, { name: "Chris T.", hours: 69 }] }, warnings: [] });
+  };
+  var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
+  function previewMe(db, role) {
+    if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");
+    var l = db.projects.filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return p.id; });
+    return { email: "preview-" + role + "@preview.invalid", name: { client: "Client preview", architect: "Architect preview", crew: "Crew preview" }[role], role: role, project_ids: l.join(","), active: "yes", avatar: "", preview: role };
+  }
+
   window.BSP_MOCK = function (b) {
     return new Promise(function (resolve) {
       setTimeout(function () {
@@ -517,7 +560,9 @@
         try {
           var fn = PUBLIC[b.action];
           if (fn) res = fn(db, b);
-          else { var me = auth(db, b.token); fn = ACTIONS[b.action]; if (!fn) throw new Error("Unknown action."); res = fn(db, me, b); }
+          else { var me = auth(db, b.token);
+            if (b.viewAs) { if (me.role !== "admin") throw new Error("Only Jesús can preview the portal."); if (!VIEWABLE[b.action]) throw new Error("You're in preview. Exit the preview to change things."); me = previewMe(db, b.viewAs); }
+            fn = ACTIONS[b.action]; if (!fn) throw new Error("Unknown action."); res = fn(db, me, b); }
           save(db); res = res || {}; res.ok = true;
         } catch (e) { res = { ok: false, error: e.message }; }
         resolve(JSON.parse(JSON.stringify(res)));
