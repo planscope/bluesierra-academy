@@ -1144,3 +1144,5 @@
 @media (max-width:640px){#bs-portal .eye-btn{display:none}}
 @media (max-width:420px){#bs-portal .topbar .brand .logo{height:14px}#bs-portal .topbar .brand{gap:10px}#bs-portal .topbar .who{gap:6px}}
 @media (max-width:640px){#bs-portal .team-row{flex-wrap:wrap;row-gap:8px}#bs-portal .team-row>div:not(.avatar){flex:1 1 calc(100% - 64px)!important;min-width:0}#bs-portal .team-row>.role-chips{margin-left:52px;margin-right:auto}#bs-portal .team-row .muted.small{overflow:hidden;text-overflow:ellipsis}}
+#bs-portal .qb-warn{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:10px 12px;font-size:14px;margin:10px 0 0}
+#bs-portal .qb-help{margin-top:12px}

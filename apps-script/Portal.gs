@@ -961,21 +961,45 @@ var ACTIONS = {
 var QB = { AUTH: "https://appcenter.intuit.com/connect/oauth2", TOKEN: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
   API: { production: "https://quickbooks.api.intuit.com", sandbox: "https://sandbox-quickbooks.api.intuit.com" }, SCOPE: "com.intuit.quickbooks.accounting", MINOR: "75" };
 function qbProps() { return PropertiesService.getScriptProperties(); }
+/* Intuit's discovery document lists the current OAuth endpoints; read it once a day instead of hardcoding them. */
+function qbDiscovery() {
+  var env = qbCfg().env, c = CacheService.getScriptCache(), k = "qbdisc:" + env, hit = c.get(k);
+  if (hit) return JSON.parse(hit);
+  var d = { authorization_endpoint: QB.AUTH, token_endpoint: QB.TOKEN, revocation_endpoint: "https://developer.api.intuit.com/v2/oauth2/tokens/revoke" };
+  try {
+    var r = UrlFetchApp.fetch("https://developer.api.intuit.com/.well-known/" + (env === "sandbox" ? "openid_sandbox_configuration" : "openid_configuration"), { muteHttpExceptions: true, headers: { Accept: "application/json" } });
+    if (r.getResponseCode() === 200) { var j = JSON.parse(r.getContentText()); ["authorization_endpoint", "token_endpoint", "revocation_endpoint"].forEach(function (f) { if (/^https:\/\//.test(j[f] || "")) d[f] = j[f]; }); c.put(k, JSON.stringify(d), 86400); }
+  } catch (e) {}
+  return d;
+}
+/* QuickBooks said the connection is no longer valid (refresh token expired or revoked): forget it, and the portal asks Jesús to connect again. */
+function qbDropConnection(why) {
+  var pr = qbProps(); ["QB_REFRESH", "QB_REALM", "QB_COMPANY"].forEach(function (k) { pr.deleteProperty(k); });
+  pr.setProperty("QB_RECONNECT", why || "QuickBooks ended the connection. Connect it again.");
+  CacheService.getScriptCache().remove("qb:access");
+}
 function qbCfg() { var pr = qbProps(); return { id: pr.getProperty("QB_CLIENT_ID") || "", secret: pr.getProperty("QB_CLIENT_SECRET") || "", redirect: pr.getProperty("QB_REDIRECT") || "",
   env: pr.getProperty("QB_ENV") || "production", realm: pr.getProperty("QB_REALM") || "", refresh: pr.getProperty("QB_REFRESH") || "", company: pr.getProperty("QB_COMPANY") || "" }; }
 function qbFinishConnect(code, state, realm) {
   var c = CacheService.getScriptCache(); if (!state || c.get("qbstate:" + state) !== "1") throw new Error("This link expired. Click Connect QuickBooks again.");
   c.remove("qbstate:" + state);
   var cfg = qbCfg(), res = qbTokenCall({ grant_type: "authorization_code", code: code, redirect_uri: cfg.redirect });
-  qbProps().setProperties({ QB_REALM: String(realm), QB_REFRESH: res.refresh_token });
+  qbProps().setProperties({ QB_REALM: String(realm), QB_REFRESH: res.refresh_token }); qbProps().deleteProperty("QB_RECONNECT");
   c.put("qb:access", res.access_token, Math.max(60, (res.expires_in || 3600) - 120));
   try { var info = qbGet("/companyinfo/" + realm); qbProps().setProperty("QB_COMPANY", info.CompanyInfo.CompanyName || ""); } catch (e) {}
 }
 function qbTokenCall(form) {
   var cfg = qbCfg(); if (!cfg.id || !cfg.secret) throw new Error("Add the QuickBooks app keys first.");
-  var r = UrlFetchApp.fetch(QB.TOKEN, { method: "post", muteHttpExceptions: true, payload: form, headers: { Accept: "application/json", Authorization: "Basic " + Utilities.base64Encode(cfg.id + ":" + cfg.secret) } });
+  var r = UrlFetchApp.fetch(qbDiscovery().token_endpoint, { method: "post", muteHttpExceptions: true, payload: form, headers: { Accept: "application/json", Authorization: "Basic " + Utilities.base64Encode(cfg.id + ":" + cfg.secret) } });
   var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
-  if (r.getResponseCode() !== 200 || !j.access_token) throw new Error("QuickBooks said: " + (j.error_description || j.error || r.getResponseCode()));
+  if (r.getResponseCode() !== 200 || !j.access_token) {
+    var tid = qbTid(r); console.error("QuickBooks token error " + r.getResponseCode() + " " + (j.error || "") + " intuit_tid=" + tid);
+    if (form.grant_type === "refresh_token" && (j.error === "invalid_grant" || r.getResponseCode() === 400 || r.getResponseCode() === 401)) {
+      qbDropConnection("QuickBooks ended the connection (it expires after 100 days without use, or was disconnected in QuickBooks). Connect it again.");
+      throw new Error("QuickBooks needs to be connected again. Jesús can do it from Home → Team.");
+    }
+    throw new Error("QuickBooks said: " + (j.error_description || j.error || r.getResponseCode()) + (tid ? " (ref " + tid + ")" : ""));
+  }
   return j;
 }
 function qbAccess() {
@@ -989,9 +1013,14 @@ function qbFetch(path, accept) {
   var cfg = qbCfg(), url = QB.API[cfg.env] + "/v3/company/" + cfg.realm + path + (path.indexOf("?") > -1 ? "&" : "?") + "minorversion=" + QB.MINOR;
   var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: accept || "application/json" } });
   if (r.getResponseCode() === 401) { CacheService.getScriptCache().remove("qb:access"); r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: accept || "application/json" } }); }
-  if (r.getResponseCode() !== 200) throw new Error("QuickBooks error " + r.getResponseCode() + ": " + String(r.getContentText()).slice(0, 200));
+  if (r.getResponseCode() !== 200) {
+    var tid = qbTid(r), body = String(r.getContentText()).slice(0, 300);
+    console.error("QuickBooks API error " + r.getResponseCode() + " " + path.split("?")[0] + " intuit_tid=" + tid + " " + body);   // Apps Script logs, for Intuit support
+    throw new Error("QuickBooks error " + r.getResponseCode() + (tid ? " (ref " + tid + ")" : "") + ": " + body.slice(0, 160));
+  }
   return r;
 }
+function qbTid(r) { try { var h = r.getAllHeaders() || {}; return h.intuit_tid || h["Intuit_tid"] || h["intuit-tid"] || ""; } catch (e) { return ""; } }
 function qbGet(path) { return JSON.parse(qbFetch(path).getContentText()); }
 function qbQuery(sql) { return qbGet("/query?query=" + encodeURIComponent(sql)).QueryResponse || {}; }
 function qbInvoiceOut(i, imported) {
@@ -999,7 +1028,7 @@ function qbInvoiceOut(i, imported) {
 }
 ACTIONS.qbStatus = function (me) {
   needStaff(me); var cfg = qbCfg();
-  return { hasKeys: !!(cfg.id && cfg.secret), connected: !!cfg.refresh, company: cfg.company, env: cfg.env, redirect: cfg.redirect, admin: me.role === "admin" };
+  return { hasKeys: !!(cfg.id && cfg.secret), connected: !!cfg.refresh, company: cfg.company, env: cfg.env, redirect: cfg.redirect, admin: me.role === "admin", reconnect: cfg.refresh ? "" : (qbProps().getProperty("QB_RECONNECT") || "") };
 };
 ACTIONS.qbSaveKeys = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
@@ -1007,17 +1036,22 @@ ACTIONS.qbSaveKeys = function (me, b) {
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(redirect)) throw new Error("The portal's address looks wrong. Reload and try again.");
   var set = { QB_REDIRECT: redirect, QB_ENV: b.env === "sandbox" ? "sandbox" : "production" };
   if (id) set.QB_CLIENT_ID = id; if (secret) set.QB_CLIENT_SECRET = secret;
-  qbProps().setProperties(set); return ACTIONS.qbStatus(me);
+  var old = qbCfg(), changed = (id && id !== old.id) || set.QB_ENV !== old.env;
+  qbProps().setProperties(set);
+  if (changed && old.refresh) { ["QB_REFRESH", "QB_REALM", "QB_COMPANY", "QB_RECONNECT"].forEach(function (k) { qbProps().deleteProperty(k); }); CacheService.getScriptCache().remove("qb:access"); }
+  return ACTIONS.qbStatus(me);
 };
 ACTIONS.qbConnectUrl = function (me) {
   if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
   var cfg = qbCfg(); if (!cfg.id || !cfg.secret || !cfg.redirect) throw new Error("Add the QuickBooks app keys first.");
   var state = newId("q") + newId("s"); CacheService.getScriptCache().put("qbstate:" + state, "1", 900);
-  return { url: QB.AUTH + "?client_id=" + encodeURIComponent(cfg.id) + "&response_type=code&scope=" + encodeURIComponent(QB.SCOPE) + "&redirect_uri=" + encodeURIComponent(cfg.redirect) + "&state=" + state };
+  return { url: qbDiscovery().authorization_endpoint + "?client_id=" + encodeURIComponent(cfg.id) + "&response_type=code&scope=" + encodeURIComponent(QB.SCOPE) + "&redirect_uri=" + encodeURIComponent(cfg.redirect) + "&state=" + state };
 };
 ACTIONS.qbDisconnect = function (me) {
   if (me.role !== "admin") throw new Error("Only Jesús can disconnect QuickBooks.");
-  var pr = qbProps(); ["QB_REFRESH", "QB_REALM", "QB_COMPANY"].forEach(function (k) { pr.deleteProperty(k); }); CacheService.getScriptCache().remove("qb:access"); return {};
+  var cfg = qbCfg(), pr = qbProps();
+  if (cfg.refresh) try { UrlFetchApp.fetch(qbDiscovery().revocation_endpoint, { method: "post", muteHttpExceptions: true, contentType: "application/json", payload: JSON.stringify({ token: cfg.refresh }), headers: { Accept: "application/json", Authorization: "Basic " + Utilities.base64Encode(cfg.id + ":" + cfg.secret) } }); } catch (e) {}
+  ["QB_REFRESH", "QB_REALM", "QB_COMPANY", "QB_RECONNECT"].forEach(function (k) { pr.deleteProperty(k); }); CacheService.getScriptCache().remove("qb:access"); return {};
 };
 ACTIONS.qbCustomers = function (me) {
   needStaff(me);
@@ -1133,7 +1167,7 @@ ACTIONS.qbMoney = function (me, b) {
   var p = needProject(me, b.projectId), mo = moneyOf(p, rows("Invoices").filter(function (i) { return i.project_id === p.id; }), rows("ContractLines").filter(function (l) { return l.project_id === p.id; }));
   var base = { contract: mo.total, connected: !!qbCfg().refresh, linked: !!p.qb_customer };
   if (!base.connected || !base.linked) return base;
-  var c = CacheService.getScriptCache(), ck = "qbm:" + p.id + ":" + p.qb_customer, hit = !b.refresh && c.get(ck);
+  var c = CacheService.getScriptCache(), ck = "qbm:" + qbCfg().realm + ":" + p.id + ":" + p.qb_customer, hit = !b.refresh && c.get(ck);
   if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
   var data = qbJobMoney(p.qb_customer);
   try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
