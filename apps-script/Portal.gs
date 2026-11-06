@@ -986,7 +986,9 @@ function qbFinishConnect(code, state, realm) {
   var cfg = qbCfg(), res = qbTokenCall({ grant_type: "authorization_code", code: code, redirect_uri: cfg.redirect });
   qbProps().setProperties({ QB_REALM: String(realm), QB_REFRESH: res.refresh_token }); qbProps().deleteProperty("QB_RECONNECT");
   c.put("qb:access", res.access_token, Math.max(60, (res.expires_in || 3600) - 120));
-  try { var info = qbGet("/companyinfo/" + realm); qbProps().setProperty("QB_COMPANY", info.CompanyInfo.CompanyName || ""); } catch (e) {}
+  // Read the company name, and refuse a test company connected on the real setting (or the reverse) right away.
+  c.remove("qbok:" + realm);
+  try { qbCheck(); } catch (e) { if (/connected to/.test(String(e.message))) { qbDropConnection(e.message); throw e; } }
 }
 function qbTokenCall(form) {
   var cfg = qbCfg(); if (!cfg.id || !cfg.secret) throw new Error("Add the QuickBooks app keys first.");
