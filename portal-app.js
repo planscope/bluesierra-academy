@@ -352,15 +352,16 @@
     d.checklist.forEach(function (c) {
       if (c.due && !isDone(c.done)) out.push({ id: "ck-" + c.id, kind: "deadline", title: c.item, start: c.due, end: "", derived: "Checklist", owner: c.owner });
     });
-    return out.filter(function (x) { return !isNaN(parseD(x.start)); }).sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+    return out.filter(function (x) { return !isNaN(parseD(x.start)); }).sort(function (a, b) { var ea = a.end || a.start, eb = b.end || b.start; return a.start < b.start ? -1 : a.start > b.start ? 1 : ea < eb ? -1 : ea > eb ? 1 : 0; });
   }
   function upcoming(days) {
     var t = today(), lim = addDays(t, days);
     return scheduleItems().filter(function (x) { var e = x.end || x.start; return e >= t && x.start <= lim && x.status !== "done"; });
   }
+  function groupByDay(list) { var m = {}, out = []; list.forEach(function (x) { if (!m[x.start]) out.push(m[x.start] = []); m[x.start].push(x); }); return out; }
   function chip(x, label) {
     label = label || x.title;
-    return '<button class="sch-chip k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + '" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(kindLabel(x.kind) + ": " + label) + '"><i></i><span>' + esc(label) + "</span></button>";
+    return '<button class="sch-chip k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + (/^(no production|holiday|no work)/i.test(x.title) ? " off" : "") + '" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(kindLabel(x.kind) + ": " + label) + '"><i></i><span>' + esc(label) + "</span></button>";
   }
   function itemRow(x) {
     var when = day(x.start) + (x.end && x.end !== x.start ? " → " + day(x.end) : "");
@@ -389,13 +390,19 @@
     var t = today(), todayLine = parseD(t) >= a && parseD(t) <= z ? '<i class="g-today" style="left:' + pos(t) + '%" title="Today"></i>' : "";
     var rows = bars.map(function (x) {
       var l = pos(x.start), w = Math.max(0.8, pos(addDays(x.end, 1)) - l);
-      return '<div class="g-label"><b>' + esc(x.title) + '</b><span class="muted small">' + day(x.start) + " → " + day(x.end) + "</span></div>" +
-        '<div class="g-track">' + todayLine + '<button class="g-bar k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + '" style="left:' + l + "%;width:" + w + '%" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(x.title + ": " + day(x.start) + " → " + day(x.end)) + '">' + (x.status === "done" ? "✓" : "") + "</button></div>";
+      var off = /^(no production|holiday|no work)/i.test(x.title);   // breaks show as hatched gray, not work
+      return '<div class="g-label"><b title="' + esc(x.title) + '">' + esc(x.title) + '</b><span class="muted small">' + day(x.start) + " → " + day(x.end) + "</span></div>" +
+        '<div class="g-track">' + todayLine + '<button class="g-bar k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + (off ? " off" : "") + '" style="left:' + l + "%;width:" + w + '%" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(x.title + ": " + day(x.start) + " → " + day(x.end)) + '">' + (x.status === "done" ? "✓" : "") + "</button></div>";
     }).join("");
     var keyRow = KINDS.map(function (k) {
       var ks = marks.filter(function (x) { return x.kind === k[0]; }); if (!ks.length) return "";
       return '<div class="g-label"><b><span class="sch-dot k-' + k[0] + '"></span> ' + k[1] + (ks.length > 1 && k[0] !== "payment" ? "s" : "") + '</b><span class="muted small">' + ks.length + " date" + (ks.length > 1 ? "s" : "") + "</span></div>" +
-      '<div class="g-track g-marks">' + todayLine + ks.map(function (x) { return '<button class="g-mark k-' + esc(x.kind) + (x.kind === "milestone" ? " diamond" : "") + '" style="left:' + pos(x.start) + '%" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(kindLabel(x.kind) + " · " + day(x.start) + ": " + x.title) + '" aria-label="' + esc(kindLabel(x.kind) + " " + day(x.start) + ": " + x.title) + '"></button>'; }).join("") + "</div>";
+      '<div class="g-track g-marks">' + todayLine + groupByDay(ks).map(function (g) {
+        var x = g[0], many = g.length > 1, names = g.map(function (y) { return y.title; }).join(" · ");
+        return '<button class="g-mark k-' + esc(x.kind) + (x.kind === "milestone" ? " diamond" : "") + (many ? " many" : "") + '" style="left:' + pos(x.start) + '%" ' +
+          (many ? 'data-a="schedDay" data-kind="' + esc(x.kind) + '" data-day="' + esc(x.start) + '"' : 'data-a="schedView" data-id="' + esc(x.id) + '"') +
+          ' title="' + esc(kindLabel(x.kind) + " · " + day(x.start) + ": " + names) + '" aria-label="' + esc(kindLabel(x.kind) + " " + day(x.start) + ": " + names) + '">' + (many ? "<span>" + g.length + "</span>" : "") + "</button>";
+      }).join("") + "</div>";
     }).join("");
     return '<div class="card gantt-wrap" data-lenis-prevent><div class="gantt"><div class="g-label g-head"></div><div class="g-track g-head">' + grid + "</div>" + rows + keyRow + "</div></div>" +
       '<p class="muted small" style="margin-top:8px">Tap a bar or a marker for details. The red line is today.</p>' +
@@ -413,7 +420,7 @@
     var cells = ""; for (var i = 0; i < startDow; i++) cells += '<div class="cal-cell empty"></div>';
     for (var dn = 1; dn <= daysIn; dn++) {
       var key = ym + "-" + String(dn).padStart(2, "0"), list = byDay[key] || [];
-      cells += '<div class="cal-cell' + (key === today() ? " today" : "") + '"><span class="cal-num">' + dn + "</span>" + list.slice(0, 3).map(function (c) { return chip(c.x, c.label); }).join("") + (list.length > 3 ? '<span class="muted small">+' + (list.length - 3) + " more</span>" : "") + "</div>";
+      cells += '<div class="cal-cell' + (key === today() ? " today" : "") + '"><span class="cal-num">' + dn + "</span>" + list.slice(0, 3).map(function (c) { return chip(c.x, c.label); }).join("") + (list.length > 3 ? '<button class="link small" data-a="schedDay" data-day="' + key + '">+' + (list.length - 3) + " more</button>" : "") + "</div>";
     }
     var label = first.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
     return '<div class="card cal" data-lenis-prevent><div class="cal-head"><button class="icon-btn" data-a="calMove" data-n="-1" aria-label="Previous month">‹</button><b>' + label + '</b><button class="icon-btn" data-a="calMove" data-n="1" aria-label="Next month">›</button><button class="link small" data-a="calMove" data-n="0">Today</button></div>' +
@@ -480,6 +487,11 @@
         '<label class="f">Notes (team only)<textarea name="notes" maxlength="1000">' + esc(x.notes) + "</textarea></label>" +
         '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delSched" data-id="' + esc(m.id) + '" style="margin-right:auto">Delete</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
+    if (m.type === "schedDay") {
+      var same = scheduleItems().filter(function (y) { return m.kind ? y.kind === m.kind && y.start === m.day : y.start === m.day || (y.kind === "task" && y.end === m.day); });
+      body = '<div class="eyebrow">' + (m.kind ? '<span class="sch-dot k-' + esc(m.kind) + '"></span> ' + esc(kindLabel(m.kind)) : "All dates") + "</div><h2 style=\"margin-top:6px\">" + day(m.day) + "</h2>" +
+        '<div class="sch-list" style="margin-top:14px">' + same.map(itemRow).join("") + '</div><div class="actions" style="margin-top:18px"><button class="btn" data-a="close">Close</button></div>';
+    }
     if (m.type === "schedView") {
       var v = scheduleItems().filter(function (y) { return y.id === m.id; })[0];
       body = v ? '<div class="eyebrow"><span class="sch-dot k-' + esc(v.kind) + '"></span> ' + esc(kindLabel(v.kind)) + (v.derived ? " · from " + esc(v.derived) : "") + "</div><h2 style=\"margin-top:6px\">" + esc(v.title) + "</h2>" +
@@ -540,6 +552,7 @@
         if (!n) S.sched.month = today().slice(0, 7);
         else { var dd = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1 + n, 1)); S.sched.month = dd.getUTCFullYear() + "-" + String(dd.getUTCMonth() + 1).padStart(2, "0"); }
         return keepScroll(render);
+      case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
         S.modal = { type: staff() && it ? "sched" : "schedView", id: b.dataset.id }; return keepScroll(render);
