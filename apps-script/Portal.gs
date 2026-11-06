@@ -1081,7 +1081,9 @@ ACTIONS.qbImport = function (me, b) {
   var file = projectFolder(p).createFile(pdf); try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
   var paid = num(inv.Balance) === 0 && num(inv.TotalAmt) > 0, existing = rows("Invoices").filter(function (i) { return i.project_id === p.id && i.qb_id === qid; })[0];
   var f = { id: existing ? existing.id : undefined, number: inv.DocNumber || ("QB-" + qid), title: (inv.CustomerMemo && inv.CustomerMemo.value) || "QuickBooks invoice", amount: num(inv.TotalAmt), issued: inv.TxnDate || "", due: inv.DueDate || "",
-    status: paid ? "paid" : "sent", paid_date: paid ? today() : "", pay_url: inv.InvoiceLink && /^https:\/\//.test(inv.InvoiceLink) ? inv.InvoiceLink : "" };
+    status: paid ? "paid" : "sent", paid_date: paid ? today() : "", pay_url: inv.InvoiceLink && /^https:\/\//.test(inv.InvoiceLink) ? inv.InvoiceLink : "",
+    // Partly paid in QuickBooks: say so, so nobody chases the full amount.
+    notes: !paid && num(inv.Balance) < num(inv.TotalAmt) ? "Partly paid in QuickBooks: $" + money(num(inv.TotalAmt) - num(inv.Balance)) + " received, $" + money(inv.Balance) + " still open." : "" };
   var r = ACTIONS.saveInvoice(me, { projectId: p.id, invoice: f, notify: !!b.notify });
   var old = existing && existing.pdf_file_id;
   update("Invoices", "id", r.id, { qb_id: qid, pdf_file_id: file.getId() });
