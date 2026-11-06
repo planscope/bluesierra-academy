@@ -1,0 +1,5 @@
+# Licensed photos (Treve Johnson) — local preview only, never public
+img/
+# Old paste-in blocks, replaced by the jsDelivr loader
+webflow/
+.DS_Store

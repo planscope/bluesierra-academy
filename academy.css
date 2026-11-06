@@ -1,0 +1,257 @@
+/* Blue Sierra Academy — styles. Everything is scoped to #bs-academy so it never touches the rest of the Webflow site. */
+#bs-academy{
+  --ink:#111111; --ink-2:#3b3a37; --muted:#77736c; --line:#e3ddd2;
+  --paper:#f6f2eb; --card:#ffffff; --night:#0c0c0c; --gold:#c39a5a; --gold-soft:#f3e7d3;
+  --ok:#2f6b4a; --ok-soft:#e3efe7; --bad:#9a3b2e; --bad-soft:#f6e3df;
+  --radius:14px; --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+  font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink);
+  background:var(--paper); min-height:100vh; line-height:1.5; font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+#bs-academy *,#bs-academy *::before,#bs-academy *::after{box-sizing:border-box}
+#bs-academy h1,#bs-academy h2,#bs-academy h3,#bs-academy h4{margin:0;font-weight:500;letter-spacing:-.01em;line-height:1.15}
+#bs-academy p{margin:0}
+#bs-academy a{color:inherit}
+#bs-academy button{font:inherit;cursor:pointer}
+#bs-academy .serif{font-family:"Cormorant Garamond",Georgia,serif;font-weight:400}
+#bs-academy .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+#bs-academy .logo{display:block;height:20px;width:auto;color:currentColor}
+
+/* Buttons */
+#bs-academy .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--ink);background:var(--ink);color:#fff;padding:12px 22px;border-radius:999px;font-weight:500;font-size:15px;transition:transform .15s,background .15s,opacity .15s;text-decoration:none}
+#bs-academy .btn:hover{transform:translateY(-1px)}
+#bs-academy .btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+#bs-academy .btn.ghost{background:transparent;color:var(--ink)}
+#bs-academy .btn.light{background:#fff;color:var(--ink);border-color:#fff}
+#bs-academy .btn.small{padding:8px 14px;font-size:14px}
+#bs-academy .link{background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px;color:var(--ink-2)}
+
+/* Login */
+#bs-academy .login{position:relative;min-height:100vh;display:grid;place-items:end start;color:#fff;background:var(--night) center/cover no-repeat;padding:48px}
+#bs-academy .login::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.25) 40%,rgba(0,0,0,.85) 100%)}
+#bs-academy .login-inner{position:relative;max-width:560px}
+#bs-academy .login .logo{height:26px;margin-bottom:56px}
+#bs-academy .login h1{font-size:clamp(40px,6vw,68px);margin:10px 0 14px}
+#bs-academy .login p{color:rgba(255,255,255,.8);font-size:18px;max-width:440px;margin-bottom:28px}
+#bs-academy .login .eyebrow{color:rgba(255,255,255,.7)}
+#bs-academy .login .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#bs-academy .login input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;padding:12px 18px;font:inherit;min-width:220px}
+#bs-academy .login input::placeholder{color:rgba(255,255,255,.6)}
+#bs-academy .login .tagline{margin-top:40px;font-size:13px;color:rgba(255,255,255,.55)}
+#bs-academy .demo-note{margin-top:16px;font-size:13px;color:rgba(255,255,255,.6)}
+
+/* Shell */
+#bs-academy .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;background:rgba(246,242,235,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+#bs-academy .topbar .brand{display:flex;align-items:center;gap:14px}
+#bs-academy .topbar .brand span{font-size:13px;color:var(--muted);border-left:1px solid var(--line);padding-left:14px}
+#bs-academy .who{display:flex;align-items:center;gap:12px;font-size:14px}
+#bs-academy .avatar{width:34px;height:34px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:500}
+#bs-academy .layout{display:grid;grid-template-columns:230px 1fr;gap:0;max-width:1240px;margin:0 auto}
+#bs-academy .nav{position:sticky;top:63px;align-self:start;padding:28px 18px;display:flex;flex-direction:column;gap:4px}
+#bs-academy .nav button{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;background:none;border:0;border-radius:10px;padding:10px 12px;color:var(--ink-2);font-size:15px}
+#bs-academy .nav button:hover{background:rgba(0,0,0,.04)}
+#bs-academy .nav button.on{background:var(--ink);color:#fff}
+#bs-academy .nav .count{font-size:12px;opacity:.7}
+#bs-academy .main{padding:28px 32px 80px;min-width:0}
+
+/* Hero */
+#bs-academy .hero{position:relative;border-radius:20px;overflow:hidden;color:#fff;background:var(--night) center/cover no-repeat;min-height:260px;display:flex;align-items:flex-end;padding:32px;margin-bottom:24px}
+#bs-academy .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.78) 0%,rgba(0,0,0,.35) 60%,rgba(0,0,0,.1) 100%)}
+#bs-academy .hero>*{position:relative}
+#bs-academy .hero h1{font-size:clamp(32px,4vw,48px);margin:6px 0 8px}
+#bs-academy .hero p{color:rgba(255,255,255,.82);max-width:520px}
+#bs-academy .hero .eyebrow{color:rgba(255,255,255,.7)}
+#bs-academy .hero-flex{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;width:100%;flex-wrap:wrap}
+#bs-academy .ring{--p:0;width:112px;height:112px;border-radius:50%;background:conic-gradient(var(--gold) calc(var(--p)*1%),rgba(255,255,255,.18) 0);display:grid;place-items:center;flex:none}
+#bs-academy .ring>div{width:90px;height:90px;border-radius:50%;background:rgba(12,12,12,.85);display:grid;place-items:center;text-align:center;line-height:1}
+#bs-academy .ring b{font-size:26px;font-weight:500}
+#bs-academy .ring small{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-top:4px}
+
+/* Cards & grids */
+#bs-academy .grid{display:grid;gap:16px}
+#bs-academy .g4{grid-template-columns:repeat(4,1fr)}
+#bs-academy .g3{grid-template-columns:repeat(3,1fr)}
+#bs-academy .g2{grid-template-columns:repeat(2,1fr)}
+#bs-academy .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+#bs-academy .card h3{font-size:20px;margin-bottom:6px}
+#bs-academy .stat .eyebrow{margin-bottom:10px}
+#bs-academy .stat b{font-size:34px;font-weight:500;display:block;line-height:1}
+#bs-academy .stat span{font-size:13px;color:var(--muted)}
+#bs-academy .section-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:32px 0 14px}
+#bs-academy .section-title h2{font-size:26px}
+#bs-academy .muted{color:var(--muted)}
+#bs-academy .next{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;background:var(--ink);color:#fff;border-color:var(--ink)}
+#bs-academy .next .eyebrow{color:rgba(255,255,255,.6)}
+#bs-academy .next h3{font-size:24px;margin:4px 0}
+#bs-academy .next p{color:rgba(255,255,255,.7)}
+
+/* Info cards (My info) */
+#bs-academy .info{display:flex;flex-direction:column;gap:6px;min-height:118px}
+#bs-academy .info .value{font-size:19px;font-weight:500;word-break:break-word}
+#bs-academy .info .value.pending{color:var(--muted);font-weight:400;font-style:italic;font-size:16px}
+#bs-academy .info .hint{font-size:13px;color:var(--muted);margin-top:auto}
+#bs-academy .copy{align-self:flex-start;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--ink-2)}
+#bs-academy .people{display:flex;flex-direction:column;gap:12px}
+#bs-academy .person{display:flex;align-items:center;gap:14px}
+#bs-academy .person .avatar{width:42px;height:42px;background:var(--gold-soft);color:var(--ink)}
+#bs-academy .notice{background:var(--gold-soft);border:1px solid #e8d6b6;border-radius:12px;padding:14px 16px;font-size:14px;color:var(--ink-2)}
+
+/* Modules */
+#bs-academy .modules{display:flex;flex-direction:column;gap:10px}
+#bs-academy .mod{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:16px;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);text-align:left;width:100%;transition:border-color .15s,transform .15s}
+#bs-academy .mod:hover:not(:disabled){border-color:var(--ink);transform:translateY(-1px)}
+#bs-academy .mod:disabled{opacity:.5;cursor:not-allowed}
+#bs-academy .mod .num{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:15px}
+#bs-academy .mod.done .num{background:var(--ink);color:#fff;border-color:var(--ink)}
+#bs-academy .mod h4{font-size:17px}
+#bs-academy .mod p{font-size:14px;color:var(--muted)}
+#bs-academy .pill{font-size:12px;padding:4px 10px;border-radius:999px;background:var(--paper);border:1px solid var(--line);white-space:nowrap}
+#bs-academy .pill.ok{background:var(--ok-soft);border-color:#c6dccd;color:var(--ok)}
+#bs-academy .pill.gold{background:var(--gold-soft);border-color:#e8d6b6}
+
+/* Lesson */
+#bs-academy .crumbs{display:flex;align-items:center;gap:10px;margin-bottom:18px;font-size:14px;color:var(--muted)}
+#bs-academy .lesson{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}
+#bs-academy .video{position:relative;aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;background:var(--night);margin-bottom:18px}
+#bs-academy .video iframe,#bs-academy .video video{position:absolute;inset:0;width:100%;height:100%;border:0}
+#bs-academy .video .empty{position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.6);text-align:center;padding:20px;font-size:14px}
+#bs-academy .points{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:12px}
+#bs-academy .points li{display:grid;grid-template-columns:24px 1fr;gap:10px}
+#bs-academy .points li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);margin:8px 0 0 6px}
+#bs-academy .script{background:var(--paper);border-left:3px solid var(--gold);padding:12px 16px;border-radius:0 10px 10px 0;font-size:15px;color:var(--ink-2);margin-top:14px;white-space:pre-line}
+#bs-academy .side{position:sticky;top:90px;display:flex;flex-direction:column;gap:12px}
+#bs-academy .steps{display:flex;flex-direction:column;gap:8px;font-size:14px}
+#bs-academy .steps div{display:flex;gap:10px;align-items:center}
+#bs-academy .dot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);flex:none;display:grid;place-items:center;font-size:11px}
+#bs-academy .dot.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* Quiz & simulator */
+#bs-academy .quiz{display:flex;flex-direction:column;gap:22px}
+#bs-academy .q h4{font-size:17px;margin-bottom:10px}
+#bs-academy .opts{display:flex;flex-direction:column;gap:8px}
+#bs-academy .opt{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;color:var(--ink);transition:border-color .12s}
+#bs-academy .opt:hover:not(:disabled){border-color:var(--ink)}
+#bs-academy .opt .key{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;flex:none;margin-top:1px}
+#bs-academy .opt.sel{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+#bs-academy .opt.sel .key{background:var(--ink);color:#fff;border-color:var(--ink)}
+#bs-academy .opt.right{border-color:var(--ok);background:var(--ok-soft)}
+#bs-academy .opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+#bs-academy .opt:disabled{cursor:default}
+#bs-academy .why{font-size:14px;color:var(--ink-2);margin-top:8px}
+#bs-academy .result{border-radius:var(--radius);padding:18px 20px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+#bs-academy .result.pass{background:var(--ok-soft);border:1px solid #c6dccd}
+#bs-academy .result.fail{background:var(--bad-soft);border:1px solid #ecc9c1}
+#bs-academy .result b{font-size:22px;font-weight:500}
+#bs-academy .chat{display:flex;flex-direction:column;gap:12px;margin:18px 0}
+#bs-academy .bubble{max-width:78%;padding:12px 16px;border-radius:16px;font-size:15px}
+#bs-academy .bubble.them{background:var(--card);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+#bs-academy .bubble.me{background:var(--ink);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+#bs-academy .bubble .tag{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:4px}
+#bs-academy .feedback{font-size:14px;padding:10px 14px;border-radius:10px;align-self:stretch}
+#bs-academy .feedback.good{background:var(--ok-soft);color:var(--ok)}
+#bs-academy .feedback.meh{background:var(--gold-soft);color:#7a5a24}
+#bs-academy .feedback.bad{background:var(--bad-soft);color:var(--bad)}
+
+/* Checklist */
+#bs-academy .checks{display:flex;flex-direction:column;gap:8px}
+#bs-academy .check{display:grid;grid-template-columns:26px 1fr auto;gap:14px;align-items:center;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:left;width:100%;color:var(--ink)}
+#bs-academy .check .box{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--muted);display:grid;place-items:center;font-size:13px}
+#bs-academy .check.on .box{background:var(--ink);border-color:var(--ink);color:#fff}
+#bs-academy .check.on .t{text-decoration:line-through;color:var(--muted)}
+#bs-academy .check small{display:block;font-size:13px;color:var(--muted);text-decoration:none}
+#bs-academy .bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+#bs-academy .bar i{display:block;height:100%;background:var(--ink);border-radius:99px;transition:width .3s}
+
+/* Certificate */
+#bs-academy .cert{background:#fff;border:1px solid var(--line);border-radius:6px;padding:64px 56px;text-align:center;position:relative;box-shadow:var(--shadow)}
+#bs-academy .cert::before{content:"";position:absolute;inset:14px;border:1px solid var(--gold);border-radius:2px;pointer-events:none}
+#bs-academy .cert .logo{height:24px;margin:0 auto 36px}
+#bs-academy .cert h2{font-size:54px;margin:14px 0 8px}
+#bs-academy .cert .sig{display:flex;justify-content:center;gap:64px;margin-top:44px;font-size:14px;color:var(--muted)}
+#bs-academy .cert .sig div{border-top:1px solid var(--line);padding-top:8px;min-width:180px}
+#bs-academy .locked{text-align:center;padding:56px 24px}
+#bs-academy .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;opacity:0;transition:all .25s;z-index:50;pointer-events:none}
+#bs-academy .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#bs-academy .loading{min-height:60vh;display:grid;place-items:center;color:var(--muted)}
+
+/* Hide the Webflow progress form if it lives on the page */
+form[data-name="Academy Progress"],form[data-name="Setter Certification"]{display:none!important}
+
+
+/* Calls tab + report */
+#bs-academy .of{font-size:16px;color:var(--muted);font-weight:400}
+#bs-academy .calls-tools{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 12px}
+#bs-academy .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#bs-academy .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 14px;font-size:14px;color:var(--ink-2)}
+#bs-academy .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+#bs-academy select,#bs-academy .calls-tools input,#bs-academy .logform input[type=text],#bs-academy .logform input[type=date],#bs-academy .logform input[type=time],#bs-academy .logform textarea{font:inherit;font-size:15px;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 12px;color:var(--ink);min-width:0}
+#bs-academy .calls-tools input{width:220px;border-radius:999px}
+#bs-academy .firms{display:flex;flex-direction:column;gap:8px}
+#bs-academy .firm{display:grid;grid-template-columns:34px 1fr auto;gap:14px;align-items:center;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;color:var(--ink);transition:border-color .12s}
+#bs-academy .firm:hover{border-color:var(--ink)}
+#bs-academy .firm b{display:block;font-weight:500}
+#bs-academy .firm .muted{font-size:13px}
+#bs-academy .prio{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:500;border:1px solid var(--line)}
+#bs-academy .prio.pA{background:var(--ink);color:#fff;border-color:var(--ink)}
+#bs-academy .prio.pB{background:var(--gold-soft);border-color:#e8d6b6}
+#bs-academy .drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40}
+#bs-academy .drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:var(--paper);z-index:41;overflow-y:auto;padding:24px;box-shadow:-12px 0 40px rgba(0,0,0,.18)}
+#bs-academy .drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+#bs-academy .facts{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:14px;margin-bottom:18px}
+#bs-academy .facts div{display:grid;grid-template-columns:90px 1fr;gap:10px}
+#bs-academy .facts span{color:var(--muted)}
+#bs-academy .logform{display:flex;flex-direction:column;gap:14px}
+#bs-academy .field{display:flex;flex-direction:column;gap:6px;font-size:14px}
+#bs-academy .field>span{color:var(--muted);font-size:13px}
+#bs-academy .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#bs-academy .chip-radio{position:relative;cursor:pointer}
+#bs-academy .chip-radio input{position:absolute;opacity:0;pointer-events:none}
+#bs-academy .chip-radio span{display:inline-block;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px}
+#bs-academy .chip-radio input:checked+span{background:var(--ink);border-color:var(--ink);color:#fff}
+#bs-academy .chip-radio input:focus-visible+span{outline:2px solid var(--gold);outline-offset:2px}
+#bs-academy .check-line{flex-direction:row;align-items:center;gap:10px}
+#bs-academy .history{white-space:pre-line;font-size:14px;color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:8px}
+#bs-academy .vbars{display:flex;align-items:flex-end;gap:6px;height:160px;padding-top:8px;background:linear-gradient(var(--line),var(--line)) left calc(100% - 23px)/100% 1px no-repeat}
+#bs-academy .vbar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;min-width:0;outline:none}
+#bs-academy .vbar i{display:block;width:100%;max-width:28px;background:var(--ink);border-radius:4px 4px 0 0}
+#bs-academy .vbar:hover i,#bs-academy .vbar:focus i{background:var(--gold)}
+#bs-academy .vbar span{font-size:11px;color:var(--muted)}
+#bs-academy .hbar{display:grid;grid-template-columns:80px 1fr 56px;gap:12px;align-items:center;margin-bottom:12px;font-size:14px}
+#bs-academy .hbar .bar{height:10px;outline:none}
+#bs-academy .hbar b{font-weight:500;text-align:right}
+#bs-academy .rtable{width:100%;border-collapse:collapse;font-size:14px}
+#bs-academy .rtable th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:12px 16px;border-bottom:1px solid var(--line)}
+#bs-academy .rtable td{padding:12px 16px;border-bottom:1px solid var(--line)}
+#bs-academy .rtable tr:last-child td{border-bottom:0}
+#bs-academy .rlist{display:flex;flex-direction:column;gap:8px}
+#bs-academy .ritem{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;font-size:14px}
+#bs-academy .ritem b{font-weight:500;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#bs-academy .tip{position:fixed;z-index:60;background:var(--ink);color:#fff;font-size:13px;padding:6px 10px;border-radius:8px;pointer-events:none;opacity:0;transition:opacity .12s;max-width:260px}
+@media (max-width:620px){#bs-academy .calls-tools input{width:100%}#bs-academy .firm{grid-template-columns:34px 1fr}#bs-academy .firm .pill{grid-column:2;justify-self:start}#bs-academy .drawer{padding:18px 16px}}
+
+@media (max-width:980px){
+  #bs-academy .layout{grid-template-columns:1fr}
+  #bs-academy .nav{position:static;flex-direction:row;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--line);gap:6px}
+  #bs-academy .nav button{white-space:nowrap;padding:8px 12px}
+  #bs-academy .nav .count{display:none}
+  #bs-academy .lesson{grid-template-columns:1fr}
+  #bs-academy .side{position:static}
+  #bs-academy .g4{grid-template-columns:repeat(2,1fr)}
+  #bs-academy .g3{grid-template-columns:1fr 1fr}
+}
+@media (max-width:620px){
+  #bs-academy .main{padding:20px 16px 64px}
+  #bs-academy .topbar{padding:12px 16px}
+  #bs-academy .topbar .brand span,#bs-academy .who .name{display:none}
+  #bs-academy .login{padding:28px 20px}
+  #bs-academy .hero{padding:22px;min-height:220px}
+  #bs-academy .g4,#bs-academy .g3,#bs-academy .g2{grid-template-columns:1fr}
+  #bs-academy .ring{width:88px;height:88px}#bs-academy .ring>div{width:70px;height:70px}#bs-academy .ring b{font-size:20px}
+  #bs-academy .cert{padding:44px 22px}#bs-academy .cert h2{font-size:38px}#bs-academy .cert .sig{flex-direction:column;gap:24px;align-items:center}
+  #bs-academy .bubble{max-width:92%}
+}
+@media print{
+  body *{visibility:hidden}
+  #bs-academy .cert,#bs-academy .cert *{visibility:visible}
+  #bs-academy .cert{position:fixed;inset:0;box-shadow:none;border:0}
+}
