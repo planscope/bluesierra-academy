@@ -33,16 +33,84 @@
   function team() { return staff() || crew(); }
   var AVATARS = ["🦊", "🐻", "🦉", "🐢", "🐙", "🦖", "🐝", "🦄", "🐸", "🐼", "🦁", "🐧", "🌵", "🌲", "🌻", "🍄", "🏗️", "🚜", "🧱", "🔨", "📐", "🛠️", "🏡", "⛰️", "🌊", "🔥", "⭐", "🎸", "🚀", "😎"];
   var AV_COLORS = ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4", "#111111"];
-  /* A person's picture: their chosen character on its color, or their initials. */
-  function av(name, avatar, role, cls) {
-    var a = String(avatar || "").split("|");
-    if (a[0] && AVATARS.indexOf(a[0]) > -1) return '<div class="avatar char ' + (cls || "") + '" style="background:' + esc(a[1] || "#f3e7d3") + '" title="' + esc(name) + '">' + a[0] + "</div>";
-    return '<div class="avatar ' + (cls || "") + " " + (role === "client" ? "gold" : role === "architect" ? "arch" : role === "crew" ? "crewc" : "") + '">' + esc(initials(name)) + "</div>";
+  /* ---- drawn characters: little people with hats (cowboy, hard hat…), hair, beards and glasses ---- */
+  var CH = {
+    skin: ["#f6d7c3", "#eec1a0", "#d9a07b", "#b97d57", "#8d5a3b", "#5e3a26"],
+    hairc: ["#2b1d16", "#5a3825", "#a0672f", "#d9b06b", "#b9b4ac", "#c8552b", "#111111"],
+    shirt: ["#2f6b4a", "#1f5fa8", "#c39a5a", "#b03a2e", "#4a4a4a", "#7a5aa6", "#e0a600"],
+    bg: ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4"],
+    hair: ["None", "Short", "Side part", "Curly", "Long", "Bun", "Ponytail", "Buzz", "Mohawk"],
+    hat: ["None", "🤠 Cowboy", "👷 Hard hat", "⛑ White hard hat", "🧢 Cap", "🧶 Beanie"],
+    beard: ["None", "Stubble", "Beard", "Mustache"], glasses: ["None", "Round", "Shades"], face: ["Smile", "Grin", "Chill"]
+  };
+  function chParse(v) { var o = { skin: 1, hair: 1, hairc: 0, hat: 0, beard: 0, glasses: 0, shirt: 0, bg: 0, face: 0 }; String(v || "").replace(/^v1:/, "").split(";").forEach(function (kv) { var p = kv.split("="); if (p[0] in o) o[p[0]] = Math.max(0, parseInt(p[1], 10) || 0); }); return o; }
+  function chStr(o) { return "v1:" + Object.keys(o).map(function (k) { return k + "=" + o[k]; }).join(";"); }
+  function chFromKey(key) { var h = 0; String(key || "x").split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return { skin: h % 6, hair: 1 + (h >> 3) % 8, hairc: (h >> 6) % 7, hat: (h >> 9) % 4 === 0 ? 2 : 0, beard: (h >> 11) % 5 === 0 ? 2 : 0, glasses: (h >> 13) % 6 === 0 ? 1 : 0, shirt: (h >> 15) % 7, bg: (h >> 17) % 8, face: (h >> 19) % 3 }; }
+  function chSvg(o) {
+    var g = function (a, i) { return a[Math.min(i, a.length - 1)]; }, sk = g(CH.skin, o.skin), hc = g(CH.hairc, o.hairc), sh = g(CH.shirt, o.shirt), out = [];
+    out.push('<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="' + g(CH.bg, o.bg) + '"/>');
+    if (o.hair === 4 || o.hair === 6) out.push('<path d="M18 30C17 13 47 13 46 30L48 48C40 43 24 43 16 48Z" fill="' + hc + '"/>');           // long hair behind
+    if (o.hair === 6) out.push('<path d="M44 26C52 30 52 42 47 47C47 40 46 34 44 30Z" fill="' + hc + '"/>');
+    out.push('<path d="M9 64C11 51 21 46 32 46C43 46 53 51 55 64Z" fill="' + sh + '"/><path d="M27 46L32 52L37 46Z" fill="rgba(255,255,255,.35)"/>');
+    out.push('<rect x="27" y="37" width="10" height="11" rx="4" fill="' + sk + '"/><rect x="27" y="40" width="10" height="4" fill="rgba(0,0,0,.08)"/>');
+    out.push('<circle cx="20" cy="30" r="2.8" fill="' + sk + '"/><circle cx="44" cy="30" r="2.8" fill="' + sk + '"/><ellipse cx="32" cy="29" rx="12" ry="13.5" fill="' + sk + '"/>');
+    out.push('<circle cx="25" cy="33" r="2.2" fill="#f08a7e" opacity=".22"/><circle cx="39" cy="33" r="2.2" fill="#f08a7e" opacity=".22"/>');
+    if (o.face === 2) out.push('<path d="M25.5 29.5Q27.5 28 29.5 29.5M34.5 29.5Q36.5 28 38.5 29.5" stroke="#2a1d17" stroke-width="1.4" fill="none" stroke-linecap="round"/>');
+    else out.push('<circle cx="27.5" cy="29" r="1.5" fill="#2a1d17"/><circle cx="36.5" cy="29" r="1.5" fill="#2a1d17"/><circle cx="28" cy="28.5" r=".45" fill="#fff"/><circle cx="37" cy="28.5" r=".45" fill="#fff"/>');
+    out.push('<path d="M25 25.4Q27.5 24.3 30 25.2M34 25.2Q36.5 24.3 39 25.4" stroke="' + hc + '" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".85"/>');
+    if (o.beard === 1) out.push('<path d="M20.5 31C21.5 43 42.5 43 43.5 31C41 38.5 36.5 40.5 32 40.5C27.5 40.5 23 38.5 20.5 31Z" fill="' + hc + '" opacity=".28"/>');
+    if (o.beard === 2) out.push('<path d="M20 30C20.5 45 43.5 45 44 30C42 37 38 39.5 32 39.5C26 39.5 22 37 20 30Z" fill="' + hc + '"/>');
+    if (o.beard >= 2) out.push('<path d="M26.8 34Q32 31.6 37.2 34Q32 35.6 26.8 34Z" fill="' + hc + '"/>');
+    out.push(o.face === 1 ? '<path d="M27.5 35.2Q32 40.5 36.5 35.2Z" fill="#7a2e26"/><path d="M28.6 35.6Q32 37 35.4 35.6" stroke="#fff" stroke-width="1" fill="none"/>' : o.beard === 2 ? '<path d="M29 37.2Q32 38.6 35 37.2" stroke="#7a2e26" stroke-width="1.4" fill="none" stroke-linecap="round"/>' : '<path d="M28 35.5Q32 39 36 35.5" stroke="#7a2e26" stroke-width="1.6" fill="none" stroke-linecap="round"/>');
+    var hair = {
+      1: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/>',
+      2: '<path d="M20 28C18.5 14 46 12 44.5 28C43 20 37 17.5 28 19.5C24.5 20.5 21.8 24 20 28Z" fill="' + hc + '"/><path d="M28 19.5C31 22 37 23 42 22" stroke="rgba(0,0,0,.18)" stroke-width="1" fill="none"/>',
+      3: '<g fill="' + hc + '"><circle cx="22" cy="22" r="4.5"/><circle cx="27" cy="17.5" r="5"/><circle cx="33" cy="16" r="5"/><circle cx="39" cy="18" r="5"/><circle cx="43" cy="23" r="4.2"/><circle cx="20.5" cy="27" r="3"/><circle cx="44" cy="27.5" r="3"/></g>',
+      4: '<path d="M19.5 30C18 13 46 12 44.5 30C42 21 37 18.5 31 19.5C25 20.5 21.5 25 19.5 30Z" fill="' + hc + '"/>',
+      5: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/><circle cx="32" cy="12.5" r="5.5" fill="' + hc + '"/>',
+      6: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/><rect x="42" y="24" width="4" height="3" rx="1.5" fill="#c0392b"/>',
+      7: '<path d="M20.5 25C21 15 43 15 43.5 25C39 19.5 25 19.5 20.5 25Z" fill="' + hc + '" opacity=".55"/>',
+      8: '<path d="M29 25C28.5 15 30 9 32 8C34 9 35.5 15 35 25C33.5 22.5 30.5 22.5 29 25Z" fill="' + hc + '"/>'
+    }[o.hair];
+    if (hair) out.push(hair);
+    if (o.glasses === 1) out.push('<g stroke="#222" stroke-width="1.3" fill="rgba(255,255,255,.15)"><circle cx="27.5" cy="29" r="3.8"/><circle cx="36.5" cy="29" r="3.8"/></g><path d="M31.3 29H32.7M20.8 28L23.7 28.6M43.2 28L40.3 28.6" stroke="#222" stroke-width="1.3"/>');
+    if (o.glasses === 2) out.push('<g fill="#1d1d1d"><rect x="22.6" y="26.2" width="8.8" height="5.6" rx="2.5"/><rect x="32.6" y="26.2" width="8.8" height="5.6" rx="2.5"/></g><path d="M31.4 28H32.6M20.8 27.5L22.6 28M43.2 27.5L41.4 28" stroke="#1d1d1d" stroke-width="1.3"/><path d="M24 27.6L26 27" stroke="#fff" stroke-width=".8" opacity=".6"/>');
+    var hat = {
+      1: '<path d="M8 21.5C14 26.5 50 26.5 56 21.5C51 18.5 45 19.5 32 19.5C19 19.5 13 18.5 8 21.5Z" fill="#8a5a2b"/><path d="M21 20.5C20.5 9 25 6.5 29 9.5C31 11 33 11 35 9.5C39 6.5 43.5 9 43 20.5Z" fill="#a46b35"/><path d="M21.3 16.8H42.7V19.6H21.3Z" fill="#3b2414"/><path d="M28 9.6C30 12.5 34 12.5 36 9.6" stroke="#7d4f24" stroke-width="1" fill="none"/>',
+      2: '<path d="M18.5 23C18.5 9.5 45.5 9.5 45.5 23Z" fill="#f5b800"/><rect x="15.5" y="21.6" width="33" height="3.8" rx="1.9" fill="#d99f00"/><rect x="30.3" y="10" width="3.4" height="12" rx="1.7" fill="#d99f00"/><path d="M23 14C25 12 27 11 29 10.6" stroke="#fff" stroke-width="1.2" opacity=".5" fill="none"/>',
+      3: '<path d="M18.5 23C18.5 9.5 45.5 9.5 45.5 23Z" fill="#f4f4f2"/><rect x="15.5" y="21.6" width="33" height="3.8" rx="1.9" fill="#d9d9d4"/><rect x="30.3" y="10" width="3.4" height="12" rx="1.7" fill="#d9d9d4"/>',
+      4: '<path d="M19.5 22.5C19.5 10.5 44.5 10.5 44.5 22.5Z" fill="' + sh + '"/><path d="M33 21.5C41 20.5 50.5 21.5 53 23.6C46.5 25 38 25 33 23.6Z" fill="rgba(0,0,0,.35)"/><circle cx="32" cy="11.3" r="1.5" fill="rgba(0,0,0,.3)"/>',
+      5: '<path d="M18.8 24.5C18.8 8.5 45.2 8.5 45.2 24.5Z" fill="#c0392b"/><rect x="17.8" y="20.5" width="28.4" height="5.4" rx="2.7" fill="#9e2f24"/><circle cx="32" cy="8.5" r="3.6" fill="#f4e4d4"/>'
+    }[o.hat];
+    if (hat) out.push(hat);
+    out.push("</svg>");
+    return out.join("");
+  }
+  /* A person's picture: their drawn character, an older emoji pick, or a character made up from their id. */
+  function av(name, avatar, role, cls, key) {
+    var a = String(avatar || ""), dot = key && S.presence ? presDot(key) : "";
+    if (/^v1:/.test(a)) return '<div class="avatar drawn ' + (cls || "") + '" title="' + esc(name) + '">' + chSvg(chParse(a)) + dot + "</div>";
+    var e = a.split("|");
+    if (e[0] && AVATARS.indexOf(e[0]) > -1) return '<div class="avatar char ' + (cls || "") + '" style="background:' + esc(e[1] || "#f3e7d3") + '" title="' + esc(name) + '">' + e[0] + dot + "</div>";
+    if (key) return '<div class="avatar drawn ' + (cls || "") + '" title="' + esc(name) + '">' + chSvg(chFromKey(key)) + dot + "</div>";
+    return '<div class="avatar ' + (cls || "") + " " + (role === "client" ? "gold" : role === "architect" ? "arch" : role === "crew" ? "crewc" : "") + '">' + esc(initials(name)) + dot + "</div>";
   }
   function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
-  function resetState() { S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
+  function resetState() { cacheClear(); S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
+  /* "Are you sure?" drawn by the portal itself: the browser's confirm() box is blocked in some apps and embedded views. */
+  function sure(text, yes) {
+    var old = document.getElementById("bsp-sure"); if (old) old.remove();
+    var w = document.createElement("div"); w.id = "bsp-sure"; w.className = "sure-bg";
+    w.innerHTML = '<div class="sure" role="alertdialog" aria-modal="true"><p></p><div class="actions"><button class="btn ghost" data-s="no">Cancel</button><button class="btn danger-btn" data-s="yes">Delete</button></div></div>';
+    w.querySelector("p").textContent = text; root.appendChild(w);
+    var close = function () { w.remove(); document.removeEventListener("keydown", key, true); };
+    var key = function (e) { if (e.key === "Escape") { e.stopPropagation(); close(); } if (e.key === "Enter") { e.preventDefault(); close(); yes(); } };
+    document.addEventListener("keydown", key, true);
+    w.addEventListener("click", function (e) { var t = e.target.closest("[data-s]"); if (e.target === w || (t && t.dataset.s === "no")) close(); else if (t) { close(); yes(); } });
+    w.querySelector("[data-s=yes]").focus();
+  }
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   async function call(action, body) {
@@ -105,19 +173,25 @@
     var h = hashState(), seq = ++S.seq;
     S.lb = null; S.modal = null; S.loadErr = "";                     // overlays never survive navigation
     try {
-      if (!S.projects) { var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.notif = null; loadNotif(); }
+      if (!S.projects) {
+        var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); }      // show the last copy instantly
+        var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.notif = null; loadNotif(); ping();
+        try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects });
+      }
       if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
       S.tab = h.t || "overview";
       if (h.p) {
         if (!S.data || S.data.project.id !== h.p) {
-          S.pid = h.p; S.data = null; S.pending = []; S.att = { main: [], thread: [] }; S.readMark = {}; S.picker = null; S.chan = S.wantChan || "client"; S.wantChan = null; render();
+          S.pid = h.p; S.pending = []; S.att = { main: [], thread: [] }; S.readMark = {}; S.picker = null; S.chan = S.wantChan || "client"; S.wantChan = null;
+          S.data = cacheGet("p:" + h.p); render();                       // the last copy right away (if there is one), fresh data a moment later
           var d = await call("getProject", { projectId: h.p });
           if (seq !== S.seq) return;                                     // a newer navigation won: drop this answer
-          S.data = d;
+          S.data = d; cacheSet("p:" + h.p, d);
         }
       } else { S.pid = null; S.data = null; S.pending = []; }
     } catch (e) { if (seq !== S.seq) return; if (S.pid && !S.data) S.loadErr = e.message; else S.err = e.message; }
     if (S.wantChan && S.data) { S.chan = S.wantChan; S.wantChan = null; S.readMark = {}; }
+    pingLater();
     if (S.openThread && S.data) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; }
     if (S.afterLoadModal && S.data) { S.modal = staff() ? { type: "sched", id: S.afterLoadModal.id } : S.afterLoadModal; S.afterLoadModal = null; }
     render();
@@ -128,7 +202,7 @@
   async function reload(projectsToo) {
     var pid = S.pid, seq = S.seq;
     if (projectsToo) { var r = await call("listProjects"); if (seq === S.seq) S.projects = r.projects; }
-    if (pid) { var d = await call("getProject", { projectId: pid }); if (seq !== S.seq || S.pid !== pid) return; S.data = d; }
+    if (pid) { var d = await call("getProject", { projectId: pid }); if (seq !== S.seq || S.pid !== pid) return; S.data = d; cacheSet("p:" + pid, d); }
     keepScroll(render);
   }
   /* After a save that worked, a failed refresh must not look like a failed save (and invite a duplicate). */
@@ -164,9 +238,9 @@
     var snap = snapshot(), oldG = root.querySelector(".gantt-wrap"), gLeft = oldG ? oldG.scrollLeft : -1;
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
-      '<div class="who">' + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
+      '<div class="who">' + peopleButton() + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
-      (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
+      (S.peopleOpen ? peoplePanel() : "") + (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
     if (S.tour) drawTour();                       // a redraw wipes the overlay: put it back on the same step
     if (S.tab === "messages" && S.data) setTimeout(markChannelRead, 0);
@@ -256,7 +330,7 @@
     return '<div class="card act">' + S.activity.map(function (it) {
       var d = String(it.at).slice(0, 10), sep = d !== lastDay ? '<div class="act-day">' + day(d) + "</div>" : ""; lastDay = d;
       return sep + '<button class="act-row' + (it.unread ? " unread" : "") + '" data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '">' +
-        av(it.author, it.avatar, it.role, "sm") + "<div class=\"act-body\"><div class=\"act-top\"><b>" + esc(it.author) + '</b><span class="muted small">' + esc(it.project) + " · " + (it.dm ? "🔒 private" : "#" + esc(it.channel)) + (it.thread_id ? " · thread" : "") + "</span>" +
+        av(it.author, it.avatar, it.role, "sm", it.akey) + "<div class=\"act-body\"><div class=\"act-top\"><b>" + esc(it.author) + '</b><span class="muted small">' + esc(it.project) + " · " + (it.dm ? "🔒 private" : "#" + esc(it.channel)) + (it.thread_id ? " · thread" : "") + "</span>" +
         (it.mention ? '<span class="pill new">@you</span>' : "") + (it.kind === "question" ? '<span class="pill gold">Question</span>' : "") + '<span class="muted small act-time">' + day(it.at).replace(/^.* · /, "") + "</span></div>" +
         '<div class="act-text">' + esc(it.text || (it.files ? it.files + " attachment" + (it.files > 1 ? "s" : "") : "")) + "</div></div>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
     }).join("") + "</div>";
@@ -311,9 +385,9 @@
     if (staff()) tabs.push(["people", "People", 0]);
     var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
-      '<section class="phead" style="' + bg(p.cover) + '"><div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
+      '<section class="phead" style="' + bg(p.cover) + '">' + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
-      (staff() ? '<button class="btn light sm" data-a="modal" data-m="project" data-id="' + esc(p.id) + '">Edit project</button>' : "") + "</div></section>" +
+      '<div class="ph-right">' + hereNow() + (staff() ? '<button class="btn light sm" data-a="modal" data-m="project" data-id="' + esc(p.id) + '">Edit project</button>' : "") + "</div></div></section>" +
       '<div class="stepper" aria-label="Project phase: ' + esc(p.phase) + '">' + PHASES.map(function (ph, i) { return '<div class="step ' + (i < idx ? "done" : i === idx ? "now" : "") + '"><i></i><span>' + esc(ph) + "</span></div>"; }).join("") + "</div>" +
       '<nav class="tabs">' + tabs.map(function (t) { return '<button data-a="tab" data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + (t[2] ? '<span class="count">' + t[2] + "</span>" : "") + "</button>"; }).join("") + "</nav>" +
       body();
@@ -435,7 +509,7 @@
     if (m.kind === "event") return eventHtml(m, opts);
     var q = m.kind === "question", replies = opts.replies || [], answers = opts.answers || [];
     var canDel = m.mine || (S.me && S.me.admin);
-    return '<div class="msg' + (m.mine ? " mine" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '">' + av(m.author, m.avatar, m.role) + '<div class="bubble ' + (q ? "question" : "") + '">' +
+    return '<div class="msg' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '">' + '<button class="av-btn" data-a="person" data-k="' + esc(m.akey || "") + '" aria-label="' + esc(m.author) + '">' + av(m.author, m.avatar, m.role, "", m.akey) + "</button>" + '<div class="bubble ' + (q ? "question" : "") + '">' +
       '<div class="who-line"><b>' + esc(m.author) + "</b>" + roleTag(m.role) + "<span>" + day(m.at) + "</span>" + (m.via === "email" ? '<span class="pill">by email</span>' : "") +
       (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Reply in thread</button>' : "") +
@@ -536,6 +610,87 @@
     wrap.appendChild(pop);
   }
 
+  /* ---------------- who's around: presence, the people panel, waves ---------------- */
+  var STATE_TXT = { online: "Online", busy: "Busy", away: "Away", offline: "Offline" };
+  function presOf(key) {
+    if (S.me && key === S.me.key) return { state: S.myStatus === "busy" ? "busy" : S.myStatus === "away" ? "away" : "online" };
+    return ((S.presence && S.presence.people) || []).filter(function (x) { return x.key === key; })[0];
+  }
+  function presDot(key) { var p = presOf(key); return p ? '<i class="pres p-' + p.state + '" title="' + STATE_TXT[p.state] + '"></i>' : ""; }
+  var TABN = { overview: "Overview", plans: "Plans", schedule: "Schedule", updates: "Updates", photos: "Photos", messages: "Chat", invoices: "Contract", checklist: "Checklist", people: "People" };
+  function ago(t) { if (!t) return ""; var m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; }
+  async function ping() {
+    if (!S.token || !S.me) return;
+    try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible" });
+      S.presence = r; if (!S.myStatus && r.me) S.myStatus = r.me.s;
+      var pb = root.querySelector(".people-btn"); if (pb) pb.outerHTML = peopleButton();
+      var hn = root.querySelector(".here-now"); if (hn) hn.outerHTML = hereNow();
+      if (S.peopleOpen) keepScroll(render);
+    } catch (e) {}
+  }
+  setInterval(function () { if (document.visibilityState === "visible") ping(); }, 30000);
+  document.addEventListener("visibilitychange", function () { ping(); });
+  var pingSoon = null; function pingLater() { clearTimeout(pingSoon); pingSoon = setTimeout(ping, 1200); }
+  function peopleButton() {
+    var on = ((S.presence && S.presence.people) || []).filter(function (x) { return x.state === "online" || x.state === "busy"; });
+    return '<button class="people-btn' + (S.peopleOpen ? " on" : "") + '" data-a="people" aria-label="Who\'s around: ' + on.length + ' online"><span class="faces">' +
+      (on.length ? on.slice(0, 3).map(function (x) { return av(x.name, x.avatar, x.role, "xs", x.key); }).join("") : '<span class="pp-ico">👥</span>') + "</span>" + (on.length ? '<b>' + on.length + "</b>" : "") + "</button>";
+  }
+  function hereNow() {
+    var here = ((S.presence && S.presence.people) || []).filter(function (x) { return x.pid === S.pid && x.state !== "offline"; });
+    return '<div class="here-now">' + (here.length ? here.slice(0, 5).map(function (x) { return '<button class="hn" data-a="person" data-k="' + esc(x.key) + '" title="' + esc(x.name + " · " + STATE_TXT[x.state] + (x.tab ? " · on " + (TABN[x.tab] || x.tab) : "")) + '">' + av(x.name, x.avatar, x.role, "sm", x.key) + "</button>"; }).join("") + '<span>here now</span>' : "") + "</div>";
+  }
+  function sharedPid(x) { return x.shared.indexOf(S.pid) > -1 ? S.pid : x.shared[0]; }
+  function peoplePanel() {
+    var list = ((S.presence && S.presence.people) || []).slice().sort(function (a, b) { var o = { online: 0, busy: 1, away: 2, offline: 3 }; return o[a.state] - o[b.state] || b.last - a.last; });
+    var row = function (x) {
+      var pid = sharedPid(x), where = x.state !== "offline" && x.project ? " · " + (x.pid === S.pid ? "here" : x.project) + (x.tab ? ", " + (TABN[x.tab] || x.tab) : "") : "";
+      return '<div class="pp-row' + (S.peopleFocus === x.key ? " focus" : "") + '" id="pp-' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) +
+        '<div class="pp-who"><b>' + esc(x.name) + '</b><small>' + esc(roleName(x.role)) + " · " + (x.inCall ? "📹 In a call" : STATE_TXT[x.state]) + esc(where) + (x.state === "offline" && x.last ? " · " + ago(x.last) : "") + "</small></div>" +
+        (pid ? '<div class="pp-act"><button class="icon-btn" data-a="wave" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Say hi">👋</button><button class="icon-btn" data-a="dmGo" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Message privately">💬</button>' +
+          (pid === S.pid ? '<button class="icon-btn" data-a="callPerson" data-k="' + esc(x.key) + '" title="Video call">📹</button>' : "") + "</div>" : "") + "</div>";
+    };
+    var groups = [["online", "Online"], ["busy", "Busy"], ["away", "Away"], ["offline", "Offline"]].map(function (g) { var l = list.filter(function (x) { return x.state === g[0]; }); return l.length ? '<div class="pp-sec">' + g[1] + " · " + l.length + "</div>" + l.map(row).join("") : ""; }).join("");
+    var st = S.myStatus || "available";
+    return '<div class="pp-bg" data-a="peopleClose"></div><aside class="pp-panel" data-lenis-prevent role="dialog" aria-label="Who\'s around"><div class="pp-head"><div><h3>Who\'s around</h3><span class="muted small">' + (S.pid ? "Wave, message or call anyone, right from here." : "Everyone on your projects.") + '</span></div><button class="icon-btn" data-a="peopleClose" aria-label="Close">✕</button></div>' +
+      '<div class="pp-me">' + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '<div class="chips">' + [["available", "🟢 Available"], ["busy", "🔴 Busy"], ["away", "🌙 Away"]].map(function (o) { return '<button class="chip' + (st === o[0] ? " on" : "") + '" data-a="myStatus" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
+      (S.presence ? groups || '<div class="empty">Nobody else is on your projects yet.</div>' : '<div class="loading" style="min-height:20vh">Checking who\'s around…</div>') + "</aside>";
+  }
+
+  /* ---------------- today: date, weather where the job is, and your luck ---------------- */
+  var WX = { 0: ["☀️", "Clear"], 1: ["🌤️", "Mostly clear"], 2: ["⛅", "Partly cloudy"], 3: ["☁️", "Cloudy"], 45: ["🌫️", "Fog"], 48: ["🌫️", "Fog"], 51: ["🌦️", "Drizzle"], 53: ["🌦️", "Drizzle"], 55: ["🌦️", "Drizzle"], 61: ["🌧️", "Rain"], 63: ["🌧️", "Rain"], 65: ["🌧️", "Heavy rain"], 71: ["🌨️", "Snow"], 80: ["🌦️", "Showers"], 81: ["🌧️", "Showers"], 82: ["⛈️", "Heavy showers"], 95: ["⛈️", "Thunderstorm"] };
+  var LUCK = ["The inspector shows up early and in a great mood. 🍀", "Concrete truck on time. Buy a lottery ticket. 🎟️", "Measure twice, cut once, nail it the first time. 📐", "A client says “that looks better than the rendering.” ✨",
+    "Zero change orders today. Savor it. 🍩", "The crew finds the missing tape measure. 🎉", "Rain holds off until 5:01 pm. 🌂", "Everything is plumb, level and square. Even your coffee. ☕",
+    "Today a hard hat saves the day. Wear it with pride. 👷", "Ask again after lunch. 🌮", "Signs point to yes. And to the porta-potty. 🚻", "The permit comes back approved. No comments. 📜",
+    "Supplier says “it's already on the truck” and means it. 🚚", "Outlook not so good… for weeds. 🌿", "Your excavator operator is an artist today. 🎨", "Cannot predict now. Check the two-week look-ahead. 📅",
+    "Lucky number: 16d. 🔨", "You will hear “wow” at the walkthrough. 🤩", "Fortune favors the bold… and the well-shored. 🪵", "Today's vibe: smooth as fresh-troweled concrete. 🧱"];
+  function todayHtml(p) {
+    var d = new Date(), w = S.wx && S.wx[p.city || ""];
+    var wx = w ? '<span class="t-wx">' + w.ico + " " + Math.round(w.t) + "°F · " + esc(w.txt) + (w.rain != null ? " · rain " + w.rain + "%" : "") + '</span><span class="t-tip">' + esc(w.tip) + "</span>" : p.city ? '<span class="t-wx muted">Checking the weather in ' + esc(p.city) + "…</span>" : "";
+    if (p.city && !w) loadWx(p.city);
+    return '<div class="today"><div class="t-main"><span class="t-day">' + d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + "</span>" + wx + '</div><button class="ball' + (S.luck ? " told" : "") + '" data-a="ball" title="Today\'s luck">🎱<span>Today\'s luck</span></button>' + (S.luck ? '<div class="luck">' + esc(S.luck) + "</div>" : "") + "</div>";
+  }
+  async function loadWx(city) {
+    S.wx = S.wx || {}; if (S.wxBusy === city) return; S.wxBusy = city;
+    var key = "bsp-wx:" + city;
+    try { var c = JSON.parse(localStorage.getItem(key) || "null"); if (c && Date.now() - c.at < 30 * 60000) { S.wx[city] = c.w; S.wxBusy = null; return keepScroll(render); } } catch (e) {}
+    try {
+      var g = await (await fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&countryCode=US&name=" + encodeURIComponent(city))).json(), loc = g.results && g.results[0]; if (!loc) throw 0;
+      var f = await (await fetch("https://api.open-meteo.com/v1/forecast?latitude=" + loc.latitude + "&longitude=" + loc.longitude + "&current=temperature_2m,weather_code,wind_speed_10m&daily=precipitation_probability_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1")).json();
+      var code = f.current.weather_code, rain = f.daily.precipitation_probability_max[0], wind = f.current.wind_speed_10m, tmin = f.daily.temperature_2m_min[0], m = WX[code] || WX[Math.floor(code / 10) * 10] || ["🌡️", "Weather"];
+      var tip = rain >= 50 ? "Rain likely: cover open excavations and hold the pour." : wind >= 20 ? "Windy: tie down materials and sheet goods." : tmin < 40 ? "Cold start: protect fresh concrete." : "Good day to build. 🏗️";
+      S.wx[city] = { ico: m[0], txt: m[1], t: f.current.temperature_2m, rain: rain, tip: tip };
+      try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), w: S.wx[city] })); } catch (e) {}
+    } catch (e) { S.wx[city] = { ico: "🌡️", txt: "Weather unavailable", t: NaN, rain: null, tip: "" }; }
+    S.wxBusy = null; var el = root.querySelector(".today"); if (el && S.data) el.outerHTML = todayHtml(S.data.project);
+  }
+
+  /* ---------------- instant screens: show the last copy right away, then refresh it ---------------- */
+  function ckey(name) { var e = S.me && S.me.email || (function () { try { return localStorage.getItem("bsp-last-email"); } catch (x) { return ""; } })(); return e ? "bsp-c:" + e + ":" + name : ""; }
+  function cacheGet(name) { try { var k = ckey(name); return k ? JSON.parse(localStorage.getItem(k) || "null") : null; } catch (e) { return null; } }
+  function cacheSet(name, v) { try { var k = ckey(name); if (k) localStorage.setItem(k, JSON.stringify(v)); } catch (e) { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e2) {} } }
+  function cacheClear() { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0 || x === "bsp-last-email"; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e) {} }
+
   /* ---------------- notification bell (playful, HEY-style) ---------------- */
   function notifModel() {
     var items = (S.notif || []).filter(function (it) { return !it.mine; }), fresh = items.filter(function (it) { return it.unread; }), old = items.filter(function (it) { return !it.unread; }).slice(0, 6);
@@ -620,11 +775,27 @@
       { el: ".help", t: "That's it!", b: "Tap the ? to see this again. Welcome aboard 🌿" }
     ];
   }
-  function tourKey() { return "bsp-tour-v1-" + (S.me && S.me.email) + (staff() ? "-team" : "-client"); }
+  function tourKey(v) { return "bsp-tour-" + (v || "v2") + "-" + (S.me && S.me.email) + (staff() ? "-team" : "-client"); }
+  var NEW_STEPS = [
+    { el: ".people-btn", t: "Who's around 👀", b: "See who's online, busy or away, and where they are. Wave 👋, message or call anyone from here." },
+    { el: ".here-now", t: "Here now", b: "Faces of people looking at this project right now." },
+    { el: ".me-btn", t: "Your character 🤠", b: "Tap your name to build your character. Cowboy hat or hard hat? Your call." },
+    { el: '[data-t="plans"]', t: "Plans", b: "Every revision of the drawings, with the changes highlighted sheet by sheet." },
+    { el: ".today", t: "Today on site", b: "The date, the weather where the job is, and a tip for the crew." },
+    { el: ".ball", t: "Today's luck 🎱", b: "Tap the 8-ball. No promises, but it's usually right." },
+    { el: ".side-tog", t: "Hide the menu", b: "Tap ☰ to hide or show the sidebar. On a phone it slides out." }
+  ];
   function startTour(force) {
     if (!S.me || S.tour || S.modal) return;
-    if (!force) { try { if (localStorage.getItem(tourKey())) return; } catch (e) { return; } if (!staff() && !S.data) return; if (staff() && S.pid) return; }
-    var steps = tourSteps().filter(function (st) { return !st.el || visibleEl(st.el); });
+    var whatsNew = false;
+    if (!force) {
+      try { if (localStorage.getItem(tourKey())) return; whatsNew = !!localStorage.getItem(tourKey("v1")); } catch (e) { return; }
+      if (!S.data) return;                                     // tours start inside a project, where everything is on screen
+    }
+    var ts = tourSteps(), last = ts.pop();               // the new things go before the "That's it!" step
+    var base = whatsNew ? [{ t: "New in the portal ✨", b: "A few things were added since you last looked. 20 seconds." }].concat(NEW_STEPS, [{ el: ".help", t: "That's it!", b: "Tap the ? any time to see the full tour. 🌿" }])
+      : ts.concat(NEW_STEPS.filter(function (n) { return !ts.some(function (t) { return t.el === n.el; }); }), [last]);
+    var steps = base.filter(function (st) { return !st.el || visibleEl(st.el); });
     if (steps.length < 2) return;
     S.tour = { steps: steps, i: 0 }; drawTour();
   }
@@ -1145,7 +1316,7 @@
     if (m.type === "call") {
       var pp = callable(S.chan);
       body = "<h2>📹 Who are you calling?</h2><p class=\"muted\" style=\"margin:4px 0 14px\">They get an email with the link and the code, and a Join card shows up in " + esc(chanLabel(S.chan)) + ".</p>" +
-        (pp.length ? '<form class="form" data-form="call"><div class="dm-list">' + pp.map(function (x) { return '<label class="dm-row pick"><input type="checkbox" name="k" value="' + esc(x.key) + '" checked>' + av(x.name, x.avatar, x.role) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></label>"; }).join("") + "</div>" +
+        (pp.length ? '<form class="form" data-form="call"><div class="dm-list">' + pp.map(function (x) { return '<label class="dm-row pick"><input type="checkbox" name="k" value="' + esc(x.key) + '" checked>' + av(x.name, x.avatar, x.role, "", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></label>"; }).join("") + "</div>" +
           '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn call-go" type="submit">📹 Call ' + (pp.length === 1 ? "1 person" : pp.length + " people") + "</button></div></form>"
           : '<div class="empty">Nobody else can see this channel yet.</div><div class="actions"><button class="btn ghost" data-a="close">Close</button></div>');
     }
@@ -1153,16 +1324,21 @@
     if (m.type === "dm") {
       var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key; });
       body = "<h2>Private message</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Only you and the person you pick will see it. Nobody else on the project, not even the team.</p>" +
-        '<div class="dm-list">' + (ppl2.length ? ppl2.map(function (x) { return '<button class="dm-row" data-a="dmPick" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></button>"; }).join("") : '<div class="empty">Nobody else is on this project yet.</div>') + "</div>" +
+        '<div class="dm-list">' + (ppl2.length ? ppl2.map(function (x) { return '<button class="dm-row" data-a="dmPick" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></button>"; }).join("") : '<div class="empty">Nobody else is on this project yet.</div>') + "</div>" +
         '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-a="close">Cancel</button></div>';
     }
     if (m.type === "profile") {
-      var cur = String(S.me.avatar || "").split("|"), ce = cur[0] || "", cc = cur[1] || AV_COLORS[0];
-      body = "<h2>Pick your character</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Everyone on your projects sees it next to your messages.</p>" +
-        '<form class="form" data-form="profile" data-emoji="' + esc(ce) + '" data-color="' + esc(cc) + '"><div class="av-top"><div class="avatar char av-preview" style="background:' + esc(cc) + '">' + (ce || esc(initials(S.me.name))) + "</div><div><b>" + esc(S.me.name) + '</b><div class="muted small">' + esc(roleName(S.me.role)) + " · " + esc(S.me.email) + "</div></div></div>" +
-        '<div class="av-grid">' + AVATARS.map(function (e) { return '<button type="button" class="av-opt' + (e === ce ? " on" : "") + '" data-a="pickAv" data-e="' + e + '">' + e + "</button>"; }).join("") + "</div>" +
-        '<div class="col-grid">' + AV_COLORS.map(function (c) { return '<button type="button" class="col-opt' + (c === cc ? " on" : "") + '" data-a="pickCol" data-c="' + c + '" style="background:' + c + '" aria-label="Color"></button>'; }).join("") + "</div>" +
-        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+      var o = S.chDraft || (S.chDraft = /^v1:/.test(S.me.avatar || "") ? chParse(S.me.avatar) : chFromKey(S.me.key));
+      var row = function (label, k, opts, swatch) {
+        return '<div class="ch-row"><span class="ch-label">' + label + '</span><div class="ch-opts">' + opts.map(function (v, i) {
+          return swatch ? '<button type="button" class="ch-sw' + (o[k] === i ? " on" : "") + '" data-a="chSet" data-k="' + k + '" data-v="' + i + '" style="background:' + v + '" aria-label="' + label + " " + (i + 1) + '"></button>'
+            : '<button type="button" class="ch-chip' + (o[k] === i ? " on" : "") + '" data-a="chSet" data-k="' + k + '" data-v="' + i + '">' + esc(v) + "</button>";
+        }).join("") + "</div></div>";
+      };
+      body = '<div class="ch-head"><div class="ch-big">' + chSvg(o) + '</div><div><h2>Make your character</h2><p class="muted small">' + esc(S.me.name) + " · " + esc(roleName(S.me.role)) + '</p><button type="button" class="btn ghost sm" data-a="chRandom">🎲 Surprise me</button></div></div>' +
+        '<form class="form ch-form" data-form="profile">' + row("Hat", "hat", CH.hat) + row("Hair", "hair", CH.hair) + row("Hair color", "hairc", CH.hairc, true) + row("Skin", "skin", CH.skin, true) +
+        row("Beard", "beard", CH.beard) + row("Glasses", "glasses", CH.glasses) + row("Face", "face", CH.face) + row("Shirt", "shirt", CH.shirt, true) + row("Background", "bg", CH.bg, true) +
+        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save my character</button></div></form>';
     }
     if (m.type === "thread") {
       var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
@@ -1223,16 +1399,16 @@
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
-      case "close": S.modal = null; return keepScroll(render);
+      case "close": S.modal = null; S.chDraft = null; return keepScroll(render);
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
       case "lbPrev": S.lb.i = (S.lb.i - 1 + S.data.photos.length) % S.data.photos.length; return keepScroll(render);
       case "lbNext": S.lb.i = (S.lb.i + 1) % S.data.photos.length; return keepScroll(render);
       case "toggle": run(null, async function () { await call("toggleChecklist", { itemId: b.dataset.id }); await reload(); }); return;
-      case "delCheck": if (confirm("Delete this checklist item?")) run(null, async function () { await call("deleteChecklistItem", { itemId: b.dataset.id }); await reload(); }); return;
+      case "delCheck": sure("Delete this checklist item?", function () { run(null, async function () { await call("deleteChecklistItem", { itemId: b.dataset.id }); await reload(); }); }); return;
       case "closeQ": run(b, async function () { await call("closeQuestion", { questionId: b.dataset.id }); await reload(true); }); return;
-      case "removePerson": if (confirm("Remove " + b.dataset.email + " from this project?")) run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); toast("Access removed"); }); return;
+      case "removePerson": sure("Remove " + b.dataset.email + " from this project?", function () { run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); toast("Access removed"); }); }); return;
       case "cover": run(b, async function () { await call("setCover", { projectId: S.pid, fileId: b.dataset.id }); S.lb = null; await reload(true); toast("Cover photo updated"); }); return;
       case "schedMode": S.sched.view = b.dataset.v; return keepScroll(render);
       case "calMove":
@@ -1240,7 +1416,7 @@
         if (!n) S.sched.month = today().slice(0, 7);
         else { var dd = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1 + n, 1)); S.sched.month = dd.getUTCFullYear() + "-" + String(dd.getUTCMonth() + 1).padStart(2, "0"); }
         return keepScroll(render);
-      case "delLine": if (confirm("Delete this line?")) run(b, async function () { await call("deleteContractLine", { lineId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); return;
+      case "delLine": sure("Delete this line?", function () { run(b, async function () { await call("deleteContractLine", { lineId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); }); return;
       case "releaseRet":
         var rf = b.closest("form"); rf.querySelectorAll("[name^='line:']").forEach(function (x) { x.value = ""; });
         rf.amount.value = 0; rf.retainage.value = -Number(b.dataset.held); rf.dataset.auto = 0; if (!rf.title.value) rf.title.value = "Retainage release"; invoiceMath(rf); return;
@@ -1257,7 +1433,8 @@
         keepScroll(render);
         call("react", { messageId: b.dataset.id, emoji: b.dataset.e }).catch(function (e) { toast(e.message); refresh(); });
         return;
-      case "delMsg": if (confirm("Delete this message" + (b.closest(".in-thread") ? "" : " and its replies") + "?")) run(b, async function () { await call("deleteMessage", { messageId: b.dataset.id }); if (S.modal && S.modal.id === b.dataset.id) S.modal = null; await refresh(); toast("Deleted"); }); return;
+      case "delMsg": sure("Delete this message" + (b.closest(".in-thread") ? "" : " and its replies") + "?", function () { var gone = b.dataset.id; S.data.messages = S.data.messages.filter(function (x) { return x.id !== gone && x.thread_id !== gone; }); if (S.modal && S.modal.id === gone) S.modal = null; keepScroll(render);   // gone right away; the server catches up
+        run(null, async function () { try { await call("deleteMessage", { messageId: gone }); } catch (e) { await refresh(); throw e; } toast("Deleted"); }); }); return;
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
         S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
@@ -1267,7 +1444,7 @@
         S.wantChan = b.dataset.c; S.openThread = b.dataset.th || null;
         if (S.pid === b.dataset.p) { S.chan = b.dataset.c; S.readMark = {}; if (S.openThread) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; } S.wantChan = null; }
         return go(b.dataset.p, "messages");
-      case "teamOff": if (confirm("Turn off this person's access? They won't be able to log in.")) run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; render(); toast("Access turned off"); }); return;
+      case "teamOff": sure("Turn off this person's access? They won't be able to log in.", function () { run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; render(); toast("Access turned off"); }); }); return;
       case "teamOn": run(b, async function () { await call("addPerson", { email: b.dataset.email, name: b.dataset.name, role: "staff" }); S.team = null; render(); toast("Access back on"); }); return;
       case "ref": return openRef(b.dataset.ref, b.dataset.p);
       case "bell": S.bell = !S.bell; if (S.bell) loadNotif(); return keepScroll(render);
@@ -1283,6 +1460,23 @@
         else { S.sideOff = !S.sideOff; try { localStorage.setItem("bsp-side-off", S.sideOff ? "1" : ""); } catch (e) {} }
         return keepScroll(render);
       case "dmPick": S.modal = null; S.chan = dmKey(b.dataset.k); S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); return;
+      case "people": S.peopleOpen = !S.peopleOpen; S.peopleFocus = null; S.bell = false; if (S.peopleOpen) ping(); return keepScroll(render);
+      case "peopleClose": S.peopleOpen = false; return keepScroll(render);
+      case "person": if (!b.dataset.k || b.dataset.k === (S.me && S.me.key)) return; S.peopleOpen = true; S.peopleFocus = b.dataset.k; S.bell = false; keepScroll(render); var fx = document.getElementById("pp-" + b.dataset.k); if (fx) fx.scrollIntoView({ block: "center" }); return;
+      case "myStatus": S.myStatus = b.dataset.v; keepScroll(render); ping(); toast({ available: "You're available 🟢", busy: "You're busy 🔴 People will see it.", away: "You're away 🌙" }[b.dataset.v]); return;
+      case "wave":
+        var wp = (S.presence.people || []).filter(function (x) { return x.key === b.dataset.k; })[0];
+        b.classList.add("waving"); toast("You waved at " + first(wp ? wp.name : "them") + " 👋");
+        call("sendMessage", { projectId: b.dataset.p, channel: dmKey(b.dataset.k), text: "👋 Hi " + first(wp ? wp.name : "") + "!" }).then(function () { if (S.pid === b.dataset.p) refresh(); }).catch(function (e) { toast(e.message); });
+        return;
+      case "dmGo": S.peopleOpen = false; S.wantChan = dmKey(b.dataset.k); if (S.pid === b.dataset.p) { S.chan = S.wantChan; S.wantChan = null; S.readMark = {}; } return go(b.dataset.p, "messages");
+      case "callPerson": S.peopleOpen = false; S.chan = dmKey(b.dataset.k); if (S.tab !== "messages") { S.tab = "messages"; history.pushState(null, "", "#p=" + S.pid + "&t=messages"); } keepScroll(render); return startCallNow(null, [b.dataset.k]);
+      case "ball":
+        b.classList.remove("shake"); void b.offsetWidth; b.classList.add("shake");
+        setTimeout(function () { S.luck = LUCK[Math.floor(Math.random() * LUCK.length)]; var el = root.querySelector(".today"); if (el && S.data) el.outerHTML = todayHtml(S.data.project); }, 900);
+        return;
+      case "chSet": S.chDraft[b.dataset.k] = +b.dataset.v; return keepScroll(render);
+      case "chRandom": var rr = function (n) { return Math.floor(Math.random() * n); }; S.chDraft = { skin: rr(6), hair: rr(9), hairc: rr(7), hat: rr(6), beard: rr(4), glasses: rr(3), shirt: rr(7), bg: rr(8), face: rr(3) }; return keepScroll(render);
       case "pickAv": var fp = b.closest("form"); fp.querySelectorAll(".av-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fp.dataset.emoji = b.dataset.e; fp.querySelector(".av-preview").innerHTML = b.dataset.e; return;
       case "pickCol": var fc = b.closest("form"); fc.querySelectorAll(".col-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fc.dataset.color = b.dataset.c; fc.querySelector(".av-preview").style.background = b.dataset.c; return;
       case "delProject":
@@ -1298,17 +1492,17 @@
         if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; } return keepScroll(render);
       case "planRev": S.planRev = S.planRev || {}; S.planRev[b.dataset.set] = b.dataset.id; S.planOpen = null; return keepScroll(render);
       case "planFilter": S.planFilter = S.planFilter || {}; S.planFilter[b.dataset.id] = b.dataset.v; return keepScroll(render);
-      case "delPlan": if (confirm("Delete this revision and its sheets?")) run(b, async function () { await call("deletePlan", { id: b.dataset.id }); S.planOpen = null; await refresh(); toast("Revision deleted"); }); return;
+      case "delPlan": sure("Delete this revision and its sheets?", function () { run(b, async function () { await call("deletePlan", { id: b.dataset.id }); S.planOpen = null; await refresh(); toast("Revision deleted"); }); }); return;
       case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
         S.modal = { type: staff() && it ? "sched" : "schedView", id: b.dataset.id }; return keepScroll(render);
-      case "delSched": if (confirm("Delete this date?")) run(b, async function () { await call("deleteScheduleItem", { itemId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); return;
+      case "delSched": sure("Delete this date?", function () { run(b, async function () { await call("deleteScheduleItem", { itemId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); }); return;
       case "stdPhases": run(b, async function () { await call("addStandardPhases", { projectId: S.pid }); await refresh(); toast("Phases added. Tap any of them to change its dates."); }); return;
       case "ics":
         var blob = new Blob([icsFile()], { type: "text/calendar" }), aIcs = document.createElement("a");
         aIcs.href = URL.createObjectURL(blob); aIcs.download = (S.data.project.name || "project").replace(/[^\w-]+/g, "-") + "-schedule.ics"; document.body.appendChild(aIcs); aIcs.click(); aIcs.remove(); return;
-      case "delPhoto": if (confirm("Delete this photo?")) run(b, async function () { await call("deletePhoto", { photoId: b.dataset.id }); S.lb = null; await reload(); toast("Photo deleted"); }); return;
+      case "delPhoto": sure("Delete this photo?", function () { run(b, async function () { await call("deletePhoto", { photoId: b.dataset.id }); S.lb = null; await reload(); toast("Photo deleted"); }); }); return;
     }
   });
 
@@ -1405,8 +1599,7 @@
         S.modal = null; await refresh(); toast(res.first ? res.n + " sheets uploaded" : res.changed ? res.changed + " sheet" + (res.changed > 1 ? "s" : "") + " changed. They're highlighted." : "Uploaded. No sheet changes found."); return;
       }
       if (kind === "profile") {
-        var avv = f.dataset.emoji ? f.dataset.emoji + "|" + (f.dataset.color || AV_COLORS[0]) : "";
-        var rp = await call("saveProfile", { avatar: avv }); S.me.avatar = rp.avatar; S.modal = null; await refresh(); toast("Looking good " + (f.dataset.emoji || "✨")); return;
+        var rp = await call("saveProfile", { avatar: chStr(S.chDraft) }); S.me.avatar = rp.avatar; S.chDraft = null; S.modal = null; await refresh(); toast("Looking good ✨"); return;
       }
       if (kind === "team") {
         await call("addPerson", { name: v("name"), email: v("email"), role: "staff", invite: !!fd.get("invite") });
@@ -1415,8 +1608,13 @@
       if (kind === "chat") {
         var q = !!fd.get("question"), ck = f.dataset.root ? "thread" : "main", att = (S.att && S.att[ck]) || [], ch = f.dataset.ch;
         if (!v("text") && !att.length) return;
-        await call("sendMessage", { projectId: S.pid, channel: ch, threadId: f.dataset.root || undefined, text: v("text"), kind: q ? "question" : "message", files: att });
-        f.reset(); if (S.att) S.att[ck] = [];
+        // Show it right away; the server catches up in the background.
+        var nd = new Date(), pad2 = function (x) { return String(x).padStart(2, "0"); }, tmpId = "tmp" + nd.getTime(), sentText = v("text");
+        S.data.messages.push({ id: tmpId, pending: true, at: nd.getFullYear() + "-" + pad2(nd.getMonth() + 1) + "-" + pad2(nd.getDate()) + " " + pad2(nd.getHours()) + ":" + pad2(nd.getMinutes()), author: S.me.name, role: S.me.role, kind: q ? "question" : "message", status: q ? "open" : "",
+          text: sentText, channel: ch, thread_id: f.dataset.root || "", mine: true, avatar: S.me.avatar, akey: S.me.key, reactions: [], files: att.map(function (x) { return { name: x.name, mime: x.mime, thumb: x.mime === "application/pdf" ? "" : x.data, full: x.data, url: "#" }; }) });
+        f.reset(); if (S.att) S.att[ck] = []; keepScroll(render); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
+        try { await call("sendMessage", { projectId: S.pid, channel: ch, threadId: f.dataset.root || undefined, text: sentText, kind: q ? "question" : "message", files: att }); }
+        catch (e) { S.data.messages = S.data.messages.filter(function (x) { return x.id !== tmpId; }); keepScroll(render); var tb = root.querySelector((f.dataset.root ? ".modal " : ".reply-bar ") + "[data-chat]"); if (tb) tb.value = sentText; throw e; }
         S.readMark = S.readMark || {}; S.readMark[ch] = "9999";                // your own message clears the "New" line
         await refresh(); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
         else { var mb = root.querySelector(".modal"); if (mb) mb.scrollTop = mb.scrollHeight; var t2 = root.querySelector(".modal [data-chat]"); if (t2) t2.focus(); }

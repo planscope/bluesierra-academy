@@ -52,6 +52,13 @@ var TABLES = {
   ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
+/* Speed: everything a request needs is read from the sheet in one Sheets API call, then kept for the rest of the request. */
+var PREFETCH = {
+  getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
+  listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
+  activity: ["Projects", "People", "Messages", "Reads"], presence: ["People", "Projects"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+};
+var NO_LOCK = { markRead: 1, presence: 1 };          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team"];
@@ -72,10 +79,11 @@ function doPost(e) {
     MAIL_NOTICES = notices;
     if (pub) res = withLock(function () { return pub(b); });
     else {
+      prefetch(["People"].concat(PREFETCH[b.action] || []));
       var me = auth(b.token);
       fn = ACTIONS[b.action];
       if (!fn) throw new Error("Unknown action.");
-      res = READ_ONLY[b.action] ? fn(me, b) : withLock(function () { return fn(me, b); });
+      res = READ_ONLY[b.action] || NO_LOCK[b.action] ? fn(me, b) : withLock(function () { return fn(me, b); });
     }
     res = res || {}; res.ok = true;
     if (notices.length) res.notice = notices[0];
@@ -357,7 +365,7 @@ var ACTIONS = {
     return { items: list.map(function (m) {
       var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id, kind: m.kind, author: m.author, role: m.role,
         at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "", avatar: av[m.author_email] || "",
-        dm: isDm(chOf(m)) };
+        dm: isDm(chOf(m)), akey: keyOf(m.author_email) };
       o.unread = !o.mine && m.at > (reads[m.project_id + "|" + o.channel] || "");
       o.mention = mentions(m.text, me.name);
       return o;
@@ -365,10 +373,35 @@ var ACTIONS = {
   },
   /* Your own profile picture: a fun character on a color. */
   saveProfile: function (me, b) {
-    var a = String(b.avatar || "").split("|"), emoji = a[0], color = a[1];
-    if (b.avatar && (AVATARS.indexOf(emoji) < 0 || AVATAR_COLORS.indexOf(color) < 0)) throw new Error("Pick one of the characters.");
-    update("People", "email", me.email, { avatar: b.avatar ? emoji + "|" + color : "" });
-    return { avatar: b.avatar ? emoji + "|" + color : "" };
+    var av = String(b.avatar || "");
+    if (/^v1:[a-z0-9=;]{1,160}$/.test(av)) { update("People", "email", me.email, { avatar: av }); return { avatar: av }; }   // a drawn character
+    var a = av.split("|"), emoji = a[0], color = a[1];
+    if (av && (AVATARS.indexOf(emoji) < 0 || AVATAR_COLORS.indexOf(color) < 0)) throw new Error("Pick one of the characters.");
+    update("People", "email", me.email, { avatar: av ? emoji + "|" + color : "" });
+    return { avatar: av ? emoji + "|" + color : "" };
+  },
+  /* Who's around: each open portal pings every ~30 s. Kept in the script cache (fast, never written to the sheet).
+     You see people who share a project with you; where they are (project and tab) only for projects you can see too. */
+  presence: function (me, b) {
+    var c = CacheService.getScriptCache(), myKey = pkey(me.email), prevRaw = c.get("pres:" + myKey), prev = prevRaw ? JSON.parse(prevRaw) : {};
+    var st = ["available", "busy", "away"].indexOf(b.status) > -1 ? b.status : prev.s || "available";
+    var mine = { s: st, at: Date.now(), hidden: !!b.hidden, pid: canSee(me, b.pid) ? String(b.pid || "") : "", tab: String(b.tab || "").slice(0, 20), call: prev.call || 0 };
+    c.put("pres:" + myKey, JSON.stringify(mine), 21600);
+    var projects = rows("Projects").filter(function (p) { return canSee(me, p.id) && p.status !== "deleted" && (isStaff(me) || p.status !== "archived"); }), names = {};
+    projects.forEach(function (p) { names[p.id] = p.name; });
+    var people = rows("People").filter(function (x) {
+      if (!isTrue(x.active) || x.email === me.email) return false;
+      if (isStaff(me)) return true;                                                  // the team sees everyone on the portal
+      return isStaff(x) || splitIds(x.project_ids).some(function (id) { return names[id]; });
+    });
+    var keys = people.map(function (x) { return "pres:" + pkey(x.email); }), got = c.getAll(keys), now = Date.now();
+    return { me: mine, people: people.map(function (x) {
+      var k = pkey(x.email), raw = got["pres:" + k], pr = raw ? JSON.parse(raw) : null, age = pr ? now - pr.at : Infinity;
+      var state = !pr || age > 3 * 60000 ? "offline" : pr.call > now ? "busy" : pr.s === "busy" ? "busy" : pr.hidden || pr.s === "away" || age > 90000 ? "away" : "online";
+      var shared = isStaff(x) ? projects.map(function (p) { return p.id; }) : splitIds(x.project_ids).filter(function (id) { return names[id]; });
+      return { key: k, name: x.name, role: x.role, avatar: x.avatar || "", state: state, last: pr ? pr.at : 0, inCall: !!(pr && pr.call > now),
+        pid: pr && state !== "offline" && names[pr.pid] ? pr.pid : "", project: pr && names[pr.pid] ? names[pr.pid] : "", tab: pr && names[pr.pid] ? pr.tab : "", shared: shared.slice(0, 50) };
+    }) };
   },
   /* Jesús only. Deleting hides the project from everyone (photos and files stay in Drive); it can be restored. */
   deleteProject: function (me, b) {
@@ -405,6 +438,7 @@ var ACTIONS = {
         "<p><a href='" + url + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p>" +
         "<p style='color:#555'>Or open <b>meet.google.com</b> and enter the code <b>" + esc(code) + "</b>.</p>"); }, "");
     });
+    try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
     postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
       "Tap Join, or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
     return { url: url, code: code };
@@ -809,7 +843,7 @@ function messagesOut(list, me) {
   return list.filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) {
     var r = parseJson(m.reactions, {});
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
-      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "",
+      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "", akey: keyOf(m.author_email),
       files: parseJson(m.files, []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: /^image\//.test(f.mime) ? img(f.id, 600) : "", full: /^image\//.test(f.mime) ? img(f.id, 2000) : "", url: "https://drive.google.com/file/d/" + f.id + "/view" }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (staff) o.author_email = m.author_email;                                  // clients never receive other people's email addresses
@@ -833,6 +867,8 @@ function plansOut(list, me) {
       sheets: parseJson(d.sheets, []).map(function (x) { return Object.assign({}, x, { thumb: img(x.img, 600), full: img(x.img, 2400) }); }) };
   });
 }
+var _KEYS = {};
+function keyOf(email) { return email ? (_KEYS[email] = _KEYS[email] || pkey(email)) : ""; }
 function avatarsByEmail() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x.avatar || ""; }); return o; }
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
@@ -857,8 +893,10 @@ function saveAttachments(p, list) {
 function readsAll(me) { var o = {}; rows("Reads").forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
 function readsFor(me, pid) { var all = readsAll(me), o = {}; Object.keys(all).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === pid) o[k.slice(i + 1)] = all[k]; }); return o; }
 function markReadNow(me, pid, ch) {
-  var sh = tableSheet("Reads"), v = sh.getDataRange().getValues();
-  for (var i = 1; i < v.length; i++) if (cell(v[i][0]) === me.email && cell(v[i][1]) === pid && cell(v[i][2]) === ch) { sh.getRange(i + 1, 4).setNumberFormat("@").setValue(now()); return; }
+  var list = rows("Reads");
+  for (var i = 0; i < list.length; i++) if (list[i].email === me.email && list[i].project_id === pid && list[i].channel === ch) {
+    tableSheet("Reads").getRange(i + 2, 4).setNumberFormat("@").setValue(now()); list[i].at = now(); return;
+  }
   insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
 }
 function unreadOf(me, msgs, reads) {
@@ -933,7 +971,21 @@ function ss() {
   return _BOOK;
 }
 /* Every tab keeps its header row and stores everything as plain text, so Sheets never turns ids, amounts or dates into something else. */
+var _ROWS = {}, _SHEETS = {};
+function prefetch(tables) {
+  var need = tables.filter(function (t, i) { return !_ROWS[t] && tables.indexOf(t) === i && TABLES[t]; }); if (!need.length) return;
+  var id = PropertiesService.getScriptProperties().getProperty("PORTAL_SHEET_ID"); if (!id) return;
+  try {
+    var res = Sheets.Spreadsheets.Values.batchGet(id, { ranges: need.map(function (t) { return "'" + t + "'!A1:AZ"; }), valueRenderOption: "FORMATTED_VALUE" });
+    (res.valueRanges || []).forEach(function (vr, i) {
+      var t = need[i], h = TABLES[t], v = vr.values || [], out = [];
+      for (var r = 1; r < v.length; r++) { var o = {}, row = v[r]; for (var c = 0; c < h.length; c++) o[h[c]] = row[c] == null ? "" : String(row[c]); out.push(o); }
+      _ROWS[t] = out;
+    });
+  } catch (e) { /* a tab may not exist yet: the normal one-by-one reads still work */ }
+}
 function tableSheet(t) {
+  if (_SHEETS[t]) return _SHEETS[t];
   var book = ss(), sh = book.getSheetByName(t);
   if (!sh) sh = book.insertSheet(t, book.getNumSheets());
   var n = TABLES[t].length;
@@ -945,18 +997,23 @@ function tableSheet(t) {
     sh.getRange(1, from, sh.getMaxRows(), n - from + 1).setNumberFormat("@");
     sh.getRange(1, from, 1, n - from + 1).setValues([TABLES[t].slice(from - 1)]);
   }
+  _SHEETS[t] = sh;
   return sh;
 }
 function rows(t) {
+  if (_ROWS[t]) return _ROWS[t];
   var sh = tableSheet(t), v = sh.getDataRange().getValues(), h = TABLES[t], outR = [];
   for (var i = 1; i < v.length; i++) { var o = {}; h.forEach(function (k, c) { o[k] = v[i][c] == null ? "" : cell(v[i][c]); }); outR.push(o); }
+  _ROWS[t] = outR;
   return outR;
 }
 function insert(t, obj) {
+  delete _ROWS[t];
   var sh = tableSheet(t), h = TABLES[t], r = sh.getLastRow() + 1;
   sh.getRange(r, 1, 1, h.length).setNumberFormat("@").setValues([h.map(function (k) { return safe(obj[k] == null ? "" : String(obj[k])); })]);
 }
 function update(t, keyCol, keyVal, patch) {
+  delete _ROWS[t];
   var sh = tableSheet(t), v = sh.getDataRange().getValues(), h = TABLES[t], kc = h.indexOf(keyCol);
   for (var i = 1; i < v.length; i++) if (cell(v[i][kc]) === String(keyVal)) {
     Object.keys(patch).forEach(function (k) { var c = h.indexOf(k); if (c > -1) sh.getRange(i + 1, c + 1).setNumberFormat("@").setValue(safe(String(patch[k] == null ? "" : patch[k]))); });
@@ -965,7 +1022,7 @@ function update(t, keyCol, keyVal, patch) {
   return false;
 }
 function removeWhere(t, test) {
-  var sh = tableSheet(t), all = rows(t);
+  var sh = tableSheet(t), all = rows(t); delete _ROWS[t];
   for (var i = all.length - 1; i >= 0; i--) if (test(all[i])) sh.deleteRow(i + 2);
 }
 function findBy(t, col, val) { return rows(t).filter(function (r) { return r[col] === String(val); })[0] || null; }

@@ -25,7 +25,7 @@
         { email: "jesus@example.com", name: "Jesús Toto", role: "admin", project_ids: "", active: "yes" },
         { email: "client@example.com", name: "Sample Client", role: "client", project_ids: "p1", active: "yes" },
         { email: "client2@example.com", name: "Second Client", role: "client", project_ids: "p2", active: "yes" },
-        { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes" },
+        { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes", avatar: "v1:skin=1;hair=7;hairc=1;hat=1;beard=3;glasses=0;shirt=1;bg=3;face=1" },
         { email: "maria@example.com", name: "Maria Team", role: "staff", project_ids: "", active: "yes", created_at: "2026-09-01 09:00", avatar: "🦉|#e7eef7" },
         { email: "crew@example.com", name: "Carlos Crew", role: "crew", project_ids: "p1", active: "yes", created_at: "2026-10-01 07:00", avatar: "🚜|#fdf4dc" }
       ],
@@ -159,7 +159,7 @@
   function msgOut(db, m, me) {
     var names = {}; db.people.forEach(function (x) { names[x.email] = x.name; }); var r = m.reactions || {};
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id || "", status: m.status || "", via: m.via || "portal", channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "",
-      mine: m.author_email === me.email, mention: ment(m.text, me.name), avatar: (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || "", files: (m.files || []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: f.mime !== "application/pdf" ? f.src : "", full: f.mime !== "application/pdf" ? f.src : "", url: f.mime === "application/pdf" ? "#preview-pdf" : f.src }; }),
+      mine: m.author_email === me.email, mention: ment(m.text, me.name), akey: pk(m.author_email), avatar: (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || "", files: (m.files || []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: f.mime !== "application/pdf" ? f.src : "", full: f.mime !== "application/pdf" ? f.src : "", url: f.mime === "application/pdf" ? "#preview-pdf" : f.src }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (isStaff(me)) o.author_email = m.author_email; return o;
   }
@@ -302,9 +302,18 @@
       var rd = readsOf(db, me);
       return { items: db.messages.filter(function (m) { return seen[m.project_id] && canRead(me, chOf(m)); }).sort(function (a, c) { return a.at < c.at ? 1 : -1; }).slice(0, Math.min(b.limit || 60, 150)).map(function (m) {
         var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id || "", kind: m.kind, author: m.author, role: m.role, at: m.at, text: String(m.text).slice(0, 400), files: (m.files || []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "" };
-        o.unread = !o.mine && m.at > (rd[m.project_id + "|" + o.channel] || ""); o.mention = ment(m.text, me.name); o.dm = isDm(o.channel); o.avatar = (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || ""; return o; }) };
+        o.unread = !o.mine && m.at > (rd[m.project_id + "|" + o.channel] || ""); o.mention = ment(m.text, me.name); o.dm = isDm(o.channel); o.akey = pk(m.author_email); o.avatar = (db.people.filter(function (x) { return x.email === m.author_email; })[0] || {}).avatar || ""; return o; }) };
     },
     listTeam: function (db, me) { needStaff(me); return { team: db.people.filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes", since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: ids(x.project_ids).length }; }) }; },
+    presence: function (db, me, b) {
+      // Preview: a few sample people "online" so the panel has something to show.
+      var sample = { "maria@example.com": ["online", "p1", "plans"], "architect@example.com": ["busy", "p1", "messages"], "crew@example.com": ["away", "p1", "schedule"] };
+      var mine = { s: ["available", "busy", "away"].indexOf(b.status) > -1 ? b.status : "available", at: Date.now(), pid: b.pid || "", tab: b.tab || "" };
+      return { me: mine, people: db.people.filter(function (x) { return x.active === "yes" && x.email !== me.email && (isStaff(me) || isStaff(x) || ids(x.project_ids).some(function (id) { return canSee(me, id); })); }).map(function (x) {
+        var smp = sample[x.email], state = smp ? smp[0] : "offline", pr = db.projects.filter(function (q) { return smp && q.id === smp[1] && canSee(me, q.id); })[0];
+        return { key: pk(x.email), name: x.name, role: x.role, avatar: x.avatar || "", state: state, last: Date.now() - (smp ? 20000 : 3 * 3600000), inCall: false, pid: pr ? pr.id : "", project: pr ? pr.name : "", tab: pr ? smp[2] : "",
+          shared: db.projects.filter(function (q) { return canSee(me, q.id) && (isStaff(x) || ids(x.project_ids).indexOf(q.id) > -1); }).map(function (q) { return q.id; }) }; }) };
+    },
     saveProfile: function (db, me, b) { var x = db.people.filter(function (q) { return q.email === me.email; })[0]; x.avatar = b.avatar || ""; return { avatar: x.avatar }; },
     deleteProject: function (db, me, b) { if (me.role !== "admin") throw new Error("Only Jesús can delete projects."); var p = needProject(db, me, b.projectId);
       if (String(b.confirm || "").trim().toLowerCase() !== p.name.trim().toLowerCase()) throw new Error("Type the project name exactly to delete it."); p.status = "deleted"; return {}; },
