@@ -39,16 +39,20 @@ var TABLES = {
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
-  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via"],
+  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions"],
   Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
   Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"],
   // The contract: "base" lines are the schedule of values (they add up to the contract sum); "change" lines are change orders.
+  Reads: ["email", "project_id", "channel", "at"],      // when each person last looked at each channel (unread counts)
   ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
-var READ_ONLY = { me: 1, listProjects: 1, getProject: 1 };
+var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1 };
+/* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
+var CHANNELS = ["client", "architect", "team"];
+var REACTIONS = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
 
 /* ============================ web app ============================ */
 
@@ -128,6 +132,8 @@ function auth(token) {
 }
 function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin" }; }
 function isStaff(p) { return p.role === "admin" || p.role === "staff"; }
+function channelsFor(me) { return isStaff(me) ? CHANNELS : me.role === "architect" ? ["client", "architect"] : ["client"]; }
+function chOf(m) { return m.channel || "client"; }
 function isOutside(p) { return p.role === "client" || p.role === "architect"; }   // people outside the team: see only their projects
 function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
 function canSee(me, pid) { if (isStaff(me)) return true; return (me.projects || splitIds(me.project_ids)).indexOf(String(pid)) > -1; }
@@ -145,8 +151,8 @@ var ACTIONS = {
 
   listProjects: function (me) {
     var all = rows("Projects").filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived"); });
-    var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline");
-    return { me: publicMe(me), projects: all.map(function (p) { return summary(p, inv, msgs, tl); }) };
+    var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline"), lines = rows("ContractLines"), reads = readsAll(me);
+    return { me: publicMe(me), projects: all.map(function (p) { return summary(p, inv, msgs, tl, me, lines, reads); }) };
   },
 
   getProject: function (me, b) {
@@ -157,7 +163,10 @@ var ACTIONS = {
       timeline: by("Timeline").reverse(),
       photos: by("Photos").reverse().map(photoOut),
       // Clients never receive other people's email addresses.
-      messages: by("Messages").map(function (m) { var o = Object.assign({}, m); o.mine = m.author_email === me.email; if (!staff) delete o.author_email; return o; }),
+      messages: messagesOut(by("Messages"), me),
+      reads: readsFor(me, id),
+      members: membersOf(p).map(function (x) { return { name: x.name, role: x.role }; }),
+      channels: channelsFor(me),
       invoices: by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff); }),
       checklist: by("Checklist").sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
@@ -212,6 +221,11 @@ var ACTIONS = {
     } else {
       insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
     }
+    if (b.invite && !p && role === "staff") safeMail(function () {
+      sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
+        "<p>Hi " + esc(first(b.name || "")) + ",</p><p>Jesús added you to the " + CONFIG.COMPANY + " project portal. You can see every project: schedule, photos, chat, contract and invoices.</p>" +
+        button("Open the portal") + "<p>To log in, type this email address and we'll send you a 6-digit code.</p>");
+    }, "Added, but the invitation email couldn't be sent.");
     if (b.invite && p) safeMail(function () {
       sendMail(email, "Your project portal for " + p.name,
         "<p>Hi " + esc(first(b.name || "")) + ",</p><p>You can follow <b>" + esc(p.name) + "</b> in the " + CONFIG.COMPANY + " portal: photos, updates, questions, invoices and the checklist, all in one place.</p>" +
@@ -223,6 +237,7 @@ var ACTIONS = {
   removePerson: function (me, b) {
     needStaff(me);
     var person = findPerson(normEmail(b.email)); if (!person) return {};
+    if (person.email === me.email && !b.projectId) throw new Error("You can't turn off your own access.");
     if (isStaff(person) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
     var ids = splitIds(person.project_ids).filter(function (x) { return x !== String(b.projectId); });
     update("People", "email", person.email, b.projectId ? { project_ids: ids.join(",") } : { active: "no" });
@@ -251,18 +266,78 @@ var ACTIONS = {
   },
 
   sendMessage: function (me, b) {
-    var p = needProject(me, b.projectId), text = clean(b.text, 5000); if (!text) throw new Error("Write a message.");
-    var kind = isStaff(me) && b.kind === "question" ? "question" : "message";
+    var p = needProject(me, b.projectId), text = clean(b.text, 5000), channel = b.channel || "client";
+    if (channelsFor(me).indexOf(channel) < 0) throw new Error("You can't post in that channel.");
+    var root = "";
+    if (b.threadId) {
+      var parent = findBy("Messages", "id", b.threadId);
+      if (!parent || parent.project_id !== p.id || chOf(parent) !== channel) throw new Error("That conversation isn't here anymore.");
+      root = parent.thread_id || parent.id;                                  // replies always hang off the first message
+    }
+    var files = saveAttachments(p, b.files || []);
+    if (!text && !files.length) throw new Error("Write a message.");
+    var kind = isStaff(me) && b.kind === "question" && channel === "client" && !root ? "question" : "message";
     var id = newId("m");
-    insert("Messages", { id: id, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: kind, text: text, question_id: "", status: kind === "question" ? "open" : "", via: "portal" });
-    if (isStaff(me)) {
+    insert("Messages", { id: id, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: kind, text: text, question_id: "", status: kind === "question" ? "open" : "",
+      via: "portal", channel: channel, thread_id: root, files: files.length ? JSON.stringify(files) : "", reactions: "" });
+    var emailed = {};
+    var body = "<p>" + nl2br(esc(text)) + "</p>" + (files.length ? "<p style='color:#666'>" + files.length + " attachment" + (files.length > 1 ? "s" : "") + " in the portal.</p>" : "") + "<p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>";
+    if (isStaff(me) && channel !== "team") {
+      // Client channel: the client and the architect. Architect channel: only the architect. Replies by email come back into the same place.
+      var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect"); });
       var subj = (kind === "question" ? "Question about " : "Message about ") + p.name + " " + tag(p.id, id);
-      safeMail(function () {
-        emailClients(p, subj, "<p>" + nl2br(esc(text)) + "</p><p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>" +
-          (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal"));
-      }, "Saved, but the email to the client couldn't be sent.");
-    } else notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
+      safeMail(function () { who.forEach(function (x) { emailed[x.email] = 1; sendMail(x.email, subj, "<p>Hi " + esc(first(x.name)) + ",</p>" + body +
+        (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal")); }); },
+        "Saved, but the email couldn't be sent.");
+    } else if (!isStaff(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
+    notifyMentions(p, me, text, channel, emailed);
+    markReadNow(me, p.id, channel);
+    return { id: id };
+  },
+
+  /* Reactions: one tap adds or removes yours. */
+  react: function (me, b) {
+    var m = findBy("Messages", "id", b.messageId); if (!m) throw new Error("Message not found.");
+    needProject(me, m.project_id); if (channelsFor(me).indexOf(chOf(m)) < 0) throw new Error("Message not found.");
+    if (REACTIONS.indexOf(b.emoji) < 0) throw new Error("Pick one of the reactions.");
+    var r = parseJson(m.reactions, {}), list = r[b.emoji] || [], i = list.indexOf(me.email);
+    if (i > -1) list.splice(i, 1); else list.push(me.email);
+    if (list.length) r[b.emoji] = list; else delete r[b.emoji];
+    update("Messages", "id", m.id, { reactions: Object.keys(r).length ? JSON.stringify(r) : "" });
     return {};
+  },
+  /* The author or Jesús can delete a message; deleting the first message of a thread deletes its replies. */
+  deleteMessage: function (me, b) {
+    var m = findBy("Messages", "id", b.messageId); if (!m) return {};
+    needProject(me, m.project_id);
+    if (m.author_email !== me.email && me.role !== "admin") throw new Error("Only the person who wrote it can delete it.");
+    var gone = rows("Messages").filter(function (x) { return x.id === m.id || (x.thread_id === m.id && !m.thread_id) || (m.kind === "question" && x.question_id === m.id); });
+    gone.forEach(function (x) { parseJson(x.files, []).forEach(function (f) { try { DriveApp.getFileById(f.id).setTrashed(true); } catch (e) {} }); });
+    var ids = {}; gone.forEach(function (x) { ids[x.id] = 1; });
+    removeWhere("Messages", function (r) { return ids[r.id]; });
+    return {};
+  },
+  markRead: function (me, b) {
+    var p = needProject(me, b.projectId), ch = b.channel || "client";
+    if (channelsFor(me).indexOf(ch) < 0) return {};
+    markReadNow(me, p.id, ch); return {};
+  },
+  /* Everything new across the projects and channels this person can see, newest first. */
+  activity: function (me, b) {
+    var seen = {}; rows("Projects").forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived")) seen[p.id] = p; });
+    var mine = channelsFor(me), reads = readsAll(me), lim = Math.min(Number(b.limit) || 60, 150);
+    var list = rows("Messages").filter(function (m) { return seen[m.project_id] && mine.indexOf(chOf(m)) > -1; }).reverse().slice(0, lim);
+    return { items: list.map(function (m) {
+      var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id, kind: m.kind, author: m.author, role: m.role,
+        at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email };
+      o.unread = !o.mine && m.at > (reads[m.project_id + "|" + o.channel] || "");
+      o.mention = mentions(m.text, me.name);
+      return o;
+    }) };
+  },
+  listTeam: function (me) {
+    needStaff(me);
+    return { team: rows("People").filter(isStaff).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10) }; }) };
   },
 
   answerQuestion: function (me, b) {
@@ -412,7 +487,10 @@ function checkEmailReplies() {
         // Record the import first, so a failed notice can't make the same reply import again.
         var mid = newId("m"); mark("imported", mid);
         if (q.kind === "question" && q.status === "open") addAnswer(p, q, person.name, from, person.role, text, "email", at, mid);
-        else addMessage(p, person, text, "email", at, mid);
+        else {
+          if (channelsFor(person).indexOf(chOf(q)) < 0) return mark("not allowed in that channel");   // e.g. a client replying to an architect-only email: never leak it into their channel
+          addMessage(p, person, text, "email", at, mid, chOf(q), q.thread_id || q.id);
+        }
       });
     });
   } finally { lock.releaseLock(); }
@@ -447,14 +525,15 @@ function replyText(body) {
 
 function addAnswer(p, q, name, email, role, text, via, at, id) {
   id = id || newId("m");
-  insert("Messages", { id: id, project_id: p.id, at: at || now(), author: name, author_email: email, role: role, kind: "answer", text: text, question_id: q.id, status: "", via: via });
+  insert("Messages", { id: id, project_id: p.id, at: at || now(), author: name, author_email: email, role: role, kind: "answer", text: text, question_id: q.id, status: "", via: via, channel: "client", thread_id: "", files: "", reactions: "" });
   update("Messages", "id", q.id, { status: "answered" });
   if (role === "client" || role === "architect") notifyJesus(email, name + " answered: " + q.text.slice(0, 60), "<p><b>Question:</b> " + esc(q.text) + "</p><p><b>Answer:</b> " + nl2br(esc(text)) + "</p><p style='color:#666'>" + esc(p.name) + " · via " + via + "</p>" + button("Open the portal"));
   return id;
 }
-function addMessage(p, person, text, via, at, id) {
+function addMessage(p, person, text, via, at, id, channel, threadId) {
   id = id || newId("m");
-  insert("Messages", { id: id, project_id: p.id, at: at || now(), author: person.name, author_email: person.email, role: person.role, kind: "message", text: text, question_id: "", status: "", via: via });
+  insert("Messages", { id: id, project_id: p.id, at: at || now(), author: person.name, author_email: person.email, role: person.role, kind: "message", text: text, question_id: "", status: "", via: via,
+    channel: channel || "client", thread_id: threadId || "", files: "", reactions: "" });
   notifyJesus(person.email, "New message from " + person.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
   return id;
 }
@@ -518,14 +597,16 @@ function rootFolder() {
 
 /* ============================ shaping ============================ */
 
-function summary(p, inv, msgs, tl) {
+function summary(p, inv, msgs, tl, me, lines, reads) {
   var mine = function (list) { return list.filter(function (r) { return r.project_id === p.id; }); };
   var invs = mine(inv).filter(function (i) { return i.status !== "void" && i.status !== "draft"; });
   var last = mine(tl).slice(-1)[0];
   return Object.assign(projectOut(p), {
     balance: invs.filter(function (i) { return i.status !== "paid"; }).reduce(function (a, i) { return a + num(i.amount) - num(i.retainage); }, 0),
     openQuestions: mine(msgs).filter(function (m) { return m.kind === "question" && m.status === "open"; }).length,
-    lastUpdate: last ? last.at : ""
+    lastUpdate: last ? last.at : "",
+    money: moneyOf(p, mine(inv), mine(lines || [])),
+    unread: me ? unreadOf(me, mine(msgs), reads || {}) : 0
   });
 }
 function projectOut(p) {
@@ -551,6 +632,63 @@ function contractOut(list, p, staff) {
 function billedOn(pid, lineId) {
   return rows("Invoices").some(function (i) { if (i.project_id !== pid || i.status === "void" || !i.lines) return false; try { return !!JSON.parse(String(i.lines).replace(/^'/, ""))[lineId]; } catch (e) { return false; } });
 }
+/* ---- chat ---- */
+function messagesOut(list, me) {
+  var staff = isStaff(me), mine = channelsFor(me), names = {};
+  rows("People").forEach(function (x) { names[x.email] = x.name; });
+  return list.filter(function (m) { return mine.indexOf(chOf(m)) > -1; }).map(function (m) {
+    var r = parseJson(m.reactions, {});
+    var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
+      channel: chOf(m), thread_id: m.thread_id || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name),
+      files: parseJson(m.files, []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: /^image\//.test(f.mime) ? img(f.id, 600) : "", full: /^image\//.test(f.mime) ? img(f.id, 2000) : "", url: "https://drive.google.com/file/d/" + f.id + "/view" }; }),
+      reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
+    if (staff) o.author_email = m.author_email;                                  // clients never receive other people's email addresses
+    return o;
+  });
+}
+function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
+function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
+/* "@Full Name" emails that person if they can see the channel (and didn't already get the message by email). */
+function notifyMentions(p, me, text, channel, emailed) {
+  if (String(text).indexOf("@") < 0) return;
+  membersOf(p).forEach(function (x) {
+    if (x.email === me.email || emailed[x.email] || !mentions(text, x.name) || channelsFor(x).indexOf(channel) < 0) return;
+    try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
+    safeMail(function () { sendMail(x.email, me.name + " mentioned you · " + p.name + " #" + channel, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> mentioned you in <b>#" + channel + "</b> on " + esc(p.name) + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal")); }, "");
+  });
+}
+function saveAttachments(p, list) {
+  if (list.length > 5) throw new Error("Up to 5 files at a time.");
+  return list.map(function (f) {
+    var mime = String(f.mime || "");
+    if (!/^image\/(jpeg|png|webp)$/.test(mime) && mime !== "application/pdf") throw new Error("Attach photos (JPG, PNG) or PDFs.");
+    var name = clean(f.name, 120) || "file";
+    return { id: saveFile(p, f, name, /^image\//.test(mime)), name: name, mime: mime };
+  });
+}
+function readsAll(me) { var o = {}; rows("Reads").forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
+function readsFor(me, pid) { var all = readsAll(me), o = {}; CHANNELS.forEach(function (c) { if (all[pid + "|" + c]) o[c] = all[pid + "|" + c]; }); return o; }
+function markReadNow(me, pid, ch) {
+  var sh = tableSheet("Reads"), v = sh.getDataRange().getValues();
+  for (var i = 1; i < v.length; i++) if (cell(v[i][0]) === me.email && cell(v[i][1]) === pid && cell(v[i][2]) === ch) { sh.getRange(i + 1, 4).setNumberFormat("@").setValue(now()); return; }
+  insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
+}
+function unreadOf(me, msgs, reads) {
+  var mine = channelsFor(me);
+  return msgs.filter(function (m) { var c = chOf(m); return mine.indexOf(c) > -1 && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
+}
+/* ---- money: the same math as the Contract & billing tab ---- */
+function moneyOf(p, inv, lines) {
+  var total = 0; lines.forEach(function (l) { if (l.kind === "base" || l.status === "approved") total += num(l.amount); });
+  var billed = 0, held = 0, paid = 0, waiting = 0, overdue = 0, t = today();
+  inv.forEach(function (i) {
+    if (i.status === "void" || i.status === "draft") return;
+    var a = num(i.amount), r = num(i.retainage); billed += a; held += r;
+    if (i.status === "paid") paid += a - r; else { waiting += a - r; if (i.due && i.due < t) overdue += a - r; }
+  });
+  return { total: cents(total), billed: cents(billed), held: cents(held), paid: cents(paid), waiting: cents(waiting), overdue: cents(overdue), left: cents(total - billed) };
+}
+function parseJson(v, dflt) { if (!v) return dflt; try { return JSON.parse(String(v).replace(/^'/, "")); } catch (e) { return dflt; } }
 function img(id, w) { return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(id) + "&sz=w" + w; }
 
 /* ============================ email ============================ */

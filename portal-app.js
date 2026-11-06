@@ -99,14 +99,17 @@
       S.tab = h.t || "overview";
       if (h.p) {
         if (!S.data || S.data.project.id !== h.p) {
-          S.pid = h.p; S.data = null; S.pending = []; render();
+          S.pid = h.p; S.data = null; S.pending = []; S.att = { main: [], thread: [] }; S.readMark = {}; S.picker = null; S.chan = S.wantChan || "client"; S.wantChan = null; render();
           var d = await call("getProject", { projectId: h.p });
           if (seq !== S.seq) return;                                     // a newer navigation won: drop this answer
           S.data = d;
         }
       } else { S.pid = null; S.data = null; S.pending = []; }
     } catch (e) { if (seq !== S.seq) return; if (S.pid && !S.data) S.loadErr = e.message; else S.err = e.message; }
+    if (S.wantChan && S.data) { S.chan = S.wantChan; S.wantChan = null; S.readMark = {}; }
+    if (S.openThread && S.data) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; }
     render();
+    if (S.tab === "messages" && S.data && !S.modal) window.scrollTo(0, document.body.scrollHeight);
   }
   async function reload(projectsToo) {
     var pid = S.pid, seq = S.seq;
@@ -117,6 +120,18 @@
   /* After a save that worked, a failed refresh must not look like a failed save (and invite a duplicate). */
   async function refresh(projectsToo) { try { await reload(projectsToo); } catch (e) { toast("Saved, but the page couldn't refresh. Reload to see it."); } }
   window.addEventListener("popstate", route);
+  /* Live-ish chat: while a chat is open and the tab is visible, look for new messages every 40 seconds. */
+  setInterval(async function () {
+    if (!S.token || !S.pid || !S.data || S.tab !== "messages" || S.busy || document.visibilityState !== "visible") return;
+    var pid = S.pid, seq = S.seq, sig = function (d) { return d.messages.map(function (m) { return m.id + ":" + (m.reactions || []).map(function (r) { return r.e + r.n; }).join(""); }).join("|"); };
+    try {
+      var d = await call("getProject", { projectId: pid });
+      if (seq !== S.seq || S.pid !== pid || !S.data || sig(d) === sig(S.data)) return;
+      var nearBottom = window.innerHeight + window.scrollY > document.body.scrollHeight - 200;
+      d.reads = S.data.reads; S.data = d; keepScroll(render);
+      if (nearBottom && !S.modal) window.scrollTo(0, document.body.scrollHeight);
+    } catch (e) {}
+  }, 40000);
 
   /* ---------------- render ---------------- */
   function render() {
@@ -136,9 +151,10 @@
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + LOGO + "<span>Client portal</span></div>" +
       '<div class="who"><span class="name">' + esc(S.me.name) + (staff() ? ' <span class="pill">Team</span>' : "") + '</span><div class="avatar">' + esc(initials(S.me.name)) + '</div><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
-      '<div class="wrap">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</div>" +
+      '<div class="wrap' + (S.projects && (staff() || S.projects.length > 1) ? " has-side" : "") + '">' + (S.projects && (staff() || S.projects.length > 1) ? sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
+    if (S.tab === "messages" && S.data) setTimeout(markChannelRead, 0);
     // Timeline wider than the screen (phones): keep the scroll position, or start with today in view.
     var gw = root.querySelector(".gantt-wrap"), tl = gw && gw.querySelector(".g-today"), lab = gw && gw.querySelector(".g-label");
     if (gw && gw.scrollWidth > gw.clientWidth) gw.scrollLeft = gLeft >= 0 ? gLeft : tl ? Math.max(0, tl.offsetLeft + tl.parentNode.offsetLeft - (lab ? lab.offsetWidth : 0) - 40) : 0;
@@ -187,19 +203,80 @@
   }
 
   function renderList() {
-    var list = S.projects || [];
+    var list = S.projects || [], view = staff() ? (S.home || "projects") : "projects";
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
+    var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var card = function (p) {
-      return '<button class="pcard" data-a="open" data-id="' + esc(p.id) + '"><div class="cover" style="' + bg(p.cover) + '"><span class="pill dark">' + esc(p.phase) + "</span></div>" +
+      var mo = p.money || {}, paidPct = mo.total ? pctOf(mo.paid, mo.total) : 0;
+      return '<button class="pcard" data-a="open" data-id="' + esc(p.id) + '"><div class="cover" style="' + bg(p.cover) + '"><span class="pill dark">' + esc(p.phase) + "</span>" + (p.unread ? '<span class="pill new">' + p.unread + " new</span>" : "") + "</div>" +
         '<div class="body"><h3>' + esc(p.name) + '</h3><span class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + "</span>" +
-        '<div class="bar"><i style="width:' + Number(p.progress || 0) + '%"></i></div>' +
+        (mo.total ? '<div class="pc-money"><b>' + money(mo.total) + '</b><span class="muted small">' + paidPct + "% paid</span></div>" + '<div class="cbar slim"><i class="paid" style="width:' + pctOf(mo.paid, mo.total) + '%"></i><i class="wait" style="width:' + pctOf(mo.waiting, mo.total) + '%"></i><i class="held" style="width:' + pctOf(mo.held, mo.total) + '%"></i></div>'
+          : '<div class="bar"><i style="width:' + Number(p.progress || 0) + '%"></i></div>') +
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
-        (p.balance ? '<span class="pill">' + money(p.balance) + " due</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
+        (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    return '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "All projects" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Projects" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
-      (staff() ? '<button class="btn" data-a="modal" data-m="project">New project</button>' : "") + "</div>" +
+    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["team", "Team", 0]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+      (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">New project</button>' : "") + "</div>" + chips;
+    if (view === "activity") return head + homeActivity();
+    if (view === "team") return head + homeTeam();
+    var portfolio = "";
+    if (staff() && active.length) {
+      var t = { total: 0, billed: 0, paid: 0, waiting: 0, overdue: 0, held: 0 }, withC = 0;
+      active.forEach(function (p) { var mo = p.money || {}; if (mo.total) withC++; Object.keys(t).forEach(function (k) { t[k] += Number(mo[k] || 0); }); });
+      portfolio = '<div class="grid g4 portfolio">' + stat("Under contract", money(t.total), withC + " active project" + (withC === 1 ? "" : "s") + " with a contract") +
+        stat("Billed", money(t.billed), pctOf(t.billed, t.total) + "% of the contracts") + stat("Collected", money(t.paid), pctOf(t.paid, t.total) + "% of the contracts") +
+        stat("To collect", money(t.waiting), t.overdue ? '<span style="color:var(--bad)">' + money(t.overdue) + " overdue</span>" : "Nothing overdue" + (t.held ? " · " + money(t.held) + " retainage held" : "")) + "</div>";
+    }
+    return head + portfolio +
       (active.length ? '<div class="projects">' + active.map(card).join("") + "</div>" : '<div class="empty">' + (staff() ? "No projects yet. Create the first one." : "There's no project on your account yet. Blue Sierra will add it soon.") + "</div>") +
       (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "");
+  }
+  function homeActivity() {
+    if (!S.activity) { loadHome("activity"); return '<div class="loading" style="min-height:30vh">Loading activity…</div>'; }
+    if (!S.activity.length) return '<div class="empty">No messages yet in any project.</div>';
+    var lastDay = "";
+    return '<div class="card act">' + S.activity.map(function (it) {
+      var d = String(it.at).slice(0, 10), sep = d !== lastDay ? '<div class="act-day">' + day(d) + "</div>" : ""; lastDay = d;
+      return sep + '<button class="act-row' + (it.unread ? " unread" : "") + '" data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '">' +
+        '<div class="avatar sm ' + (it.role === "client" ? "gold" : it.role === "architect" ? "arch" : "") + '">' + esc(initials(it.author)) + "</div><div class=\"act-body\"><div class=\"act-top\"><b>" + esc(it.author) + '</b><span class="muted small">' + esc(it.project) + " · #" + esc(it.channel) + (it.thread_id ? " · thread" : "") + "</span>" +
+        (it.mention ? '<span class="pill new">@you</span>' : "") + (it.kind === "question" ? '<span class="pill gold">Question</span>' : "") + '<span class="muted small act-time">' + day(it.at).replace(/^.* · /, "") + "</span></div>" +
+        '<div class="act-text">' + esc(it.text || (it.files ? it.files + " attachment" + (it.files > 1 ? "s" : "") : "")) + "</div></div>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
+    }).join("") + "</div>";
+  }
+  function homeTeam() {
+    if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
+    var admin = S.me && S.me.admin;
+    return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
+      return '<div class="team-row' + (x.active ? "" : " off") + '"><div class="avatar">' + esc(initials(x.name)) + '</div><div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
+        '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + (x.role === "admin" ? "Admin" : "Team") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
+        (admin && x.email !== S.me.email && x.role !== "admin" ? (x.active ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '">Turn off</button>' : '<button class="btn ghost sm" data-a="teamOn" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Turn back on</button>') : "") + "</div>";
+    }).join("") + "</div>" +
+      (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email and a 6-digit code.</p>' +
+        '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
+        '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add to the team</button></div></form>'
+        : '<p class="muted small" style="margin-top:12px">Only Jesús can add or remove team members. Clients and architects are added from each project’s People tab.</p>');
+  }
+  function refreshList() { var seq = S.seq; call("listProjects").then(function (r) { if (seq === S.seq) { S.projects = r.projects; if (!S.pid) keepScroll(render); } }).catch(function () {}); }
+  async function loadHome(what) {
+    if (S.homeLoading === what) return; S.homeLoading = what; var seq = S.seq;
+    try {
+      if (what === "activity") { var r = await call("activity", { limit: 80 }); if (seq === S.seq) S.activity = r.items; }
+      else { var t = await call("listTeam"); if (seq === S.seq) S.team = t.team; }
+    } catch (e) { toast(e.message); if (what === "activity") S.activity = []; else S.team = []; }
+    S.homeLoading = null; if (!S.pid) keepScroll(render);
+  }
+  /* Slack-style sidebar (wide screens): home, activity, team, every project with unread counts, and the open project's channels. */
+  function sidebar() {
+    var list = (S.projects || []).filter(function (p) { return p.status !== "archived"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
+    var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
+    var home = !S.pid;
+    return '<aside class="side" data-lenis-prevent>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+        : item('data-a="home"', "All projects", home)) +
+      '<div class="s-head">Projects</div>' + list.map(function (p) {
+        var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + c + '"># ' + c + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+        return item('data-a="open" data-id="' + esc(p.id) + '"', esc(p.name), on, on && S.data ? 0 : p.unread, chans);
+      }).join("") + "</aside>";
   }
 
   /* ---------------- project ---------------- */
@@ -210,12 +287,12 @@
   function renderProject() {
     var d = S.data, p = d.project, oq = openQuestions().length, todo = clientTodo().length;
     var idx = PHASES.indexOf(p.phase);
-    var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Messages", oq], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
+    var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Chat", (function () { var n = 0; myChannels().forEach(function (c) { n += unreadIn(c); }); return n || oq; })()], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (staff()) tabs.push(["people", "People", 0]);
     var body = { overview: tabOverview, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead" style="' + bg(p.cover) + '"><div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
-      (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + "</div>" +
+      (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
       (staff() ? '<button class="btn light sm" data-a="modal" data-m="project" data-id="' + esc(p.id) + '">Edit project</button>' : "") + "</div></section>" +
       '<div class="stepper" aria-label="Project phase: ' + esc(p.phase) + '">' + PHASES.map(function (ph, i) { return '<div class="step ' + (i < idx ? "done" : i === idx ? "now" : "") + '"><i></i><span>' + esc(ph) + "</span></div>"; }).join("") + "</div>" +
       '<nav class="tabs">' + tabs.map(function (t) { return '<button data-a="tab" data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + (t[2] ? '<span class="count">' + t[2] + "</span>" : "") + "</button>"; }).join("") + "</nav>" +
@@ -277,25 +354,113 @@
   function answerBox(q) {
     return '<form class="answer-box" data-form="answer" data-q="' + esc(q.id) + '"><textarea name="text" placeholder="Your answer" required style="min-height:64px"></textarea><div class="actions"><button class="btn sm" type="submit">Send answer</button></div></form>';
   }
+  /* ---------------- chat: channels, threads, files, reactions, @mentions ---------------- */
+  var CH_INFO = { client: ["client", "Client, architect and Blue Sierra"], architect: ["architect", "The architect and Blue Sierra. The client doesn't see this."], team: ["team", "Blue Sierra team only. The client and architect never see this."] };
+  var EMOJI = ["👍", "✅", "❤️", "👀", "🎉", "🙏"];
+  function myChannels() { return (S.data && S.data.channels) || ["client"]; }
+  function chanMsgs(ch) { return S.data.messages.filter(function (m) { return (m.channel || "client") === ch; }); }
+  function unreadIn(ch) { var r = (S.data.reads || {})[ch] || ""; return chanMsgs(ch).filter(function (m) { return !m.mine && m.at > r; }).length; }
+  function roleTag(role) { return role === "client" ? '<span class="pill gold">Client</span>' : role === "architect" ? '<span class="pill arch">Architect</span>' : '<span class="pill">Blue Sierra</span>'; }
+  /* Text is escaped first; then links and @mentions of real members are highlighted. */
+  function richText(t) {
+    var h = esc(t).replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    ((S.data && S.data.members) || []).forEach(function (mb) {
+      if (!mb.name) return; var at = "@" + esc(mb.name), i = h.toLowerCase().indexOf(at.toLowerCase());
+      if (i > -1) h = h.split(at).join('<span class="mention' + (S.me && mb.name === S.me.name ? " me" : "") + '">' + at + "</span>");
+    });
+    return h;
+  }
+  function filesHtml(m) {
+    if (!m.files || !m.files.length) return "";
+    var imgs = m.files.filter(function (f) { return f.thumb; }), docs = m.files.filter(function (f) { return !f.thumb; });
+    return (imgs.length ? '<div class="m-imgs">' + imgs.map(function (f) { return '<a href="' + esc(f.full || f.url) + '" target="_blank" rel="noopener noreferrer" class="m-img" style="' + bg(f.thumb) + '" aria-label="' + esc(f.name) + '"></a>'; }).join("") + "</div>" : "") +
+      (docs.length ? '<div class="m-docs">' + docs.map(function (f) { return '<a class="m-doc" href="' + esc(f.url) + '" target="_blank" rel="noopener noreferrer"><span>PDF</span>' + esc(f.name) + "</a>"; }).join("") + "</div>" : "");
+  }
+  function reactHtml(m) {
+    return '<div class="m-react">' + (m.reactions || []).map(function (r) { return '<button class="rx' + (r.mine ? " on" : "") + '" data-a="react" data-id="' + esc(m.id) + '" data-e="' + esc(r.e) + '" title="' + esc(r.who.join(", ")) + '">' + r.e + " <b>" + r.n + "</b></button>"; }).join("") +
+      '<span class="rx-add"><button class="rx ghost" data-a="rxPick" data-id="' + esc(m.id) + '" aria-label="Add a reaction">☺+</button>' +
+      (S.picker === m.id ? '<span class="rx-pop">' + EMOJI.map(function (e) { return '<button data-a="react" data-id="' + esc(m.id) + '" data-e="' + e + '">' + e + "</button>"; }).join("") + "</span>" : "") + "</span></div>";
+  }
+  function msgHtml(m, opts) {
+    opts = opts || {};
+    var q = m.kind === "question", replies = opts.replies || [], answers = opts.answers || [];
+    var canDel = m.mine || (S.me && S.me.admin);
+    return '<div class="msg' + (m.mine ? " mine" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '"><div class="avatar ' + (m.role === "client" ? "gold" : m.role === "architect" ? "arch" : "") + '">' + esc(initials(m.author)) + '</div><div class="bubble ' + (q ? "question" : "") + '">' +
+      '<div class="who-line"><b>' + esc(m.author) + "</b>" + roleTag(m.role) + "<span>" + day(m.at) + "</span>" + (m.via === "email" ? '<span class="pill">by email</span>' : "") +
+      (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") +
+      '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Reply in thread</button>' : "") +
+      (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
+      (m.text ? '<div class="text">' + richText(m.text) + "</div>" : "") + filesHtml(m) +
+      answers.map(function (a) { return '<div class="answer"><div class="who-line"><b>' + esc(a.author) + "</b><span>" + day(a.at) + "</span>" + (a.via === "email" ? '<span class="pill">by email</span>' : "") + '</div><div class="text">' + richText(a.text) + "</div></div>"; }).join("") +
+      (q && m.status === "open" ? (staff() ? '<div class="actions" style="justify-content:flex-start;margin-top:8px"><button class="link small" data-a="closeQ" data-id="' + esc(m.id) + '">Mark as answered</button></div>' : asClient() ? answerBox(m) : "") : "") +
+      reactHtml(m) +
+      (!opts.inThread && replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '"><span class="faces">' + replies.slice(-3).map(function (r) { return '<i>' + esc(initials(r.author)) + "</i>"; }).join("") + "</span>" + replies.length + " repl" + (replies.length > 1 ? "ies" : "y") + '<span class="muted"> · last ' + day(replies[replies.length - 1].at) + "</span>" +
+        (replies.some(function (r) { return !r.mine && r.at > ((S.data.reads || {})[m.channel || "client"] || ""); }) ? '<span class="dot"></span>' : "") + "</button>" : "") +
+      "</div></div>";
+  }
+  function composer(ch, root) {
+    var key = root ? "thread" : "main", pend = (S.att && S.att[key]) || [];
+    var ph = root ? "Reply in thread…" : ch === "team" ? "Message the team (only Blue Sierra sees this)" : ch === "architect" ? "Message the architect" : staff() ? "Message the client and architect" : "Message Blue Sierra";
+    return '<form class="card composer" data-form="chat" data-ch="' + ch + '"' + (root ? ' data-root="' + esc(root) + '"' : "") + '><div class="mention-wrap"><textarea name="text" data-chat placeholder="' + esc(ph) + '"></textarea></div>' +
+      (pend.length ? '<div class="att-list">' + pend.map(function (f, i) { return '<span class="att">' + (f.mime === "application/pdf" ? "PDF · " : "") + esc(f.name) + '<button type="button" data-a="unatt" data-k="' + key + '" data-i="' + i + '" aria-label="Remove">×</button></span>'; }).join("") + "</div>" : "") +
+      '<div class="actions" style="justify-content:space-between;align-items:center"><div class="c-left"><label class="btn ghost sm attach">Attach<input type="file" data-att="' + key + '" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label>' +
+      (staff() && ch === "client" && !root ? '<label class="check-line small"><input type="checkbox" name="question"> Ask as a question</label>' : "") + '<span class="muted small hint">Enter to send · Shift+Enter for a new line · @ to mention</span></div>' +
+      '<button class="btn" type="submit">Send</button></div></form>';
+  }
   function tabMessages() {
-    var d = S.data, answers = {};
-    d.messages.forEach(function (m) { if (m.kind === "answer") (answers[m.question_id] = answers[m.question_id] || []).push(m); });
-    var items = d.messages.filter(function (m) { return m.kind !== "answer"; });
-    var html = items.map(function (m) {
-      var mine = m.mine || m.author_email === S.me.email, q = m.kind === "question";
-      return '<div class="msg ' + (mine ? "mine" : "") + '"><div class="avatar ' + (m.role === "client" ? "gold" : "") + '">' + esc(initials(m.author)) + '</div><div class="bubble ' + (q ? "question" : "") + '">' +
-        '<div class="who-line"><b>' + esc(m.author) + "</b>" + (m.role === "client" ? "" : '<span class="pill">Blue Sierra</span>') + "<span>" + day(m.at) + "</span>" +
-        (m.via === "email" ? '<span class="pill">by email</span>' : "") + (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") + "</div>" +
-        '<div class="text">' + esc(m.text) + "</div>" +
-        (answers[m.id] || []).map(function (a) { return '<div class="answer"><div class="who-line"><b>' + esc(a.author) + "</b><span>" + day(a.at) + "</span>" + (a.via === "email" ? '<span class="pill">by email</span>' : "") + '</div><div class="text">' + esc(a.text) + "</div></div>"; }).join("") +
-        (q && m.status === "open" ? (staff() ? '<div class="actions" style="justify-content:flex-start;margin-top:8px"><button class="link small" data-a="closeQ" data-id="' + esc(m.id) + '">Mark as answered</button></div>' : answerBox(m)) : "") +
-        "</div></div>";
+    var chans = myChannels(); if (chans.indexOf(S.chan) < 0) S.chan = "client";
+    var ch = S.chan, list = chanMsgs(ch), answers = {}, replies = {};
+    list.forEach(function (m) { if (m.kind === "answer") (answers[m.question_id] = answers[m.question_id] || []).push(m); else if (m.thread_id) (replies[m.thread_id] = replies[m.thread_id] || []).push(m); });
+    var top = list.filter(function (m) { return m.kind !== "answer" && !m.thread_id; }), readAt = S.readMark && S.readMark[ch] != null ? S.readMark[ch] : ((S.data.reads || {})[ch] || ""), lastDay = "", newShown = false;
+    var html = top.map(function (m) {
+      var d = String(m.at).slice(0, 10), sep = d !== lastDay ? '<div class="day-sep"><span>' + day(d) + "</span></div>" : ""; lastDay = d;
+      var nw = !newShown && !m.mine && m.at > readAt && readAt !== "" ? (newShown = true, '<div class="new-sep"><span>New</span></div>') : "";
+      return sep + nw + msgHtml(m, { replies: replies[m.id], answers: answers[m.id] });
     }).join("");
-    return '<div class="section-title" style="margin-top:0"><h2>Messages</h2><span class="muted small">' + (staff() ? "Questions are emailed to the client; their email replies show up here." : "Replies by email also show up here.") + "</span></div>" +
-      (html ? '<div class="thread">' + html + "</div>" : '<div class="empty">No messages yet.</div>') +
-      '<div class="reply-bar"><form class="card" data-form="message"><textarea name="text" required placeholder="' + (staff() ? "Write to the client" : "Write to Blue Sierra") + '"></textarea>' +
-      '<div class="actions" style="justify-content:space-between">' + (staff() ? '<label class="check-line"><input type="checkbox" name="question"> Ask as a question (the client can answer by replying to the email)</label>' : "<span></span>") +
-      '<button class="btn" type="submit">Send</button></div></form></div>';
+    var bar = chans.length > 1 ? '<div class="chans">' + chans.map(function (c) { var n = c === ch ? 0 : unreadIn(c); return '<button class="chan' + (c === ch ? " on" : "") + '" data-a="chan" data-c="' + c + '"># ' + CH_INFO[c][0] + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    return bar + '<div class="chan-head"><h2># ' + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Messages are emailed to the client; their email replies show up here." : " Replies by email also show up here.") : "") + "</span></div>" +
+      (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">No messages in #' + CH_INFO[ch][0] + " yet. Say hi.</div>") +
+      '<div class="reply-bar">' + composer(ch) + "</div>";
+  }
+  /* Opening a channel marks it read on the server; the "New" line stays until you leave it. */
+  function markChannelRead() {
+    if (!S.data || S.tab !== "messages" || (S.modal && S.modal.type !== "thread")) return;
+    var ch = S.chan, n = unreadIn(ch); if (!n) return;
+    S.readMark = S.readMark || {}; if (S.readMark[ch] == null) S.readMark[ch] = (S.data.reads || {})[ch] || "";
+    var stamp = new Date(), pad = function (x) { return String(x).padStart(2, "0"); };
+    S.data.reads = S.data.reads || {}; S.data.reads[ch] = stamp.getFullYear() + "-" + pad(stamp.getMonth() + 1) + "-" + pad(stamp.getDate()) + " " + pad(stamp.getHours()) + ":" + pad(stamp.getMinutes()) + ":59";
+    var pr = (S.projects || []).filter(function (x) { return x.id === S.pid; })[0]; if (pr) pr.unread = Math.max(0, (pr.unread || 0) - n);
+    call("markRead", { projectId: S.pid, channel: ch }).catch(function () {});
+  }
+  function readFile(file) {
+    if (/^image\//.test(file.type)) return resize(file, API ? 1800 : 900);
+    return new Promise(function (res, rej) {
+      if (file.type !== "application/pdf") return rej(new Error(file.name + ": attach photos or PDFs."));
+      if (file.size > 10 * 1024 * 1024) return rej(new Error(file.name + " is over 10 MB."));
+      var fr = new FileReader(); fr.onload = function () { res({ name: file.name, mime: "application/pdf", data: fr.result }); }; fr.onerror = function () { rej(new Error("Couldn't read " + file.name + ".")); }; fr.readAsDataURL(file);
+    });
+  }
+  /* @mention picker: shows the people who can see this channel. */
+  function mentionPop(ta) {
+    var wrap = ta.parentNode, old = wrap.querySelector(".mention-pop"); if (old) old.remove();
+    var before = ta.value.slice(0, ta.selectionStart), mt = before.match(/(^|\s)@([^\s@]{0,20}(?: [^\s@]{0,20})?)$/); if (!mt) return;
+    var ch = ta.form.dataset.ch, q = mt[2].toLowerCase();
+    var who = ((S.data && S.data.members) || []).filter(function (mb) {
+      var ok = ch === "team" ? (mb.role === "admin" || mb.role === "staff") : ch === "architect" ? mb.role !== "client" : true;
+      return ok && mb.name && mb.name !== S.me.name && mb.name.toLowerCase().indexOf(q) > -1;
+    }).slice(0, 6);
+    if (!who.length) return;
+    var pop = document.createElement("div"); pop.className = "mention-pop";
+    who.forEach(function (mb) {
+      var b = document.createElement("button"); b.type = "button"; b.innerHTML = "<b>" + esc(mb.name) + "</b> <span>" + esc({ client: "Client", architect: "Architect" }[mb.role] || "Blue Sierra") + "</span>";
+      b.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        var start = before.length - mt[2].length - 1, after = ta.value.slice(ta.selectionStart);
+        ta.value = ta.value.slice(0, start) + "@" + mb.name + " " + after; var pos = start + mb.name.length + 2; ta.setSelectionRange(pos, pos); ta.focus(); pop.remove();
+      });
+      pop.appendChild(b);
+    });
+    wrap.appendChild(pop);
   }
 
   /* ---------------- contract & billing ---------------- */
@@ -570,6 +735,16 @@
         '<label class="f">Notes (team only)<textarea name="notes" maxlength="1000">' + esc(x.notes) + "</textarea></label>" +
         '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delSched" data-id="' + esc(m.id) + '" style="margin-right:auto">Delete</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
+    if (m.type === "thread") {
+      var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
+      if (!rootM) body = '<p>That conversation was deleted.</p><div class="actions"><button class="btn" data-a="close">Close</button></div>';
+      else {
+        var reps = d.messages.filter(function (x) { return x.thread_id === rootM.id; });
+        body = '<div class="eyebrow"># ' + esc(CH_INFO[rootM.channel || "client"][0]) + " · thread</div>" + '<div class="thread chat in-thread" style="margin-top:12px">' + msgHtml(rootM, { inThread: true }) +
+          (reps.length ? '<div class="day-sep"><span>' + reps.length + " repl" + (reps.length > 1 ? "ies" : "y") + "</span></div>" : "") + reps.map(function (r) { return msgHtml(r, { inThread: true }); }).join("") + "</div>" +
+          composer(rootM.channel || "client", rootM.id) + '<div class="actions" style="margin-top:10px"><button class="btn ghost" data-a="close">Close</button></div>';
+      }
+    }
     if (m.type === "schedDay") {
       var same = scheduleItems().filter(function (y) { return m.kind ? y.kind === m.kind && y.start === m.day : y.start === m.day || (y.kind === "task" && y.end === m.day); });
       body = '<div class="eyebrow">' + (m.kind ? '<span class="sch-dot k-' + esc(m.kind) + '"></span> ' + esc(kindLabel(m.kind)) : "All dates") + "</div><h2 style=\"margin-top:6px\">" + day(m.day) + "</h2>" +
@@ -614,7 +789,7 @@
       case "retry": root.innerHTML = '<div class="loading">Loading…</div>'; return route();
       case "forget": store("del"); resetState(); S.step = "email"; return render();
       case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); resetState(); S.step = "email"; history.pushState(null, "", location.pathname + location.search); render(); }); return;
-      case "home": return go(null);
+      case "home": refreshList(); return go(null);
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
@@ -639,6 +814,31 @@
       case "releaseRet":
         var rf = b.closest("form"); rf.querySelectorAll("[name^='line:']").forEach(function (x) { x.value = ""; });
         rf.amount.value = 0; rf.retainage.value = -Number(b.dataset.held); rf.dataset.auto = 0; if (!rf.title.value) rf.title.value = "Retainage release"; invoiceMath(rf); return;
+      case "chan": S.chan = b.dataset.c; S.picker = null; S.readMark = {}; render(); window.scrollTo(0, document.body.scrollHeight); markChannelRead(); return;
+      case "thread": S.picker = null; S.modal = { type: "thread", id: b.dataset.id }; keepScroll(render); var tt = root.querySelector(".modal [data-chat]"); if (tt) tt.focus(); return;
+      case "rxPick": S.picker = S.picker === b.dataset.id ? null : b.dataset.id; return keepScroll(render);
+      case "react":
+        S.picker = null;
+        // Show it right away, then save; the next refresh brings everyone else's.
+        var msg = S.data.messages.filter(function (x) { return x.id === b.dataset.id; })[0];
+        if (msg) { var rx = (msg.reactions = msg.reactions || []), r0 = rx.filter(function (x) { return x.e === b.dataset.e; })[0];
+          if (r0 && r0.mine) { r0.n--; r0.mine = false; r0.who = r0.who.filter(function (n) { return n !== S.me.name; }); if (!r0.n) rx.splice(rx.indexOf(r0), 1); }
+          else if (r0) { r0.n++; r0.mine = true; r0.who.push(S.me.name); } else rx.push({ e: b.dataset.e, n: 1, mine: true, who: [S.me.name] }); }
+        keepScroll(render);
+        call("react", { messageId: b.dataset.id, emoji: b.dataset.e }).catch(function (e) { toast(e.message); refresh(); });
+        return;
+      case "delMsg": if (confirm("Delete this message" + (b.closest(".in-thread") ? "" : " and its replies") + "?")) run(b, async function () { await call("deleteMessage", { messageId: b.dataset.id }); if (S.modal && S.modal.id === b.dataset.id) S.modal = null; await refresh(true); toast("Deleted"); }); return;
+      case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
+      case "homeView":
+        S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
+        refreshList(); if (S.pid) return go(null); return keepScroll(render);
+      case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
+      case "actOpen":
+        S.wantChan = b.dataset.c; S.openThread = b.dataset.th || null;
+        if (S.pid === b.dataset.p) { S.chan = b.dataset.c; S.readMark = {}; if (S.openThread) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; } S.wantChan = null; }
+        return go(b.dataset.p, "messages");
+      case "teamOff": if (confirm("Turn off this person's access? They won't be able to log in.")) run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; render(); toast("Access turned off"); }); return;
+      case "teamOn": run(b, async function () { await call("addPerson", { email: b.dataset.email, name: b.dataset.name, role: "staff" }); S.team = null; render(); toast("Access back on"); }); return;
       case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
@@ -664,11 +864,21 @@
     var out = f.querySelector("[data-due]"); if (out) out.textContent = money(amt - (Number(f.retainage.value) || 0));
   }
   root.addEventListener("input", function (e) {
+    if (e.target.matches("[data-chat]")) return mentionPop(e.target);
     var f = e.target.form; if (!f || f.dataset.form !== "invoice") return;
     if (e.target.name === "retainage") f.dataset.auto = 0;
     invoiceMath(f);
   });
   root.addEventListener("change", function (e) {
+    if (e.target.matches("[data-att]")) {
+      var k = e.target.dataset.att, fl = [].slice.call(e.target.files || []); S.att = S.att || { main: [], thread: [] };
+      var roomA = Math.max(0, 5 - S.att[k].length); if (fl.length > roomA) toast("Up to 5 files per message.");
+      Promise.allSettled(fl.slice(0, roomA).map(readFile)).then(function (rs) {
+        rs.forEach(function (r) { if (r.status === "fulfilled") S.att[k].push(r.value); else toast(r.reason.message); });
+        keepScroll(render); var ta = root.querySelector((k === "thread" ? ".modal " : ".reply-bar ") + "[data-chat]"); if (ta) ta.focus();
+      });
+      return;
+    }
     if (!e.target.matches("[data-pick]")) return;
     var files = [].slice.call(e.target.files || []), room = Math.max(0, 12 - S.pending.length);
     if (files.length > room) toast("Up to 12 photos at a time. " + (files.length - room) + " left out.");
@@ -681,6 +891,16 @@
     });
   });
 
+  root.addEventListener("keydown", function (e) {
+    if (!e.target.matches("[data-chat]")) return;
+    var pop = e.target.parentNode.querySelector(".mention-pop");
+    if (e.key === "Escape" && pop) { pop.remove(); e.stopPropagation(); return; }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !matchMedia("(pointer:coarse)").matches) {
+      if (pop) { e.preventDefault(); pop.querySelector("button").dispatchEvent(new MouseEvent("mousedown")); return; }
+      e.preventDefault(); e.target.form.requestSubmit();
+    }
+  });
+  root.addEventListener("focusout", function (e) { if (e.target.matches && e.target.matches("[data-chat]")) setTimeout(function () { var pp = e.target.parentNode && e.target.parentNode.querySelector(".mention-pop"); if (pp) pp.remove(); }, 150); });
   document.addEventListener("keydown", function (e) {
     if (S.lb && !(S.data && S.data.photos.length)) { S.lb = null; return; }
     if (S.lb && e.key === "ArrowRight") { S.lb.i = (S.lb.i + 1) % S.data.photos.length; keepScroll(render); }
@@ -712,10 +932,20 @@
         S.pending = S.pending.filter(function (x) { return sentP.indexOf(x) < 0; }); f.reset();
         await refresh(true); toast("Photos uploaded"); return;
       }
-      if (kind === "message") {
-        var q = !!fd.get("question");
-        await call("sendMessage", { projectId: S.pid, text: v("text"), kind: q ? "question" : "message" });
-        f.reset(); await refresh(true); toast(staff() ? (q ? "Question emailed to the client" : "Message sent to the client") : "Sent to Blue Sierra"); return;
+      if (kind === "team") {
+        await call("addPerson", { name: v("name"), email: v("email"), role: "staff", invite: !!fd.get("invite") });
+        f.reset(); S.team = null; render(); toast(fd.get("invite") ? "Added and invited" : "Added to the team"); return;
+      }
+      if (kind === "chat") {
+        var q = !!fd.get("question"), ck = f.dataset.root ? "thread" : "main", att = (S.att && S.att[ck]) || [], ch = f.dataset.ch;
+        if (!v("text") && !att.length) return;
+        await call("sendMessage", { projectId: S.pid, channel: ch, threadId: f.dataset.root || undefined, text: v("text"), kind: q ? "question" : "message", files: att });
+        f.reset(); if (S.att) S.att[ck] = [];
+        S.readMark = S.readMark || {}; S.readMark[ch] = "9999";                // your own message clears the "New" line
+        await refresh(); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
+        else { var mb = root.querySelector(".modal"); if (mb) mb.scrollTop = mb.scrollHeight; var t2 = root.querySelector(".modal [data-chat]"); if (t2) t2.focus(); }
+        if (ch !== "team" && staff() && !f.dataset.root) toast(q ? "Question emailed" : ch === "architect" ? "Sent and emailed to the architect" : "Sent and emailed to the client and architect");
+        return;
       }
       if (kind === "answer") {
         await call("answerQuestion", { projectId: S.pid, questionId: f.dataset.q, text: v("text") });
