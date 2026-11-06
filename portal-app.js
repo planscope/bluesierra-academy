@@ -2250,7 +2250,8 @@
         await call("saveScheduleItem", { projectId: S.pid, item: { id: S.modal.id || undefined, kind: v("kind"), title: v("title"), start: v("start"), end: v("kind") === "task" ? v("end") : "", phase: v("phase"), owner: v("owner"), status: v("status"), notes: v("notes") } });
         S.modal = null; await refresh(); toast("Schedule updated"); return;
       }
-      if (kind === "qbKeys") { S.qb = await call("qbSaveKeys", { clientId: v("clientId"), clientSecret: v("clientSecret"), env: v("env"), redirect: API }); f.reset(); render(); toast("Saved. Now click Connect QuickBooks."); return; }
+      if (kind === "qbKeys") { S.qb = await call("qbSaveKeys", { clientId: v("clientId"), clientSecret: v("clientSecret"), env: v("env"), redirect: API }); f.reset(); var envSel = f.querySelector("[name=env]"); if (envSel) envSel.value = S.qb.env;   // the redraw keeps what the form shows, so show what was saved
+        render(); toast(S.qb.env === "sandbox" ? "Saved for the sandbox (test company). Now click Connect QuickBooks." : "Saved for your real company. Now click Connect QuickBooks."); return; }
       if (kind === "qbLink") { await call("qbLink", { projectId: S.pid, customerId: v("customer") }); S.qbp = null; render(); toast("Linked to QuickBooks"); return; }
       if (kind === "schedReq") {
         await call("requestScheduleChange", { itemId: f.dataset.id, note: v("note") });
