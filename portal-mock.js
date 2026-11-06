@@ -16,9 +16,9 @@
     var ph = function (id, label, a, b, cap, at, upd) { return { id: id, project_id: "p1", file_id: "f-" + id, src: svgPhoto(label, a, b), caption: cap, at: at, author: "Jesús Toto", update_id: upd || "" }; };
     return {
       projects: [
-        { id: "p1", retainage_pct: "5", name: "Hillside Residence", client_name: "Sample Client", address: "123 Example Lane", city: "Los Altos Hills", phase: "Construction", progress: "55", start_date: "2026-08-18", target_date: "2027-02-26",
+        { id: "p1", retainage_pct: "5", lat: "37.3797", lon: "-122.1375", name: "Hillside Residence", client_name: "Sample Client", address: "123 Example Lane", city: "Los Altos Hills", phase: "Construction", progress: "55", start_date: "2026-08-18", target_date: "2027-02-26",
           summary: "Full site package: grading, drainage, retaining walls, pool deck and planting.", cover_file_id: "f-ph1", status: "active", created_at: "2026-08-01 09:00" },
-        { id: "p2", name: "Garden Courtyard", client_name: "Second Client", address: "456 Sample Ave", city: "Menlo Park", phase: "Design", progress: "15", start_date: "2026-10-20", target_date: "2027-05-14",
+        { id: "p2", lat: "37.4530", lon: "-122.1817", name: "Garden Courtyard", client_name: "Second Client", address: "456 Sample Ave", city: "Menlo Park", phase: "Design", progress: "15", start_date: "2026-10-20", target_date: "2027-05-14",
           summary: "Courtyard redesign with new paving, lighting and drought-tolerant planting.", cover_file_id: "", status: "active", created_at: "2026-10-15 10:00" }
       ],
       people: [
@@ -135,7 +135,7 @@
   function needProject(db, me, pid) { var p = db.projects.filter(function (x) { return x.id === pid; })[0]; if (!p || !canSee(me, pid) || (!isStaff(me) && p.status === "archived") || (p.status === "deleted" && me.role !== "admin")) throw new Error("Project not found."); return p; }
   function needStaff(me) { if (!isStaff(me)) throw new Error("Only the Blue Sierra team can do that."); }
   function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: ph.src, full: ph.src, caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
-  function projOut(db, p) { var cover = db.photos.filter(function (x) { return x.file_id === p.cover_file_id; })[0]; return Object.assign({}, p, { progress: Number(p.progress || 0), cover: cover ? cover.src : "" }); }
+  function projOut(db, p) { var cover = db.photos.filter(function (x) { return x.file_id === p.cover_file_id; })[0]; return Object.assign({}, p, { progress: Number(p.progress || 0), cover: cover ? cover.src : "", lat: p.lat ? +p.lat : null, lon: p.lon ? +p.lon : null }); }
   function invOut(i, staff) { var st = i.status === "sent" && i.due && i.due < today() ? "overdue" : i.status; var o = Object.assign({}, i, { amount: num(i.amount), retainage: num(i.retainage), lines: i.lines || {}, status: st, pdf: i.pdf_file_id ? "#preview-pdf" : "" }); if (!staff) delete o.notes; return o; }
   function emailClients(db, p, subject) { db.people.filter(function (x) { return (x.role === "client" || x.role === "architect") && x.active === "yes" && ids(x.project_ids).indexOf(p.id) > -1; }).forEach(function (x) { mail(db, x.email, subject); }); }
   function savePhotos(db, me, p, list, caption, upd) {
@@ -209,7 +209,7 @@
     },
     saveProject: function (db, me, b) {
       needStaff(me); var f = b.project || {}; if (!clean(f.name, 200)) throw new Error("The project needs a name.");
-      var patch = {}; ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct"].forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
+      var patch = {}; ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct", "lat", "lon"].forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
       if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
       if (f.id) { var p = needProject(db, me, f.id); Object.assign(p, patch); return { project: projOut(db, p) }; }
       var np = Object.assign({ id: id(), phase: PHASES[0], progress: "0", status: "active", cover_file_id: "", created_at: now() }, patch); db.projects.push(np); return { project: projOut(db, np) };
@@ -242,7 +242,7 @@
       if (role === "staff" && me.role !== "admin") throw new Error("Only Jesús can add team members.");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right.");
       var x = db.people.filter(function (q) { return q.email === e; })[0];
-      if (x) { if (isStaff(x) && me.role !== "admin") throw new Error("Only Jesús can change team members."); var l = ids(x.project_ids); if (p && role !== "staff" && l.indexOf(p.id) < 0) l.push(p.id); x.project_ids = l.join(","); x.active = "yes"; if (x.role !== "admin") x.role = role; }
+      if (x) { if (isStaff(x) && me.role !== "admin") throw new Error("Only Jesús can change team members."); var l = ids(x.project_ids); if (p && role !== "staff" && l.indexOf(p.id) < 0) l.push(p.id); x.project_ids = l.join(","); x.active = "yes"; if (x.role !== "admin") x.role = role; if (clean(b.name, 120)) x.name = clean(b.name, 120); }
       else db.people.push({ email: e, name: clean(b.name, 120) || e, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
       if (b.invite) mail(db, e, p ? "Your project portal for " + p.name : "You're on the portal team"); return {};
     },
@@ -250,7 +250,9 @@
       needStaff(me); var x = db.people.filter(function (q) { return q.email === b.email; })[0]; if (!x) return {};
       if (isStaff(x) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
       if (x.email === me.email && !b.projectId) throw new Error("You can't turn off your own access.");
-      if (b.projectId) x.project_ids = ids(x.project_ids).filter(function (i) { return i !== b.projectId; }).join(","); else x.active = "no"; return {};
+      if (b.projectId) { x.project_ids = ids(x.project_ids).filter(function (i) { return i !== b.projectId; }).join(",");
+        if (!x.project_ids && !isTeam(x)) { db.people = db.people.filter(function (q) { return q.email !== x.email; }); Object.keys(db.sessions).forEach(function (t) { if (db.sessions[t] === x.email) delete db.sessions[t]; }); return { removed: true }; } }
+      else x.active = "no"; return {};
     },
     postUpdate: function (db, me, b) {
       needStaff(me); var p = needProject(db, me, b.projectId), text = clean(b.text, 5000);

@@ -106,7 +106,7 @@
   }
   function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
-  function resetState() { cacheClear(); S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
+  function resetState() { cacheClear(); S.dis = null; S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
   /* "Are you sure?" drawn by the portal itself: the browser's confirm() box is blocked in some apps and embedded views. */
   function sure(text, yes) {
@@ -169,6 +169,7 @@
     location.hash.replace(/^#/, "").split("&").forEach(function (kv) {
       var p = kv.split("="), v = ""; try { v = decodeURIComponent(p[1] || ""); } catch (e) { return; }
       if ((p[0] === "p" || p[0] === "t") && /^[\w-]{1,40}$/.test(v)) h[p[0]] = v;      // ignore anything else in the address
+      if (p[0] === "c" && /^(client|architect|team|dm:[0-9a-f]{10}-[0-9a-f]{10})$/.test(v)) h.c = v;   // a chat channel, from an email link
     });
     return h;
   }
@@ -189,6 +190,7 @@
       }
       if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
       S.tab = h.t || "overview";
+      if (h.c) { S.wantChan = h.c; if (S.data && S.pid === h.p) { S.chan = h.c; S.readMark = {}; } history.replaceState(null, "", "#p=" + h.p + "&t=" + S.tab); }
       if (h.p) {
         if (!S.data || S.data.project.id !== h.p) {
           S.pid = h.p; S.pending = []; S.att = { main: [], thread: [] }; S.readMark = {}; S.picker = null; S.chan = S.wantChan || "client"; S.wantChan = null;
@@ -282,9 +284,23 @@
     });
   }
 
+  /* Our work, from the website's own image library: a different one each visit (Webflow's loginPhoto setting wins if set). */
+  var WORK = [
+    ["6aeaccf885dc4e4804abb83f_hero-chiltern-001-1920.webp", "Chiltern Residence, Hillsborough"],
+    ["6aea95959662959df8d8daec_eucalyptus-tjp-2291-7508-5x-main-2880.avif", "Eucalyptus, Hillsborough"],
+    ["6aea8ecc28a19611d8389d6b_hero-bates-road-a.avif", "Bates Road, Hillsborough"],
+    ["6aea8ecc7c528bedc63e941b_hero-shirley-los-altos.avif", "Shirley Residence, Los Altos"],
+    ["6aea8284ac84cad28d7ba644_hero-01-rose-residence-06.avif", "Rose Residence, Hillsborough"],
+    ["6aea95d0cc00a0f02cf8a93f_lacumbre-0632-v1-main-2880.avif", "Woodside garden"]
+  ];
+  function loginPhoto() {
+    if (SET.loginPhoto) return [SET.loginPhoto, ""];
+    if (S.loginPick == null) S.loginPick = Math.floor(Math.random() * WORK.length);
+    var w = WORK[S.loginPick]; return ["https://cdn.prod.website-files.com/69582886d4d5d7d43ba632a5/" + w[0], w[1]];
+  }
   function renderLogin() {
-    var demo = !API && window.BSP_MOCK;
-    root.innerHTML = '<section class="login"><div class="login-photo' + (SET.loginPhoto ? "" : " no-photo") + '" style="' + bg(SET.loginPhoto) + '"><div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
+    var demo = !API && window.BSP_MOCK, lp = loginPhoto();
+    root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
       '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal</div>' +
       (S.step === "email"
         ? '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, questions, invoices and the checklist for your Blue Sierra project. Type your email and we\'ll send you a 6-digit code.</p>' +
@@ -394,7 +410,7 @@
     if (staff()) tabs.push(["people", "People", 0]);
     var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
-      '<section class="phead" style="' + bg(p.cover) + '">' + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
+      '<section class="phead' + (!p.cover && p.lat != null ? " has-map" : "") + '" style="' + bg(p.cover) + '">' + (!p.cover ? mapHtml(p) : "") + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
       '<div class="ph-right">' + hereNow() + (staff() ? '<button class="btn light sm" data-a="modal" data-m="project" data-id="' + esc(p.id) + '">Edit project</button>' : "") + "</div></div></section>" +
       '<div class="stepper" aria-label="Project phase: ' + esc(p.phase) + '">' + PHASES.map(function (ph, i) { return '<div class="step ' + (i < idx ? "done" : i === idx ? "now" : "") + '"><i></i><span>' + esc(ph) + "</span></div>"; }).join("") + "</div>" +
@@ -705,6 +721,27 @@
       (S.presence ? groups || '<div class="empty">Nobody else is on your projects yet.</div>' : '<div class="loading" style="min-height:20vh">Checking who\'s around…</div>') + "</aside>";
   }
 
+  /* ---------------- the site map behind the project header (OpenStreetMap, darkened) ---------------- */
+  function mapHtml(p) {
+    if (p.lat == null || p.lon == null) { if (staff() && p.address) findSite(p); return ""; }
+    var z = 17, n = Math.pow(2, z), lat = p.lat * Math.PI / 180, fx = (p.lon + 180) / 360 * n, fy = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * n, out = [];
+    for (var tx = Math.floor(fx) - 3; tx <= Math.floor(fx) + 3; tx++) for (var ty = Math.floor(fy) - 1; ty <= Math.floor(fy) + 1; ty++)
+      out.push('<img src="https://tile.openstreetmap.org/' + z + "/" + tx + "/" + ty + '.png" alt="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="left:calc(50% + ' + Math.round((tx - fx) * 256) + "px);top:calc(50% + " + Math.round((ty - fy) * 256) + 'px)">');
+    return '<div class="ph-map" aria-hidden="true">' + out.join("") + '<i class="ph-pin"></i></div><a class="ph-osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>';
+  }
+  /* Team only, once per project: find the address on the map and save it, so nobody else's browser ever has to look it up. */
+  async function findSite(p) {
+    S.siteTried = S.siteTried || {}; if (S.siteTried[p.id]) return; S.siteTried[p.id] = 1;
+    try {
+      var q = [p.address, p.city, "CA"].filter(Boolean).join(", ");
+      var r = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(q))).json();
+      if (!r || !r[0]) return;
+      var lat = +(+r[0].lat).toFixed(6), lon = +(+r[0].lon).toFixed(6);
+      await call("saveProject", { project: { id: p.id, name: p.name, lat: lat, lon: lon } });
+      if (S.data && S.data.project.id === p.id) { S.data.project.lat = lat; S.data.project.lon = lon; keepScroll(render); }
+    } catch (e) {}
+  }
+
   /* ---------------- today: date, weather where the job is, and your luck ---------------- */
   var WX = { 0: ["☀️", "Clear"], 1: ["🌤️", "Mostly clear"], 2: ["⛅", "Partly cloudy"], 3: ["☁️", "Cloudy"], 45: ["🌫️", "Fog"], 48: ["🌫️", "Fog"], 51: ["🌦️", "Drizzle"], 53: ["🌦️", "Drizzle"], 55: ["🌦️", "Drizzle"], 61: ["🌧️", "Rain"], 63: ["🌧️", "Rain"], 65: ["🌧️", "Heavy rain"], 71: ["🌨️", "Snow"], 80: ["🌦️", "Showers"], 81: ["🌧️", "Showers"], 82: ["⛈️", "Heavy showers"], 95: ["⛈️", "Thunderstorm"] };
   var LUCK = ["The inspector shows up early and in a great mood. 🍀", "Concrete truck on time. Buy a lottery ticket. 🎟️", "Measure twice, cut once, nail it the first time. 📐", "A client says “that looks better than the rendering.” ✨",
@@ -740,19 +777,26 @@
   function cacheClear() { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0 || x === "bsp-last-email"; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e) {} }
 
   /* ---------------- notification bell (playful, HEY-style) ---------------- */
+  /* Notifications you cleared (this device): activity ids, and "needs" snoozed until tomorrow. */
+  function disKey() { return "bsp-dis:" + (S.me && S.me.email); }
+  function dismissed() { if (!S.dis) { try { S.dis = JSON.parse(localStorage.getItem(disKey()) || "{}"); } catch (e) { S.dis = {}; } } return S.dis; }
+  function dismiss(ids) { var d = dismissed(), t = Date.now(); ids.forEach(function (k) { d[k] = t; }); var keys = Object.keys(d); if (keys.length > 400) keys.sort(function (a, b) { return d[a] - d[b]; }).slice(0, keys.length - 400).forEach(function (k) { delete d[k]; }); try { localStorage.setItem(disKey(), JSON.stringify(d)); } catch (e) {} }
   function notifModel() {
-    var items = (S.notif || []).filter(function (it) { return !it.mine; }), fresh = items.filter(function (it) { return it.unread; }), old = items.filter(function (it) { return !it.unread; }).slice(0, 6);
-    var needs = [];
-    (S.projects || []).filter(function (p) { return p.status !== "archived"; }).forEach(function (p) {
-      var n = p.needs || {}, many = (S.projects || []).length > 1, where = many ? " · " + p.name : "";
-      (n.invoices || []).forEach(function (i) { if (!staff() || i.overdue) needs.push({ tone: i.overdue ? "red" : "green", ico: "🧾", text: (i.overdue ? "Overdue: " : "To pay: ") + "invoice " + i.number + " · " + money(i.amount) + (i.due ? " by " + day(i.due) : ""), ref: "invoice:" + i.id, p: p.id, where: where }); });
-      if (p.openQuestions) needs.push({ tone: "gold", ico: "💬", text: (staff() ? p.openQuestions + " question" + (p.openQuestions > 1 ? "s" : "") + " waiting on the client" : "Blue Sierra asked you " + (p.openQuestions > 1 ? p.openQuestions + " questions" : "a question")), chat: true, p: p.id, where: where });
-      if (!staff()) (n.todos || []).slice(0, 4).forEach(function (c) { needs.push({ tone: "purple", ico: "✅", text: "To do: " + c.item + (c.due ? " · by " + day(c.due) : ""), ref: "check:" + c.id, p: p.id, where: where }); });
-      (n.dates || []).filter(function (x) { return staff() ? true : x.owner === "client" || ["decision", "meeting", "payment", "inspection"].indexOf(x.kind) > -1; }).slice(0, 3).forEach(function (x) {
-        needs.push({ tone: "blue", ico: { decision: "🤔", meeting: "🤝", payment: "💵", inspection: "🔎", milestone: "🏁", deadline: "⏰" }[x.kind] || "📅", text: day(x.start) + ": " + x.title, ref: "sched:" + x.id, p: p.id, where: where });
+    var dis = dismissed(), td = today();
+    var items = (S.notif || []).filter(function (it) { return !it.mine && !dis[it.id]; }), fresh = items.filter(function (it) { return it.unread; }), old = items.filter(function (it) { return !it.unread; }).slice(0, 8);
+    var groups = { pay: [], ask: [], todo: [], soon: [] };
+    (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }).forEach(function (p) {
+      var n = p.needs || {}, where = (S.projects || []).length > 1 ? p.name : "";
+      var add = function (g, x) { x.key = "need:" + (x.ref || g + p.id) + ":" + td; if (!dis[x.key]) groups[g].push(x); };
+      (n.invoices || []).forEach(function (i) { if (!staff() || i.overdue) add("pay", { tone: i.overdue ? "red" : "green", text: "Invoice " + i.number + " · " + money(i.amount) + (i.due ? (i.overdue ? " · overdue since " : " · due ") + day(i.due) : ""), ref: "invoice:" + i.id, p: p.id, where: where }); });
+      if (p.openQuestions) add("ask", { tone: "gold", text: staff() ? p.openQuestions + " question" + (p.openQuestions > 1 ? "s" : "") + " waiting on the client" : "Blue Sierra asked you " + (p.openQuestions > 1 ? p.openQuestions + " questions" : "a question"), chat: true, p: p.id, where: where });
+      if (!staff() && !crew()) (n.todos || []).forEach(function (c) { add("todo", { tone: "purple", text: c.item + (c.due ? " · by " + day(c.due) : ""), ref: "check:" + c.id, p: p.id, where: where }); });
+      (n.dates || []).filter(function (x) { return team() || x.owner === "client" || ["decision", "meeting", "payment", "inspection"].indexOf(x.kind) > -1; }).forEach(function (x) {
+        add("soon", { tone: "blue", ico: { decision: "🤔", meeting: "🤝", payment: "💵", inspection: "🔎", milestone: "🏁", deadline: "⏰" }[x.kind] || "📅", text: day(x.start) + " · " + x.title, ref: "sched:" + x.id, p: p.id, where: where });
       });
     });
-    return { fresh: fresh, old: old, needs: needs };
+    var nNeeds = groups.pay.length + groups.ask.length + groups.todo.length + groups.soon.length;
+    return { fresh: fresh, old: old, groups: groups, nNeeds: nNeeds, needs: [].concat(groups.pay, groups.ask, groups.todo, groups.soon) };
   }
   function bellButton() {
     var m = notifModel(), n = m.fresh.length;
@@ -766,23 +810,32 @@
   function bellPanel() {
     var m = notifModel();
     var row = function (it) {
-      var ev = it.kind === "event" ? (EV[it.status] || ["✨"])[0] : it.kind === "question" ? "❓" : it.files ? "📎" : "💬";
-      var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> " + (it.dm ? "🔒 privately" : "in #" + esc(it.channel)) + ": " + esc(String(it.text || "").slice(0, 120));
-      return '<button class="n-row' + (it.unread ? " new" : "") + '" ' + (it.kind === "event" && it.ref ? 'data-a="ref" data-ref="' + esc(it.ref) + '" data-p="' + esc(it.project_id) + '"' : 'data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '"') + '>' +
-        '<span class="n-ico">' + ev + '</span><span class="n-txt">' + line + '<small>' + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
+      var ev = it.kind === "event" ? (EV[it.status] || ["✨"])[0] : it.kind === "question" ? "❓" : it.files ? "📎" : it.dm ? "🔒" : "💬";
+      var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> " + (it.dm ? "privately" : "in #" + esc(it.channel)) + ': <span class="n-msg">' + esc(String(it.text || (it.files ? "📎 attachment" : "")).slice(0, 140)) + "</span>";
+      var open = it.kind === "event" && it.ref ? 'data-a="ref" data-ref="' + esc(it.ref) + '" data-p="' + esc(it.project_id) + '"' : 'data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '"';
+      return '<div class="n-wrap" data-swipe="' + esc(it.id) + '"><div class="n-under">Clear</div><button class="n-row' + (it.unread ? " new" : "") + '" ' + open + ">" +
+        '<span class="n-face">' + av(it.author, it.avatar, it.role, "sm", it.akey) + '<i>' + ev + '</i></span><span class="n-txt">' + line + "<small>" + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span></button>" +
+        '<button class="n-x" data-a="nClear" data-id="' + esc(it.id) + '" aria-label="Clear">✕</button></div>';
     };
-    var needs = m.needs.map(function (n) { return '<button class="need t-' + n.tone + '" ' + (n.chat ? 'data-a="actOpen" data-p="' + esc(n.p) + '" data-c="client" data-th=""' : 'data-a="ref" data-ref="' + esc(n.ref) + '" data-p="' + esc(n.p) + '"') + '><span>' + n.ico + "</span>" + esc(n.text) + '<small>' + esc(n.where) + "</small></button>"; }).join("");
-    var caught = !m.fresh.length && !m.needs.length;
+    var tiles = [["pay", "💵", staff() ? "Overdue" : "To pay"], ["ask", "💬", "Questions"], ["todo", "✅", "To-dos"], ["soon", "📅", "Next 2 weeks"]].filter(function (t) { return m.groups[t[0]].length; });
+    var open = S.needOpen && m.groups[S.needOpen] && m.groups[S.needOpen].length ? S.needOpen : null;
+    var day0 = tiles.length ? '<div class="bp-sec">Your day</div><div class="day-tiles">' + tiles.map(function (t) {
+        var g = m.groups[t[0]]; return '<button class="day-tile t-' + t[0] + (open === t[0] ? " on" : "") + '" data-a="needOpen" data-v="' + t[0] + '"><span class="dt-ico">' + t[1] + '</span><b>' + g.length + "</b><span>" + t[2] + "</span></button>";
+      }).join("") + "</div>" +
+      (open ? '<div class="needs">' + m.groups[open].map(function (n) {
+        return '<div class="need t-' + n.tone + '"><button class="need-go" ' + (n.chat ? 'data-a="actOpen" data-p="' + esc(n.p) + '" data-c="client" data-th=""' : 'data-a="ref" data-ref="' + esc(n.ref) + '" data-p="' + esc(n.p) + '"') + ">" + (n.ico ? n.ico + " " : "") + esc(n.text) + (n.where ? "<small>" + esc(n.where) + "</small>" : "") + '</button><button class="n-x" data-a="needClear" data-k="' + esc(n.key) + '" title="Hide until tomorrow">✕</button></div>';
+      }).join("") + "</div>" : "") : "";
+    var caught = !m.fresh.length && !m.nNeeds;
     return '<div class="bell-bg" data-a="bellClose"></div><div class="bell-panel" role="dialog" aria-label="Notifications" data-lenis-prevent>' +
-      '<div class="bp-head"><div><div class="bp-hi">' + esc(hello()) + '</div><div class="muted small">' + (caught ? "Nothing needs you right now." : m.fresh.length ? m.fresh.length + " new thing" + (m.fresh.length > 1 ? "s" : "") + " since you last looked." : "Here's what's coming up.") + "</div></div>" +
-      '<button class="icon-btn" data-a="bellClose" aria-label="Close">✕</button></div>' +
+      '<div class="bp-head"><div><div class="bp-hi">' + esc(hello()) + '</div><div class="muted small">' + (caught ? "Nothing needs you right now." : m.fresh.length ? m.fresh.length + " new since you last looked." : "Here's your day.") + "</div></div>" +
+      '<div class="bp-tools">' + (m.fresh.length || m.old.length ? '<button class="clear-all" data-a="nClearAll">Clear all</button>' : "") + '<button class="icon-btn" data-a="bellClose" aria-label="Close">✕</button></div></div>' +
       (S.notif == null ? '<div class="bp-load">Checking for news…</div>' : "") +
+      (m.fresh.length ? '<div class="bp-sec">New</div><div class="n-list">' + m.fresh.map(row).join("") + "</div>" : "") +
+      day0 +
       (caught && S.notif != null ? '<div class="bp-empty">' + EMPTY_ART + "<b>You're all caught up!</b><span>Go enjoy your day. We'll ping you when something happens.</span></div>" : "") +
-      (needs ? '<div class="bp-sec">' + (staff() ? "Keep an eye on" : "Needs you") + '</div><div class="needs">' + needs + "</div>" : "") +
-      (m.fresh.length ? '<div class="bp-sec">New for you</div>' + m.fresh.map(row).join("") : "") +
-      (m.old.length ? '<div class="bp-sec">Earlier</div>' + m.old.map(row).join("") : "") +
+      (m.old.length ? '<div class="bp-sec">Earlier</div><div class="n-list">' + m.old.map(row).join("") + "</div>" : "") +
       (window.Notification && Notification.permission === "default" ? '<button class="alerts-btn" data-a="alertsOn">🔔 Get alerts on this device when someone writes</button>' : "") +
-      '<div class="bp-foot">' + (m.fresh.length ? '<button class="link small" data-a="markAll">Mark all as read</button>' : "<span></span>") + '<button class="link small" data-a="tour">Take the tour</button></div></div>';
+      '<div class="bp-foot"><span class="muted small">Swipe left or tap ✕ to clear</span><button class="link small" data-a="tour">Take the tour</button></div></div>';
   }
   var EMPTY_ART = '<svg viewBox="0 0 160 110" width="150" aria-hidden="true"><circle cx="80" cy="58" r="44" fill="#f3e7d3"/><path d="M48 70c10-16 22-24 32-24s22 8 32 24" fill="none" stroke="#c39a5a" stroke-width="4" stroke-linecap="round"/><circle cx="80" cy="38" r="12" fill="#eda100"/><g stroke="#eda100" stroke-width="3" stroke-linecap="round"><path d="M80 18v-6M98 26l5-4M62 26l-5-4M104 40h6M50 40h6"/></g><path d="M30 92h100" stroke="#2f6b4a" stroke-width="4" stroke-linecap="round"/><path d="M44 92c2-8 6-12 10-12M60 92c0-6 3-10 6-11M112 92c-2-8-6-12-10-12" stroke="#2f6b4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
   async function loadNotif() {
@@ -792,7 +845,36 @@
       if (S.bell || !S.pid) keepScroll(render); else { var bb = root.querySelector(".bell"); if (bb) bb.outerHTML = bellButton(); }
     } catch (e) {}
   }
+  /* Clear one notification (✕ or swipe): it slides away, is marked read, and doesn't come back on this device. */
+  function clearNote(id, wrap) {
+    var it = (S.notif || []).filter(function (x) { return x.id === id; })[0];
+    if (wrap) wrap.classList.add("gone");
+    setTimeout(function () {
+      dismiss([id]);
+      if (it && it.unread) { it.unread = false; call("markRead", { projectId: it.project_id, channel: it.channel }).catch(function () {}); }
+      keepScroll(render);
+    }, 280);
+  }
+  // Swipe left to clear (touch or mouse drag), like iPhone notifications.
+  (function () {
+    var drag = null;
+    root.addEventListener("pointerdown", function (e) { var w = e.target.closest && e.target.closest(".n-wrap"); if (!w || e.target.closest(".n-x")) return; drag = { w: w, x: e.clientX, y: e.clientY, dx: 0, on: false }; });
+    root.addEventListener("pointermove", function (e) {
+      if (!drag) return; var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.on && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) drag.on = true;
+      if (!drag.on) return; drag.dx = Math.min(0, dx); drag.w.querySelector(".n-row").style.transform = "translateX(" + drag.dx + "px)"; drag.w.classList.add("dragging");
+    });
+    var end = function () {
+      if (!drag) return; var d = drag; drag = null; d.w.classList.remove("dragging");
+      var row = d.w.querySelector(".n-row");
+      if (d.dx < -90) { S.swiped = Date.now(); row.style.transform = "translateX(-110%)"; clearNote(d.w.dataset.swipe, d.w); }
+      else { row.style.transform = ""; if (d.on) S.swiped = Date.now(); }
+    };
+    root.addEventListener("pointerup", end); root.addEventListener("pointercancel", end);
+    root.addEventListener("click", function (e) { if (S.swiped && Date.now() - S.swiped < 350 && e.target.closest(".n-wrap")) { e.stopPropagation(); e.preventDefault(); } }, true);
+  })();
   async function markAllRead() {
+    document.title = document.title.replace(/^\(\d+\) /, "");
     var pairs = {}; (S.notif || []).forEach(function (it) { if (it.unread) pairs[it.project_id + "|" + it.channel] = 1; });
     S.notif.forEach(function (it) { it.unread = false; }); (S.projects || []).forEach(function (p) { p.unread = 0; }); keepScroll(render);
     await Promise.all(Object.keys(pairs).map(function (k) { var x = k.split("|"); return call("markRead", { projectId: x[0], channel: x[1] }).catch(function () {}); }));
@@ -1546,6 +1628,13 @@
         b.classList.remove("shake"); void b.offsetWidth; b.classList.add("shake");
         setTimeout(function () { S.luck = LUCK[Math.floor(Math.random() * LUCK.length)]; var el = root.querySelector(".today"); if (el && S.data) el.outerHTML = todayHtml(S.data.project); }, 900);
         return;
+      case "nClear": clearNote(b.dataset.id, b.closest(".n-wrap")); return;
+      case "nClearAll":
+        var mm = notifModel(), ids = mm.fresh.concat(mm.old).map(function (x) { return x.id; });
+        root.querySelectorAll(".n-wrap").forEach(function (w, i) { w.style.transitionDelay = (i * 30) + "ms"; w.classList.add("gone"); });
+        setTimeout(function () { dismiss(ids); markAllRead(); }, 350); return;
+      case "needOpen": S.needOpen = S.needOpen === b.dataset.v ? null : b.dataset.v; return keepScroll(render);
+      case "needClear": dismiss([b.dataset.k]); return keepScroll(render);
       case "alertsOn": try { Notification.requestPermission().then(function (r) { toast(r === "granted" ? "Alerts on 🔔" : "Alerts are off. You can turn them on in your browser settings."); keepScroll(render); }); } catch (e) {} return;
       case "pin":
         var list2 = b.dataset.kind === "update" ? S.data.timeline : S.data.messages, it2 = list2.filter(function (x) { return x.id === b.dataset.id; })[0];

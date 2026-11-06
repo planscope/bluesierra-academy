@@ -35,7 +35,7 @@ var CONFIG = {
 };
 
 var TABLES = {
-  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct"],
+  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon"],
   People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned"],
@@ -204,13 +204,15 @@ var ACTIONS = {
 
   saveProject: function (me, b) {
     needStaff(me);
-    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct"];
+    var f = b.project || {}, fields = ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct", "lat", "lon"];
     if (!clean(f.name, 200)) throw new Error("The project needs a name.");
     if (f.phase && CONFIG.PHASES.indexOf(f.phase) < 0) throw new Error("Unknown phase.");
     var patch = {}; fields.forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 1000); });
     if (patch.progress != null) patch.progress = String(Math.max(0, Math.min(100, Number(patch.progress) || 0)));
     if (patch.status != null && ["active", "archived"].indexOf(patch.status) < 0) patch.status = "active";
     ["start_date", "target_date"].forEach(function (k) { if (patch[k] != null) patch[k] = dateOrEmpty(patch[k]); });
+    ["lat", "lon"].forEach(function (k) { if (patch[k] != null) patch[k] = patch[k] === "" ? "" : String(Math.round(num(patch[k]) * 1e6) / 1e6); });   // where the property is, for the header map
+    if (f.address != null && f.lat == null) { patch.lat = ""; patch.lon = ""; }                                                                   // a new address: find it again
     if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
     if (f.id) { needProject(me, f.id); update("Projects", "id", f.id, patch); return { project: projectOut(findBy("Projects", "id", f.id)) }; }
     var id = newId("p");
@@ -240,7 +242,7 @@ var ACTIONS = {
       var ids = splitIds(existing.project_ids); if (p && role !== "staff" && ids.indexOf(p.id) < 0) ids.push(p.id);
       var patch = { project_ids: ids.join(","), active: "yes" };
       if (existing.role !== role && existing.role !== "admin" && (admin || (!isStaff(existing) && role !== "staff"))) patch.role = role;   // only admins touch team roles
-      if (!existing.name && b.name) patch.name = clean(b.name, 120);
+      if (b.name && clean(b.name, 120) && (!isStaff(existing) || admin)) patch.name = clean(b.name, 120);     // the name you type now wins
       update("People", "email", email, patch);
     } else {
       insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now() });
@@ -264,6 +266,14 @@ var ACTIONS = {
     if (person.email === me.email && !b.projectId) throw new Error("You can't turn off your own access.");
     if (isStaff(person) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
     var ids = splitIds(person.project_ids).filter(function (x) { return x !== String(b.projectId); });
+    if (b.projectId && !ids.length && !isTeam(person)) {
+      // No projects left: remove them from the portal completely (and end their sessions), so adding the email again starts fresh.
+      var c = CacheService.getScriptCache();
+      rows("Sessions").forEach(function (sn) { if (sn.email === person.email) c.remove("sess:" + sn.token_hash); });
+      removeWhere("Sessions", function (r) { return r.email === person.email; });
+      removeWhere("People", function (r) { return r.email === person.email; });
+      return { removed: true };
+    }
     update("People", "email", person.email, b.projectId ? { project_ids: ids.join(",") } : { active: "no" });
     return {};
   },
@@ -274,7 +284,7 @@ var ACTIONS = {
     var uid = newId("u"), ids = savePhotos(me, p, b.photos || [], "", uid);
     insert("Timeline", { id: uid, project_id: p.id, at: now(), author: me.name, text: text, photo_ids: ids.join(","), emailed: b.notify ? "yes" : "" });
     postEvent(p, me, "update", "posted a project update" + (ids.length ? " with " + ids.length + " photo" + (ids.length > 1 ? "s" : "") : ""), text.slice(0, 240), "update:" + uid);
-    if (b.notify) safeMail(function () { emailClients(p, "Project update: " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + (ids.length ? "<p>" + ids.length + " new photo" + (ids.length > 1 ? "s" : "") + " in the portal.</p>" : "") + button("See the update")); }, "Posted, but the email to the client couldn't be sent.");
+    if (b.notify) safeMail(function () { emailClients(p, "Project update: " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + (ids.length ? "<p>" + ids.length + " new photo" + (ids.length > 1 ? "s" : "") + " in the portal.</p>" : "") + button("See the update", deep(p.id, "updates"))); }, "Posted, but the email to the client couldn't be sent.");
     return {};
   },
 
@@ -316,15 +326,15 @@ var ACTIONS = {
     var body = "<p>" + nl2br(esc(text)) + "</p>" + (files.length ? "<p style='color:#666'>" + files.length + " attachment" + (files.length > 1 ? "s" : "") + " in the portal.</p>" : "") + "<p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>";
     if (dmTo) {
       emailed[dmTo.email] = 1;
-      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal")); }, ""); } catch (e) {}
+      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, ""); } catch (e) {}
     } else if (isStaff(me) && channel !== "team") {
       // Client channel: the client and the architect. Architect channel: only the architect. Replies by email come back into the same place.
       var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect"); });
       var subj = (kind === "question" ? "Question about " : "Message about ") + p.name + " " + tag(p.id, id);
       safeMail(function () { who.forEach(function (x) { emailed[x.email] = 1; sendMail(x.email, subj, "<p>Hi " + esc(first(x.name)) + ",</p>" + body +
-        (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal")); }); },
+        (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal", deep(p.id, "messages", channel))); }); },
         "Saved, but the email couldn't be sent.");
-    } else if (!isTeam(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
+    } else if (!isTeam(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal", deep(p.id, "messages", channel)));
     if (!dmTo) notifyMentions(p, me, text, channel, emailed);
     markReadNow(me, p.id, channel);
     return { id: id };
@@ -609,7 +619,7 @@ var ACTIONS = {
     if (patch.status === "paid" && (!old || old.status !== "paid")) postEvent(p, me, "paid", "marked invoice " + patch.number + " as paid", "$" + money(dueNow) + " received. Thank you!", "invoice:" + id);
     if (b.notify && patch.status === "sent") safeMail(function () {
       emailClients(p, "Invoice " + patch.number + " · " + p.name,
-        "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(num(patch.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage)) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice"));
+        "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(num(patch.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage)) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice", deep(p.id, "invoices")));
     }, "Saved, but the email to the client couldn't be sent.");
     return { id: id };
   },
@@ -692,7 +702,7 @@ var ACTIONS = {
     if (!isStaff(me) && (it.owner !== "client" || me.role !== "client")) throw new Error(it.owner === "client" ? "Only the client checks off that one." : "Blue Sierra checks off that one.");
     var done = !isTrue(it.done);
     update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_at: done ? now() : "" });
-    if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal"));
+    if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal", deep(p.id, "checklist")));
     if (done) postEvent(p, me, "done", "checked off a to-do", it.item, "check:" + it.id);
     return {};
   }
@@ -767,14 +777,14 @@ function addAnswer(p, q, name, email, role, text, via, at, id) {
   id = id || newId("m");
   insert("Messages", { id: id, project_id: p.id, at: at || now(), author: name, author_email: email, role: role, kind: "answer", text: text, question_id: q.id, status: "", via: via, channel: "client", thread_id: "", files: "", reactions: "" });
   update("Messages", "id", q.id, { status: "answered" });
-  if (role === "client" || role === "architect") notifyJesus(email, name + " answered: " + q.text.slice(0, 60), "<p><b>Question:</b> " + esc(q.text) + "</p><p><b>Answer:</b> " + nl2br(esc(text)) + "</p><p style='color:#666'>" + esc(p.name) + " · via " + via + "</p>" + button("Open the portal"));
+  if (role === "client" || role === "architect") notifyJesus(email, name + " answered: " + q.text.slice(0, 60), "<p><b>Question:</b> " + esc(q.text) + "</p><p><b>Answer:</b> " + nl2br(esc(text)) + "</p><p style='color:#666'>" + esc(p.name) + " · via " + via + "</p>" + button("Open the portal", deep(p.id, "messages", "client")));
   return id;
 }
 function addMessage(p, person, text, via, at, id, channel, threadId) {
   id = id || newId("m");
   insert("Messages", { id: id, project_id: p.id, at: at || now(), author: person.name, author_email: person.email, role: person.role, kind: "message", text: text, question_id: "", status: "", via: via,
     channel: channel || "client", thread_id: threadId || "", files: "", reactions: "" });
-  notifyJesus(person.email, "New message from " + person.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal"));
+  notifyJesus(person.email, "New message from " + person.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal", deep(p.id, "messages", channel || "client")));
   return id;
 }
 
@@ -852,7 +862,7 @@ function summary(p, inv, msgs, tl, me, lines, reads) {
 function projectOut(p) {
   return { id: p.id, name: p.name, client_name: p.client_name, address: p.address, city: p.city, phase: p.phase, progress: Number(p.progress || 0),
     start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "",
-    retainage_pct: num(p.retainage_pct) };
+    retainage_pct: num(p.retainage_pct), lat: p.lat ? num(p.lat) : null, lon: p.lon ? num(p.lon) : null };
 }
 function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: img(ph.file_id, 600), full: img(ph.file_id, 2000), caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
 function invoiceOut(i, staff) {
@@ -914,7 +924,7 @@ function notifyMentions(p, me, text, channel, emailed) {
   membersOf(p).forEach(function (x) {
     if (x.email === me.email || emailed[x.email] || !mentions(text, x.name) || channelsFor(x).indexOf(channel) < 0) return;
     try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
-    safeMail(function () { sendMail(x.email, me.name + " mentioned you · " + p.name + " #" + channel, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> mentioned you in <b>#" + channel + "</b> on " + esc(p.name) + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal")); }, "");
+    safeMail(function () { sendMail(x.email, me.name + " mentioned you · " + p.name + " #" + channel, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> mentioned you in <b>#" + channel + "</b> on " + esc(p.name) + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, "");
   });
 }
 function saveAttachments(p, list) {
@@ -993,7 +1003,9 @@ function sendMail(to, subject, html) {
       "<p style='color:#999;font-size:12px;margin-top:28px'>" + CONFIG.COMPANY + " · Crafting sites, one space at a time.</p></div>"
   });
 }
-function button(label) { return "<p><a href='" + CONFIG.PORTAL_URL + "' style='display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>" + esc(label) + "</a></p>"; }
+/* Email buttons open the portal right where the thing is: a chat, a private conversation, an invoice, an update. */
+function deep(pid, tab, ch) { return "#p=" + encodeURIComponent(pid) + (tab ? "&t=" + tab : "") + (ch ? "&c=" + encodeURIComponent(ch) : ""); }
+function button(label, hash) { return "<p><a href='" + CONFIG.PORTAL_URL + (hash || "") + "' style='display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>" + esc(label) + "</a></p>"; }
 function tag(pid, mid) { return "[" + CONFIG.TAG + "-" + pid + "-" + mid + "]"; }
 
 /* ============================ tiny sheet "database" ============================ */
