@@ -1576,7 +1576,7 @@
   function homeFinance() {
     var f = S.fin;
     if (!f) { loadFin(false); return '<div class="loading" style="min-height:30vh">Counting every dollar…</div>'; }
-    if (f.err) return '<div class="empty">' + esc(f.err) + ' <button class="link" data-a="finRefresh">Try again</button></div>';
+    if (f.err) return '<div class="card fin-empty fin-err">' + qbLogo() + '<div><b>QuickBooks isn’t sharing the numbers yet</b><p class="muted small">' + esc(f.err) + '</p></div><div class="fe-acts"><button class="btn" data-a="homeView" data-v="team">Go to Team</button><button class="link" data-a="finRefresh">Try again</button></div></div>';
     if (!f.connected) return '<div class="card fin-empty">' + qbLogo() + "<div><b>Connect QuickBooks to see the whole picture</b><p class=\"muted small\">Cash, what clients owe us, bills due, payroll and profit for every job, all in one place.</p></div><button class=\"btn\" data-a=\"homeView\" data-v=\"team\">Connect it</button></div>";
     var cash = f.cash || { total: 0, accounts: [] }, cards = f.cards || { total: 0, accounts: [] }, ar = f.ar || {}, ap = f.ap || {}, y = f.ytd || {};
     var stand = cash.total + (ar.open || 0) - (ap.open || 0) - cards.total, mood = moneyMood(y.income || 0, y.expenses || 0), kept = (y.income || 0) - (y.expenses || 0);

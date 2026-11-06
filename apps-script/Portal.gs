@@ -1092,6 +1092,24 @@ function qbPLAccounts(rep) {
   walk(((rep || {}).Rows || {}).Row, "", "");
   return accounts.filter(function (a) { return a.amount; });
 }
+/* Ask QuickBooks for the company's name before reading anything else. If it says no, explain why in plain words
+   instead of showing a page of zeros. Also fills in the company name when connecting couldn't. */
+function qbCheck() {
+  var cfg = qbCfg(), c = CacheService.getScriptCache(), k = "qbok:" + cfg.realm;
+  if (c.get(k)) return;
+  try {
+    var info = qbGet("/companyinfo/" + cfg.realm), name = ((info || {}).CompanyInfo || {}).CompanyName || "";
+    if (name && name !== cfg.company) qbProps().setProperty("QB_COMPANY", name);
+    c.put(k, "1", 900);
+  } catch (e) { throw new Error(qbExplain(e, cfg)); }
+}
+function qbExplain(e, cfg) {
+  var m = String(e && e.message || e), where = cfg.env === "sandbox" ? "the Sandbox (test) setting" : "the Production (real company) setting";
+  if (/error 403/.test(m)) return "QuickBooks connected but won't share this company's data (error 403). The portal is on " + where +
+    ". Usually it means the keys saved in the portal don't match that setting, or the person who clicked Connect isn't the QuickBooks primary or company admin. Fix: Home → Team → Disconnect, paste the Production keys, Save keys, then Connect as the QuickBooks admin. Details: " + m;
+  if (/error 401/.test(m)) return "QuickBooks didn't accept the sign-in. Disconnect and connect again from Home → Team. Details: " + m;
+  return m;
+}
 /* The whole company at a glance (Home → Finances): cash, cards, who owes us, what we owe, 12 months of money in/out,
    where this year's money went, and every QuickBooks customer/job with its profit, linked to its portal project. */
 function qbCompanyFinance() {
@@ -1148,8 +1166,8 @@ ACTIONS.qbFinance = function (me, b) {
   if (!base.connected) return base;
   var c = CacheService.getScriptCache(), ck = "qbf:" + cfg.realm, hit = !b.refresh && c.get(ck);
   if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
-  var data = qbCompanyFinance();
-  try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
+  qbCheck(); var data = qbCompanyFinance(); data.company = qbCfg().company;
+  if (data.warnings.length < 7) try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
   return Object.assign(data, base);
 };
 /* From Finances: a QuickBooks customer/job with no project yet becomes a new portal project, already linked. */
@@ -1275,7 +1293,7 @@ ACTIONS.qbMoney = function (me, b) {
   if (!base.connected || !base.linked) return base;
   var c = CacheService.getScriptCache(), ck = "qbm:" + qbCfg().realm + ":" + p.id + ":" + p.qb_customer, hit = !b.refresh && c.get(ck);
   if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
-  var data = qbJobMoney(p.qb_customer);
+  qbCheck(); var data = qbJobMoney(p.qb_customer);
   try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
   return Object.assign(data, base);
 };

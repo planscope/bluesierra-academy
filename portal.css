@@ -1151,6 +1151,7 @@
 #bs-portal .fin-head{margin-top:0}
 #bs-portal .fin-empty{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 #bs-portal .fin-empty>div{flex:1;min-width:220px}
+#bs-portal .fin-err{align-items:flex-start;border-color:#e6c9a8}#bs-portal .fin-err p{word-break:break-word}#bs-portal .fe-acts{display:flex;gap:12px;align-items:center}
 #bs-portal .fin-hero{display:flex;gap:24px;align-items:stretch;flex-wrap:wrap;padding:26px;border-width:1.5px}
 #bs-portal .fh-main{flex:2;min-width:260px;display:flex;flex-direction:column;gap:6px}
 #bs-portal .fh-big{font-size:46px;font-weight:600;letter-spacing:-.03em;line-height:1.05;color:var(--ink)}
