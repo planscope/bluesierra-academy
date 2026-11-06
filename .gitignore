@@ -5,3 +5,4 @@ webflow/
 .DS_Store
 # Local test page for the Webflow snippet
 loader-test.html
+portal-loader-test.html

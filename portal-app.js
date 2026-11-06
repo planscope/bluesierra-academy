@@ -98,7 +98,13 @@
   /* ---------------- render ---------------- */
   function render() {
     if (!S.token || !S.me) {
-      if (S.token && !S.me) { root.innerHTML = '<div class="loading">Loading…</div>'; return; }
+      if (S.token && !S.me) {
+        // A saved login, but we couldn't load the account (offline, or the portal isn't connected): say so instead of spinning forever.
+        root.innerHTML = S.err
+          ? '<div class="loading"><div style="text-align:center;padding:20px"><p class="error">' + esc(S.err) + '</p><p style="margin-top:14px;display:flex;gap:10px;justify-content:center"><button class="btn sm" data-a="retry">Try again</button><button class="btn ghost sm" data-a="forget">Log out</button></p></div></div>'
+          : '<div class="loading">Loading…</div>';
+        S.err = ""; return;
+      }
       return renderLogin();
     }
     var body = !S.pid ? renderList() : !S.data ? '<div class="loading">Loading the project…</div>' : renderProject();
@@ -335,6 +341,8 @@
     e.preventDefault();
     switch (a) {
       case "restart": S.step = "email"; return render();
+      case "retry": root.innerHTML = '<div class="loading">Loading…</div>'; return route();
+      case "forget": store("del"); S.token = ""; S.me = null; S.projects = null; S.data = null; S.step = "email"; return render();
       case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); S.token = ""; S.me = null; S.projects = null; S.data = null; S.step = "email"; history.pushState(null, "", location.pathname + location.search); render(); }); return;
       case "home": return go(null);
       case "open": return go(b.dataset.id);
