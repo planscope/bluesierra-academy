@@ -422,3 +422,93 @@
 #bs-portal .in-thread .msg .bubble{max-width:none}
 #bs-portal .modal .composer{margin-top:14px;box-shadow:none}
 #bs-portal .modal:has(.in-thread){width:min(720px,100%)}
+
+/* ---------------- events in chat: colored cards ---------------- */
+#bs-portal .ev{display:flex;gap:12px;align-items:flex-start;border-radius:14px;padding:14px 16px;border:1px solid var(--evb,#e3ddd2);background:var(--evbg,#fbf9f5);box-shadow:inset 4px 0 0 var(--evc,#c39a5a);max-width:760px;margin-left:46px;position:relative}
+#bs-portal .ev-invoice{--evc:#1baf7a;--evbg:#eaf7f0;--evb:#c4e8d4}
+#bs-portal .ev-paid{--evc:#2f6b4a;--evbg:#e3efe7;--evb:#c6dccd}
+#bs-portal .ev-update{--evc:#2a78d6;--evbg:#eaf2fc;--evb:#c9dcf5}
+#bs-portal .ev-change{--evc:#eda100;--evbg:#fdf4dc;--evb:#f2dfa8}
+#bs-portal .ev-todo{--evc:#6250d6;--evbg:#efecfb;--evb:#d6d0f3}
+#bs-portal .ev-done{--evc:#e87ba4;--evbg:#fcedf3;--evb:#f3cfdd}
+#bs-portal .ev-date{--evc:#eb6834;--evbg:#fdeee7;--evb:#f6d2c2}
+#bs-portal .ev-ico{width:36px;height:36px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:19px;flex:none;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+#bs-portal .ev-body{flex:1;min-width:0}
+#bs-portal .ev-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#bs-portal .ev-kind{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--evc)}
+#bs-portal .ev-line{margin-top:3px;font-size:15px}
+#bs-portal .ev-line b{font-weight:600}
+#bs-portal .ev-detail{color:var(--ink-2);font-size:14px;margin-top:2px}
+#bs-portal .ev-btn{margin-top:10px;border:0;background:var(--evc);color:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+#bs-portal .ev-btn:hover{filter:brightness(.95)}
+#bs-portal .ev-change .ev-btn{color:#111}
+#bs-portal .ev:hover .m-tools{opacity:1}
+#bs-portal .ev .m-tools{margin-left:auto;display:flex;gap:12px;opacity:0;transition:opacity .15s}
+@media (pointer:coarse){#bs-portal .ev .m-tools{opacity:1}}
+@media (max-width:620px){#bs-portal .ev{margin-left:0}}
+#bs-portal .flash{animation:bsflash 2.4s ease}
+@keyframes bsflash{0%,40%{box-shadow:0 0 0 4px var(--gold);background:var(--gold-soft)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* ---------------- bell ---------------- */
+#bs-portal .bell{position:relative;width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;color:var(--ink);cursor:pointer;transition:transform .15s}
+#bs-portal .bell:hover{transform:rotate(-8deg)}
+#bs-portal .bell.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+#bs-portal .bell-n{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;border:2px solid var(--paper);animation:bspop .4s ease}
+#bs-portal .bell-dot{position:absolute;top:6px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--gold);border:2px solid var(--card)}
+@keyframes bspop{0%{transform:scale(.3)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+#bs-portal .icon-btn.help{width:38px;height:38px;border-radius:12px;font-weight:600}
+#bs-portal .bell-bg{position:fixed;inset:0;z-index:40}
+#bs-portal .bell-panel{position:fixed;top:68px;right:20px;width:min(420px,calc(100vw - 24px));max-height:calc(100vh - 90px);overflow-y:auto;background:var(--card);border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.22);z-index:41;padding:18px 16px 12px;animation:bsdrop .22s ease}
+@keyframes bsdrop{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
+#bs-portal .bp-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:0 4px 8px}
+#bs-portal .bp-hi{font-size:21px;font-weight:500;line-height:1.2}
+#bs-portal .bp-sec{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:14px 6px 6px}
+#bs-portal .bp-load{padding:20px;text-align:center;color:var(--muted)}
+#bs-portal .bp-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:14px 10px 18px}
+#bs-portal .bp-empty b{font-size:18px;font-weight:500}
+#bs-portal .bp-empty span{color:var(--muted);font-size:14px}
+#bs-portal .needs{display:flex;flex-direction:column;gap:6px}
+#bs-portal .need{display:grid;grid-template-columns:28px 1fr;column-gap:8px;align-items:center;text-align:left;border:0;border-radius:14px;padding:10px 12px;font:inherit;font-size:14px;color:var(--ink);cursor:pointer;transition:transform .12s}
+#bs-portal .need:hover{transform:translateX(3px)}
+#bs-portal .need>span{font-size:18px;grid-row:span 2}
+#bs-portal .need small{color:var(--muted);font-size:12px}
+#bs-portal .need.t-red{background:#fbe6e2}
+#bs-portal .need.t-green{background:#e6f5ed}
+#bs-portal .need.t-gold{background:#fbf0d9}
+#bs-portal .need.t-purple{background:#efecfb}
+#bs-portal .need.t-blue{background:#e8f0fb}
+#bs-portal .n-row{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;border-radius:12px;padding:9px 8px;font:inherit;font-size:14px;color:var(--ink-2);cursor:pointer}
+#bs-portal .n-row:hover{background:#f6f2eb}
+#bs-portal .n-row.new{color:var(--ink)}
+#bs-portal .n-row.new b{font-weight:600}
+#bs-portal .n-ico{width:30px;height:30px;border-radius:10px;background:#f3efe8;display:grid;place-items:center;flex:none;font-size:15px}
+#bs-portal .n-txt{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+#bs-portal .n-txt small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+#bs-portal .bp-foot{display:flex;justify-content:space-between;padding:12px 6px 4px;border-top:1px solid var(--line);margin-top:10px}
+@media (max-width:620px){#bs-portal .bell-panel{top:60px;right:12px}#bs-portal .who .name{display:none}#bs-portal .icon-btn.help{display:none}}
+
+/* ---------------- hello ---------------- */
+#bs-portal .hello{margin:4px 0 18px}
+#bs-portal .hello h2{font-size:28px;font-weight:500}
+#bs-portal .hello p{margin-top:4px}
+
+/* ---------------- tour: spotlight + bubble ---------------- */
+#bsp-tour{position:fixed;inset:0;z-index:90;pointer-events:auto}
+#bsp-tour .tour-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(12,12,12,.62),0 0 0 3px #c39a5a inset;transition:all .45s cubic-bezier(.65,0,.35,1);pointer-events:none}
+#bsp-tour .tour-bubble{position:fixed;background:#fff;color:#111;border-radius:18px;padding:16px 18px 14px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:"Barlow",system-ui,sans-serif;transition:top .45s cubic-bezier(.65,0,.35,1),left .45s cubic-bezier(.65,0,.35,1);animation:bsdrop .3s ease}
+#bsp-tour .tour-bubble::before{content:"";position:absolute;left:calc(var(--arrow,50%) - 9px);width:18px;height:18px;background:#fff;transform:rotate(45deg);border-radius:3px}
+#bsp-tour .tour-bubble.below::before{top:-7px}
+#bsp-tour .tour-bubble.above::before{bottom:-7px}
+#bsp-tour .tour-bubble.center::before{display:none}
+#bsp-tour .tour-bubble b{display:block;font-size:18px;font-weight:600;margin:8px 0 4px}
+#bsp-tour .tour-bubble p{font-size:15px;line-height:1.45;color:#3b3a37;margin:0}
+#bsp-tour .tb-step{display:flex;gap:5px}
+#bsp-tour .tb-step i{width:7px;height:7px;border-radius:99px;background:#e3ddd2;transition:all .3s}
+#bsp-tour .tb-step i.past{background:#c39a5a}
+#bsp-tour .tb-step i.on{width:22px;background:#111}
+#bsp-tour .tb-actions{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+#bsp-tour .tb-actions span{display:flex;gap:8px}
+#bsp-tour .btn{display:inline-flex;align-items:center;border:1px solid #111;background:#111;color:#fff;padding:8px 16px;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
+#bsp-tour .btn.ghost{background:transparent;color:#111}
+#bsp-tour .link{background:none;border:0;padding:0;font:inherit;font-size:13px;color:#77736c;text-decoration:underline;cursor:pointer}
+#bs-portal .ev .m-react{margin-top:6px}#bs-portal .ev .m-react:not(:has(.rx:not(.ghost))){margin-top:2px;height:0;overflow:visible}

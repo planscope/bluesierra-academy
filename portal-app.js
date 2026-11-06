@@ -30,7 +30,7 @@
   function toast(msg) { var t = root.querySelector(".toast"); if (!t) { t = document.createElement("div"); t.className = "toast"; root.appendChild(t); } t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2800); }
   function staff() { return !!(S.me && S.me.staff); }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
-  function resetState() { S.token = ""; S.me = null; S.projects = null; S.data = null; S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
+  function resetState() { S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
   function isDone(v) { return /^(yes|true|y|1)$/i.test(String(v)); }
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
@@ -94,7 +94,7 @@
     var h = hashState(), seq = ++S.seq;
     S.lb = null; S.modal = null; S.loadErr = "";                     // overlays never survive navigation
     try {
-      if (!S.projects) { var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; }
+      if (!S.projects) { var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.notif = null; loadNotif(); }
       if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
       S.tab = h.t || "overview";
       if (h.p) {
@@ -108,7 +108,10 @@
     } catch (e) { if (seq !== S.seq) return; if (S.pid && !S.data) S.loadErr = e.message; else S.err = e.message; }
     if (S.wantChan && S.data) { S.chan = S.wantChan; S.wantChan = null; S.readMark = {}; }
     if (S.openThread && S.data) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; }
+    if (S.afterLoadModal && S.data) { S.modal = staff() ? { type: "sched", id: S.afterLoadModal.id } : S.afterLoadModal; S.afterLoadModal = null; }
     render();
+    if (S.flash) { var fl = document.getElementById(S.flash); S.flash = null; if (fl) { fl.scrollIntoView({ block: "center" }); fl.classList.add("flash"); setTimeout(function () { fl.classList.remove("flash"); }, 2400); } }
+    setTimeout(function () { startTour(false); }, 400);
     if (S.tab === "messages" && S.data && !S.modal) window.scrollTo(0, document.body.scrollHeight);
   }
   async function reload(projectsToo) {
@@ -150,10 +153,11 @@
     var snap = snapshot(), oldG = root.querySelector(".gantt-wrap"), gLeft = oldG ? oldG.scrollLeft : -1;
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + LOGO + "<span>Client portal</span></div>" +
-      '<div class="who"><span class="name">' + esc(S.me.name) + (staff() ? ' <span class="pill">Team</span>' : "") + '</span><div class="avatar">' + esc(initials(S.me.name)) + '</div><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
+      '<div class="who">' + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><span class="name">' + esc(S.me.name) + (staff() ? ' <span class="pill">Team</span>' : "") + '</span><div class="avatar">' + esc(initials(S.me.name)) + '</div><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap' + (S.projects && (staff() || S.projects.length > 1) ? " has-side" : "") + '">' + (S.projects && (staff() || S.projects.length > 1) ? sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
-      (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
+      (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
+    if (S.tour) drawTour();                       // a redraw wipes the overlay: put it back on the same step
     if (S.tab === "messages" && S.data) setTimeout(markChannelRead, 0);
     // Timeline wider than the screen (phones): keep the scroll position, or start with today in view.
     var gw = root.querySelector(".gantt-wrap"), tl = gw && gw.querySelector(".g-today"), lab = gw && gw.querySelector(".g-label");
@@ -308,7 +312,8 @@
     var oq = openQuestions(), todo = clientTodo(), last = d.timeline[0];
     var waiting = oq.map(function (q) { return '<div class="msg"><div class="avatar gold">?</div><div class="bubble question"><div class="who-line"><b>' + esc(q.author) + "</b> asked · " + day(q.at) + '</div><div class="text">' + esc(q.text) + "</div>" + (!asClient() ? "" : answerBox(q)) + "</div></div>"; }).join("") +
       todo.map(function (c) { return checkRow(c); }).join("");
-    return '<div class="grid g4">' +
+    return (!staff() ? '<div class="hello"><h2>' + esc(hello()) + '</h2><p class="muted">' + (oq.length + todo.length ? "There " + (oq.length + todo.length === 1 ? "is 1 thing" : "are " + (oq.length + todo.length) + " things") + " waiting on you below." : "Nothing needs you right now. Here's how your project is going.") + "</p></div>" : "") +
+      '<div class="grid g4">' +
       stat("Progress", Number(p.progress || 0) + "%", '<div class="bar" style="margin-top:10px"><i style="width:' + Number(p.progress || 0) + '%"></i></div>') +
       stat(!asClient() ? "Waiting on the client" : "Waiting on you", String(oq.length + todo.length), oq.length + " question" + (oq.length === 1 ? "" : "s") + " · " + todo.length + " checklist") +
       stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue") +
@@ -326,7 +331,7 @@
 
   function post(t) {
     var photos = S.data.photos.filter(function (ph) { return t.photo_ids && t.photo_ids.split(",").indexOf(ph.id) > -1; });
-    return '<article class="card"><div class="post-head"><div class="avatar">' + esc(initials(t.author)) + '</div><div><b style="font-weight:500">' + esc(t.author) + '</b><div class="muted small">' + day(t.at) + (t.emailed ? " · emailed to the client" : "") + "</div></div></div>" +
+    return '<article class="card" id="up-' + esc(t.id) + '"><div class="post-head"><div class="avatar">' + esc(initials(t.author)) + '</div><div><b style="font-weight:500">' + esc(t.author) + '</b><div class="muted small">' + day(t.at) + (t.emailed ? " · emailed to the client" : "") + "</div></div></div>" +
       (t.text ? '<div class="post-text">' + esc(t.text) + "</div>" : "") +
       (photos.length ? '<div class="photo-grid">' + photos.map(function (ph) { return '<button class="ph" style="' + bg(ph.thumb) + '" data-a="lb" data-i="' + S.data.photos.indexOf(ph) + '" aria-label="' + esc(ph.caption || "Photo") + '"></button>'; }).join("") + "</div>" : "") + "</article>";
   }
@@ -381,8 +386,29 @@
       '<span class="rx-add"><button class="rx ghost" data-a="rxPick" data-id="' + esc(m.id) + '" aria-label="Add a reaction">☺+</button>' +
       (S.picker === m.id ? '<span class="rx-pop">' + EMOJI.map(function (e) { return '<button data-a="react" data-id="' + esc(m.id) + '" data-e="' + e + '">' + e + "</button>"; }).join("") + "</span>" : "") + "</span></div>";
   }
+  var EV = { invoice: ["🧾", "Invoice"], paid: ["💚", "Payment received"], update: ["📸", "Project update"], change: ["✍️", "Change order"], todo: ["✅", "New to-do"], done: ["🎉", "Done"], date: ["📅", "New date"] };
+  /* Something happened (an invoice, an update, a to-do): a colored card the client can't miss, with a button straight to it. */
+  function eventHtml(m, opts) {
+    var ev = EV[m.status] || ["✨", "Update"], lines = String(m.text || "").split("\n"), canDel = S.me && S.me.admin;
+    return '<div class="ev ev-' + esc(m.status || "x") + '" id="m-' + esc(m.id) + '"><div class="ev-ico" aria-hidden="true">' + ev[0] + '</div><div class="ev-body">' +
+      '<div class="ev-top"><span class="ev-kind">' + ev[1] + '</span><span class="muted small">' + day(m.at) + "</span>" +
+      '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Ask about this</button>' : "") + (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
+      '<div class="ev-line"><b>' + esc(m.author) + "</b> " + esc(lines[0]) + "</div>" + (lines[1] ? '<div class="ev-detail">' + esc(lines.slice(1).join(" ")).replace(/\d{4}-\d{2}-\d{2}/g, function (d) { return day(d); }) + "</div>" : "") +
+      (m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
+      reactHtml(m) + (!opts.inThread && opts.replies && opts.replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '">' + opts.replies.length + " repl" + (opts.replies.length > 1 ? "ies" : "y") + "</button>" : "") +
+      "</div></div>";
+  }
+  /* Jump to the thing an event or notification points at, and make it glow for a moment. */
+  function openRef(ref, pid) {
+    var t = String(ref).split(":"), tab = { invoice: "invoices", co: "invoices", update: "updates", check: "checklist", sched: "schedule" }[t[0]] || "overview";
+    var target = { invoice: "inv-", update: "up-", check: "ck-" }[t[0]];
+    S.bell = false; S.flash = target ? target + t[1] : null;
+    if (t[0] === "sched") S.afterLoadModal = { type: "schedView", id: t[1] };
+    go(pid || S.pid, tab);
+  }
   function msgHtml(m, opts) {
     opts = opts || {};
+    if (m.kind === "event") return eventHtml(m, opts);
     var q = m.kind === "question", replies = opts.replies || [], answers = opts.answers || [];
     var canDel = m.mine || (S.me && S.me.admin);
     return '<div class="msg' + (m.mine ? " mine" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '"><div class="avatar ' + (m.role === "client" ? "gold" : m.role === "architect" ? "arch" : "") + '">' + esc(initials(m.author)) + '</div><div class="bubble ' + (q ? "question" : "") + '">' +
@@ -430,6 +456,8 @@
     var stamp = new Date(), pad = function (x) { return String(x).padStart(2, "0"); };
     S.data.reads = S.data.reads || {}; S.data.reads[ch] = stamp.getFullYear() + "-" + pad(stamp.getMonth() + 1) + "-" + pad(stamp.getDate()) + " " + pad(stamp.getHours()) + ":" + pad(stamp.getMinutes()) + ":59";
     var pr = (S.projects || []).filter(function (x) { return x.id === S.pid; })[0]; if (pr) pr.unread = Math.max(0, (pr.unread || 0) - n);
+    (S.notif || []).forEach(function (it) { if (it.project_id === S.pid && it.channel === ch) it.unread = false; });
+    var bb = root.querySelector(".bell"); if (bb) bb.outerHTML = bellButton();
     call("markRead", { projectId: S.pid, channel: ch }).catch(function () {});
   }
   function readFile(file) {
@@ -462,6 +490,139 @@
     });
     wrap.appendChild(pop);
   }
+
+  /* ---------------- notification bell (playful, HEY-style) ---------------- */
+  function notifModel() {
+    var items = (S.notif || []).filter(function (it) { return !it.mine; }), fresh = items.filter(function (it) { return it.unread; }), old = items.filter(function (it) { return !it.unread; }).slice(0, 6);
+    var needs = [];
+    (S.projects || []).filter(function (p) { return p.status !== "archived"; }).forEach(function (p) {
+      var n = p.needs || {}, many = (S.projects || []).length > 1, where = many ? " · " + p.name : "";
+      (n.invoices || []).forEach(function (i) { if (!staff() || i.overdue) needs.push({ tone: i.overdue ? "red" : "green", ico: "🧾", text: (i.overdue ? "Overdue: " : "To pay: ") + "invoice " + i.number + " · " + money(i.amount) + (i.due ? " by " + day(i.due) : ""), ref: "invoice:" + i.id, p: p.id, where: where }); });
+      if (p.openQuestions) needs.push({ tone: "gold", ico: "💬", text: (staff() ? p.openQuestions + " question" + (p.openQuestions > 1 ? "s" : "") + " waiting on the client" : "Blue Sierra asked you " + (p.openQuestions > 1 ? p.openQuestions + " questions" : "a question")), chat: true, p: p.id, where: where });
+      if (!staff()) (n.todos || []).slice(0, 4).forEach(function (c) { needs.push({ tone: "purple", ico: "✅", text: "To do: " + c.item + (c.due ? " · by " + day(c.due) : ""), ref: "check:" + c.id, p: p.id, where: where }); });
+      (n.dates || []).filter(function (x) { return staff() ? true : x.owner === "client" || ["decision", "meeting", "payment", "inspection"].indexOf(x.kind) > -1; }).slice(0, 3).forEach(function (x) {
+        needs.push({ tone: "blue", ico: { decision: "🤔", meeting: "🤝", payment: "💵", inspection: "🔎", milestone: "🏁", deadline: "⏰" }[x.kind] || "📅", text: day(x.start) + ": " + x.title, ref: "sched:" + x.id, p: p.id, where: where });
+      });
+    });
+    return { fresh: fresh, old: old, needs: needs };
+  }
+  function bellButton() {
+    var m = notifModel(), n = m.fresh.length;
+    return '<button class="bell' + (S.bell ? " on" : "") + '" data-a="bell" aria-label="Notifications' + (n ? ", " + n + " new" : "") + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z" fill="currentColor"/></svg>' +
+      (n ? '<span class="bell-n">' + (n > 9 ? "9+" : n) + "</span>" : m.needs.length ? '<span class="bell-dot"></span>' : "") + "</button>";
+  }
+  function hello() {
+    var h = new Date().getHours(), f = first(S.me.name);
+    return h < 12 ? "Good morning, " + f + " ☀️" : h < 18 ? "Good afternoon, " + f + " 👋" : "Good evening, " + f + " 🌙";
+  }
+  function bellPanel() {
+    var m = notifModel();
+    var row = function (it) {
+      var ev = it.kind === "event" ? (EV[it.status] || ["✨"])[0] : it.kind === "question" ? "❓" : it.files ? "📎" : "💬";
+      var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> in #" + esc(it.channel) + ": " + esc(String(it.text || "").slice(0, 120));
+      return '<button class="n-row' + (it.unread ? " new" : "") + '" ' + (it.kind === "event" && it.ref ? 'data-a="ref" data-ref="' + esc(it.ref) + '" data-p="' + esc(it.project_id) + '"' : 'data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '"') + '>' +
+        '<span class="n-ico">' + ev + '</span><span class="n-txt">' + line + '<small>' + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span>" + (it.unread ? '<span class="dot"></span>' : "") + "</button>";
+    };
+    var needs = m.needs.map(function (n) { return '<button class="need t-' + n.tone + '" ' + (n.chat ? 'data-a="actOpen" data-p="' + esc(n.p) + '" data-c="client" data-th=""' : 'data-a="ref" data-ref="' + esc(n.ref) + '" data-p="' + esc(n.p) + '"') + '><span>' + n.ico + "</span>" + esc(n.text) + '<small>' + esc(n.where) + "</small></button>"; }).join("");
+    var caught = !m.fresh.length && !m.needs.length;
+    return '<div class="bell-bg" data-a="bellClose"></div><div class="bell-panel" role="dialog" aria-label="Notifications" data-lenis-prevent>' +
+      '<div class="bp-head"><div><div class="bp-hi">' + esc(hello()) + '</div><div class="muted small">' + (caught ? "Nothing needs you right now." : m.fresh.length ? m.fresh.length + " new thing" + (m.fresh.length > 1 ? "s" : "") + " since you last looked." : "Here's what's coming up.") + "</div></div>" +
+      '<button class="icon-btn" data-a="bellClose" aria-label="Close">✕</button></div>' +
+      (S.notif == null ? '<div class="bp-load">Checking for news…</div>' : "") +
+      (caught && S.notif != null ? '<div class="bp-empty">' + EMPTY_ART + "<b>You're all caught up!</b><span>Go enjoy your day. We'll ping you when something happens.</span></div>" : "") +
+      (needs ? '<div class="bp-sec">' + (staff() ? "Keep an eye on" : "Needs you") + '</div><div class="needs">' + needs + "</div>" : "") +
+      (m.fresh.length ? '<div class="bp-sec">New for you</div>' + m.fresh.map(row).join("") : "") +
+      (m.old.length ? '<div class="bp-sec">Earlier</div>' + m.old.map(row).join("") : "") +
+      '<div class="bp-foot">' + (m.fresh.length ? '<button class="link small" data-a="markAll">Mark all as read</button>' : "<span></span>") + '<button class="link small" data-a="tour">Take the tour</button></div></div>';
+  }
+  var EMPTY_ART = '<svg viewBox="0 0 160 110" width="150" aria-hidden="true"><circle cx="80" cy="58" r="44" fill="#f3e7d3"/><path d="M48 70c10-16 22-24 32-24s22 8 32 24" fill="none" stroke="#c39a5a" stroke-width="4" stroke-linecap="round"/><circle cx="80" cy="38" r="12" fill="#eda100"/><g stroke="#eda100" stroke-width="3" stroke-linecap="round"><path d="M80 18v-6M98 26l5-4M62 26l-5-4M104 40h6M50 40h6"/></g><path d="M30 92h100" stroke="#2f6b4a" stroke-width="4" stroke-linecap="round"/><path d="M44 92c2-8 6-12 10-12M60 92c0-6 3-10 6-11M112 92c-2-8-6-12-10-12" stroke="#2f6b4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
+  async function loadNotif() {
+    var seq = S.seq;
+    try {
+      var r = await call("activity", { limit: 40 }); if (seq !== S.seq) return; S.notif = r.items;
+      if (S.bell || !S.pid) keepScroll(render); else { var bb = root.querySelector(".bell"); if (bb) bb.outerHTML = bellButton(); }
+    } catch (e) {}
+  }
+  async function markAllRead() {
+    var pairs = {}; (S.notif || []).forEach(function (it) { if (it.unread) pairs[it.project_id + "|" + it.channel] = 1; });
+    S.notif.forEach(function (it) { it.unread = false; }); (S.projects || []).forEach(function (p) { p.unread = 0; }); keepScroll(render);
+    await Promise.all(Object.keys(pairs).map(function (k) { var x = k.split("|"); return call("markRead", { projectId: x[0], channel: x[1] }).catch(function () {}); }));
+  }
+  // The bell checks for news every minute while the page is open (and right away when you come back to the tab).
+  setInterval(function () { if (S.token && S.me && document.visibilityState === "visible") { loadNotif(); refreshList(); } }, 60000);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && S.token && S.me) loadNotif(); });
+
+  /* ---------------- first-login tour: a spotlight that walks you around ---------------- */
+  function tourSteps() {
+    if (staff()) return [
+      { t: "Welcome to the Blue Sierra portal 👋", b: "Every project in one place: chat, schedule, photos, contract and invoices. This takes 40 seconds." },
+      { el: ".side", t: "Your sidebar", b: "Home, Activity, Team and every project. The red numbers are unread messages." },
+      { el: ".home-chips", t: "Home, Activity, Team", b: "Activity is everything new across all projects. Team is where you add people from Blue Sierra." },
+      { el: ".portfolio", t: "The money, at a glance", b: "What's under contract, billed, collected and still to collect across all projects." },
+      { el: ".pcard", t: "A project", b: "Open it to post updates, chat in #client, #architect and #team, and send invoices." },
+      { el: ".bell", t: "Notifications", b: "New messages, invoices and dates show up here. A number means something new." },
+      { el: ".help", t: "Need this again?", b: "Tap the ? any time to replay the tour. That's it. Go build something beautiful 🌿" }
+    ];
+    return [
+      { t: "Welcome, " + first(S.me.name) + " 👋", b: "This is your project with Blue Sierra. Let's take a 30-second look around." },
+      { el: ".phead-money", t: "Your contract, in one line", b: "The total, how much is paid and what's due right now." },
+      { el: ".stepper", t: "Where we are", b: "The phase your project is in today, from design to complete." },
+      { el: ".tabs", t: "Everything about your project", b: "Updates and photos, the schedule, chat, contract & billing and your checklist." },
+      { el: '[data-t="messages"]', t: "Chat with us", b: "Write any time. You can also just reply to our emails and it lands here." },
+      { el: '[data-t="invoices"]', t: "Contract & billing", b: "Each invoice and how it draws down the contract total. No surprises." },
+      { el: '[data-t="checklist"]', t: "Your to-dos", b: "Decisions and things we need from you. Tick them off when they're done." },
+      { el: ".bell", t: "Notifications", b: "When we send an invoice, post photos or need a decision, it shows up here." },
+      { el: ".help", t: "That's it!", b: "Tap the ? to see this again. Welcome aboard 🌿" }
+    ];
+  }
+  function tourKey() { return "bsp-tour-v1-" + (S.me && S.me.email) + (staff() ? "-team" : "-client"); }
+  function startTour(force) {
+    if (!S.me || S.tour || S.modal) return;
+    if (!force) { try { if (localStorage.getItem(tourKey())) return; } catch (e) { return; } if (!staff() && !S.data) return; if (staff() && S.pid) return; }
+    var steps = tourSteps().filter(function (st) { return !st.el || visibleEl(st.el); });
+    if (steps.length < 2) return;
+    S.tour = { steps: steps, i: 0 }; drawTour();
+  }
+  function visibleEl(sel) { var e = root.querySelector(sel); if (!e) return null; var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? e : null; }
+  function endTour() { try { localStorage.setItem(tourKey(), "1"); } catch (e) {} S.tour = null; var t = document.getElementById("bsp-tour"); if (t) t.remove(); }
+  function drawTour() {
+    var T = S.tour; if (!T) return; var st = T.steps[T.i], wrap = document.getElementById("bsp-tour");
+    if (!wrap) { wrap = document.createElement("div"); wrap.id = "bsp-tour"; wrap.innerHTML = '<div class="tour-spot"></div><div class="tour-bubble" role="dialog" aria-live="polite"></div>'; root.appendChild(wrap); }
+    var spot = wrap.querySelector(".tour-spot"), bub = wrap.querySelector(".tour-bubble"), el = st.el ? visibleEl(st.el) : null;
+    bub.innerHTML = '<div class="tb-step">' + T.steps.map(function (_, k) { return '<i class="' + (k === T.i ? "on" : k < T.i ? "past" : "") + '"></i>'; }).join("") + "</div><b>" + esc(st.t) + "</b><p>" + esc(st.b) + "</p>" +
+      '<div class="tb-actions"><button class="link small" data-tour="skip">' + (T.i === T.steps.length - 1 ? "" : "Skip") + "</button><span>" + (T.i ? '<button class="btn ghost sm" data-tour="back">Back</button>' : "") +
+      '<button class="btn sm" data-tour="next">' + (T.i === T.steps.length - 1 ? "Let's go! 🎉" : "Next") + "</button></span></div>";
+    var place = function () {
+      var vw = innerWidth, vh = innerHeight, bw = Math.min(340, vw - 32);
+      bub.style.width = bw + "px";
+      if (!el) { spot.style.cssText = "top:" + vh / 2 + "px;left:" + vw / 2 + "px;width:0;height:0"; bub.style.left = (vw - bw) / 2 + "px"; bub.style.top = Math.max(16, vh / 2 - bub.offsetHeight / 2) + "px"; bub.className = "tour-bubble center"; return; }
+      var r = el.getBoundingClientRect(), pad = 8;
+      spot.style.cssText = "top:" + (r.top - pad) + "px;left:" + (r.left - pad) + "px;width:" + (r.width + pad * 2) + "px;height:" + (r.height + pad * 2) + "px";
+      var below = r.bottom + 16 + bub.offsetHeight < vh, top = below ? r.bottom + 16 : Math.max(16, r.top - 16 - bub.offsetHeight);
+      if (!below && r.top - 16 - bub.offsetHeight < 0) top = Math.min(vh - bub.offsetHeight - 16, r.bottom + 16);
+      bub.style.top = top + "px"; bub.style.left = Math.max(16, Math.min(vw - bw - 16, r.left + r.width / 2 - bw / 2)) + "px";
+      bub.className = "tour-bubble " + (below ? "below" : "above");
+      bub.style.setProperty("--arrow", Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - parseFloat(bub.style.left))) + "px");
+    };
+    if (el) { var rr = el.getBoundingClientRect(); if (rr.top < 70 || rr.bottom > innerHeight - 40) { el.scrollIntoView({ block: "center" }); } }
+    requestAnimationFrame(place); T.place = place;
+    var nb = bub.querySelector("[data-tour=next]"); if (nb) nb.focus({ preventScroll: true });
+  }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-tour]"); if (!b || !S.tour) return;
+    var a = b.dataset.tour; if (a === "skip") return endTour();
+    if (a === "next") { if (S.tour.i >= S.tour.steps.length - 1) return endTour(); S.tour.i++; }
+    if (a === "back") S.tour.i = Math.max(0, S.tour.i - 1);
+    drawTour();
+  });
+  window.addEventListener("resize", function () { if (S.tour && S.tour.place) S.tour.place(); });
+  window.addEventListener("scroll", function () { if (S.tour && S.tour.place) S.tour.place(); }, { passive: true });
+  document.addEventListener("keydown", function (e) {
+    if (!S.tour) return;
+    if (e.key === "Escape") { e.stopPropagation(); endTour(); }
+    if (e.key === "ArrowRight") { if (S.tour.i < S.tour.steps.length - 1) { S.tour.i++; drawTour(); } else endTour(); }
+    if (e.key === "ArrowLeft" && S.tour.i) { S.tour.i--; drawTour(); }
+  }, true);
 
   /* ---------------- contract & billing ---------------- */
   // Every number comes from the same math, so the overview, the bar, the breakdown and the invoices always agree.
@@ -525,7 +686,7 @@
     var table = list.length ? '<div class="card tbl" data-lenis-prevent><table class="t inv"><thead><tr><th>Invoice</th><th>Issued</th><th class="num">Work billed</th>' + (showRet ? '<th class="num">Retainage</th>' : "") + '<th class="num">Amount due</th>' + (m.has ? '<th class="num">Contract left after</th>' : "") + "<th>Status</th><th></th></tr></thead><tbody>" +
       list.map(function (i) {
         var counted = m.after[i.id] != null;
-        return "<tr" + (counted ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + esc(i.number) + "</b><div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + (i.due ? "<div class='muted small'>Due " + day(i.due) + "</div>" : "") + "</td>" +
+        return '<tr id="inv-' + esc(i.id) + '"' + (counted ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + esc(i.number) + "</b><div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + (i.due ? "<div class='muted small'>Due " + day(i.due) + "</div>" : "") + "</td>" +
           '<td class="num">' + money(i.amount) + "</td>" + (showRet ? '<td class="num">' + (i.retainage ? (i.retainage > 0 ? "−" : "+") + money(Math.abs(i.retainage)) + (i.retainage < 0 ? "<div class='muted small'>released</div>" : "") : "—") + "</td>" : "") +
           '<td class="num"><b style="font-weight:500">' + money(i.amount - (i.retainage || 0)) + "</b></td>" + (m.has ? '<td class="num">' + (counted ? money(m.after[i.id]) : "—") + "</td>" : "") + "<td>" + pill(i.status) + "</td>" +
           '<td><div class="row-actions">' + (i.pdf ? '<a class="btn ghost sm" href="' + esc(i.pdf) + '" target="_blank" rel="noopener noreferrer">PDF</a>' : "") +
@@ -538,7 +699,7 @@
 
   function checkRow(c) {
     var done = isDone(c.done), can = staff() || (c.owner === "client" && asClient());
-    return '<div class="ck ' + (done ? "done" : "") + '"><button class="box" data-a="toggle" data-id="' + esc(c.id) + '"' + (can ? "" : " disabled") + ' aria-label="' + (done ? "Mark not done" : "Mark done") + '">' + (done ? "✓" : "") + "</button>" +
+    return '<div class="ck ' + (done ? "done" : "") + '" id="ck-' + esc(c.id) + '"><button class="box" data-a="toggle" data-id="' + esc(c.id) + '"' + (can ? "" : " disabled") + ' aria-label="' + (done ? "Mark not done" : "Mark done") + '">' + (done ? "✓" : "") + "</button>" +
       '<div><span class="txt">' + esc(c.item) + "</span>" + (done && c.done_by ? "<small>Done by " + esc(c.done_by) + " · " + day(c.done_at) + "</small>" : c.due ? "<small>Due " + day(c.due) + "</small>" : "") + "</div>" +
       '<span class="pill ' + (c.owner === "client" ? "gold" : "") + '">' + (c.owner === "client" ? (!asClient() ? "Client" : "You") : "Blue Sierra") + "</span>" +
       (staff() ? '<span style="display:flex;gap:6px"><button class="icon-btn" data-a="modal" data-m="check" data-id="' + esc(c.id) + '" aria-label="Edit">✎</button><button class="icon-btn" data-a="delCheck" data-id="' + esc(c.id) + '" aria-label="Delete">×</button></span>' : "<span></span>") + "</div>";
@@ -839,6 +1000,11 @@
         return go(b.dataset.p, "messages");
       case "teamOff": if (confirm("Turn off this person's access? They won't be able to log in.")) run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; render(); toast("Access turned off"); }); return;
       case "teamOn": run(b, async function () { await call("addPerson", { email: b.dataset.email, name: b.dataset.name, role: "staff" }); S.team = null; render(); toast("Access back on"); }); return;
+      case "ref": return openRef(b.dataset.ref, b.dataset.p);
+      case "bell": S.bell = !S.bell; if (S.bell) loadNotif(); return keepScroll(render);
+      case "bellClose": S.bell = false; return keepScroll(render);
+      case "markAll": markAllRead(); return;
+      case "tour": S.bell = false; keepScroll(render); return startTour(true);
       case "schedDay": S.modal = { type: "schedDay", kind: b.dataset.kind || "", day: b.dataset.day }; return keepScroll(render);
       case "schedView":
         var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];

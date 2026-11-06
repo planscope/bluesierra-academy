@@ -39,7 +39,7 @@ var TABLES = {
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
-  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions"],
+  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref"],
   Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
@@ -151,8 +151,8 @@ var ACTIONS = {
 
   listProjects: function (me) {
     var all = rows("Projects").filter(function (p) { return canSee(me, p.id) && (isStaff(me) || p.status !== "archived"); });
-    var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline"), lines = rows("ContractLines"), reads = readsAll(me);
-    return { me: publicMe(me), projects: all.map(function (p) { return summary(p, inv, msgs, tl, me, lines, reads); }) };
+    var inv = rows("Invoices"), msgs = rows("Messages"), tl = rows("Timeline"), lines = rows("ContractLines"), reads = readsAll(me), ck = rows("Checklist"), sc = rows("Schedule");
+    return { me: publicMe(me), projects: all.map(function (p) { var o = summary(p, inv, msgs, tl, me, lines, reads); o.needs = needsOf(p, ck, sc, inv); return o; }) };
   },
 
   getProject: function (me, b) {
@@ -249,6 +249,7 @@ var ACTIONS = {
     var text = clean(b.text, 5000); if (!text && !(b.photos || []).length) throw new Error("Write something or add photos.");
     var uid = newId("u"), ids = savePhotos(me, p, b.photos || [], "", uid);
     insert("Timeline", { id: uid, project_id: p.id, at: now(), author: me.name, text: text, photo_ids: ids.join(","), emailed: b.notify ? "yes" : "" });
+    postEvent(p, me, "update", "posted a project update" + (ids.length ? " with " + ids.length + " photo" + (ids.length > 1 ? "s" : "") : ""), text.slice(0, 240), "update:" + uid);
     if (b.notify) safeMail(function () { emailClients(p, "Project update: " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + (ids.length ? "<p>" + ids.length + " new photo" + (ids.length > 1 ? "s" : "") + " in the portal.</p>" : "") + button("See the update")); }, "Posted, but the email to the client couldn't be sent.");
     return {};
   },
@@ -329,7 +330,7 @@ var ACTIONS = {
     var list = rows("Messages").filter(function (m) { return seen[m.project_id] && mine.indexOf(chOf(m)) > -1; }).reverse().slice(0, lim);
     return { items: list.map(function (m) {
       var o = { id: m.id, project_id: m.project_id, project: seen[m.project_id].name, channel: chOf(m), thread_id: m.thread_id, kind: m.kind, author: m.author, role: m.role,
-        at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email };
+        at: m.at, text: String(m.text).slice(0, 400), files: parseJson(m.files, []).length, mine: m.author_email === me.email, ref: m.ref || "", status: m.kind === "event" ? m.status : "" };
       o.unread = !o.mine && m.at > (reads[m.project_id + "|" + o.channel] || "");
       o.mention = mentions(m.text, me.name);
       return o;
@@ -376,8 +377,12 @@ var ACTIONS = {
     }
     var pdfId = patch.pdf_file_id || (old && old.pdf_file_id);
     if (pdfId) try { DriveApp.getFileById(pdfId).setSharing(patch.status === "void" || patch.status === "draft" ? DriveApp.Access.PRIVATE : DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    var wasVisible = old && ["sent", "paid"].indexOf(old.status) > -1;
     if (id) update("Invoices", "id", id, patch);
     else { id = newId("i"); patch.id = id; patch.project_id = p.id; if (patch.notes == null) patch.notes = ""; insert("Invoices", patch); }
+    var dueNow = num(patch.amount != null ? patch.amount : old && old.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage);
+    if (patch.status === "sent" && !wasVisible) postEvent(p, me, "invoice", "sent invoice " + patch.number, (patch.title ? patch.title + " · " : "") + "$" + money(dueNow) + " due" + (patch.due ? " by " + patch.due : ""), "invoice:" + id);
+    if (patch.status === "paid" && (!old || old.status !== "paid")) postEvent(p, me, "paid", "marked invoice " + patch.number + " as paid", "$" + money(dueNow) + " received. Thank you!", "invoice:" + id);
     if (b.notify && patch.status === "sent") safeMail(function () {
       emailClients(p, "Invoice " + patch.number + " · " + p.name,
         "<p>A new invoice is ready in your portal: <b>" + esc(patch.title || patch.number) + "</b>, $" + money(num(patch.amount) - num(patch.retainage != null ? patch.retainage : old && old.retainage)) + (patch.due ? ", due " + esc(patch.due) : "") + ".</p>" + button("See the invoice"));
@@ -397,7 +402,11 @@ var ACTIONS = {
       var it = findBy("ContractLines", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Line not found.");
       if (patch.status === "rejected" && billedOn(p.id, it.id)) throw new Error("Invoices already bill this change order, so it can't be rejected.");
       update("ContractLines", "id", f.id, patch);
-    } else { patch.id = newId("c"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("ContractLines", patch); }
+      if (kind === "change" && patch.status !== it.status && patch.status !== "rejected") coEvent(p, me, patch, f.id, patch.status === "approved" ? "approved" : "proposed");
+    } else {
+      patch.id = newId("c"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("ContractLines", patch);
+      if (kind === "change" && patch.status !== "rejected") coEvent(p, me, patch, patch.id, patch.status === "approved" ? "added an approved" : "proposed a");
+    }
     return {};
   },
   deleteContractLine: function (me, b) {
@@ -411,7 +420,10 @@ var ACTIONS = {
     var patch = { phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : CONFIG.PHASES[0], item: clean(f.item, 300), owner: f.owner === "client" ? "client" : "blue sierra", due: dateOrEmpty(f.due) };
     if (!patch.item) throw new Error("Write the checklist item.");
     if (f.id) { var it = findBy("Checklist", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Checklist", "id", f.id, patch); }
-    else { patch.id = newId("c"); patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); insert("Checklist", patch); }
+    else {
+      patch.id = newId("c"); patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); insert("Checklist", patch);
+      if (patch.owner === "client") postEvent(p, me, "todo", "added a to-do for the client", patch.item + (patch.due ? " · due " + patch.due : ""), "check:" + patch.id);
+    }
     return {};
   },
   /* Schedule: Gantt tasks (start + end) and dated events (inspections, payments, decisions, meetings, milestones, deadlines). */
@@ -428,7 +440,10 @@ var ACTIONS = {
     if (patch.kind !== "task") patch.end = "";
     if (patch.end && patch.end < patch.start) throw new Error("The end date is before the start date.");
     if (f.id) { var it = findBy("Schedule", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Schedule", "id", f.id, patch); }
-    else { patch.id = newId("s"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("Schedule", patch); }
+    else {
+      patch.id = newId("s"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("Schedule", patch);
+      if (patch.kind !== "task") postEvent(p, me, "date", "added a date to the schedule", patch.title + " · " + patch.start, "sched:" + patch.id);
+    }
     return {};
   },
   deleteScheduleItem: function (me, b) { needStaff(me); var it = findBy("Schedule", "id", b.itemId); if (it) { needProject(me, it.project_id); removeWhere("Schedule", function (r) { return r.id === it.id; }); } return {}; },
@@ -454,6 +469,7 @@ var ACTIONS = {
     var done = !isTrue(it.done);
     update("Checklist", "id", it.id, { done: done ? "yes" : "", done_by: done ? me.name : "", done_at: done ? now() : "" });
     if (done && !isStaff(me)) notifyJesus(me.email, me.name + " checked off: " + it.item, "<p>" + esc(p.name) + "</p>" + button("Open the portal"));
+    if (done) postEvent(p, me, "done", "checked off a to-do", it.item, "check:" + it.id);
     return {};
   }
 };
@@ -639,12 +655,20 @@ function messagesOut(list, me) {
   return list.filter(function (m) { return mine.indexOf(chOf(m)) > -1; }).map(function (m) {
     var r = parseJson(m.reactions, {});
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
-      channel: chOf(m), thread_id: m.thread_id || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name),
+      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name),
       files: parseJson(m.files, []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: /^image\//.test(f.mime) ? img(f.id, 600) : "", full: /^image\//.test(f.mime) ? img(f.id, 2000) : "", url: "https://drive.google.com/file/d/" + f.id + "/view" }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (staff) o.author_email = m.author_email;                                  // clients never receive other people's email addresses
     return o;
   });
+}
+/* Events: things that happened (an invoice was sent, a to-do was added) show up in #client as colored cards. They never email anyone. */
+function postEvent(p, me, type, action, detail, ref, channel) {
+  insert("Messages", { id: newId("m"), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: (action + (detail ? "\n" + detail : "")).slice(0, 600),
+    question_id: "", status: type, via: "portal", channel: channel || "client", thread_id: "", files: "", reactions: "", ref: ref || "" });
+}
+function coEvent(p, me, line, id, verb) {
+  postEvent(p, me, "change", verb + " change order" + (line.number ? " " + line.number : ""), line.title + " · " + (num(line.amount) < 0 ? "−$" + money(-num(line.amount)) : "+$" + money(line.amount)), "co:" + id);
 }
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
@@ -676,6 +700,16 @@ function markReadNow(me, pid, ch) {
 function unreadOf(me, msgs, reads) {
   var mine = channelsFor(me);
   return msgs.filter(function (m) { var c = chOf(m); return mine.indexOf(c) > -1 && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;
+}
+/* What a project needs from the client soon: open to-dos, dates in the next 14 days, invoices due. Feeds the notification bell. */
+function needsOf(p, ck, sc, inv) {
+  var t = today(), lim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
+  return {
+    todos: ck.filter(function (c) { return c.project_id === p.id && c.owner === "client" && !isTrue(c.done); }).map(function (c) { return { id: c.id, item: c.item, due: c.due }; }).slice(0, 8),
+    dates: sc.filter(function (x) { return x.project_id === p.id && x.kind !== "task" && x.status !== "done" && x.start >= t && x.start <= lim; })
+      .sort(function (a, c) { return a.start < c.start ? -1 : 1; }).map(function (x) { return { id: x.id, kind: x.kind, title: x.title, start: x.start, owner: x.owner }; }).slice(0, 6),
+    invoices: inv.filter(function (i) { return i.project_id === p.id && i.status === "sent"; }).map(function (i) { return { id: i.id, number: i.number, due: i.due, amount: cents(num(i.amount) - num(i.retainage)), overdue: !!(i.due && i.due < t) }; })
+  };
 }
 /* ---- money: the same math as the Contract & billing tab ---- */
 function moneyOf(p, inv, lines) {
