@@ -234,6 +234,7 @@
 
   /* ---------------- render ---------------- */
   function render() {
+    if (S.step === "setpin" && !S.me) return renderLogin();
     if (!S.token || !S.me) {
       if (S.token && !S.me) {
         // A saved login, but we couldn't load the account (offline, or the portal isn't connected): say so instead of spinning forever.
@@ -298,18 +299,32 @@
     if (S.loginPick == null) S.loginPick = Math.floor(Math.random() * WORK.length);
     var w = WORK[S.loginPick]; return ["https://cdn.prod.website-files.com/69582886d4d5d7d43ba632a5/" + w[0], w[1]];
   }
+  /* This device remembers who logged in, so next time it's just the PIN. */
+  function loginStep() { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && r.email) { S.email = r.email; S.who = r.name; return "pin"; } } catch (e) {} return "email"; }
+  function remember(email, name) { try { localStorage.setItem("bsp-remember", JSON.stringify({ email: email, name: name || "" })); } catch (e) {} }
+  function forget() { try { localStorage.removeItem("bsp-remember"); } catch (e) {} S.who = ""; }
+  async function savePin(pin) {
+    await call("setPin", { pin: pin }); S.lastCode = null; S.resetPin = false;
+    S.me = S.pendingMe; S.me.hasPin = true; S.pendingMe = null; S.projects = null; toast("PIN saved 🔐 Next time, just your email and PIN."); return route();
+  }
+  (function () { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && r.email) { S.email = r.email; S.who = r.name; S.step = "pin"; } } catch (e) {} })();
   function renderLogin() {
     var demo = !API && window.BSP_MOCK, lp = loginPhoto();
     root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
       '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal</div>' +
-      (S.step === "email"
-        ? '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, questions, invoices and the checklist for your Blue Sierra project. Type your email and we\'ll send you a 6-digit code.</p>' +
-          '<form class="form" data-form="email"><label class="f">Email<input type="email" name="email" autocomplete="email" required value="' + esc(S.email) + '"></label><button class="btn" type="submit">Send my code</button></form>'
-        : '<h1>Check your email.</h1><p class="muted">We sent a 6-digit code to <b>' + esc(S.email) + '</b>. It works for 15 minutes.</p>' +
-          '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
-          '<button class="link" data-a="restart">Use a different email</button>') +
+      (S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
+          '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>' +
+          (S.lastCode ? '<button class="link" data-a="keepCode">Keep ' + esc(S.lastCode) + " as my PIN</button>" : "")
+        : S.step === "pin" ? "<h1>Welcome back" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Type your 6-digit PIN for <b>' + esc(S.email) + "</b>.</p>" +
+          '<form class="form" data-form="pin"><input type="email" name="username" autocomplete="username" value="' + esc(S.email) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
+          '<div class="login-links"><button class="link" data-a="forgotPin">Forgot my PIN</button><button class="link" data-a="restart">Not ' + esc(S.who || "you") + "? Use another email</button></div>"
+        : S.step === "code" ? "<h1>" + (S.resetPin ? "Reset your PIN." : "Check your email.") + '</h1><p class="muted">We sent a 6-digit code to <b>' + esc(S.email) + "</b>. It works for 15 minutes." + (S.resetPin ? " Then you'll choose a new PIN." : " It's only for this first time: next you'll choose your own PIN.") + "</p>" +
+          '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Continue</button></form>' +
+          '<button class="link" data-a="restart">Use a different email</button>'
+        : '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, chat, the schedule and invoices for your Blue Sierra project. Type your email to log in.</p>' +
+          '<form class="form" data-form="email"><label class="f">Email<input type="email" name="email" autocomplete="username email" required value="' + esc(S.email) + '"></label><button class="btn" type="submit">Continue</button></form>') +
       (S.err ? '<p class="error">' + esc(S.err) + "</p>" : "") +
-      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team) , <b>client@example.com</b> (client) or <b>architect@example.com</b> (architect) or <b>crew@example.com</b> (field crew). The code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
+      (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team), <b>client@example.com</b> (client), <b>architect@example.com</b> or <b>crew@example.com</b>. The first time the code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
       (!API && !window.BSP_MOCK ? '<p class="error">The portal isn\'t connected yet.</p>' : "") +
       "</div></section>";
     S.err = "";
@@ -368,7 +383,7 @@
         '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + roleName(x.role) + (x.role === "crew" ? " · " + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email && x.role !== "admin" ? (x.active ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '">Turn off</button>' : '<button class="btn ghost sm" data-a="teamOn" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Turn back on</button>') : "") + "</div>";
     }).join("") + "</div>" +
-      (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email and a 6-digit code.</p>' +
+      (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
         '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
         '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add to the team</button></div></form>'
         : '<p class="muted small" style="margin-top:12px">Only Jesús can add or remove team members. Clients and architects are added from each project’s People tab.</p>');
@@ -1491,7 +1506,8 @@
         '<form class="form fx-form" data-form="profile"><div class="ch-row"><span class="ch-label">Skin tone</span><div class="ch-opts">' + FX_TONES.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.t === i ? " on" : "") + '" data-a="fxTone" data-v="' + i + '" style="background:' + c + '" aria-label="Skin tone ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
         '<div class="fx-grid">' + FX_PEOPLE.map(tile).join("") + '</div><div class="ch-label" style="margin-top:4px">Faces & friends</div><div class="fx-grid">' + FX_FUN.map(tile).join("") + "</div>" +
         '<div class="ch-row"><span class="ch-label">Background</span><div class="ch-opts">' + FX_BG.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.bg === i ? " on" : "") + '" data-a="fxBg" data-v="' + i + '" style="background:' + c + '" aria-label="Background ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
-        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>' +
+        '<form class="form pin-form" data-form="changepin"><div class="ch-label">🔐 ' + (S.me.hasPin ? "Change my PIN" : "Set a PIN so you can log in without codes") + '</div><div class="pin-row"><input type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" placeholder="6 digits" required><button class="btn ghost sm" type="submit">Save PIN</button></div></form>';
     }
     if (m.type === "thread") {
       var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
@@ -1544,10 +1560,12 @@
     if (b.tagName === "A") return;
     e.preventDefault();
     switch (a) {
-      case "restart": S.step = "email"; return render();
+      case "forgotPin": run(b, async function () { await call("requestCode", { email: S.email }); S.resetPin = true; S.step = "code"; render(); }); return;
+      case "keepCode": run(b, async function () { await savePin(S.lastCode); }); return;
+      case "restart": forget(); S.step = "email"; return render();
       case "retry": root.innerHTML = '<div class="loading">Loading…</div>'; return route();
-      case "forget": store("del"); resetState(); S.step = "email"; return render();
-      case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); resetState(); S.step = "email"; history.pushState(null, "", location.pathname + location.search); render(); }); return;
+      case "forget": store("del"); resetState(); S.step = loginStep(); return render();
+      case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); resetState(); S.step = loginStep(); history.pushState(null, "", location.pathname + location.search); render(); }); return;
       case "home": refreshList(); return go(null);
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
@@ -1757,14 +1775,26 @@
       if (!keys.length) return toast("Pick at least one person.");
       return startCallNow(btn, keys);
     }
-    run(btn, async function () {
+    var loginForm = ["email", "pin", "code", "setpin"].indexOf(kind) > -1;
+    run(btn, async function () { try { await submitForm(); } catch (e) { if (!loginForm) throw e; S.err = e.message; renderLogin(); } }).catch(function () {});
+    async function submitForm() {
       if (kind === "email") {
-        S.email = v("email").toLowerCase(); await call("requestCode", { email: S.email }); S.step = "code"; return render();
+        S.email = v("email").toLowerCase(); var ce = await call("checkEmail", { email: S.email }); S.who = ce.name;
+        if (ce.hasPin) { S.step = "pin"; return render(); }
+        await call("requestCode", { email: S.email }); S.step = "code"; S.resetPin = false; return render();
+      }
+      if (kind === "pin") {
+        var rp = await call("loginPin", { email: S.email, pin: v("pin") }); remember(S.email, S.who);
+        S.token = rp.token; store("set", rp.token); S.me = rp.me; S.projects = null; return route();
       }
       if (kind === "code") {
-        var r = await call("verifyCode", { email: S.email, code: v("code") });
-        S.token = r.token; store("set", r.token); S.me = r.me; S.projects = null; return route();
+        var r = await call("verifyCode", { email: S.email, code: v("code"), resetPin: !!S.resetPin });
+        S.token = r.token; store("set", r.token); remember(S.email, S.who || first(r.me.name));
+        if (r.needPin) { S.pendingMe = r.me; S.lastCode = v("code").replace(/\D/g, ""); S.step = "setpin"; S.me = null; return renderLogin(); }
+        S.me = r.me; S.projects = null; return route();
       }
+      if (kind === "setpin") { await savePin(v("pin")); return; }
+      if (kind === "changepin") { await call("setPin", { pin: v("pin") }); S.me.hasPin = true; f.reset(); toast("PIN saved 🔐"); return; }
       if (kind === "update") {
         var sentU = S.pending.slice();
         await call("postUpdate", { projectId: S.pid, text: v("text"), photos: sentU, notify: !!fd.get("notify") });
@@ -1840,7 +1870,7 @@
         await call("saveChecklistItem", { projectId: S.pid, item: { id: S.modal.id || undefined, item: v("item"), phase: v("phase"), owner: v("owner"), due: v("due") } });
         S.modal = null; await refresh(); toast("Checklist updated"); return;
       }
-    }).catch(function () {});
+    }
   });
 
   /* Login errors show on the login screen, not only as a toast. */

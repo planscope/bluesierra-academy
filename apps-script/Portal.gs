@@ -23,10 +23,12 @@ var CONFIG = {
   TZ: "America/Los_Angeles",
   DB_NAME: "Blue Sierra Portal · database",
   ROOT_FOLDER: "Blue Sierra Portal",
-  SESSION_DAYS: 30,
+  SESSION_DAYS: 180,        // stay logged in for about six months on a device
+  PIN_TRIES: 5,             // wrong PINs before a 15-minute lock
+  PIN_LOCK_MIN: 15,
   CODE_MINUTES: 15,
-  CODES_PER_15MIN: 3,       // login-code emails per address
-  CODES_PER_6H: 8,
+  CODES_PER_15MIN: 5,       // login-code emails per address (codes are only for the first time and for a forgotten PIN)
+  CODES_PER_6H: 20,
   CODES_PER_DAY: 200,       // across the whole portal
   MAIL_RESERVE: 40,         // stop sending codes/notices when the day's mail quota gets this low
   NOTICES_PER_HOUR: 10,     // client-triggered notices to Jesús, per person
@@ -36,7 +38,7 @@ var CONFIG = {
 
 var TABLES = {
   Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon"],
-  People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar"],
+  People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar", "pin_hash", "pin_salt", "pin_fails", "pin_lock"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
@@ -95,12 +97,36 @@ function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLoc
 
 /* ============================ login ============================ */
 
+var NO_ACCESS = "This email doesn't have access to the portal. Ask Blue Sierra to add you: info@bluesierracorp.com";
 var PUBLIC = {
+  /* Step 1: who is this? People with a PIN type it; new people (or a forgotten PIN) get a code by email. */
+  checkEmail: function (b) {
+    var email = normEmail(b.email);
+    if (!email || email.length > 200 || email.indexOf("@") < 1) throw new Error("That email doesn't look right.");
+    var person = findPerson(email);
+    if (!person || !isTrue(person.active)) throw new Error(NO_ACCESS);
+    return { hasPin: !!person.pin_hash, name: first(person.name) };
+  },
+  /* Everyday login: email + your 6-digit PIN. Five wrong tries lock it for 15 minutes. */
+  loginPin: function (b) {
+    var email = normEmail(b.email), person = findPerson(email);
+    if (!person || !isTrue(person.active)) throw new Error(NO_ACCESS);
+    if (!person.pin_hash) throw new Error("You haven't set a PIN yet. We'll email you a code to set it.");
+    var lock = Number(person.pin_lock || 0);
+    if (lock > Date.now()) throw new Error("Too many wrong PINs. Try again in " + Math.ceil((lock - Date.now()) / 60000) + " min, or use “Forgot PIN”.");
+    if (sha(person.pin_salt + ":" + String(b.pin || "").replace(/\D/g, "")) !== person.pin_hash) {
+      var fails = Number(person.pin_fails || 0) + 1, locked = fails >= CONFIG.PIN_TRIES;
+      update("People", "email", email, { pin_fails: locked ? "0" : String(fails), pin_lock: locked ? String(Date.now() + CONFIG.PIN_LOCK_MIN * 60000) : "" });
+      throw new Error(locked ? "Too many wrong PINs. It's locked for " + CONFIG.PIN_LOCK_MIN + " minutes, or use “Forgot PIN”." : "That PIN isn't right. " + (CONFIG.PIN_TRIES - fails) + " tr" + (CONFIG.PIN_TRIES - fails === 1 ? "y" : "ies") + " left.");
+    }
+    if (person.pin_fails && person.pin_fails !== "0") update("People", "email", email, { pin_fails: "0", pin_lock: "" });
+    return { token: newSession(email), me: publicMe(person) };
+  },
   requestCode: function (b) {
     var email = normEmail(b.email);
     if (!email || email.length > 200) throw new Error("That email doesn't look right.");
     var person = findPerson(email);
-    if (!person || !isTrue(person.active)) return { sent: true };      // same answer, nothing stored, nothing sent
+    if (!person || !isTrue(person.active)) throw new Error(NO_ACCESS);
     var cache = CacheService.getScriptCache(), k15 = "req15:" + email, k6 = "req6:" + email;
     var n15 = Number(cache.get(k15) || 0), n6 = Number(cache.get(k6) || 0);
     if (n15 >= CONFIG.CODES_PER_15MIN || n6 >= CONFIG.CODES_PER_6H) throw new Error("Too many codes requested. Wait 15 minutes and try again.");
@@ -125,11 +151,15 @@ var PUBLIC = {
     cache.remove("code:" + email);
     var person = findPerson(email);
     if (!person || !isTrue(person.active)) throw bad;
-    var token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
-    insert("Sessions", { token_hash: sha(token), email: email, expires_at: new Date(Date.now() + CONFIG.SESSION_DAYS * 864e5).toISOString(), created_at: now() });
-    return { token: token, me: publicMe(person) };
+    if (person.pin_lock) update("People", "email", email, { pin_fails: "0", pin_lock: "" });      // the emailed code proves it's you: unlock
+    return { token: newSession(email), me: publicMe(person), needPin: !person.pin_hash || !!b.resetPin };
   }
 };
+function newSession(email) {
+  var token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  insert("Sessions", { token_hash: sha(token), email: email, expires_at: new Date(Date.now() + CONFIG.SESSION_DAYS * 864e5).toISOString(), created_at: now() });
+  return token;
+}
 
 function auth(token) {
   if (!token || String(token).length < 40) throw new Error("Please log in again.");
@@ -144,7 +174,7 @@ function auth(token) {
   p.projects = splitIds(p.project_ids); p.tokenHash = h;
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pkey(p.email), avatar: p.avatar || "" }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash }; }
 /* Roles: admin (Jesús: everything), staff (project managers), crew (field: their projects, #team, plans and schedule, no money), client, architect. */
 function isTeam(p) { return isStaff(p) || p.role === "crew"; }
 function pkey(email) { return sha("bsp:" + normEmail(email)).slice(0, 10); }      // a person id that never reveals the email
@@ -380,6 +410,15 @@ var ACTIONS = {
       o.mention = mentions(m.text, me.name);
       return o;
     }) };
+  },
+  /* Your PIN: 6 digits, stored only as a salted hash. */
+  setPin: function (me, b) {
+    var pin = String(b.pin || "").replace(/\D/g, "");
+    if (!/^\d{6}$/.test(pin)) throw new Error("The PIN has to be 6 digits.");
+    if (/^(\d)\1{5}$/.test(pin) || "0123456789".indexOf(pin) > -1 || "9876543210".indexOf(pin) > -1) throw new Error("That PIN is too easy to guess. Try another one.");
+    var salt = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
+    update("People", "email", me.email, { pin_salt: salt, pin_hash: sha(salt + ":" + pin), pin_fails: "0", pin_lock: "" });
+    return {};
   },
   /* Your own profile picture: a fun character on a color. */
   saveProfile: function (me, b) {

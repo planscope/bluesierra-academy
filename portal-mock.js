@@ -114,18 +114,27 @@
   function cents(v) { return Math.round(num(v) * 100) / 100; }
   function mail(db, to, subject) { db.outbox.push({ to: to, subject: subject, at: now() }); }
 
+  var NO_ACCESS = "This email doesn't have access to the portal. Ask Blue Sierra to add you: info@bluesierracorp.com";
+  function person(db, e) { return db.people.filter(function (p) { return p.email === e && p.active === "yes"; })[0]; }
   var PUBLIC = {
-    requestCode: function (db, b) { var e = clean(b.email, 200).toLowerCase(); if (db.people.some(function (p) { return p.email === e && p.active === "yes"; })) { db.codes[e] = "123456"; mail(db, e, "Your portal code"); } return { sent: true }; },
+    checkEmail: function (db, b) { var e = clean(b.email, 200).toLowerCase(), p = person(db, e); if (!p) throw new Error(NO_ACCESS); return { hasPin: !!p.pin, name: p.name.split(" ")[0] }; },
+    loginPin: function (db, b) {
+      var e = clean(b.email, 200).toLowerCase(), p = person(db, e); if (!p) throw new Error(NO_ACCESS); if (!p.pin) throw new Error("You haven't set a PIN yet.");
+      if (p.pinLock > Date.now()) throw new Error("Too many wrong PINs. Try again in " + Math.ceil((p.pinLock - Date.now()) / 60000) + " min, or use “Forgot PIN”.");
+      if (String(b.pin) !== p.pin) { p.pinFails = (p.pinFails || 0) + 1; if (p.pinFails >= 5) { p.pinFails = 0; p.pinLock = Date.now() + 15 * 60000; throw new Error("Too many wrong PINs. It's locked for 15 minutes, or use “Forgot PIN”."); } throw new Error("That PIN isn't right. " + (5 - p.pinFails) + " tries left."); }
+      p.pinFails = 0; var t = id() + id() + id() + id() + id(); db.sessions[t] = e; return { token: t, me: meOut(p) };
+    },
+    requestCode: function (db, b) { var e = clean(b.email, 200).toLowerCase(); if (!person(db, e)) throw new Error(NO_ACCESS); db.codes[e] = "123456"; mail(db, e, "Your portal code"); return { sent: true }; },
     verifyCode: function (db, b) {
       var e = clean(b.email, 200).toLowerCase();
       if (!db.codes[e]) throw new Error("That code expired. Ask for a new one.");
       if (String(b.code).replace(/\D/g, "") !== db.codes[e]) throw new Error("That code isn't right.");
       delete db.codes[e]; var t = id() + id() + id() + id() + id(); db.sessions[t] = e;
       var p = db.people.filter(function (x) { return x.email === e; })[0];
-      return { token: t, me: meOut(p) };
+      p.pinLock = 0; return { token: t, me: meOut(p), needPin: !p.pin || !!b.resetPin };
     }
   };
-  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pk(p.email), avatar: p.avatar || "" }; }
+  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", key: pk(p.email), avatar: p.avatar || "", hasPin: !!p.pin }; }
   function pk(e) { var h = 0; String(e).split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return ("0000000000" + h.toString(16)).slice(-10); }
   function isTeam(p) { return isStaff(p) || p.role === "crew"; }
   function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
@@ -319,6 +328,8 @@
         return { key: pk(x.email), name: x.name, role: x.role, avatar: x.avatar || "", state: state, last: Date.now() - (smp ? 20000 : 3 * 3600000), inCall: false, pid: pr ? pr.id : "", project: pr ? pr.name : "", tab: pr ? smp[2] : "",
           shared: db.projects.filter(function (q) { return canSee(me, q.id) && (isStaff(x) || ids(x.project_ids).indexOf(q.id) > -1); }).map(function (q) { return q.id; }) }; }) };
     },
+    setPin: function (db, me, b) { var pin = String(b.pin || ""); if (!/^\d{6}$/.test(pin)) throw new Error("The PIN has to be 6 digits."); if (/^(\d)\1{5}$/.test(pin) || "0123456789".indexOf(pin) > -1 || "9876543210".indexOf(pin) > -1) throw new Error("That PIN is too easy to guess. Try another one.");
+      db.people.filter(function (q) { return q.email === me.email; })[0].pin = pin; return {}; },
     deleteInvoice: function (db, me, b) { needStaff(me); db.invoices = db.invoices.filter(function (i) { return i.id !== b.invoiceId; }); db.messages = db.messages.filter(function (m) { return m.ref !== "invoice:" + b.invoiceId; }); return {}; },
     deleteUpdate: function (db, me, b) { needStaff(me); db.timeline = db.timeline.filter(function (t) { return t.id !== b.updateId; }); db.messages = db.messages.filter(function (m) { return m.ref !== "update:" + b.updateId; }); return {}; },
     togglePin: function (db, me, b) { needStaff(me); var list = b.kind === "update" ? db.timeline : db.messages, it = list.filter(function (x) { return x.id === b.id; })[0]; if (!it) throw new Error("Not found."); it.pinned = it.pinned === "yes" ? "" : "yes"; return { pinned: it.pinned === "yes" }; },
