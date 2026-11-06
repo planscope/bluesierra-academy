@@ -25,9 +25,9 @@
         { email: "jesus@example.com", name: "Jesús Toto", role: "admin", project_ids: "", active: "yes" },
         { email: "client@example.com", name: "Sample Client", role: "client", project_ids: "p1", active: "yes" },
         { email: "client2@example.com", name: "Second Client", role: "client", project_ids: "p2", active: "yes" },
-        { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes", avatar: "v1:skin=1;hair=7;hairc=1;hat=1;beard=3;glasses=0;shirt=1;bg=3;face=1" },
-        { email: "maria@example.com", name: "Maria Team", role: "staff", project_ids: "", active: "yes", created_at: "2026-09-01 09:00", avatar: "🦉|#e7eef7" },
-        { email: "crew@example.com", name: "Carlos Crew", role: "crew", project_ids: "p1", active: "yes", created_at: "2026-10-01 07:00", avatar: "🚜|#fdf4dc" }
+        { email: "architect@example.com", name: "Sample Architect", role: "architect", project_ids: "p1", active: "yes", avatar: "fx:cowboy-hat-face;t=0;bg=3" },
+        { email: "maria@example.com", name: "Maria Team", role: "staff", project_ids: "", active: "yes", created_at: "2026-09-01 09:00", avatar: "fx:woman-office-worker;t=2;bg=2" },
+        { email: "crew@example.com", name: "Carlos Crew", role: "crew", project_ids: "p1", active: "yes", created_at: "2026-10-01 07:00", avatar: "fx:man-construction-worker;t=4;bg=0" }
       ],
       photos: [
         ph("ph1", "Sample photo · retaining wall", "#7d6a55", "#2f3a33", "Retaining wall, east side", "2026-11-03 15:20", "u3"),
@@ -309,11 +309,17 @@
       // Preview: a few sample people "online" so the panel has something to show.
       var sample = { "maria@example.com": ["online", "p1", "plans"], "architect@example.com": ["busy", "p1", "messages"], "crew@example.com": ["away", "p1", "schedule"] };
       var mine = { s: ["available", "busy", "away"].indexOf(b.status) > -1 ? b.status : "available", at: Date.now(), pid: b.pid || "", tab: b.tab || "" };
-      return { me: mine, people: db.people.filter(function (x) { return x.active === "yes" && x.email !== me.email && (isStaff(me) || isStaff(x) || ids(x.project_ids).some(function (id) { return canSee(me, id); })); }).map(function (x) {
+      var rd = readsOf(db, me), mineMsgs = db.messages.filter(function (m) { return canSee(me, m.project_id) && m.author_email !== me.email && canRead(me, chOf(m)); }), nw = mineMsgs[mineMsgs.length - 1];
+      var unread = mineMsgs.filter(function (m) { return m.at > (rd[m.project_id + "|" + chOf(m)] || ""); }).length, pj = nw && db.projects.filter(function (q) { return q.id === nw.project_id; })[0];
+      var pulse = nw ? { id: nw.id, at: nw.at, author: nw.author, avatar: (db.people.filter(function (x) { return x.email === nw.author_email; })[0] || {}).avatar || "", akey: pk(nw.author_email), text: String(nw.text).split("\n")[0], kind: nw.kind, pid: nw.project_id, project: pj ? pj.name : "", channel: chOf(nw), thread_id: nw.thread_id || "", dm: isDm(chOf(nw)), unread: unread } : { unread: unread };
+      return { me: mine, pulse: pulse, people: db.people.filter(function (x) { return x.active === "yes" && x.email !== me.email && (isStaff(me) || isStaff(x) || ids(x.project_ids).some(function (id) { return canSee(me, id); })); }).map(function (x) {
         var smp = sample[x.email], state = smp ? smp[0] : "offline", pr = db.projects.filter(function (q) { return smp && q.id === smp[1] && canSee(me, q.id); })[0];
         return { key: pk(x.email), name: x.name, role: x.role, avatar: x.avatar || "", state: state, last: Date.now() - (smp ? 20000 : 3 * 3600000), inCall: false, pid: pr ? pr.id : "", project: pr ? pr.name : "", tab: pr ? smp[2] : "",
           shared: db.projects.filter(function (q) { return canSee(me, q.id) && (isStaff(x) || ids(x.project_ids).indexOf(q.id) > -1); }).map(function (q) { return q.id; }) }; }) };
     },
+    deleteInvoice: function (db, me, b) { needStaff(me); db.invoices = db.invoices.filter(function (i) { return i.id !== b.invoiceId; }); db.messages = db.messages.filter(function (m) { return m.ref !== "invoice:" + b.invoiceId; }); return {}; },
+    deleteUpdate: function (db, me, b) { needStaff(me); db.timeline = db.timeline.filter(function (t) { return t.id !== b.updateId; }); db.messages = db.messages.filter(function (m) { return m.ref !== "update:" + b.updateId; }); return {}; },
+    togglePin: function (db, me, b) { needStaff(me); var list = b.kind === "update" ? db.timeline : db.messages, it = list.filter(function (x) { return x.id === b.id; })[0]; if (!it) throw new Error("Not found."); it.pinned = it.pinned === "yes" ? "" : "yes"; return { pinned: it.pinned === "yes" }; },
     saveProfile: function (db, me, b) { var x = db.people.filter(function (q) { return q.email === me.email; })[0]; x.avatar = b.avatar || ""; return { avatar: x.avatar }; },
     deleteProject: function (db, me, b) { if (me.role !== "admin") throw new Error("Only Jesús can delete projects."); var p = needProject(db, me, b.projectId);
       if (String(b.confirm || "").trim().toLowerCase() !== p.name.trim().toLowerCase()) throw new Error("Type the project name exactly to delete it."); p.status = "deleted"; return {}; },

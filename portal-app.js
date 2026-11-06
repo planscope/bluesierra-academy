@@ -4,6 +4,7 @@
 (function () {
   "use strict";
   var root = document.getElementById("bs-portal");
+  var BASE = ((document.currentScript && document.currentScript.src) || "").replace(/[^\/]*(\?.*)?$/, "");   // where portal-app.js (and the avatars folder) live
   if (!root) return;
   // Google Drive refuses to serve photos to other sites' pages unless the request carries no referrer.
   if (!document.querySelector('meta[name="referrer"]')) { var mr = document.createElement("meta"); mr.name = "referrer"; mr.content = "no-referrer"; document.head.appendChild(mr); }
@@ -86,13 +87,21 @@
     out.push("</svg>");
     return out.join("");
   }
-  /* A person's picture: their drawn character, an older emoji pick, or a character made up from their id. */
+  /* ---- 3D characters (Microsoft Fluent Emoji, MIT): people in six skin tones, plus faces and animals ---- */
+  var FX_PEOPLE = [["man-construction-worker", "Builder"], ["woman-construction-worker", "Builder"], ["man-farmer", "Farmer"], ["woman-farmer", "Farmer"], ["man-mechanic", "Mechanic"], ["woman-mechanic", "Mechanic"],
+    ["man-office-worker", "Office"], ["woman-office-worker", "Office"], ["man-technologist", "Tech"], ["woman-technologist", "Tech"], ["man-artist", "Designer"], ["woman-artist", "Designer"], ["detective", "Detective"], ["ninja", "Ninja"]];
+  var FX_FUN = [["cowboy-hat-face", "Cowboy"], ["smiling-face-with-sunglasses", "Cool"], ["fox", "Fox"], ["bear", "Bear"], ["owl", "Owl"], ["frog", "Frog"], ["lion", "Lion"], ["unicorn", "Unicorn"], ["dog-face", "Dog"], ["cat-face", "Cat"], ["panda", "Panda"]];
+  var FX_TONES = ["#ffc83d", "#f7d7c4", "#d8b094", "#bb9167", "#8e562e", "#613d30"];
+  var FX_BG = ["#f3e7d3", "#e3efe7", "#e7eef7", "#efecfb", "#fdeee7", "#e8f4f4", "#f6f2eb", "#1d1d1b", "#2f6b4a", "#c39a5a"];
+  function fxParse(v) { var m = String(v || "").match(/^fx:([a-z-]+);t=(\d);bg=(\d)$/); return m ? { slug: m[1], t: +m[2], bg: +m[3] } : null; }
+  function fxSrc(o) { var tone = FX_PEOPLE.some(function (p) { return p[0] === o.slug; }); return BASE + "avatars/" + o.slug + (tone ? "-" + o.t : "") + ".png"; }
+  /* A person's picture: their 3D character, an older pick, or their initials. */
   function av(name, avatar, role, cls, key) {
-    var a = String(avatar || ""), dot = key && S.presence ? presDot(key) : "";
+    var a = String(avatar || ""), dot = key && S.presence ? presDot(key) : "", fx = fxParse(a);
+    if (fx) return '<div class="avatar fx ' + (cls || "") + '" style="background:' + FX_BG[fx.bg] + '" title="' + esc(name) + '"><img src="' + esc(fxSrc(fx)) + '" alt="" loading="lazy">' + dot + "</div>";
     if (/^v1:/.test(a)) return '<div class="avatar drawn ' + (cls || "") + '" title="' + esc(name) + '">' + chSvg(chParse(a)) + dot + "</div>";
     var e = a.split("|");
     if (e[0] && AVATARS.indexOf(e[0]) > -1) return '<div class="avatar char ' + (cls || "") + '" style="background:' + esc(e[1] || "#f3e7d3") + '" title="' + esc(name) + '">' + e[0] + dot + "</div>";
-    if (key) return '<div class="avatar drawn ' + (cls || "") + '" title="' + esc(name) + '">' + chSvg(chFromKey(key)) + dot + "</div>";
     return '<div class="avatar ' + (cls || "") + " " + (role === "client" ? "gold" : role === "architect" ? "arch" : role === "crew" ? "crewc" : "") + '">' + esc(initials(name)) + dot + "</div>";
   }
   function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
@@ -242,7 +251,7 @@
       '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.peopleOpen ? peoplePanel() : "") + (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
-    if (S.tour) drawTour();                       // a redraw wipes the overlay: put it back on the same step
+    if (S.tour) drawTour(0);                      // a redraw wipes the overlay: put it back on the same step, without scrolling
     if (S.tab === "messages" && S.data) setTimeout(markChannelRead, 0);
     // Timeline wider than the screen (phones): keep the scroll position, or start with today in view.
     var gw = root.querySelector(".gantt-wrap"), tl = gw && gw.querySelector(".g-today"), lab = gw && gw.querySelector(".g-label");
@@ -275,7 +284,7 @@
 
   function renderLogin() {
     var demo = !API && window.BSP_MOCK;
-    root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(SET.loginPhoto) + '"><div class="tag">Crafting sites, one space at a time.</div></div>' +
+    root.innerHTML = '<section class="login"><div class="login-photo' + (SET.loginPhoto ? "" : " no-photo") + '" style="' + bg(SET.loginPhoto) + '"><div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
       '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal</div>' +
       (S.step === "email"
         ? '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, questions, invoices and the checklist for your Blue Sierra project. Type your email and we\'ll send you a 6-digit code.</p>' +
@@ -412,6 +421,7 @@
         '<div class="c-top"><div><div class="eyebrow">Contract total</div><div class="c-mid">' + money(cm.total) + '</div></div><div class="c-side"><div class="eyebrow">Paid so far</div><div class="c-mid">' + pctOf(cm.paid, cm.total) + "%</div></div></div>" + contractBar(cm, true) + "</div>" : "") +
       '<div class="section-title"><h2>' + (!asClient() ? "Waiting on the client" : "Waiting on you") + "</h2></div>" +
       (waiting ? '<div class="thread">' + waiting + "</div>" : '<div class="empty">' + (staff() ? "Nothing pending from the client." : "You're all caught up. Nothing needs your answer right now.") + "</div>") +
+      pinnedHtml(d.timeline.filter(isPinned).concat(d.messages.filter(function (m) { return isPinned(m) && !isDm(m.channel); })), "") +
       (upcoming(30).length ? '<div class="section-title"><h2>Coming up</h2><button class="link" data-a="tab" data-t="schedule">Full schedule</button></div><div class="sch-list">' + upcoming(30).slice(0, 4).map(itemRow).join("") + "</div>" : "") +
       '<div class="section-title"><h2>Latest update</h2>' + (d.timeline.length ? '<button class="link" data-a="tab" data-t="updates">All updates</button>' : "") + "</div>" +
       (last ? post(last) : '<div class="empty">No updates yet.</div>') +
@@ -421,7 +431,9 @@
 
   function post(t) {
     var photos = S.data.photos.filter(function (ph) { return t.photo_ids && t.photo_ids.split(",").indexOf(ph.id) > -1; });
-    return '<article class="card" id="up-' + esc(t.id) + '"><div class="post-head"><div class="avatar">' + esc(initials(t.author)) + '</div><div><b style="font-weight:500">' + esc(t.author) + '</b><div class="muted small">' + day(t.at) + (t.emailed ? " · emailed to the client" : "") + "</div></div></div>" +
+    var who = ((S.data.members) || []).filter(function (mb) { return mb.name === t.author; })[0] || {}, pinned = /^(yes|true)$/i.test(t.pinned || "");
+    return '<article class="card post' + (pinned ? " pinned" : "") + '" id="up-' + esc(t.id) + '"><div class="post-head">' + av(t.author, who.avatar, who.role, "", who.key) + '<div style="flex:1"><b style="font-weight:500">' + esc(t.author) + '</b><div class="muted small">' + (pinned ? "📌 Pinned · " : "") + day(t.at) + (t.emailed ? " · emailed to the client" : "") + "</div></div>" +
+      (staff() ? '<div class="post-tools"><button class="icon-btn" data-a="pin" data-kind="update" data-id="' + esc(t.id) + '" title="' + (pinned ? "Unpin" : "Pin to the top") + '">📌</button><button class="icon-btn" data-a="delUpdate" data-id="' + esc(t.id) + '" data-ph="' + (t.photo_ids ? 1 : 0) + '" title="Delete update">🗑</button></div>' : "") + "</div>" +
       (t.text ? '<div class="post-text">' + esc(t.text) + "</div>" : "") +
       (photos.length ? '<div class="photo-grid">' + photos.map(function (ph) { return '<button class="ph" style="' + bg(ph.thumb) + '" data-a="lb" data-i="' + S.data.photos.indexOf(ph) + '" aria-label="' + esc(ph.caption || "Photo") + '"></button>'; }).join("") + "</div>" : "") + "</article>";
   }
@@ -431,12 +443,21 @@
       '<span class="btn ghost sm file-btn">' + label + '<input type="file" accept="image/*" multiple data-pick="photos"></span>';
   }
 
+  function isPinned(x) { return x.pinned === true || /^(yes|true)$/i.test(x.pinned || ""); }
+  /* Pinned things, at the top of the overview and of each chat channel. */
+  function pinnedHtml(list, where) {
+    if (!list.length) return "";
+    return '<div class="pins"><div class="pins-h">📌 Pinned</div>' + list.map(function (x) {
+      var isUp = where === "update" || x.photo_ids != null && x.channel == null, txt = String(x.text || "").split("\n")[0];
+      return '<button class="pin-row" data-a="' + (isUp ? "pinUpOpen" : "pinMsgOpen") + '" data-id="' + esc(x.id) + '"><b>' + esc(x.author) + '</b><span>' + esc(txt.slice(0, 160) || "Photos") + '</span><small class="muted">' + day(x.at) + "</small></button>";
+    }).join("") + "</div>";
+  }
   function tabUpdates() {
     var d = S.data;
     return (staff() ? '<form class="card composer" data-form="update"><h3>Post an update</h3><textarea name="text" placeholder="What happened on site? What\'s next?"></textarea>' +
       photoPicker("Add photos") + '<label class="check-line"><input type="checkbox" name="notify" checked> Email the client about this update</label><div class="actions"><button class="btn" type="submit">Post update</button></div></form>' : "") +
       '<div class="section-title"><h2>Updates</h2><span class="muted small">' + d.timeline.length + "</span></div>" +
-      (d.timeline.length ? '<div class="feed">' + d.timeline.map(post).join("") + "</div>" : '<div class="empty">No updates yet.</div>');
+      (d.timeline.length ? '<div class="feed">' + d.timeline.filter(isPinned).concat(d.timeline.filter(function (t) { return !isPinned(t); })).map(post).join("") + "</div>" : '<div class="empty">No updates yet.</div>');
   }
 
   function tabPhotos() {
@@ -513,7 +534,8 @@
       '<div class="who-line"><b>' + esc(m.author) + "</b>" + roleTag(m.role) + "<span>" + day(m.at) + "</span>" + (m.via === "email" ? '<span class="pill">by email</span>' : "") +
       (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Reply in thread</button>' : "") +
-      (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
+      (staff() && !opts.inThread ? '<button class="link small" data-a="pin" data-kind="msg" data-id="' + esc(m.id) + '">' + (isPinned(m) ? "Unpin" : "Pin") + "</button>" : "") +
+      (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" + (isPinned(m) ? '<div class="pin-tag">📌 Pinned</div>' : "") +
       (m.text ? '<div class="text">' + richText(m.text) + "</div>" : "") + filesHtml(m) +
       answers.map(function (a) { return '<div class="answer"><div class="who-line"><b>' + esc(a.author) + "</b><span>" + day(a.at) + "</span>" + (a.via === "email" ? '<span class="pill">by email</span>' : "") + '</div><div class="text">' + richText(a.text) + "</div></div>"; }).join("") +
       (q && m.status === "open" ? (staff() ? '<div class="actions" style="justify-content:flex-start;margin-top:8px"><button class="link small" data-a="closeQ" data-id="' + esc(m.id) + '">Mark as answered</button></div>' : asClient() ? answerBox(m) : "") : "") +
@@ -546,8 +568,9 @@
       '<button class="chan add" data-a="modal" data-m="dm" title="Message one person privately">＋ Private message</button></div>';
     var head = isDm(ch) ? '<h2>@ ' + esc(dmWith(ch).name) + '</h2><span class="muted small">🔒 Private: only you and ' + esc(first(dmWith(ch).name)) + " can see this.</span>"
       : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Messages are emailed to the client; their email replies show up here." : " Replies by email also show up here.") : "") + "</span>";
+    var pinsHere = list.filter(function (m) { return isPinned(m) && !m.thread_id; });
     return bar + '<div class="chan-head"><div>' + head + '</div><button class="btn ghost sm call-btn" data-a="call" title="Start a Google Meet video call here">📹 Video call</button></div>' +
-      (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
+      pinnedHtml(pinsHere, "msg") + (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
       '<div class="reply-bar">' + composer(ch) + "</div>";
   }
   /* Opening a channel marks it read on the server; the "New" line stays until you leave it. */
@@ -623,12 +646,37 @@
     if (!S.token || !S.me) return;
     try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible" });
       S.presence = r; if (!S.myStatus && r.me) S.myStatus = r.me.s;
+      if (r.pulse) onPulse(r.pulse);
       var pb = root.querySelector(".people-btn"); if (pb) pb.outerHTML = peopleButton();
       var hn = root.querySelector(".here-now"); if (hn) hn.outerHTML = hereNow();
       if (S.peopleOpen) keepScroll(render);
     } catch (e) {}
   }
-  setInterval(function () { if (document.visibilityState === "visible") ping(); }, 30000);
+  // Every 20 s while you're looking, every minute in the background (so other devices hear about new messages quickly).
+  var tick = 0; setInterval(function () { tick++; if (document.visibilityState === "visible" || tick % 3 === 0) ping(); }, 20000);
+  /* Something new from someone else: pop a card, update the bell and the chat, and a device notification if allowed. */
+  function onPulse(p) {
+    document.title = (p.unread ? "(" + p.unread + ") " : "") + document.title.replace(/^\(\d+\) /, "");
+    if (!p.id) return;
+    if (S.pulseId == null) { S.pulseId = p.id; return; }        // first look: just remember where we are
+    if (p.id === S.pulseId) return; S.pulseId = p.id;
+    var here = S.pid === p.pid && S.tab === "messages" && S.chan === p.channel && document.visibilityState === "visible";
+    if (S.pid === p.pid && S.data) refresh();
+    loadNotif(); refreshList();
+    if (here) return;
+    var where = p.dm ? "🔒 privately" : p.kind === "event" ? "" : "in #" + p.channel, line = p.kind === "event" ? p.author + " " + p.text : p.text;
+    var old = document.getElementById("bsp-pop"); if (old) old.remove();
+    var pop = document.createElement("button"); pop.id = "bsp-pop"; pop.className = "pop";
+    pop.setAttribute("data-a", "actOpen"); pop.dataset.p = p.pid; pop.dataset.c = p.channel; pop.dataset.th = p.thread_id || "";
+    pop.innerHTML = av(p.author, p.avatar, "", "", p.akey) + '<span class="pop-txt"><b>' + esc(p.author) + "</b> " + esc(where) + ((S.projects || []).length > 1 ? ' <small>· ' + esc(p.project) + "</small>" : "") + "<span>" + esc(line) + "</span></span>";
+    root.appendChild(pop); setTimeout(function () { pop.classList.add("out"); setTimeout(function () { pop.remove(); }, 400); }, 9000);
+    try {
+      if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") {
+        var n = new Notification(p.author + (p.dm ? " (private)" : " · " + p.project), { body: line, tag: "bsp-" + p.id });
+        n.onclick = function () { window.focus(); S.wantChan = p.channel; S.openThread = p.thread_id || null; go(p.pid, "messages"); n.close(); };
+      }
+    } catch (e) {}
+  }
   document.addEventListener("visibilitychange", function () { ping(); });
   var pingSoon = null; function pingLater() { clearTimeout(pingSoon); pingSoon = setTimeout(ping, 1200); }
   function peopleButton() {
@@ -733,6 +781,7 @@
       (needs ? '<div class="bp-sec">' + (staff() ? "Keep an eye on" : "Needs you") + '</div><div class="needs">' + needs + "</div>" : "") +
       (m.fresh.length ? '<div class="bp-sec">New for you</div>' + m.fresh.map(row).join("") : "") +
       (m.old.length ? '<div class="bp-sec">Earlier</div>' + m.old.map(row).join("") : "") +
+      (window.Notification && Notification.permission === "default" ? '<button class="alerts-btn" data-a="alertsOn">🔔 Get alerts on this device when someone writes</button>' : "") +
       '<div class="bp-foot">' + (m.fresh.length ? '<button class="link small" data-a="markAll">Mark all as read</button>' : "<span></span>") + '<button class="link small" data-a="tour">Take the tour</button></div></div>';
   }
   var EMPTY_ART = '<svg viewBox="0 0 160 110" width="150" aria-hidden="true"><circle cx="80" cy="58" r="44" fill="#f3e7d3"/><path d="M48 70c10-16 22-24 32-24s22 8 32 24" fill="none" stroke="#c39a5a" stroke-width="4" stroke-linecap="round"/><circle cx="80" cy="38" r="12" fill="#eda100"/><g stroke="#eda100" stroke-width="3" stroke-linecap="round"><path d="M80 18v-6M98 26l5-4M62 26l-5-4M104 40h6M50 40h6"/></g><path d="M30 92h100" stroke="#2f6b4a" stroke-width="4" stroke-linecap="round"/><path d="M44 92c2-8 6-12 10-12M60 92c0-6 3-10 6-11M112 92c-2-8-6-12-10-12" stroke="#2f6b4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
@@ -756,7 +805,7 @@
   function tourSteps() {
     if (staff()) return [
       { t: "Welcome to the Blue Sierra portal 👋", b: "Every project in one place: chat, schedule, photos, contract and invoices. This takes 40 seconds." },
-      { el: ".side", t: "Your sidebar", b: "Home, Activity, Team and every project. The red numbers are unread messages." },
+      { el: ".side .s-item", t: "Your sidebar", b: "Home, Activity, Team and every project. The red numbers are unread messages." },
       { el: ".home-chips", t: "Home, Activity, Team", b: "Activity is everything new across all projects. Team is where you add people from Blue Sierra." },
       { el: ".portfolio", t: "The money, at a glance", b: "What's under contract, billed, collected and still to collect across all projects." },
       { el: ".pcard", t: "A project", b: "Open it to post updates, chat in #client, #architect and #team, and send invoices." },
@@ -795,49 +844,74 @@
     var ts = tourSteps(), last = ts.pop();               // the new things go before the "That's it!" step
     var base = whatsNew ? [{ t: "New in the portal ✨", b: "A few things were added since you last looked. 20 seconds." }].concat(NEW_STEPS, [{ el: ".help", t: "That's it!", b: "Tap the ? any time to see the full tour. 🌿" }])
       : ts.concat(NEW_STEPS.filter(function (n) { return !ts.some(function (t) { return t.el === n.el; }); }), [last]);
-    var steps = base.filter(function (st) { return !st.el || visibleEl(st.el); });
+    var steps = base.filter(function (st) { return !st.el || root.querySelector(st.el); });
     if (steps.length < 2) return;
     S.tour = { steps: steps, i: 0 }; drawTour();
   }
-  function visibleEl(sel) { var e = root.querySelector(sel); if (!e) return null; var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? e : null; }
-  function endTour() { try { localStorage.setItem(tourKey(), "1"); } catch (e) {} S.tour = null; var t = document.getElementById("bsp-tour"); if (t) t.remove(); }
-  function drawTour() {
-    var T = S.tour; if (!T) return; var st = T.steps[T.i], wrap = document.getElementById("bsp-tour");
-    if (!wrap) { wrap = document.createElement("div"); wrap.id = "bsp-tour"; wrap.innerHTML = '<div class="tour-spot"></div><div class="tour-bubble" role="dialog" aria-live="polite"></div>'; root.appendChild(wrap); }
-    var spot = wrap.querySelector(".tour-spot"), bub = wrap.querySelector(".tour-bubble"), el = st.el ? visibleEl(st.el) : null;
+  /* On screen for real: has a size, isn't hidden, and isn't parked off-screen (like the phone drawer when it's closed). */
+  function visibleEl(sel) {
+    var e = root.querySelector(sel); if (!e) return null;
+    var r = e.getBoundingClientRect(); if (!r.width || !r.height) return null;
+    if (e.closest(".side") && matchMedia("(max-width:1080px)").matches && !S.drawer) return null;
+    var cs = getComputedStyle(e); if (cs.visibility === "hidden" || cs.display === "none" || +cs.opacity === 0) return null;
+    return e;
+  }
+  function lenis(on) { try { var l = window.lenis || window.__lenis; if (l) on ? l.start() : l.stop(); } catch (e) {} }
+  function endTour() { try { localStorage.setItem(tourKey(), "1"); } catch (e) {} if (S.tour && S.tour.raf) cancelAnimationFrame(S.tour.raf); S.tour = null; lenis(true); var t = document.getElementById("bsp-tour"); if (t) t.remove(); }
+  function drawTour(dir) {
+    var T = S.tour; if (!T) return; var redraw = dir === 0; dir = dir || 1;
+    var st = T.steps[T.i], el = null;
+    if (st.el) {
+      var cand = root.querySelector(st.el);
+      if (cand && (!cand.closest(".side") || !matchMedia("(max-width:1080px)").matches || S.drawer)) {
+        if (!redraw) try { cand.scrollIntoView({ block: "center", inline: "center", behavior: "instant" }); } catch (e) { cand.scrollIntoView(); }   // also brings a tab into view inside the scrolling tab bar
+        el = visibleEl(st.el);
+      }
+      if (!el) {                                  // not on screen right now: skip it instead of pointing at nothing
+        var nx = T.i + dir; if (nx < 0 || nx >= T.steps.length) return endTour();
+        T.i = nx; return drawTour(dir);
+      }
+    }
+    var wrap = document.getElementById("bsp-tour");
+    if (!wrap) { wrap = document.createElement("div"); wrap.id = "bsp-tour"; wrap.setAttribute("data-lenis-prevent", ""); wrap.innerHTML = '<div class="tour-spot"></div><div class="tour-bubble" role="dialog" aria-live="polite"></div>'; root.appendChild(wrap); lenis(false); }
+    var spot = wrap.querySelector(".tour-spot"), bub = wrap.querySelector(".tour-bubble");
     bub.innerHTML = '<div class="tb-step">' + T.steps.map(function (_, k) { return '<i class="' + (k === T.i ? "on" : k < T.i ? "past" : "") + '"></i>'; }).join("") + "</div><b>" + esc(st.t) + "</b><p>" + esc(st.b) + "</p>" +
       '<div class="tb-actions"><button class="link small" data-tour="skip">' + (T.i === T.steps.length - 1 ? "" : "Skip") + "</button><span>" + (T.i ? '<button class="btn ghost sm" data-tour="back">Back</button>' : "") +
       '<button class="btn sm" data-tour="next">' + (T.i === T.steps.length - 1 ? "Let's go! 🎉" : "Next") + "</button></span></div>";
+    var last = "";
     var place = function () {
-      var vw = innerWidth, vh = innerHeight, bw = Math.min(340, vw - 32);
+      var vv = window.visualViewport, vw = vv ? vv.width : innerWidth, vh = vv ? vv.height : innerHeight, bw = Math.min(340, vw - 24);
       bub.style.width = bw + "px";
       if (!el) { spot.style.cssText = "top:" + vh / 2 + "px;left:" + vw / 2 + "px;width:0;height:0"; bub.style.left = (vw - bw) / 2 + "px"; bub.style.top = Math.max(16, vh / 2 - bub.offsetHeight / 2) + "px"; bub.className = "tour-bubble center"; return; }
-      var r = el.getBoundingClientRect(), pad = 8;
-      spot.style.cssText = "top:" + (r.top - pad) + "px;left:" + (r.left - pad) + "px;width:" + (r.width + pad * 2) + "px;height:" + (r.height + pad * 2) + "px";
-      var below = r.bottom + 16 + bub.offsetHeight < vh, top = below ? r.bottom + 16 : Math.max(16, r.top - 16 - bub.offsetHeight);
-      if (!below && r.top - 16 - bub.offsetHeight < 0) top = Math.min(vh - bub.offsetHeight - 16, r.bottom + 16);
-      bub.style.top = top + "px"; bub.style.left = Math.max(16, Math.min(vw - bw - 16, r.left + r.width / 2 - bw / 2)) + "px";
-      bub.className = "tour-bubble " + (below ? "below" : "above");
-      bub.style.setProperty("--arrow", Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - parseFloat(bub.style.left))) + "px");
+      var r = el.getBoundingClientRect(), sig = [r.top, r.left, r.width, r.height, vw, vh].map(Math.round).join(",");
+      if (sig === last) return; last = sig;
+      var pad = 6, top = Math.max(4, r.top - pad), left = Math.max(4, r.left - pad), w = Math.min(vw - 8, r.width + pad * 2), h = Math.min(vh - 8, r.height + pad * 2);
+      spot.style.cssText = "top:" + top + "px;left:" + left + "px;width:" + w + "px;height:" + h + "px";
+      var bh = bub.offsetHeight, below = r.bottom + 14 + bh < vh - 8, y = below ? r.bottom + 14 : r.top - 14 - bh;
+      if (!below && y < 8) y = Math.max(8, vh - bh - 12);                         // tall target on a small screen: dock the bubble at the bottom
+      var x = Math.max(12, Math.min(vw - bw - 12, r.left + r.width / 2 - bw / 2));
+      bub.style.top = y + "px"; bub.style.left = x + "px"; bub.className = "tour-bubble " + (below ? "below" : "above");
+      bub.style.setProperty("--arrow", Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - x)) + "px");
     };
-    if (el) { var rr = el.getBoundingClientRect(); if (rr.top < 70 || rr.bottom > innerHeight - 40) { el.scrollIntoView({ block: "center" }); } }
-    requestAnimationFrame(place); T.place = place;
+    // Follow the target every frame while the tour is open: smooth scrolling, the phone toolbar or a late layout can't leave the spotlight behind.
+    if (T.raf) cancelAnimationFrame(T.raf);
+    var loop = function () { if (S.tour !== T) return; place(); T.raf = requestAnimationFrame(loop); };
+    T.place = place; loop();
     var nb = bub.querySelector("[data-tour=next]"); if (nb) nb.focus({ preventScroll: true });
   }
   root.addEventListener("click", function (e) {
     var b = e.target.closest("[data-tour]"); if (!b || !S.tour) return;
     var a = b.dataset.tour; if (a === "skip") return endTour();
-    if (a === "next") { if (S.tour.i >= S.tour.steps.length - 1) return endTour(); S.tour.i++; }
-    if (a === "back") S.tour.i = Math.max(0, S.tour.i - 1);
-    drawTour();
+    if (a === "next") { if (S.tour.i >= S.tour.steps.length - 1) return endTour(); S.tour.i++; return drawTour(1); }
+    if (a === "back") { S.tour.i = Math.max(0, S.tour.i - 1); return drawTour(-1); }
   });
   window.addEventListener("resize", function () { if (S.tour && S.tour.place) S.tour.place(); });
   window.addEventListener("scroll", function () { if (S.tour && S.tour.place) S.tour.place(); }, { passive: true });
   document.addEventListener("keydown", function (e) {
     if (!S.tour) return;
     if (e.key === "Escape") { e.stopPropagation(); endTour(); }
-    if (e.key === "ArrowRight") { if (S.tour.i < S.tour.steps.length - 1) { S.tour.i++; drawTour(); } else endTour(); }
-    if (e.key === "ArrowLeft" && S.tour.i) { S.tour.i--; drawTour(); }
+    if (e.key === "ArrowRight") { if (S.tour.i < S.tour.steps.length - 1) { S.tour.i++; drawTour(1); } else endTour(); }
+    if (e.key === "ArrowLeft" && S.tour.i) { S.tour.i--; drawTour(-1); }
   }, true);
 
   /* ---------------- plans: revisions of the drawing set, and what changed ---------------- */
@@ -1286,7 +1360,7 @@
         '<label class="f">PDF' + (i.pdf ? ' (one is attached; choose a file to replace it)' : "") + '<input type="file" name="pdf" accept="application/pdf"></label>' +
         '<label class="f">Notes (team only)<textarea name="notes">' + esc(i.notes) + "</textarea></label>" +
         '<label class="check-line"><input type="checkbox" name="notify"' + (m.id ? "" : " checked") + "> Email the client that it's ready</label>" +
-        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
+        '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delInvoice" data-id="' + esc(m.id) + '" style="margin-right:auto;color:var(--bad)">Delete invoice</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
     }
     if (m.type === "cline") {
       var cl = m.id ? ((d.contract && d.contract.lines) || []).filter(function (x) { return x.id === m.id; })[0] || {} : { kind: m.kind || "base", status: "proposed", date: today() };
@@ -1328,17 +1402,14 @@
         '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-a="close">Cancel</button></div>';
     }
     if (m.type === "profile") {
-      var o = S.chDraft || (S.chDraft = /^v1:/.test(S.me.avatar || "") ? chParse(S.me.avatar) : chFromKey(S.me.key));
-      var row = function (label, k, opts, swatch) {
-        return '<div class="ch-row"><span class="ch-label">' + label + '</span><div class="ch-opts">' + opts.map(function (v, i) {
-          return swatch ? '<button type="button" class="ch-sw' + (o[k] === i ? " on" : "") + '" data-a="chSet" data-k="' + k + '" data-v="' + i + '" style="background:' + v + '" aria-label="' + label + " " + (i + 1) + '"></button>'
-            : '<button type="button" class="ch-chip' + (o[k] === i ? " on" : "") + '" data-a="chSet" data-k="' + k + '" data-v="' + i + '">' + esc(v) + "</button>";
-        }).join("") + "</div></div>";
-      };
-      body = '<div class="ch-head"><div class="ch-big">' + chSvg(o) + '</div><div><h2>Make your character</h2><p class="muted small">' + esc(S.me.name) + " · " + esc(roleName(S.me.role)) + '</p><button type="button" class="btn ghost sm" data-a="chRandom">🎲 Surprise me</button></div></div>' +
-        '<form class="form ch-form" data-form="profile">' + row("Hat", "hat", CH.hat) + row("Hair", "hair", CH.hair) + row("Hair color", "hairc", CH.hairc, true) + row("Skin", "skin", CH.skin, true) +
-        row("Beard", "beard", CH.beard) + row("Glasses", "glasses", CH.glasses) + row("Face", "face", CH.face) + row("Shirt", "shirt", CH.shirt, true) + row("Background", "bg", CH.bg, true) +
-        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save my character</button></div></form>';
+      var o = S.fxDraft || (S.fxDraft = fxParse(S.me.avatar) || { slug: "man-construction-worker", t: 3, bg: 0 });
+      var tile = function (p) { var on = o.slug === p[0]; return '<button type="button" class="fx-opt' + (on ? " on" : "") + '" data-a="fxPick" data-s="' + p[0] + '" title="' + esc(p[1]) + '"><img src="' + esc(fxSrc({ slug: p[0], t: o.t })) + '" alt="' + esc(p[1]) + '" loading="lazy"></button>'; };
+      body = '<div class="ch-head"><div class="fx-big" style="background:' + FX_BG[o.bg] + '"><img src="' + esc(fxSrc(o)) + '" alt=""></div><div><h2>Pick your character</h2><p class="muted small">' + esc(S.me.name) + " · " + esc(roleName(S.me.role)) + "</p>" +
+        '<button type="button" class="btn ghost sm" data-a="fxRandom">🎲 Surprise me</button></div></div>' +
+        '<form class="form fx-form" data-form="profile"><div class="ch-row"><span class="ch-label">Skin tone</span><div class="ch-opts">' + FX_TONES.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.t === i ? " on" : "") + '" data-a="fxTone" data-v="' + i + '" style="background:' + c + '" aria-label="Skin tone ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
+        '<div class="fx-grid">' + FX_PEOPLE.map(tile).join("") + '</div><div class="ch-label" style="margin-top:4px">Faces & friends</div><div class="fx-grid">' + FX_FUN.map(tile).join("") + "</div>" +
+        '<div class="ch-row"><span class="ch-label">Background</span><div class="ch-opts">' + FX_BG.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.bg === i ? " on" : "") + '" data-a="fxBg" data-v="' + i + '" style="background:' + c + '" aria-label="Background ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
+        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "thread") {
       var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
@@ -1399,7 +1470,7 @@
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
-      case "close": S.modal = null; S.chDraft = null; return keepScroll(render);
+      case "close": S.modal = null; S.chDraft = null; S.fxDraft = null; return keepScroll(render);
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
@@ -1440,7 +1511,7 @@
         S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
         refreshList(); if (S.pid) return go(null); return keepScroll(render);
       case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
-      case "actOpen":
+      case "actOpen": var pp = document.getElementById("bsp-pop"); if (pp && b === pp) pp.remove();
         S.wantChan = b.dataset.c; S.openThread = b.dataset.th || null;
         if (S.pid === b.dataset.p) { S.chan = b.dataset.c; S.readMark = {}; if (S.openThread) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; } S.wantChan = null; }
         return go(b.dataset.p, "messages");
@@ -1475,6 +1546,32 @@
         b.classList.remove("shake"); void b.offsetWidth; b.classList.add("shake");
         setTimeout(function () { S.luck = LUCK[Math.floor(Math.random() * LUCK.length)]; var el = root.querySelector(".today"); if (el && S.data) el.outerHTML = todayHtml(S.data.project); }, 900);
         return;
+      case "alertsOn": try { Notification.requestPermission().then(function (r) { toast(r === "granted" ? "Alerts on 🔔" : "Alerts are off. You can turn them on in your browser settings."); keepScroll(render); }); } catch (e) {} return;
+      case "pin":
+        var list2 = b.dataset.kind === "update" ? S.data.timeline : S.data.messages, it2 = list2.filter(function (x) { return x.id === b.dataset.id; })[0];
+        if (it2) { it2.pinned = isPinned(it2) ? "" : "yes"; keepScroll(render); toast(it2.pinned ? "📌 Pinned to the top" : "Unpinned"); }
+        call("togglePin", { kind: b.dataset.kind === "update" ? "update" : "msg", id: b.dataset.id }).catch(function (e) { toast(e.message); refresh(); });
+        return;
+      case "pinUpOpen": S.flash = "up-" + b.dataset.id; return go(S.pid, "updates");
+      case "pinMsgOpen": var pm = S.data.messages.filter(function (x) { return x.id === b.dataset.id; })[0]; if (pm) { S.chan = pm.channel || "client"; S.flash = "m-" + pm.id; S.readMark = {}; } if (S.tab === "messages") { render(); var fe = document.getElementById("m-" + b.dataset.id); if (fe) { fe.scrollIntoView({ block: "center" }); fe.classList.add("flash"); } return; } return go(S.pid, "messages");
+      case "delUpdate":
+        var hasPh = b.dataset.ph === "1", uid = b.dataset.id;
+        sure(hasPh ? "Delete this update? Its photos stay in the Photos tab." : "Delete this update?", function () {
+          S.data.timeline = S.data.timeline.filter(function (x) { return x.id !== uid; }); keepScroll(render);
+          run(null, async function () { try { await call("deleteUpdate", { updateId: uid }); } catch (e) { await refresh(); throw e; } toast("Update deleted"); });
+        });
+        return;
+      case "delInvoice":
+        var iid = b.dataset.id;
+        sure("Delete this invoice? Its PDF goes to the Drive trash and it disappears for the client.", function () {
+          S.modal = null; S.data.invoices = S.data.invoices.filter(function (x) { return x.id !== iid; }); keepScroll(render);
+          run(null, async function () { try { await call("deleteInvoice", { invoiceId: iid }); } catch (e) { await refresh(); throw e; } await refresh(); toast("Invoice deleted"); });
+        });
+        return;
+      case "fxPick": S.fxDraft.slug = b.dataset.s; return keepScroll(render);
+      case "fxTone": S.fxDraft.t = +b.dataset.v; return keepScroll(render);
+      case "fxBg": S.fxDraft.bg = +b.dataset.v; return keepScroll(render);
+      case "fxRandom": var all = FX_PEOPLE.concat(FX_FUN); S.fxDraft = { slug: all[Math.floor(Math.random() * all.length)][0], t: Math.floor(Math.random() * 6), bg: Math.floor(Math.random() * FX_BG.length) }; return keepScroll(render);
       case "chSet": S.chDraft[b.dataset.k] = +b.dataset.v; return keepScroll(render);
       case "chRandom": var rr = function (n) { return Math.floor(Math.random() * n); }; S.chDraft = { skin: rr(6), hair: rr(9), hairc: rr(7), hat: rr(6), beard: rr(4), glasses: rr(3), shirt: rr(7), bg: rr(8), face: rr(3) }; return keepScroll(render);
       case "pickAv": var fp = b.closest("form"); fp.querySelectorAll(".av-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fp.dataset.emoji = b.dataset.e; fp.querySelector(".av-preview").innerHTML = b.dataset.e; return;
@@ -1599,7 +1696,7 @@
         S.modal = null; await refresh(); toast(res.first ? res.n + " sheets uploaded" : res.changed ? res.changed + " sheet" + (res.changed > 1 ? "s" : "") + " changed. They're highlighted." : "Uploaded. No sheet changes found."); return;
       }
       if (kind === "profile") {
-        var rp = await call("saveProfile", { avatar: chStr(S.chDraft) }); S.me.avatar = rp.avatar; S.chDraft = null; S.modal = null; await refresh(); toast("Looking good ✨"); return;
+        var o2 = S.fxDraft, rp = await call("saveProfile", { avatar: "fx:" + o2.slug + ";t=" + o2.t + ";bg=" + o2.bg }); S.me.avatar = rp.avatar; S.fxDraft = null; S.modal = null; await refresh(); toast("Looking good ✨"); return;
       }
       if (kind === "team") {
         await call("addPerson", { name: v("name"), email: v("email"), role: "staff", invite: !!fd.get("invite") });

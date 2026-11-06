@@ -38,9 +38,9 @@ var TABLES = {
   Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct"],
   People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
-  Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed"],
+  Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
-  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref"],
+  Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref", "pinned"],
   Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
@@ -56,7 +56,7 @@ var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone"
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], presence: ["People", "Projects"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
 var NO_LOCK = { markRead: 1, presence: 1 };          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
@@ -374,7 +374,7 @@ var ACTIONS = {
   /* Your own profile picture: a fun character on a color. */
   saveProfile: function (me, b) {
     var av = String(b.avatar || "");
-    if (/^v1:[a-z0-9=;]{1,160}$/.test(av)) { update("People", "email", me.email, { avatar: av }); return { avatar: av }; }   // a drawn character
+    if (/^fx:[a-z-]{2,40};t=[0-5];bg=[0-9]$/.test(av) || /^v1:[a-z0-9=;]{1,160}$/.test(av)) { update("People", "email", me.email, { avatar: av }); return { avatar: av }; }   // a drawn character
     var a = av.split("|"), emoji = a[0], color = a[1];
     if (av && (AVATARS.indexOf(emoji) < 0 || AVATAR_COLORS.indexOf(color) < 0)) throw new Error("Pick one of the characters.");
     update("People", "email", me.email, { avatar: av ? emoji + "|" + color : "" });
@@ -395,13 +395,49 @@ var ACTIONS = {
       return isStaff(x) || splitIds(x.project_ids).some(function (id) { return names[id]; });
     });
     var keys = people.map(function (x) { return "pres:" + pkey(x.email); }), got = c.getAll(keys), now = Date.now();
-    return { me: mine, people: people.map(function (x) {
+    // Pulse: the newest message someone else wrote where I can read it, plus how many I haven't read.
+    var reads = readsAll(me), newest = null, unread = 0;
+    rows("Messages").forEach(function (m) {
+      if (!names[m.project_id] || m.author_email === me.email || !canRead(me, chOf(m))) return;
+      if (m.at > (reads[m.project_id + "|" + chOf(m)] || "")) unread++;
+      newest = m;                                         // sheet order = the order things were written
+    });
+    var pulse = newest ? { id: newest.id, at: newest.at, author: newest.author, avatar: (rows("People").filter(function (x) { return x.email === newest.author_email; })[0] || {}).avatar || "", akey: keyOf(newest.author_email),
+      text: String(newest.text).split("\n")[0].slice(0, 140), kind: newest.kind, status: newest.kind === "event" ? newest.status : "", pid: newest.project_id, project: names[newest.project_id], channel: chOf(newest), thread_id: newest.thread_id || "", dm: isDm(chOf(newest)), unread: unread } : { unread: unread };
+    return { me: mine, pulse: pulse, people: people.map(function (x) {
       var k = pkey(x.email), raw = got["pres:" + k], pr = raw ? JSON.parse(raw) : null, age = pr ? now - pr.at : Infinity;
       var state = !pr || age > 3 * 60000 ? "offline" : pr.call > now ? "busy" : pr.s === "busy" ? "busy" : pr.hidden || pr.s === "away" || age > 90000 ? "away" : "online";
       var shared = isStaff(x) ? projects.map(function (p) { return p.id; }) : splitIds(x.project_ids).filter(function (id) { return names[id]; });
       return { key: k, name: x.name, role: x.role, avatar: x.avatar || "", state: state, last: pr ? pr.at : 0, inCall: !!(pr && pr.call > now),
         pid: pr && state !== "offline" && names[pr.pid] ? pr.pid : "", project: pr && names[pr.pid] ? names[pr.pid] : "", tab: pr && names[pr.pid] ? pr.tab : "", shared: shared.slice(0, 50) };
     }) };
+  },
+  /* Delete an invoice (team only): its PDF goes to the Drive trash and its chat card disappears. */
+  deleteInvoice: function (me, b) {
+    needStaff(me); var i = findBy("Invoices", "id", b.invoiceId); if (!i) return {}; needProject(me, i.project_id);
+    if (i.pdf_file_id) try { DriveApp.getFileById(i.pdf_file_id).setTrashed(true); } catch (e) {}
+    removeWhere("Invoices", function (r) { return r.id === i.id; });
+    removeWhere("Messages", function (r) { return r.kind === "event" && r.ref === "invoice:" + i.id; });
+    return {};
+  },
+  /* Delete a project update (team only). Its photos stay in the Photos tab unless you ask to delete them too. */
+  deleteUpdate: function (me, b) {
+    needStaff(me); var u = findBy("Timeline", "id", b.updateId); if (!u) return {}; needProject(me, u.project_id);
+    if (b.withPhotos) {
+      var ids = splitIds(u.photo_ids);
+      rows("Photos").filter(function (ph) { return ids.indexOf(ph.id) > -1; }).forEach(function (ph) { try { DriveApp.getFileById(ph.file_id).setTrashed(true); } catch (e) {} });
+      removeWhere("Photos", function (r) { return ids.indexOf(r.id) > -1; });
+    }
+    removeWhere("Timeline", function (r) { return r.id === u.id; });
+    removeWhere("Messages", function (r) { return r.kind === "event" && r.ref === "update:" + u.id; });
+    return {};
+  },
+  /* Pin or unpin an update or a message (team only); pinned things show at the top for everyone who can see them. */
+  togglePin: function (me, b) {
+    needStaff(me);
+    var t = b.kind === "update" ? "Timeline" : "Messages", it = findBy(t, "id", b.id); if (!it) throw new Error("Not found.");
+    needProject(me, it.project_id);
+    update(t, "id", it.id, { pinned: isTrue(it.pinned) ? "" : "yes" }); return { pinned: !isTrue(it.pinned) };
   },
   /* Jesús only. Deleting hides the project from everyone (photos and files stay in Drive); it can be restored. */
   deleteProject: function (me, b) {
@@ -843,7 +879,7 @@ function messagesOut(list, me) {
   return list.filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) {
     var r = parseJson(m.reactions, {});
     var o = { id: m.id, at: m.at, author: m.author, role: m.role, kind: m.kind, text: m.text, question_id: m.question_id, status: m.status, via: m.via,
-      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "", akey: keyOf(m.author_email),
+      channel: chOf(m), thread_id: m.thread_id || "", ref: m.ref || "", mine: m.author_email === me.email, mention: mentions(m.text, me.name), avatar: av[m.author_email] || "", akey: keyOf(m.author_email), pinned: isTrue(m.pinned),
       files: parseJson(m.files, []).map(function (f) { return { id: f.id, name: f.name, mime: f.mime, thumb: /^image\//.test(f.mime) ? img(f.id, 600) : "", full: /^image\//.test(f.mime) ? img(f.id, 2000) : "", url: "https://drive.google.com/file/d/" + f.id + "/view" }; }),
       reactions: Object.keys(r).map(function (e) { return { e: e, n: r[e].length, mine: r[e].indexOf(me.email) > -1, who: r[e].map(function (x) { return names[x] || "Someone"; }) }; }) };
     if (staff) o.author_email = m.author_email;                                  // clients never receive other people's email addresses
