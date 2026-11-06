@@ -827,7 +827,7 @@
         keepScroll(render);
         call("react", { messageId: b.dataset.id, emoji: b.dataset.e }).catch(function (e) { toast(e.message); refresh(); });
         return;
-      case "delMsg": if (confirm("Delete this message" + (b.closest(".in-thread") ? "" : " and its replies") + "?")) run(b, async function () { await call("deleteMessage", { messageId: b.dataset.id }); if (S.modal && S.modal.id === b.dataset.id) S.modal = null; await refresh(true); toast("Deleted"); }); return;
+      case "delMsg": if (confirm("Delete this message" + (b.closest(".in-thread") ? "" : " and its replies") + "?")) run(b, async function () { await call("deleteMessage", { messageId: b.dataset.id }); if (S.modal && S.modal.id === b.dataset.id) S.modal = null; await refresh(); toast("Deleted"); }); return;
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
         S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
