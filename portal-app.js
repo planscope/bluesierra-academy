@@ -202,6 +202,21 @@
     if (location.hash !== h) history.pushState(null, "", h === "#" ? location.pathname + location.search : h);
     route();
   }
+  (function () {
+    try {
+      var qs = new URLSearchParams(location.search);
+      if (qs.get("code") && qs.get("state") && qs.get("realmId")) {
+        S.qbReturn = { code: qs.get("code"), state: qs.get("state"), realmId: qs.get("realmId") };
+        ["code", "state", "realmId"].forEach(function (k) { qs.delete(k); });
+        history.replaceState(null, "", location.pathname + (qs.toString() ? "?" + qs : "") + location.hash);
+      } else if (qs.get("error") && qs.get("state")) { S.qbReturnErr = qs.get("error"); history.replaceState(null, "", location.pathname + location.hash); }
+    } catch (e) {}
+  })();
+  async function finishQb() {
+    var r = S.qbReturn; S.qbReturn = null; if (!r || !S.me || !S.me.admin) return;
+    try { S.qb = await call("qbFinish", r); S.home = "team"; if (!S.pid) keepScroll(render); toast("QuickBooks connected" + (S.qb.company ? ": " + S.qb.company : "") + " 🎉"); }
+    catch (e) { S.qb = null; toast(e.message); }
+  }
   async function route() {
     if (!S.token) { S.me = null; return render(); }
     var h = hashState(), seq = ++S.seq;
@@ -210,6 +225,8 @@
       if (!S.projects) {
         var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); }      // show the last copy instantly
         var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping();
+        if (S.qbReturn) { S.home = "team"; finishQb(); }
+        if (S.qbReturnErr) { toast("QuickBooks wasn't connected (" + S.qbReturnErr + ")."); S.qbReturnErr = null; }
         if (!S.viewAs) { try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects }); }
       }
       if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
@@ -457,7 +474,7 @@
     return '<div class="card qb-card"><div class="qb-h">' + qbLogo() + "<div><b>" + (q.reconnect ? "Connect QuickBooks again" : "Connect QuickBooks") + "</b><div class=\"muted small\">Bring invoices from QuickBooks into each project, PDF included, and see #money for every job.</div></div></div>" +
       (q.reconnect ? '<p class="qb-warn">' + esc(q.reconnect) + "</p>" : "") +
       '<ol class="qb-steps"><li>Go to <a href="https://developer.intuit.com/app/developer/dashboard" target="_blank" rel="noopener">developer.intuit.com</a> → your app (Blue Sierra Portal).</li>' +
-      '<li>In the app’s <b>Settings → Redirect URIs</b> (Development to test with a sandbox, Production for your real company), add:<div class="qb-copy"><code>' + esc(API) + '</code><button type="button" class="btn ghost sm" data-a="copyText" data-v="' + esc(API) + '">Copy</button></div></li>' +
+      '<li>In the app’s <b>Settings → Redirect URIs</b> (Development to test with a sandbox, Production for your real company), add:<div class="qb-copy"><code>' + esc(q.redirect || "https://www.bluesierracorp.com/portal") + '</code><button type="button" class="btn ghost sm" data-a="copyText" data-v="' + esc(q.redirect || "https://www.bluesierracorp.com/portal") + '">Copy</button></div></li>' +
       "<li>Paste the app’s Client ID and Client Secret below (you type them; they’re stored privately in Google and never shown again).</li></ol>" +
       '<form class="form" data-form="qbKeys"><div class="row2"><label class="f">Client ID<input type="text" name="clientId" autocomplete="off" ' + (q.hasKeys ? 'placeholder="Saved. Leave blank to keep it"' : "required") + '></label><label class="f">Client Secret<input type="password" name="clientSecret" autocomplete="new-password" ' + (q.hasKeys ? 'placeholder="Saved. Leave blank to keep it"' : "required") + "></label></div>" +
       '<label class="f">Which QuickBooks<select name="env"><option value="production">My real company (production)</option><option value="sandbox"' + (q.env === "sandbox" ? " selected" : "") + ">Sandbox (for testing, with the Development keys)</option></select></label>" +

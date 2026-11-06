@@ -978,7 +978,7 @@ function qbDropConnection(why) {
   pr.setProperty("QB_RECONNECT", why || "QuickBooks ended the connection. Connect it again.");
   CacheService.getScriptCache().remove("qb:access");
 }
-function qbCfg() { var pr = qbProps(); return { id: pr.getProperty("QB_CLIENT_ID") || "", secret: pr.getProperty("QB_CLIENT_SECRET") || "", redirect: pr.getProperty("QB_REDIRECT") || "",
+function qbCfg() { var pr = qbProps(); return { id: pr.getProperty("QB_CLIENT_ID") || "", secret: pr.getProperty("QB_CLIENT_SECRET") || "", redirect: CONFIG.PORTAL_URL,
   env: pr.getProperty("QB_ENV") || "production", realm: pr.getProperty("QB_REALM") || "", refresh: pr.getProperty("QB_REFRESH") || "", company: pr.getProperty("QB_COMPANY") || "" }; }
 function qbFinishConnect(code, state, realm) {
   var c = CacheService.getScriptCache(); if (!state || c.get("qbstate:" + state) !== "1") throw new Error("This link expired. Click Connect QuickBooks again.");
@@ -1032,9 +1032,8 @@ ACTIONS.qbStatus = function (me) {
 };
 ACTIONS.qbSaveKeys = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
-  var id = clean(b.clientId, 200), secret = clean(b.clientSecret, 200), redirect = String(b.redirect || "");
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(redirect)) throw new Error("The portal's address looks wrong. Reload and try again.");
-  var set = { QB_REDIRECT: redirect, QB_ENV: b.env === "sandbox" ? "sandbox" : "production" };
+  var id = clean(b.clientId, 200), secret = clean(b.clientSecret, 200);
+  var set = { QB_ENV: b.env === "sandbox" ? "sandbox" : "production" };
   if (id) set.QB_CLIENT_ID = id; if (secret) set.QB_CLIENT_SECRET = secret;
   var old = qbCfg(), changed = (id && id !== old.id) || set.QB_ENV !== old.env;
   qbProps().setProperties(set);
@@ -1043,9 +1042,16 @@ ACTIONS.qbSaveKeys = function (me, b) {
 };
 ACTIONS.qbConnectUrl = function (me) {
   if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
-  var cfg = qbCfg(); if (!cfg.id || !cfg.secret || !cfg.redirect) throw new Error("Add the QuickBooks app keys first.");
+  var cfg = qbCfg(); if (!cfg.id || !cfg.secret) throw new Error("Add the QuickBooks app keys first.");
   var state = newId("q") + newId("s"); CacheService.getScriptCache().put("qbstate:" + state, "1", 900);
   return { url: qbDiscovery().authorization_endpoint + "?client_id=" + encodeURIComponent(cfg.id) + "&response_type=code&scope=" + encodeURIComponent(QB.SCOPE) + "&redirect_uri=" + encodeURIComponent(cfg.redirect) + "&state=" + state };
+};
+/* Intuit sent Jesús back to the portal with ?code=&state=&realmId=; the portal hands them here to finish connecting. */
+ACTIONS.qbFinish = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús can connect QuickBooks.");
+  if (!/^[\w.~-]{1,500}$/.test(String(b.code || "")) || !/^\d{1,20}$/.test(String(b.realmId || ""))) throw new Error("That QuickBooks link looks wrong. Click Connect QuickBooks again.");
+  qbFinishConnect(String(b.code), String(b.state || ""), String(b.realmId));
+  return ACTIONS.qbStatus(me);
 };
 ACTIONS.qbDisconnect = function (me) {
   if (me.role !== "admin") throw new Error("Only Jesús can disconnect QuickBooks.");
