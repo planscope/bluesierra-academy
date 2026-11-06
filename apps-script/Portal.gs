@@ -42,8 +42,10 @@ var TABLES = {
   Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via"],
   Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort"],
-  EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"]
+  EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
+  Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort"]
 };
+var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1 };
 
 /* ============================ web app ============================ */
@@ -155,6 +157,8 @@ var ACTIONS = {
       messages: by("Messages").map(function (m) { var o = Object.assign({}, m); o.mine = m.author_email === me.email; if (!staff) delete o.author_email; return o; }),
       invoices: by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff); }),
       checklist: by("Checklist").sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }),
+      schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
+        .map(function (x) { var o = Object.assign({}, x); if (!staff) delete o.notes; return o; }),
       phases: CONFIG.PHASES
     };
     if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: isTrue(x.active) }; });
@@ -297,6 +301,38 @@ var ACTIONS = {
     if (!patch.item) throw new Error("Write the checklist item.");
     if (f.id) { var it = findBy("Checklist", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Checklist", "id", f.id, patch); }
     else { patch.id = newId("c"); patch.project_id = p.id; patch.done = ""; patch.sort = String(Date.now()); insert("Checklist", patch); }
+    return {};
+  },
+  /* Schedule: Gantt tasks (start + end) and dated events (inspections, payments, decisions, meetings, milestones, deadlines). */
+  saveScheduleItem: function (me, b) {
+    needStaff(me); var p = needProject(me, b.projectId), f = b.item || {};
+    var patch = {
+      kind: KINDS.indexOf(f.kind) > -1 ? f.kind : "task", title: clean(f.title, 200), start: dateOrEmpty(f.start),
+      end: dateOrEmpty(f.end), phase: CONFIG.PHASES.indexOf(f.phase) > -1 ? f.phase : "", owner: f.owner === "client" ? "client" : "blue sierra",
+      status: ["planned", "in progress", "done"].indexOf(f.status) > -1 ? f.status : "planned"
+    };
+    if (f.notes != null) patch.notes = clean(f.notes, 1000);
+    if (!patch.title) throw new Error("Give it a name.");
+    if (!patch.start) throw new Error("Pick a date.");
+    if (patch.kind !== "task") patch.end = "";
+    if (patch.end && patch.end < patch.start) throw new Error("The end date is before the start date.");
+    if (f.id) { var it = findBy("Schedule", "id", f.id); if (!it || it.project_id !== p.id) throw new Error("Item not found."); update("Schedule", "id", f.id, patch); }
+    else { patch.id = newId("s"); patch.project_id = p.id; patch.sort = String(Date.now()); if (patch.notes == null) patch.notes = ""; insert("Schedule", patch); }
+    return {};
+  },
+  deleteScheduleItem: function (me, b) { needStaff(me); var it = findBy("Schedule", "id", b.itemId); if (it) { needProject(me, it.project_id); removeWhere("Schedule", function (r) { return r.id === it.id; }); } return {}; },
+  /* One click: the six standard phases spread evenly between the project's start and target dates. */
+  addStandardPhases: function (me, b) {
+    needStaff(me); var p = needProject(me, b.projectId);
+    if (!p.start_date || !p.target_date || p.target_date <= p.start_date) throw new Error("Set the project's start and target dates first (Edit project).");
+    if (rows("Schedule").some(function (r) { return r.project_id === p.id && r.kind === "task" && CONFIG.PHASES.indexOf(r.title) > -1; })) throw new Error("The standard phases are already on the schedule.");
+    var s0 = new Date(p.start_date + "T12:00:00Z").getTime(), total = new Date(p.target_date + "T12:00:00Z").getTime() - s0;
+    var weights = [2, 2, 1, 6, 1, 0.3], sum = weights.reduce(function (a, w) { return a + w; }, 0), acc = 0;
+    var d = function (ms) { return Utilities.formatDate(new Date(ms), "UTC", "yyyy-MM-dd"); };
+    CONFIG.PHASES.forEach(function (ph, i) {
+      var a = s0 + total * acc / sum; acc += weights[i]; var z = s0 + total * acc / sum - (i < CONFIG.PHASES.length - 1 ? 864e5 : 0);
+      insert("Schedule", { id: newId("s"), project_id: p.id, kind: "task", title: ph, start: d(a), end: d(Math.max(a, z)), phase: ph, owner: "blue sierra", status: "planned", notes: "", sort: String(Date.now() + i) });
+    });
     return {};
   },
   deleteChecklistItem: function (me, b) { needStaff(me); var it = findBy("Checklist", "id", b.itemId); if (it) { needProject(me, it.project_id); removeWhere("Checklist", function (r) { return r.id === it.id; }); } return {}; },

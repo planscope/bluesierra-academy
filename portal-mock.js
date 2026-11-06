@@ -59,10 +59,25 @@
         { id: "c5", project_id: "p1", phase: "Construction", item: "Pour the west retaining wall", owner: "blue sierra", due: "2026-11-20", done: "", done_by: "", done_at: "", sort: "5" },
         { id: "c6", project_id: "p1", phase: "Punch list", item: "Final walkthrough with the client", owner: "blue sierra", due: "", done: "", done_by: "", done_at: "", sort: "6" }
       ],
+      schedule: [
+        { id: "s1", project_id: "p1", kind: "task", title: "Design", start: "2026-08-18", end: "2026-09-04", phase: "Design", owner: "blue sierra", status: "done", notes: "", sort: "1" },
+        { id: "s2", project_id: "p1", kind: "task", title: "Permits", start: "2026-08-25", end: "2026-09-25", phase: "Permits", owner: "blue sierra", status: "done", notes: "", sort: "2" },
+        { id: "s3", project_id: "p1", kind: "task", title: "Grading and drainage", start: "2026-09-28", end: "2026-10-23", phase: "Construction", owner: "blue sierra", status: "done", notes: "", sort: "3" },
+        { id: "s4", project_id: "p1", kind: "task", title: "Retaining walls", start: "2026-10-19", end: "2026-11-27", phase: "Construction", owner: "blue sierra", status: "in progress", notes: "", sort: "4" },
+        { id: "s5", project_id: "p1", kind: "task", title: "Pool deck", start: "2026-11-09", end: "2026-12-18", phase: "Construction", owner: "blue sierra", status: "planned", notes: "Coping needs the client's pick first.", sort: "5" },
+        { id: "s6", project_id: "p1", kind: "task", title: "Planting and irrigation", start: "2027-01-11", end: "2027-02-12", phase: "Construction", owner: "blue sierra", status: "planned", notes: "", sort: "6" },
+        { id: "s7", project_id: "p1", kind: "task", title: "Punch list", start: "2027-02-15", end: "2027-02-26", phase: "Punch list", owner: "blue sierra", status: "planned", notes: "", sort: "7" },
+        { id: "s8", project_id: "p1", kind: "inspection", title: "Pool deck forms inspection", start: "2026-11-06", end: "", phase: "Construction", owner: "blue sierra", status: "planned", notes: "City inspector, morning window.", sort: "8" },
+        { id: "s9", project_id: "p1", kind: "decision", title: "Pick the pool coping stone", start: "2026-11-12", end: "", phase: "Construction", owner: "client", status: "planned", notes: "", sort: "9" },
+        { id: "s10", project_id: "p1", kind: "meeting", title: "Site walk with the client", start: "2026-11-14", end: "", phase: "Construction", owner: "client", status: "planned", notes: "", sort: "10" },
+        { id: "s11", project_id: "p1", kind: "inspection", title: "Wall rebar inspection", start: "2026-11-24", end: "", phase: "Construction", owner: "blue sierra", status: "planned", notes: "", sort: "11" },
+        { id: "s12", project_id: "p1", kind: "milestone", title: "Pool deck complete", start: "2026-12-18", end: "", phase: "Construction", owner: "blue sierra", status: "planned", notes: "", sort: "12" },
+        { id: "s13", project_id: "p1", kind: "inspection", title: "Final inspection", start: "2027-02-24", end: "", phase: "Punch list", owner: "blue sierra", status: "planned", notes: "", sort: "13" }
+      ],
       sessions: {}, codes: {}, outbox: []
     };
   }
-  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) return d; } catch (e) {} return seed(); }
+  function load() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.projects) { if (!d.schedule) d.schedule = seed().schedule; return d; } } catch (e) {} return seed(); }
   function save(db) { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { throw new Error("Preview storage is full. Clear it with BSP_MOCK.reset()."); } }
   function id() { return Math.random().toString(36).slice(2, 12); }
   function now() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
@@ -117,7 +132,8 @@
       var out = { project: projOut(db, p), timeline: by(db.timeline).slice().reverse(), photos: by(db.photos).slice().reverse().map(photoOut),
         messages: by(db.messages).map(function (m) { var o = Object.assign({}, m); o.mine = m.author_email === me.email; if (!isStaff(me)) delete o.author_email; return o; }),
         invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
-        checklist: by(db.checklist).sort(function (a, c) { return Number(a.sort) - Number(c.sort); }), phases: PHASES };
+        checklist: by(db.checklist).sort(function (a, c) { return Number(a.sort) - Number(c.sort); }), phases: PHASES,
+        schedule: by(db.schedule).sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort) - Number(c.sort); }).map(function (x) { var o = Object.assign({}, x); if (!isStaff(me)) delete o.notes; return o; }) };
       if (isStaff(me)) out.people = db.people.filter(function (x) { return isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, active: x.active === "yes" }; });
       return out;
     },
@@ -128,6 +144,27 @@
       var np = Object.assign({ id: id(), phase: PHASES[0], progress: "0", status: "active", cover_file_id: "", created_at: now() }, patch); db.projects.push(np); return { project: projOut(db, np) };
     },
     setCover: function (db, me, b) { needStaff(me); needProject(db, me, b.projectId).cover_file_id = b.fileId; return {}; },
+    saveScheduleItem: function (db, me, b) {
+      needStaff(me); var p = needProject(db, me, b.projectId), f = b.item || {}, dt = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : ""; };
+      var patch = { kind: ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"].indexOf(f.kind) > -1 ? f.kind : "task", title: clean(f.title, 200), start: dt(f.start), end: dt(f.end),
+        phase: PHASES.indexOf(f.phase) > -1 ? f.phase : "", owner: f.owner === "client" ? "client" : "blue sierra", status: ["planned", "in progress", "done"].indexOf(f.status) > -1 ? f.status : "planned" };
+      if (f.notes != null) patch.notes = clean(f.notes, 1000);
+      if (!patch.title) throw new Error("Give it a name."); if (!patch.start) throw new Error("Pick a date.");
+      if (patch.kind !== "task") patch.end = ""; if (patch.end && patch.end < patch.start) throw new Error("The end date is before the start date.");
+      if (f.id) { var it = db.schedule.filter(function (x) { return x.id === f.id && x.project_id === p.id; })[0]; if (!it) throw new Error("Item not found."); Object.assign(it, patch); }
+      else db.schedule.push(Object.assign({ id: "s" + id(), project_id: p.id, sort: String(Date.now()), notes: "" }, patch));
+      return {};
+    },
+    deleteScheduleItem: function (db, me, b) { needStaff(me); db.schedule = db.schedule.filter(function (x) { return x.id !== b.itemId; }); return {}; },
+    addStandardPhases: function (db, me, b) {
+      needStaff(me); var p = needProject(db, me, b.projectId);
+      if (!p.start_date || !p.target_date || p.target_date <= p.start_date) throw new Error("Set the project's start and target dates first (Edit project).");
+      if (db.schedule.some(function (r) { return r.project_id === p.id && r.kind === "task" && PHASES.indexOf(r.title) > -1; })) throw new Error("The standard phases are already on the schedule.");
+      var s0 = Date.parse(p.start_date + "T12:00:00Z"), total = Date.parse(p.target_date + "T12:00:00Z") - s0, w = [2, 2, 1, 6, 1, 0.3], sum = 12.3, acc = 0, d = function (ms) { return new Date(ms).toISOString().slice(0, 10); };
+      PHASES.forEach(function (ph, i) { var a = s0 + total * acc / sum; acc += w[i]; var z = s0 + total * acc / sum - (i < PHASES.length - 1 ? 864e5 : 0);
+        db.schedule.push({ id: "s" + id(), project_id: p.id, kind: "task", title: ph, start: d(a), end: d(Math.max(a, z)), phase: ph, owner: "blue sierra", status: "planned", notes: "", sort: String(Date.now() + i) }); });
+      return {};
+    },
     addPerson: function (db, me, b) {
       needStaff(me); var p = needProject(db, me, b.projectId), e = clean(b.email, 200).toLowerCase(), role = b.role === "staff" ? "staff" : "client";
       if (role === "staff" && me.role !== "admin") throw new Error("Only Jesús can add team members.");

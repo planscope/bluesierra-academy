@@ -12,7 +12,7 @@
   var LOGO = '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 33" fill="none" aria-label="Blue Sierra"><path d="M104.849 16.552V16.2315C107.476 14.7578 108.756 14.4372 108.756 9.43255C108.756 4.42785 105.045 1.22217 98.8988 1.22217H86.4151V32.7144H99.7298C106.005 32.7144 109.845 29.4418 109.845 24.2505C109.845 20.7864 108.116 18.1597 104.849 16.552ZM89.5528 4.04508V3.98289H98.8988C103.187 3.98289 105.618 6.16466 105.618 9.62872C105.618 13.0928 103.25 15.2746 98.8988 15.2746H89.5528V4.04508ZM99.7298 29.8293V29.7671H89.5528V18.1597H99.7298C104.209 18.1597 106.645 20.3414 106.645 23.9969C106.645 27.6523 104.147 29.8341 99.7298 29.8341V29.8293Z" fill="currentColor"></path><path d="M117.013 1.22717H114.004V32.7194H117.013V1.22717Z" fill="currentColor"></path><path d="M135.643 23.0957C135.643 27.3301 133.465 29.8277 129.884 29.8277C126.302 29.8277 124.248 27.3923 124.248 23.0957V9.62708H121.24V23.2249C121.24 29.1243 124.248 32.7176 129.115 32.7176C131.741 32.7176 134.11 31.6937 135.39 29.7655H135.648V32.1386H138.595V9.62708H135.648V23.0957H135.643Z" fill="currentColor"></path><path d="M151.776 8.98965C146.016 8.98965 141.728 13.9943 141.728 20.8555C141.728 27.7166 146.016 32.7213 152.034 32.7213C154.402 32.7213 156.389 32.018 158.113 30.6687C159.775 29.3864 160.864 27.7166 161.251 25.664H158.304C157.473 28.2285 156.193 29.9606 151.967 29.9606C147.74 29.9606 144.989 26.6879 144.669 21.621H161.571C161.633 20.9177 161.633 20.3387 161.633 19.9512L161.762 19.889C161.762 13.8604 157.535 8.98486 151.776 8.98486V8.98965ZM144.798 18.9273C145.376 14.4393 147.998 11.7456 151.776 11.7456C155.553 11.7456 158.304 14.6307 158.82 18.9273H144.798Z" fill="currentColor"></path><path d="M261.364 9.62581V13.0229H261.106C259.697 10.3291 259.439 9.04688 253.742 9.04688C248.045 9.04688 243.894 14.0994 243.885 20.8792C243.899 27.6638 247.992 32.7115 253.742 32.7115C256.813 32.7115 259.697 31.4293 261.106 28.7355H261.364V32.1326H264.311V9.62581H261.364ZM254.196 29.8886C249.907 29.8886 247.027 26.2954 247.027 20.9079C247.027 15.5204 249.907 11.9272 254.196 11.9272C258.484 11.9272 261.364 15.5204 261.364 20.9079C261.364 26.2954 258.484 29.8886 254.196 29.8886Z" fill="currentColor"></path><path d="M178.08 14.4352C172.321 13.5356 170.143 12.2534 170.143 8.59793C170.143 4.9425 172.574 2.9521 177.249 2.9521C181.925 2.9521 185.316 5.64583 185.316 9.62184H188.386C188.257 4.36356 183.778 0 177.374 0C170.969 0 167.001 3.59324 167.001 8.66013C167.001 13.727 169.88 16.1002 177.947 17.4447C183.324 18.3442 185.373 19.4303 185.373 23.5355C185.373 27.6407 183.582 29.7555 177.947 29.7555C172.311 29.7555 168.921 25.9086 168.921 21.6121H165.85L165.788 21.6743C165.85 27.5115 171.227 32.7076 177.822 32.7076C184.418 32.7076 188.577 28.7937 188.577 23.5355C188.577 18.2772 185.378 15.5165 178.08 14.4304V14.4352Z" fill="currentColor"></path><path d="M195.235 10.2019H192.226V32.7135H195.235V10.2019Z" fill="currentColor"></path><path d="M195.235 3.79077H192.226V6.35532H195.235V3.79077Z" fill="currentColor"></path><path d="M208.745 8.98965C202.986 8.98965 198.692 13.9943 198.692 20.8555C198.692 27.7166 202.981 32.7213 208.998 32.7213C211.367 32.7213 213.354 32.018 215.078 30.6687C216.744 29.3864 217.828 27.7166 218.215 25.664H215.269C214.438 28.2285 213.158 29.9606 208.931 29.9606C204.705 29.9606 201.954 26.6879 201.634 21.621H218.535C218.597 20.9177 218.597 20.3387 218.597 19.9512L218.726 19.889C218.726 13.8604 214.5 8.98486 208.74 8.98486L208.745 8.98965ZM201.768 18.9273C202.346 14.4393 204.967 11.7456 208.745 11.7456C212.523 11.7456 215.273 14.6307 215.784 18.9273H201.763H201.768Z" fill="currentColor"></path><path d="M225.518 12.8951H225.26V10.2014H222.251V32.7129H225.322V19.3065C225.322 15.5218 226.602 13.0195 229.677 13.0195H232.046V10.0674H230.766C227.886 10.0674 226.415 10.7707 225.518 12.8903V12.8951Z" fill="currentColor"></path><path d="M244.529 10.0772H243.249C240.37 10.0772 238.899 10.7805 238.001 12.9001H237.743V10.2064H234.734V32.7179H237.805V19.3115C237.805 15.5268 239.085 13.0245 242.161 13.0245H244.529V10.0724V10.0772Z" fill="currentColor"></path><path d="M70.1781 11.0273H71.0186V7.48188H72.3749V6.78333H68.8218V7.48188H70.1781V11.0273Z" fill="currentColor"></path><path d="M73.5883 8.52885C73.6026 8.1413 73.6217 7.73461 73.6217 7.34227H73.6695C73.765 7.71547 73.8892 8.21785 73.9656 8.54321L74.7297 10.9594H75.6037L76.3678 8.60541C76.492 8.21785 76.6161 7.71547 76.726 7.34227H76.7737C76.788 7.79202 76.788 8.19871 76.8024 8.52885L76.96 11.0264H77.8005L77.4758 6.78247H76.2627L75.532 8.87334C75.4413 9.18434 75.3458 9.54319 75.2359 9.93553H75.2216C75.1118 9.50013 75.0354 9.18913 74.9398 8.85899L74.2092 6.78726H72.9484L72.6379 11.0312H73.4498L73.6026 8.53364L73.5883 8.52885Z" fill="currentColor"></path><path d="M13.2566 21.4173C13.1553 21.5191 12.9864 21.5191 12.885 21.4173L0.448804 8.8226C0.284725 8.65286 0 8.77411 0 9.01174V32.4504C0 32.5959 0.11582 32.7171 0.260596 32.7171H25.8762C25.8762 32.7171 25.9052 32.7171 25.9196 32.7171V8.30854C25.8424 8.29399 25.7604 8.31823 25.6928 8.38128L13.2566 21.4173Z" fill="currentColor"></path><path d="M56.0472 7.44852C55.9519 7.34675 55.7975 7.34675 55.7022 7.44852L42.1276 21.4306C42.0323 21.5324 41.8779 21.5324 41.7826 21.4306L30.251 8.40328C30.1965 8.34028 30.1239 8.32089 30.0558 8.32574V32.7132C30.0558 32.7132 30.0694 32.7132 30.0785 32.7132H46.5405L46.6131 32.6356L55.7022 22.2593C55.7975 22.1576 55.9519 22.1576 56.0472 22.2593L65.9671 32.6356C66.0125 32.6841 66.0761 32.7132 66.1396 32.7132H79.0196C79.2375 32.7132 79.3465 32.4272 79.1921 32.2576L56.0472 7.44368V7.44852Z" fill="currentColor"></path></svg>';
   var PHASES = ["Design", "Permits", "Pre-construction", "Construction", "Punch list", "Complete"];
   var TOKEN_KEY = "bsp-session";
-  var S = { seq: 0, loadErr: "", token: store("get"), me: null, projects: null, pid: null, data: null, tab: "overview", step: "email", email: "", err: "", busy: false, pending: [], lb: null, modal: null };
+  var S = { sched: { view: "gantt", month: "" }, seq: 0, loadErr: "", token: store("get"), me: null, projects: null, pid: null, data: null, tab: "overview", step: "email", email: "", err: "", busy: false, pending: [], lb: null, modal: null };
 
   /* ---------------- helpers ---------------- */
   function store(op, v) { try { if (op === "get") return localStorage.getItem(TOKEN_KEY) || ""; if (op === "set") localStorage.setItem(TOKEN_KEY, v); else localStorage.removeItem(TOKEN_KEY); } catch (e) { return ""; } }
@@ -131,13 +131,16 @@
     }
     var body = !S.pid ? renderList() : S.loadErr ? '<div class="loading"><div style="text-align:center"><p class="error">' + esc(S.loadErr) + '</p><p style="margin-top:14px;display:flex;gap:10px;justify-content:center"><button class="btn sm" data-a="retry">Try again</button>' + (staff() || (S.projects || []).length > 1 ? '<button class="btn ghost sm" data-a="home">All projects</button>' : "") + "</p></div></div>"
       : !S.data ? '<div class="loading">Loading the project…</div>' : renderProject();
-    var snap = snapshot();
+    var snap = snapshot(), oldG = root.querySelector(".gantt-wrap"), gLeft = oldG ? oldG.scrollLeft : -1;
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + LOGO + "<span>Client portal</span></div>" +
       '<div class="who"><span class="name">' + esc(S.me.name) + (staff() ? ' <span class="pill">Team</span>' : "") + '</span><div class="avatar">' + esc(initials(S.me.name)) + '</div><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</div>" +
       (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
+    // Timeline wider than the screen (phones): keep the scroll position, or start with today in view.
+    var gw = root.querySelector(".gantt-wrap"), tl = gw && gw.querySelector(".g-today"), lab = gw && gw.querySelector(".g-label");
+    if (gw && gw.scrollWidth > gw.clientWidth) gw.scrollLeft = gLeft >= 0 ? gLeft : tl ? Math.max(0, tl.offsetLeft + tl.parentNode.offsetLeft - (lab ? lab.offsetWidth : 0) - 40) : 0;
     S.err = "";
   }
   /* Keep what people typed (and their checkboxes) when the screen redraws. */
@@ -206,9 +209,9 @@
   function renderProject() {
     var d = S.data, p = d.project, oq = openQuestions().length, todo = clientTodo().length;
     var idx = PHASES.indexOf(p.phase);
-    var tabs = [["overview", "Overview", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Messages", oq], ["invoices", "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
+    var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Messages", oq], ["invoices", "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (staff()) tabs.push(["people", "People", 0]);
-    var body = { overview: tabOverview, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
+    var body = { overview: tabOverview, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead" style="' + bg(p.cover) + '"><div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + "</div>" +
@@ -234,6 +237,7 @@
       stat("Target completion", p.target_date ? day(p.target_date) : "—", p.start_date ? "Started " + day(p.start_date) : "") + "</div>" +
       '<div class="section-title"><h2>' + (staff() ? "Waiting on the client" : "Waiting on you") + "</h2></div>" +
       (waiting ? '<div class="thread">' + waiting + "</div>" : '<div class="empty">' + (staff() ? "Nothing pending from the client." : "You're all caught up. Nothing needs your answer right now.") + "</div>") +
+      (upcoming(30).length ? '<div class="section-title"><h2>Coming up</h2><button class="link" data-a="tab" data-t="schedule">Full schedule</button></div><div class="sch-list">' + upcoming(30).slice(0, 4).map(itemRow).join("") + "</div>" : "") +
       '<div class="section-title"><h2>Latest update</h2>' + (d.timeline.length ? '<button class="link" data-a="tab" data-t="updates">All updates</button>' : "") + "</div>" +
       (last ? post(last) : '<div class="empty">No updates yet.</div>') +
       (d.photos.length ? '<div class="section-title"><h2>Recent photos</h2><button class="link" data-a="tab" data-t="photos">All ' + d.photos.length + " photos</button></div>" +
@@ -332,6 +336,110 @@
       '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>';
   }
 
+
+  /* ---------------- schedule: Gantt, calendar, list ---------------- */
+  var KINDS = [["task", "Task"], ["inspection", "Inspection"], ["payment", "Payment due"], ["decision", "Decision"], ["meeting", "Meeting"], ["milestone", "Milestone"], ["deadline", "Deadline"]];
+  function kindLabel(k) { for (var i = 0; i < KINDS.length; i++) if (KINDS[i][0] === k) return KINDS[i][1]; return k; }
+  function ymd(d) { return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0"); }
+  function parseD(s) { var m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN; }
+  function addDays(s, n) { return ymd(new Date(parseD(s) + n * 864e5)); }
+  /* Everything with a date: the schedule itself plus invoice due dates and checklist due dates (read-only here). */
+  function scheduleItems() {
+    var d = S.data, out = (d.schedule || []).map(function (x) { return Object.assign({}, x); });
+    visibleInvoices().forEach(function (i) {
+      if (i.due && i.status !== "paid" && i.status !== "void" && i.status !== "draft") out.push({ id: "inv-" + i.id, kind: "payment", title: "Invoice " + i.number + " due · " + money(i.amount), start: i.due, end: "", derived: "Invoices" });
+    });
+    d.checklist.forEach(function (c) {
+      if (c.due && !isDone(c.done)) out.push({ id: "ck-" + c.id, kind: "deadline", title: c.item, start: c.due, end: "", derived: "Checklist", owner: c.owner });
+    });
+    return out.filter(function (x) { return !isNaN(parseD(x.start)); }).sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+  }
+  function upcoming(days) {
+    var t = today(), lim = addDays(t, days);
+    return scheduleItems().filter(function (x) { var e = x.end || x.start; return e >= t && x.start <= lim && x.status !== "done"; });
+  }
+  function chip(x, label) {
+    label = label || x.title;
+    return '<button class="sch-chip k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + '" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(kindLabel(x.kind) + ": " + label) + '"><i></i><span>' + esc(label) + "</span></button>";
+  }
+  function itemRow(x) {
+    var when = day(x.start) + (x.end && x.end !== x.start ? " → " + day(x.end) : "");
+    return '<button class="sch-row" data-a="schedView" data-id="' + esc(x.id) + '"><span class="sch-dot k-' + esc(x.kind) + '"></span><span class="sch-when">' + when + "</span><span><b>" + esc(x.title) + '</b><span class="muted small">' + esc(kindLabel(x.kind)) + (x.owner === "client" ? (staff() ? " · client" : " · you") : "") + (x.derived ? " · from " + esc(x.derived) : "") + "</span></span>" +
+      (x.status === "done" ? '<span class="pill ok">Done</span>' : x.status === "in progress" ? '<span class="pill gold">In progress</span>' : "<span></span>") + "</button>";
+  }
+  function tabSchedule() {
+    var v = S.sched.view, items = scheduleItems(), tasks = (S.data.schedule || []).filter(function (x) { return x.kind === "task"; });
+    var head = '<div class="section-title" style="margin-top:0"><div class="chips">' + [["gantt", "Timeline"], ["calendar", "Calendar"], ["list", "List"]].map(function (o) { return '<button class="chip' + (v === o[0] ? " on" : "") + '" data-a="schedMode" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="actions">' + (items.length ? '<button class="btn ghost sm" data-a="ics">Add to my calendar</button>' : "") +
+      (staff() && !tasks.length ? '<button class="btn ghost sm" data-a="stdPhases">Add the standard phases</button>' : "") +
+      (staff() ? '<button class="btn sm" data-a="modal" data-m="sched">Add a date</button>' : "") + "</div></div>" +
+      '<div class="sch-legend">' + KINDS.map(function (k) { return '<span><i class="sch-dot k-' + k[0] + '"></i>' + k[1] + "</span>"; }).join("") + "</div>";
+    if (!items.length) return head + '<div class="empty">' + (staff() ? "No dates yet. Add the standard phases or a first date (inspection, payment, decision…)." : "Blue Sierra hasn't added dates yet.") + "</div>";
+    return head + (v === "calendar" ? calendarView(items) : v === "list" ? listView(items) : ganttView(items));
+  }
+  function ganttView(items) {
+    var p = S.data.project, bars = items.filter(function (x) { return x.kind === "task" && x.end; }), marks = items.filter(function (x) { return !(x.kind === "task" && x.end); });
+    var all = items.map(function (x) { return x.start; }).concat(items.map(function (x) { return x.end; }).filter(Boolean), [p.start_date, p.target_date].filter(function (x) { return !isNaN(parseD(x)); }));
+    var a = parseD(all.reduce(function (m, x) { return x < m ? x : m; })), z = parseD(all.reduce(function (m, x) { return x > m ? x : m; }));
+    a = Date.UTC(new Date(a).getUTCFullYear(), new Date(a).getUTCMonth(), 1);                 // start on the 1st of the month
+    var ze = new Date(z); z = Date.UTC(ze.getUTCFullYear(), ze.getUTCMonth() + 1, 1);           // end on the 1st of the next month
+    var span = z - a, pos = function (s) { return Math.max(0, Math.min(100, (parseD(s) - a) / span * 100)); };
+    var months = []; for (var m = new Date(a); m.getTime() < z; m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1))) months.push(m);
+    var grid = months.map(function (m) { var next = Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1); return '<span style="left:' + ((m.getTime() - a) / span * 100) + "%;width:" + ((next - m.getTime()) / span * 100) + '%">' + m.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }) + (m.getUTCMonth() === 0 || m.getTime() === a ? " " + m.getUTCFullYear() : "") + "</span>"; }).join("");
+    var t = today(), todayLine = parseD(t) >= a && parseD(t) <= z ? '<i class="g-today" style="left:' + pos(t) + '%" title="Today"></i>' : "";
+    var rows = bars.map(function (x) {
+      var l = pos(x.start), w = Math.max(0.8, pos(addDays(x.end, 1)) - l);
+      return '<div class="g-label"><b>' + esc(x.title) + '</b><span class="muted small">' + day(x.start) + " → " + day(x.end) + "</span></div>" +
+        '<div class="g-track">' + todayLine + '<button class="g-bar k-' + esc(x.kind) + (x.status === "done" ? " done" : "") + '" style="left:' + l + "%;width:" + w + '%" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(x.title + ": " + day(x.start) + " → " + day(x.end)) + '">' + (x.status === "done" ? "✓" : "") + "</button></div>";
+    }).join("");
+    var keyRow = KINDS.map(function (k) {
+      var ks = marks.filter(function (x) { return x.kind === k[0]; }); if (!ks.length) return "";
+      return '<div class="g-label"><b><span class="sch-dot k-' + k[0] + '"></span> ' + k[1] + (ks.length > 1 && k[0] !== "payment" ? "s" : "") + '</b><span class="muted small">' + ks.length + " date" + (ks.length > 1 ? "s" : "") + "</span></div>" +
+      '<div class="g-track g-marks">' + todayLine + ks.map(function (x) { return '<button class="g-mark k-' + esc(x.kind) + (x.kind === "milestone" ? " diamond" : "") + '" style="left:' + pos(x.start) + '%" data-a="schedView" data-id="' + esc(x.id) + '" title="' + esc(kindLabel(x.kind) + " · " + day(x.start) + ": " + x.title) + '" aria-label="' + esc(kindLabel(x.kind) + " " + day(x.start) + ": " + x.title) + '"></button>'; }).join("") + "</div>";
+    }).join("");
+    return '<div class="card gantt-wrap" data-lenis-prevent><div class="gantt"><div class="g-label g-head"></div><div class="g-track g-head">' + grid + "</div>" + rows + keyRow + "</div></div>" +
+      '<p class="muted small" style="margin-top:8px">Tap a bar or a marker for details. The red line is today.</p>' +
+      '<div class="section-title"><h2>Coming up</h2></div>' + (upcoming(30).length ? '<div class="sch-list">' + upcoming(30).map(itemRow).join("") + "</div>" : '<div class="empty">Nothing in the next 30 days.</div>');
+  }
+  function calendarView(items) {
+    var ym = S.sched.month || today().slice(0, 7), y = +ym.slice(0, 4), mo = +ym.slice(5, 7) - 1;
+    var first = new Date(Date.UTC(y, mo, 1)), startDow = (first.getUTCDay() + 6) % 7, daysIn = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    // Key dates first; a multi-day task shows only on the day it starts and the day it ends.
+    var byDay = {}, put = function (d, x, label) { if (d.slice(0, 7) === ym) (byDay[d] = byDay[d] || []).push({ x: x, label: label }); };
+    items.filter(function (x) { return x.kind !== "task"; }).forEach(function (x) { put(x.start, x, x.title); });
+    items.filter(function (x) { return x.kind === "task"; }).forEach(function (x) {
+      if (x.end && x.end !== x.start) { put(x.start, x, x.title + " starts"); put(x.end, x, x.title + " ends"); } else put(x.start, x, x.title);
+    });
+    var cells = ""; for (var i = 0; i < startDow; i++) cells += '<div class="cal-cell empty"></div>';
+    for (var dn = 1; dn <= daysIn; dn++) {
+      var key = ym + "-" + String(dn).padStart(2, "0"), list = byDay[key] || [];
+      cells += '<div class="cal-cell' + (key === today() ? " today" : "") + '"><span class="cal-num">' + dn + "</span>" + list.slice(0, 3).map(function (c) { return chip(c.x, c.label); }).join("") + (list.length > 3 ? '<span class="muted small">+' + (list.length - 3) + " more</span>" : "") + "</div>";
+    }
+    var label = first.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+    return '<div class="card cal" data-lenis-prevent><div class="cal-head"><button class="icon-btn" data-a="calMove" data-n="-1" aria-label="Previous month">‹</button><b>' + label + '</b><button class="icon-btn" data-a="calMove" data-n="1" aria-label="Next month">›</button><button class="link small" data-a="calMove" data-n="0">Today</button></div>' +
+      '<div class="cal-grid">' + ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("") + cells + "</div></div>" +
+      '<div class="section-title"><h2>In ' + first.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }) + "</h2></div>" +
+      (function () { var inMonth = items.filter(function (x) { return x.start.slice(0, 7) === ym || (x.end && x.kind === "task" && x.end.slice(0, 7) === ym); });
+        return inMonth.length ? '<div class="sch-list">' + inMonth.map(itemRow).join("") + "</div>" : '<div class="empty">No dates this month.</div>'; })();
+  }
+  function listView(items) {
+    var t = today(), next = items.filter(function (x) { return (x.end || x.start) >= t; }), past = items.filter(function (x) { return (x.end || x.start) < t; });
+    return (next.length ? '<div class="sch-list">' + next.map(itemRow).join("") + "</div>" : '<div class="empty">Nothing coming up.</div>') +
+      (past.length ? '<details class="sch-past"><summary>Past dates (' + past.length + ")</summary>" + '<div class="sch-list">' + past.slice().reverse().map(itemRow).join("") + "</div></details>" : "");
+  }
+  function icsFile() {
+    var p = S.data.project, esc2 = function (t) { return String(t || "").replace(/[\;,]/g, function (c) { return "\\" + c; }).replace(/\n/g, "\\n"); };
+    var stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+    var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Blue Sierra Construction//Client portal//EN", "CALSCALE:GREGORIAN", "X-WR-CALNAME:" + esc2(p.name + " · Blue Sierra")];
+    scheduleItems().forEach(function (x) {
+      var end = addDays(x.end && x.kind === "task" ? x.end : x.start, 1);
+      lines.push("BEGIN:VEVENT", "UID:" + x.id + "@portal.bluesierracorp.com", "DTSTAMP:" + stamp, "DTSTART;VALUE=DATE:" + x.start.replace(/-/g, ""), "DTEND;VALUE=DATE:" + end.replace(/-/g, ""),
+        "SUMMARY:" + esc2((x.kind === "task" || x.derived ? "" : kindLabel(x.kind) + ": ") + x.title + " · " + p.name), "DESCRIPTION:" + esc2("Blue Sierra client portal: https://www.bluesierracorp.com/portal"), "END:VEVENT");
+    });
+    lines.push("END:VCALENDAR");
+    return lines.join("\r\n");
+  }
+
   /* ---------------- modals + lightbox ---------------- */
   function renderModal() {
     var m = S.modal, d = S.data, body = "";
@@ -359,6 +467,25 @@
         '<label class="f">PDF' + (i.pdf ? ' (one is attached; choose a file to replace it)' : "") + '<input type="file" name="pdf" accept="application/pdf"></label>' +
         '<label class="check-line"><input type="checkbox" name="notify"' + (m.id ? "" : " checked") + "> Email the client that it's ready</label>" +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
+    }
+    if (m.type === "sched") {
+      var x = m.id ? (d.schedule || []).filter(function (y) { return y.id === m.id; })[0] || {} : { kind: "inspection", start: today(), owner: "blue sierra", status: "planned" };
+      body = "<h2>" + (m.id ? "Edit date" : "Add a date") + '</h2><form class="form" data-form="sched">' +
+        '<div class="row2"><label class="f">Type<select name="kind" data-sched-kind>' + KINDS.map(function (k) { return '<option value="' + k[0] + '"' + (k[0] === x.kind ? " selected" : "") + ">" + k[1] + "</option>"; }).join("") + '</select></label>' +
+        '<label class="f">Status<select name="status">' + ["planned", "in progress", "done"].map(function (o) { return '<option value="' + o + '"' + (o === x.status ? " selected" : "") + ">" + o.charAt(0).toUpperCase() + o.slice(1) + "</option>"; }).join("") + "</select></label></div>" +
+        '<label class="f">Name<input type="text" name="title" required maxlength="200" value="' + esc(x.title) + '" placeholder="e.g. Footing inspection, Choose pool coping, Progress payment 2"></label>' +
+        '<div class="row2"><label class="f">Date' + '<input type="date" name="start" required value="' + esc(x.start) + '"></label><label class="f sched-end">End date (tasks only)<input type="date" name="end" value="' + esc(x.end) + '"></label></div>' +
+        '<div class="row2"><label class="f">Phase<select name="phase"><option value="">—</option>' + PHASES.map(function (ph) { return "<option" + (ph === x.phase ? " selected" : "") + ">" + ph + "</option>"; }).join("") + '</select></label>' +
+        '<label class="f">Who<select name="owner"><option value="blue sierra"' + (x.owner !== "client" ? " selected" : "") + '>Blue Sierra</option><option value="client"' + (x.owner === "client" ? " selected" : "") + ">Client</option></select></label></div>" +
+        '<label class="f">Notes (team only)<textarea name="notes" maxlength="1000">' + esc(x.notes) + "</textarea></label>" +
+        '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delSched" data-id="' + esc(m.id) + '" style="margin-right:auto">Delete</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
+    if (m.type === "schedView") {
+      var v = scheduleItems().filter(function (y) { return y.id === m.id; })[0];
+      body = v ? '<div class="eyebrow"><span class="sch-dot k-' + esc(v.kind) + '"></span> ' + esc(kindLabel(v.kind)) + (v.derived ? " · from " + esc(v.derived) : "") + "</div><h2 style=\"margin-top:6px\">" + esc(v.title) + "</h2>" +
+        '<p class="muted">' + day(v.start) + (v.end && v.end !== v.start ? " → " + day(v.end) : "") + (v.phase ? " · " + esc(v.phase) : "") + (v.status ? " · " + esc(v.status) : "") + "</p>" +
+        (v.owner === "client" ? '<p style="margin-top:10px">' + (staff() ? "The client handles this one." : "This one is yours.") + "</p>" : "") +
+        '<div class="actions" style="margin-top:18px">' + (v.derived ? '<button class="btn ghost" data-a="tab" data-t="' + (v.derived === "Invoices" ? "invoices" : "checklist") + '">Open ' + esc(v.derived) + "</button>" : "") + '<button class="btn" data-a="close">Close</button></div>' : "<p>Not found.</p>";
     }
     if (m.type === "check") {
       var c = m.id ? d.checklist.filter(function (x) { return x.id === m.id; })[0] || {} : { phase: d.project.phase, owner: "blue sierra" };
@@ -407,6 +534,20 @@
       case "closeQ": run(b, async function () { await call("closeQuestion", { questionId: b.dataset.id }); await reload(true); }); return;
       case "removePerson": if (confirm("Remove " + b.dataset.email + " from this project?")) run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); toast("Access removed"); }); return;
       case "cover": run(b, async function () { await call("setCover", { projectId: S.pid, fileId: b.dataset.id }); S.lb = null; await reload(true); toast("Cover photo updated"); }); return;
+      case "schedMode": S.sched.view = b.dataset.v; return keepScroll(render);
+      case "calMove":
+        var n = +b.dataset.n, cur = S.sched.month || today().slice(0, 7);
+        if (!n) S.sched.month = today().slice(0, 7);
+        else { var dd = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1 + n, 1)); S.sched.month = dd.getUTCFullYear() + "-" + String(dd.getUTCMonth() + 1).padStart(2, "0"); }
+        return keepScroll(render);
+      case "schedView":
+        var it = (S.data.schedule || []).filter(function (y) { return y.id === b.dataset.id; })[0];
+        S.modal = { type: staff() && it ? "sched" : "schedView", id: b.dataset.id }; return keepScroll(render);
+      case "delSched": if (confirm("Delete this date?")) run(b, async function () { await call("deleteScheduleItem", { itemId: b.dataset.id }); S.modal = null; await refresh(); toast("Deleted"); }); return;
+      case "stdPhases": run(b, async function () { await call("addStandardPhases", { projectId: S.pid }); await refresh(); toast("Phases added. Tap any of them to change its dates."); }); return;
+      case "ics":
+        var blob = new Blob([icsFile()], { type: "text/calendar" }), aIcs = document.createElement("a");
+        aIcs.href = URL.createObjectURL(blob); aIcs.download = (S.data.project.name || "project").replace(/[^\w-]+/g, "-") + "-schedule.ics"; document.body.appendChild(aIcs); aIcs.click(); aIcs.remove(); return;
       case "delPhoto": if (confirm("Delete this photo?")) run(b, async function () { await call("deletePhoto", { photoId: b.dataset.id }); S.lb = null; await reload(); toast("Photo deleted"); }); return;
     }
   });
@@ -480,6 +621,10 @@
         var file = f.querySelector("[name=pdf]").files[0], pdf = file ? await readPdf(file) : null;
         await call("saveInvoice", { projectId: S.pid, notify: !!fd.get("notify"), invoice: { id: S.modal.id || undefined, number: v("number"), title: v("title"), amount: v("amount"), issued: v("issued"), due: v("due"), status: v("status"), paid_date: v("paid_date"), pay_url: v("pay_url"), pdf: pdf } });
         S.modal = null; await refresh(true); toast("Invoice saved"); return;
+      }
+      if (kind === "sched") {
+        await call("saveScheduleItem", { projectId: S.pid, item: { id: S.modal.id || undefined, kind: v("kind"), title: v("title"), start: v("start"), end: v("kind") === "task" ? v("end") : "", phase: v("phase"), owner: v("owner"), status: v("status"), notes: v("notes") } });
+        S.modal = null; await refresh(); toast("Schedule updated"); return;
       }
       if (kind === "check") {
         await call("saveChecklistItem", { projectId: S.pid, item: { id: S.modal.id || undefined, item: v("item"), phase: v("phase"), owner: v("owner"), due: v("due") } });
