@@ -1101,7 +1101,20 @@ function qbCheck() {
     var info = qbGet("/companyinfo/" + cfg.realm), name = ((info || {}).CompanyInfo || {}).CompanyName || "";
     if (name && name !== cfg.company) qbProps().setProperty("QB_COMPANY", name);
     c.put(k, "1", 900);
-  } catch (e) { throw new Error(qbExplain(e, cfg)); }
+  } catch (e) {
+    // A 403 often means the connected company lives on the other side (a test company on the real setting, or the reverse). Ask the other side once.
+    if (/error 403/.test(String(e.message))) try {
+      var other = cfg.env === "production" ? "sandbox" : "production";
+      var r = UrlFetchApp.fetch(QB.API[other] + "/v3/company/" + cfg.realm + "/companyinfo/" + cfg.realm + "?minorversion=" + QB.MINOR, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: "application/json" } });
+      if (r.getResponseCode() === 200) {
+        var nm = ((JSON.parse(r.getContentText()) || {}).CompanyInfo || {}).CompanyName || "a company";
+        throw new Error(cfg.env === "production"
+          ? "You're connected to \"" + nm + "\", which is a QuickBooks TEST (sandbox) company, not Blue Sierra's real books. That happens when Intuit is signed in as the developer account. Fix: Home → Team → Disconnect, then Connect QuickBooks, click \"Not you?\" on Intuit's page and sign in with the login you use for Blue Sierra's real QuickBooks, and pick the real company."
+          : "You're connected to \"" + nm + "\", a real company, while the portal is on the Sandbox setting. Disconnect, switch to Production, Save keys and Connect again.");
+      }
+    } catch (e2) { if (/connected to/.test(String(e2.message))) throw e2; }
+    throw new Error(qbExplain(e, cfg));
+  }
 }
 function qbExplain(e, cfg) {
   var m = String(e && e.message || e), where = cfg.env === "sandbox" ? "the Sandbox (test) setting" : "the Production (real company) setting";
