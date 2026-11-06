@@ -265,6 +265,7 @@ var ACTIONS = {
     if (role === "staff" && !admin) throw new Error("Only Jesús can add team members.");
     if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) throw new Error("That email doesn't look right.");
     var p = b.projectId ? needProject(me, b.projectId) : null;
+    purgeOrphans();                                        // clear leftovers first, so a returning email always starts fresh
     var existing = findPerson(email);
     if (existing) {
       if (isStaff(existing) && !admin) throw new Error("Only Jesús can change team members.");
@@ -280,12 +281,12 @@ var ACTIONS = {
     if (b.invite && !p && role === "staff") safeMail(function () {
       sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
         "<p>Hi " + esc(first(b.name || "")) + ",</p><p>Jesús added you to the " + CONFIG.COMPANY + " project portal. You can see every project: schedule, photos, chat, contract and invoices.</p>" +
-        button("Open the portal") + "<p>To log in, type this email address and we'll send you a 6-digit code.</p>");
+        button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
     }, "Added, but the invitation email couldn't be sent.");
     if (b.invite && p) safeMail(function () {
       sendMail(email, "Your project portal for " + p.name,
         "<p>Hi " + esc(first(b.name || "")) + ",</p><p>You can follow <b>" + esc(p.name) + "</b> in the " + CONFIG.COMPANY + " portal: photos, updates, questions, invoices and the checklist, all in one place.</p>" +
-        button("Open the portal") + "<p>To log in, type this email address and we'll send you a 6-digit code.</p>");
+        button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
     }, "Added, but the invitation email couldn't be sent.");
     return {};
   },
@@ -293,19 +294,15 @@ var ACTIONS = {
   removePerson: function (me, b) {
     needStaff(me);
     var person = findPerson(normEmail(b.email)); if (!person) return {};
-    if (person.email === me.email && !b.projectId) throw new Error("You can't turn off your own access.");
+    if (person.email === me.email) throw new Error(b.projectId ? "You can't remove yourself." : "You can't turn off your own access.");
+    if (person.role === "admin") throw new Error("Jesús can't be removed.");
     if (isStaff(person) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
     var ids = splitIds(person.project_ids).filter(function (x) { return x !== String(b.projectId); });
-    if (b.projectId && !ids.length && !isTeam(person)) {
-      // No projects left: remove them from the portal completely (and end their sessions), so adding the email again starts fresh.
-      var c = CacheService.getScriptCache();
-      rows("Sessions").forEach(function (sn) { if (sn.email === person.email) c.remove("sess:" + sn.token_hash); });
-      removeWhere("Sessions", function (r) { return r.email === person.email; });
-      removeWhere("People", function (r) { return r.email === person.email; });
-      return { removed: true };
-    }
-    update("People", "email", person.email, b.projectId ? { project_ids: ids.join(",") } : { active: "no" });
-    return {};
+    // Removed from the team page, or from their last project: they leave the portal completely (sessions, PIN, presence),
+    // so they disappear from Who's around and adding the email again starts fresh. Their old chat messages stay as history.
+    if (!b.projectId || (!ids.length && !isStaff(person))) { purgePerson(person); purgeOrphans(); return { removed: true }; }
+    update("People", "email", person.email, { project_ids: ids.join(",") });
+    purgeOrphans(); return {};
   },
 
   postUpdate: function (me, b) {
@@ -423,7 +420,7 @@ var ACTIONS = {
   /* Your own profile picture: a fun character on a color. */
   saveProfile: function (me, b) {
     var av = String(b.avatar || "");
-    if (/^fx:[a-z-]{2,40};t=[0-5];bg=[0-9]$/.test(av) || /^v1:[a-z0-9=;]{1,160}$/.test(av)) { update("People", "email", me.email, { avatar: av }); return { avatar: av }; }   // a drawn character
+    if (/^sc:[a-z0-9=;]{1,120}$/.test(av) || /^fx:[a-z-]{2,40};t=[0-5];bg=[0-9]$/.test(av) || /^v1:[a-z0-9=;]{1,160}$/.test(av)) { update("People", "email", me.email, { avatar: av }); return { avatar: av }; }   // a drawn character
     var a = av.split("|"), emoji = a[0], color = a[1];
     if (av && (AVATARS.indexOf(emoji) < 0 || AVATAR_COLORS.indexOf(color) < 0)) throw new Error("Pick one of the characters.");
     update("People", "email", me.email, { avatar: av ? emoji + "|" + color : "" });
@@ -438,8 +435,8 @@ var ACTIONS = {
     c.put("pres:" + myKey, JSON.stringify(mine), 21600);
     var projects = rows("Projects").filter(function (p) { return canSee(me, p.id) && p.status !== "deleted" && (isStaff(me) || p.status !== "archived"); }), names = {};
     projects.forEach(function (p) { names[p.id] = p.name; });
-    var people = rows("People").filter(function (x) {
-      if (!isTrue(x.active) || x.email === me.email) return false;
+    var live = liveProjectIds(), people = rows("People").filter(function (x) {
+      if (x.email === me.email || !inPortal(x, live)) return false;
       if (isStaff(me)) return true;                                                  // the team sees everyone on the portal
       return isStaff(x) || splitIds(x.project_ids).some(function (id) { return names[id]; });
     });
@@ -955,6 +952,20 @@ function plansOut(list, me) {
 var _KEYS = {};
 function keyOf(email) { return email ? (_KEYS[email] = _KEYS[email] || pkey(email)) : ""; }
 function avatarsByEmail() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x.avatar || ""; }); return o; }
+/* Someone counts as "in the portal" only if their access is on and they're on the team or on a live project. */
+function liveProjectIds() { var ids = {}; rows("Projects").forEach(function (p) { if (p.status !== "deleted") ids[p.id] = 1; }); return ids; }
+function inPortal(x, live) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).some(function (id) { return live[id]; })); }
+function purgePerson(person) {
+  var c = CacheService.getScriptCache();
+  rows("Sessions").forEach(function (sn) { if (sn.email === person.email) c.remove("sess:" + sn.token_hash); });
+  c.remove("pres:" + pkey(person.email));
+  removeWhere("Sessions", function (r) { return r.email === person.email; });
+  removeWhere("People", function (r) { return r.email === person.email; });
+}
+/* Leftovers from older versions: people whose access was turned off, or who have no project at all and aren't on the team. */
+function purgeOrphans() {
+  rows("People").filter(function (x) { return x.role !== "admin" && (!isTrue(x.active) || (!isStaff(x) && !splitIds(x.project_ids).length)); }).forEach(purgePerson);
+}
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
 /* "@Full Name" emails that person if they can see the channel (and didn't already get the message by email). */

@@ -32,78 +32,88 @@
   function staff() { return !!(S.me && S.me.staff); }
   function crew() { return !!(S.me && S.me.role === "crew"); }
   function team() { return staff() || crew(); }
-  var AVATARS = ["🦊", "🐻", "🦉", "🐢", "🐙", "🦖", "🐝", "🦄", "🐸", "🐼", "🦁", "🐧", "🌵", "🌲", "🌻", "🍄", "🏗️", "🚜", "🧱", "🔨", "📐", "🛠️", "🏡", "⛰️", "🌊", "🔥", "⭐", "🎸", "🚀", "😎"];
-  var AV_COLORS = ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4", "#111111"];
-  /* ---- drawn characters: little people with hats (cowboy, hard hat…), hair, beards and glasses ---- */
-  var CH = {
-    skin: ["#f6d7c3", "#eec1a0", "#d9a07b", "#b97d57", "#8d5a3b", "#5e3a26"],
-    hairc: ["#2b1d16", "#5a3825", "#a0672f", "#d9b06b", "#b9b4ac", "#c8552b", "#111111"],
-    shirt: ["#2f6b4a", "#1f5fa8", "#c39a5a", "#b03a2e", "#4a4a4a", "#7a5aa6", "#e0a600"],
-    bg: ["#f3e7d3", "#e3efe7", "#e7eef7", "#fdf4dc", "#efecfb", "#fcedf3", "#fdeee7", "#e8f4f4"],
-    hair: ["None", "Short", "Side part", "Curly", "Long", "Bun", "Ponytail", "Buzz", "Mohawk"],
-    hat: ["None", "🤠 Cowboy", "👷 Hard hat", "⛑ White hard hat", "🧢 Cap", "🧶 Beanie"],
-    beard: ["None", "Stubble", "Beard", "Mustache"], glasses: ["None", "Round", "Shades"], face: ["Smile", "Grin", "Chill"]
+  /* Little line icons (24×24, drawn for the portal) instead of emoji, so buttons look the same on every phone. */
+  function ico(d, cls) { return '<svg class="ico ' + (cls || "") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>"; }
+  var ICON = {
+    people: ico('<circle cx="9" cy="8.5" r="3.2"/><path d="M3.2 19.5c.7-3.3 3-5 5.8-5s5.1 1.7 5.8 5"/><circle cx="16.8" cy="9.3" r="2.6"/><path d="M16.2 14.6c2.4.1 4 1.7 4.6 4.9"/>'),
+    wave: ico('<path d="M7.5 12.5 5.6 10.6a1.6 1.6 0 0 0-2.3 2.3l4.5 4.6A7 7 0 0 0 19.6 13V7.6a1.5 1.5 0 0 0-3 0V11"/><path d="M16.6 10.5V5.6a1.5 1.5 0 0 0-3 0v4.9"/><path d="M13.6 10V4.6a1.5 1.5 0 0 0-3 0V10"/><path d="M10.6 10.2V6.6a1.5 1.5 0 0 0-3 0v6"/>', "wave"),
+    chat: ico('<path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.6 3.4V16.5H4.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z"/>'),
+    video: ico('<rect x="3" y="6.5" width="12.5" height="11" rx="2.5"/><path d="m15.5 10.6 5.5-3v8.8l-5.5-3"/>'),
+    dice: ico('<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r=".9" fill="currentColor"/><circle cx="15" cy="9" r=".9" fill="currentColor"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><circle cx="9" cy="15" r=".9" fill="currentColor"/><circle cx="15" cy="15" r=".9" fill="currentColor"/>'),
+    lock: ico('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
+    x: ico('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
+    receipt: ico('<path d="M6 3.5h12v17l-2.4-1.6-2.4 1.6-2.4-1.6-2.4 1.6L6 20.5Z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>'),
+    paid: ico('<circle cx="12" cy="12" r="8.5"/><path d="m8.3 12.3 2.5 2.5 5-5.3"/>'),
+    camera: ico('<path d="M4 8.5a2 2 0 0 1 2-2h2l1.5-2h5l1.5 2h2a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.6" r="3.4"/>'),
+    pen: ico('<path d="M15.5 4.5 19.5 8.5 9 19H5v-4Z"/><path d="m13.5 6.5 4 4"/>'),
+    todo: ico('<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>'),
+    party: ico('<path d="m4 20 4.5-12 7.5 7.5Z"/><path d="M14 4.5c.4 1.3-.2 2.4-1.5 2.9M19.5 10c-1.3-.4-2.4.2-2.9 1.5M17 4l.01 0M20 7l.01 0M11 3l.01 0"/>'),
+    calendar: ico('<rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>'),
+    ruler: ico('<path d="m3.5 15.5 12-12 5 5-12 12Z"/><path d="m7.5 11.5 2 2M10.5 8.5l2 2M13.5 5.5l2 2"/>'),
+    question: ico('<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2.1-2.4 3.6"/><path d="M12 17v.01"/>'),
+    clip: ico('<path d="m19 11.5-6.8 6.8a4.2 4.2 0 0 1-6-6l7.3-7.2a2.8 2.8 0 0 1 4 4l-7.2 7.2a1.4 1.4 0 0 1-2-2l6.4-6.3"/>'),
+    dollar: ico('<path d="M12 3.5v17M16.5 7.5c-.7-1.3-2.3-2-4.5-2-2.6 0-4.3 1.2-4.3 3.1 0 4.5 9 2.4 9 6.9 0 1.9-1.9 3.1-4.7 3.1-2.3 0-4-.8-4.8-2.2"/>'),
+    bell: ico('<path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2H5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'),
+    spark: ico('<path d="M12 3.5 13.8 10.2 20.5 12l-6.7 1.8L12 20.5l-1.8-6.7L3.5 12l6.7-1.8Z"/>')
   };
-  function chParse(v) { var o = { skin: 1, hair: 1, hairc: 0, hat: 0, beard: 0, glasses: 0, shirt: 0, bg: 0, face: 0 }; String(v || "").replace(/^v1:/, "").split(";").forEach(function (kv) { var p = kv.split("="); if (p[0] in o) o[p[0]] = Math.max(0, parseInt(p[1], 10) || 0); }); return o; }
-  function chStr(o) { return "v1:" + Object.keys(o).map(function (k) { return k + "=" + o[k]; }).join(";"); }
-  function chFromKey(key) { var h = 0; String(key || "x").split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return { skin: h % 6, hair: 1 + (h >> 3) % 8, hairc: (h >> 6) % 7, hat: (h >> 9) % 4 === 0 ? 2 : 0, beard: (h >> 11) % 5 === 0 ? 2 : 0, glasses: (h >> 13) % 6 === 0 ? 1 : 0, shirt: (h >> 15) % 7, bg: (h >> 17) % 8, face: (h >> 19) % 3 }; }
-  function chSvg(o) {
-    var g = function (a, i) { return a[Math.min(i, a.length - 1)]; }, sk = g(CH.skin, o.skin), hc = g(CH.hairc, o.hairc), sh = g(CH.shirt, o.shirt), out = [];
-    out.push('<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="' + g(CH.bg, o.bg) + '"/>');
-    if (o.hair === 4 || o.hair === 6) out.push('<path d="M18 30C17 13 47 13 46 30L48 48C40 43 24 43 16 48Z" fill="' + hc + '"/>');           // long hair behind
-    if (o.hair === 6) out.push('<path d="M44 26C52 30 52 42 47 47C47 40 46 34 44 30Z" fill="' + hc + '"/>');
-    out.push('<path d="M9 64C11 51 21 46 32 46C43 46 53 51 55 64Z" fill="' + sh + '"/><path d="M27 46L32 52L37 46Z" fill="rgba(255,255,255,.35)"/>');
-    out.push('<rect x="27" y="37" width="10" height="11" rx="4" fill="' + sk + '"/><rect x="27" y="40" width="10" height="4" fill="rgba(0,0,0,.08)"/>');
-    out.push('<circle cx="20" cy="30" r="2.8" fill="' + sk + '"/><circle cx="44" cy="30" r="2.8" fill="' + sk + '"/><ellipse cx="32" cy="29" rx="12" ry="13.5" fill="' + sk + '"/>');
-    out.push('<circle cx="25" cy="33" r="2.2" fill="#f08a7e" opacity=".22"/><circle cx="39" cy="33" r="2.2" fill="#f08a7e" opacity=".22"/>');
-    if (o.face === 2) out.push('<path d="M25.5 29.5Q27.5 28 29.5 29.5M34.5 29.5Q36.5 28 38.5 29.5" stroke="#2a1d17" stroke-width="1.4" fill="none" stroke-linecap="round"/>');
-    else out.push('<circle cx="27.5" cy="29" r="1.5" fill="#2a1d17"/><circle cx="36.5" cy="29" r="1.5" fill="#2a1d17"/><circle cx="28" cy="28.5" r=".45" fill="#fff"/><circle cx="37" cy="28.5" r=".45" fill="#fff"/>');
-    out.push('<path d="M25 25.4Q27.5 24.3 30 25.2M34 25.2Q36.5 24.3 39 25.4" stroke="' + hc + '" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".85"/>');
-    if (o.beard === 1) out.push('<path d="M20.5 31C21.5 43 42.5 43 43.5 31C41 38.5 36.5 40.5 32 40.5C27.5 40.5 23 38.5 20.5 31Z" fill="' + hc + '" opacity=".28"/>');
-    if (o.beard === 2) out.push('<path d="M20 30C20.5 45 43.5 45 44 30C42 37 38 39.5 32 39.5C26 39.5 22 37 20 30Z" fill="' + hc + '"/>');
-    if (o.beard >= 2) out.push('<path d="M26.8 34Q32 31.6 37.2 34Q32 35.6 26.8 34Z" fill="' + hc + '"/>');
-    out.push(o.face === 1 ? '<path d="M27.5 35.2Q32 40.5 36.5 35.2Z" fill="#7a2e26"/><path d="M28.6 35.6Q32 37 35.4 35.6" stroke="#fff" stroke-width="1" fill="none"/>' : o.beard === 2 ? '<path d="M29 37.2Q32 38.6 35 37.2" stroke="#7a2e26" stroke-width="1.4" fill="none" stroke-linecap="round"/>' : '<path d="M28 35.5Q32 39 36 35.5" stroke="#7a2e26" stroke-width="1.6" fill="none" stroke-linecap="round"/>');
-    var hair = {
-      1: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/>',
-      2: '<path d="M20 28C18.5 14 46 12 44.5 28C43 20 37 17.5 28 19.5C24.5 20.5 21.8 24 20 28Z" fill="' + hc + '"/><path d="M28 19.5C31 22 37 23 42 22" stroke="rgba(0,0,0,.18)" stroke-width="1" fill="none"/>',
-      3: '<g fill="' + hc + '"><circle cx="22" cy="22" r="4.5"/><circle cx="27" cy="17.5" r="5"/><circle cx="33" cy="16" r="5"/><circle cx="39" cy="18" r="5"/><circle cx="43" cy="23" r="4.2"/><circle cx="20.5" cy="27" r="3"/><circle cx="44" cy="27.5" r="3"/></g>',
-      4: '<path d="M19.5 30C18 13 46 12 44.5 30C42 21 37 18.5 31 19.5C25 20.5 21.5 25 19.5 30Z" fill="' + hc + '"/>',
-      5: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/><circle cx="32" cy="12.5" r="5.5" fill="' + hc + '"/>',
-      6: '<path d="M20 27C19 14 45 13 44 26C40 20 31 19 25 22C22.5 23 21 25 20 27Z" fill="' + hc + '"/><rect x="42" y="24" width="4" height="3" rx="1.5" fill="#c0392b"/>',
-      7: '<path d="M20.5 25C21 15 43 15 43.5 25C39 19.5 25 19.5 20.5 25Z" fill="' + hc + '" opacity=".55"/>',
-      8: '<path d="M29 25C28.5 15 30 9 32 8C34 9 35.5 15 35 25C33.5 22.5 30.5 22.5 29 25Z" fill="' + hc + '"/>'
-    }[o.hair];
-    if (hair) out.push(hair);
-    if (o.glasses === 1) out.push('<g stroke="#222" stroke-width="1.3" fill="rgba(255,255,255,.15)"><circle cx="27.5" cy="29" r="3.8"/><circle cx="36.5" cy="29" r="3.8"/></g><path d="M31.3 29H32.7M20.8 28L23.7 28.6M43.2 28L40.3 28.6" stroke="#222" stroke-width="1.3"/>');
-    if (o.glasses === 2) out.push('<g fill="#1d1d1d"><rect x="22.6" y="26.2" width="8.8" height="5.6" rx="2.5"/><rect x="32.6" y="26.2" width="8.8" height="5.6" rx="2.5"/></g><path d="M31.4 28H32.6M20.8 27.5L22.6 28M43.2 27.5L41.4 28" stroke="#1d1d1d" stroke-width="1.3"/><path d="M24 27.6L26 27" stroke="#fff" stroke-width=".8" opacity=".6"/>');
-    var hat = {
-      1: '<path d="M8 21.5C14 26.5 50 26.5 56 21.5C51 18.5 45 19.5 32 19.5C19 19.5 13 18.5 8 21.5Z" fill="#8a5a2b"/><path d="M21 20.5C20.5 9 25 6.5 29 9.5C31 11 33 11 35 9.5C39 6.5 43.5 9 43 20.5Z" fill="#a46b35"/><path d="M21.3 16.8H42.7V19.6H21.3Z" fill="#3b2414"/><path d="M28 9.6C30 12.5 34 12.5 36 9.6" stroke="#7d4f24" stroke-width="1" fill="none"/>',
-      2: '<path d="M18.5 23C18.5 9.5 45.5 9.5 45.5 23Z" fill="#f5b800"/><rect x="15.5" y="21.6" width="33" height="3.8" rx="1.9" fill="#d99f00"/><rect x="30.3" y="10" width="3.4" height="12" rx="1.7" fill="#d99f00"/><path d="M23 14C25 12 27 11 29 10.6" stroke="#fff" stroke-width="1.2" opacity=".5" fill="none"/>',
-      3: '<path d="M18.5 23C18.5 9.5 45.5 9.5 45.5 23Z" fill="#f4f4f2"/><rect x="15.5" y="21.6" width="33" height="3.8" rx="1.9" fill="#d9d9d4"/><rect x="30.3" y="10" width="3.4" height="12" rx="1.7" fill="#d9d9d4"/>',
-      4: '<path d="M19.5 22.5C19.5 10.5 44.5 10.5 44.5 22.5Z" fill="' + sh + '"/><path d="M33 21.5C41 20.5 50.5 21.5 53 23.6C46.5 25 38 25 33 23.6Z" fill="rgba(0,0,0,.35)"/><circle cx="32" cy="11.3" r="1.5" fill="rgba(0,0,0,.3)"/>',
-      5: '<path d="M18.8 24.5C18.8 8.5 45.2 8.5 45.2 24.5Z" fill="#c0392b"/><rect x="17.8" y="20.5" width="28.4" height="5.4" rx="2.7" fill="#9e2f24"/><circle cx="32" cy="8.5" r="3.6" fill="#f4e4d4"/>'
-    }[o.hat];
-    if (hat) out.push(hat);
-    out.push("</svg>");
-    return out.join("");
+  /* ---- Sierra Crew: everyone's little character. Line art from Notionists by Zoish (CC0); the hard hat, cowboy hat and
+     safety vest are drawn for Blue Sierra. Parts load once (avatars/crew.json) and each face becomes a tiny cached image. ---- */
+  var SC_BG = ["#F4D58D", "#F6B89B", "#B9DCCB", "#BFD3F2", "#D9C9F2", "#F2C4D6", "#E8DCC6", "#C7E59A", "#9FD8E0", "#E9A867"];
+  var SC_HATS = [["", "None"], ["cap", "Cap"], ["hard", "Hard hat"], ["cowboy", "Cowboy"]];
+  var SC_FULL = "300 250 1150 1150", SC_HEAD = "380 280 960 960", SC_FACE = "570 540 600 600";
+  var CREW = null, crewLoading = null, scUrls = {};
+  function loadCrew() {
+    if (CREW || crewLoading) return;
+    crewLoading = fetch(BASE + "avatars/crew.json?v=1").then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (j) { CREW = j; crewReady(); }).catch(function () { setTimeout(function () { crewLoading = null; }, 5000); });
   }
-  /* ---- 3D characters (Microsoft Fluent Emoji, MIT): people in six skin tones, plus faces and animals ---- */
-  var FX_PEOPLE = [["man-construction-worker", "Builder"], ["woman-construction-worker", "Builder"], ["man-farmer", "Farmer"], ["woman-farmer", "Farmer"], ["man-mechanic", "Mechanic"], ["woman-mechanic", "Mechanic"],
-    ["man-office-worker", "Office"], ["woman-office-worker", "Office"], ["man-technologist", "Tech"], ["woman-technologist", "Tech"], ["man-artist", "Designer"], ["woman-artist", "Designer"], ["detective", "Detective"], ["ninja", "Ninja"]];
-  var FX_FUN = [["cowboy-hat-face", "Cowboy"], ["smiling-face-with-sunglasses", "Cool"], ["fox", "Fox"], ["bear", "Bear"], ["owl", "Owl"], ["frog", "Frog"], ["lion", "Lion"], ["unicorn", "Unicorn"], ["dog-face", "Dog"], ["cat-face", "Cat"], ["panda", "Panda"]];
-  var FX_TONES = ["#ffc83d", "#f7d7c4", "#d8b094", "#bb9167", "#8e562e", "#613d30"];
-  var FX_BG = ["#f3e7d3", "#e3efe7", "#e7eef7", "#efecfb", "#fdeee7", "#e8f4f4", "#f6f2eb", "#1d1d1b", "#2f6b4a", "#c39a5a"];
-  function fxParse(v) { var m = String(v || "").match(/^fx:([a-z-]+);t=(\d);bg=(\d)$/); return m ? { slug: m[1], t: +m[2], bg: +m[3] } : null; }
-  function fxSrc(o) { var tone = FX_PEOPLE.some(function (p) { return p[0] === o.slug; }); return BASE + "avatars/" + o.slug + (tone ? "-" + o.t : "") + ".png"; }
-  /* A person's picture: their 3D character, an older pick, or their initials. */
+  function crewReady() {            // swap every placeholder for the real face, without redrawing the page
+    root.querySelectorAll("[data-sc]").forEach(function (el) { var ini = el.querySelector(".ini"); if (ini) ini.outerHTML = '<img src="' + scUrl(scParse(el.dataset.sc)) + '" alt="">'; el.removeAttribute("data-sc"); });
+    if (S.modal && S.modal.type === "profile") keepScroll(render);
+  }
+  function scHash(s) { var h = 2166136261; s = String(s || ""); for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function scKeys(k) { return CREW ? Object.keys(CREW[k]) : []; }
+  var SC_DEF = { h: "01", x: "", v: 0, y: "14", e: "02", b: "03", n: "05", l: "22", g: "", d: "", c: 0 };
+  function scParse(code) {
+    var o = Object.assign({}, SC_DEF);
+    String(code || "").replace(/^sc:/, "").split(";").forEach(function (kv) { var p = kv.split("="); if (p[0] in o) o[p[0]] = p[0] === "v" || p[0] === "c" ? +p[1] || 0 : p[1] || ""; });
+    if (o.c > 9) o.c = 0; return o;
+  }
+  function scEncode(o) { return "sc:" + Object.keys(SC_DEF).map(function (k) { return k + "=" + (o[k] == null ? "" : o[k]); }).join(";"); }
+  /* No pick yet? Everyone still gets their own character, the same one on every device. The crew comes with a hard hat and vest. */
+  function scAuto(seed, role, legacy) {
+    var h = scHash(seed), r = function (list, salt) { return list[(h >>> salt) % list.length]; };
+    var hairs = ["01", "03", "04", "05", "07", "16", "18", "21", "25", "27", "30", "33", "34", "44", "49", "53"];   // short, easygoing styles; anyone can change theirs
+    var o = { h: r(hairs, 1), x: "", v: 0, y: r(["14", "01", "07", "10", "13", "17", "20", "25"], 3), e: r(["01", "02", "03", "04", "05"], 5), b: r(["01", "03", "05", "07", "09"], 7),
+      n: r(["01", "05", "08", "12", "15"], 9), l: r(["22", "25", "08", "03", "14"], 11), g: (h >>> 13) % 4 === 0 ? r(["01", "03", "05"], 15) : "", d: (h >>> 17) % 4 === 0 ? r(["01", "03", "05", "08"], 19) : "", c: (h >>> 21) % 10 };
+    if (role === "crew") { o.x = "hard"; o.v = 1; }
+    if (role === "architect" && !o.g) o.g = "01";
+    var lg = String(legacy || "");                               // keep the spirit of an older pick
+    if (/cowboy/.test(lg)) o.x = "cowboy"; else if (/construction|👷|hat=2|hat=3/.test(lg)) { o.x = "hard"; o.v = 1; } else if (/hat=1/.test(lg)) o.x = "cowboy";
+    var fb = lg.match(/;bg=(\d)$/); if (fb) o.c = +fb[1];
+    return o;
+  }
+  function scFor(avatar, seed, role) { var a = String(avatar || ""); return /^sc:/.test(a) ? scParse(a) : scAuto(seed, role, a); }
+  function scSvg(o, crop) {
+    var P = CREW, part = function (k, id) { return id && P[k][id] ? P[k][id] : ""; }, hat = o.x;
+    var body = o.v ? "14" : o.y;
+    var s = P.base + part("body", body) + (o.v ? P.extra.vest : "") + (hat === "cap" ? part("hair", "hat") : hat ? "" : part("hair", o.h)) +
+      part("lips", o.l) + part("beard", o.d) + part("nose", o.n) + part("eyes", o.e) + part("glasses", o.g) + part("brows", o.b) + (hat === "hard" || hat === "cowboy" ? P.extra[hat] : "");
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (crop || SC_FULL) + '" fill="none">' + s + "</svg>";
+  }
+  function scUrl(o, crop) {
+    var k = scEncode(o) + "|" + (crop || "");
+    if (!scUrls[k]) { try { scUrls[k] = URL.createObjectURL(new Blob([scSvg(o, crop)], { type: "image/svg+xml" })); } catch (e) { scUrls[k] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(scSvg(o, crop)); } }
+    return scUrls[k];
+  }
+  /* A person's picture. */
   function av(name, avatar, role, cls, key) {
-    var a = String(avatar || ""), dot = key && S.presence ? presDot(key) : "", fx = fxParse(a);
-    if (fx) return '<div class="avatar fx ' + (cls || "") + '" style="background:' + FX_BG[fx.bg] + '" title="' + esc(name) + '"><img src="' + esc(fxSrc(fx)) + '" alt="" loading="lazy">' + dot + "</div>";
-    if (/^v1:/.test(a)) return '<div class="avatar drawn ' + (cls || "") + '" title="' + esc(name) + '">' + chSvg(chParse(a)) + dot + "</div>";
-    var e = a.split("|");
-    if (e[0] && AVATARS.indexOf(e[0]) > -1) return '<div class="avatar char ' + (cls || "") + '" style="background:' + esc(e[1] || "#f3e7d3") + '" title="' + esc(name) + '">' + e[0] + dot + "</div>";
-    return '<div class="avatar ' + (cls || "") + " " + (role === "client" ? "gold" : role === "architect" ? "arch" : role === "crew" ? "crewc" : "") + '">' + esc(initials(name)) + dot + "</div>";
+    var o = scFor(avatar, key || name, role), dot = key && S.presence ? presDot(key) : "";
+    if (!CREW) loadCrew();
+    return '<div class="avatar sc ' + (cls || "") + '" style="background:' + SC_BG[o.c] + '" title="' + esc(name) + '"' + (CREW ? "" : ' data-sc="' + esc(scEncode(o)) + '"') + ">" +
+      (CREW ? '<img src="' + scUrl(o) + '" alt="">' : '<span class="ini">' + esc(initials(name)) + "</span>") + dot + "</div>";
   }
+  loadCrew();
   function roleName(r) { return { client: "Client", architect: "Architect", admin: "Admin", staff: "Project manager", crew: "Field crew" }[r] || "Team"; }
   function asClient() { return !!(S.me && S.me.role === "client"); }   // the architect sees the project like the client, but the client's to-dos aren't theirs
   function resetState() { cacheClear(); S.dis = null; S.presence = null; S.peopleOpen = false; S.token = ""; S.me = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; if (S.tour) { S.tour = null; var tw = document.getElementById("bsp-tour"); if (tw) tw.remove(); } S.pid = null; S.lb = null; S.modal = null; S.pending = []; S.loadErr = ""; S.seq++; }
@@ -248,12 +258,18 @@
     var body = !S.pid ? renderList() : S.loadErr ? '<div class="loading"><div style="text-align:center"><p class="error">' + esc(S.loadErr) + '</p><p style="margin-top:14px;display:flex;gap:10px;justify-content:center"><button class="btn sm" data-a="retry">Try again</button>' + (staff() || (S.projects || []).length > 1 ? '<button class="btn ghost sm" data-a="home">All projects</button>' : "") + "</p></div></div>"
       : !S.data ? '<div class="loading">Loading the project…</div>' : renderProject();
     var snap = snapshot(), oldG = root.querySelector(".gantt-wrap"), gLeft = oldG ? oldG.scrollLeft : -1;
+    // Panels that are already open stay put on a redraw: no replayed opening animation, same scroll position.
+    var OVER = [".bell-panel", ".bell-bg", ".pp-panel", ".pp-bg", ".modal-bg", ".modal", ".mk-body"], kept = {};
+    OVER.forEach(function (q) { var el = root.querySelector(q); if (el) kept[q] = el.scrollTop; });
+    var floaters = [].slice.call(root.querySelectorAll("#bsp-pop, .toast, #bsp-sure"));   // live cards survive the redraw
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
       '<div class="who">' + peopleButton() + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.peopleOpen ? peoplePanel() : "") + (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
+    floaters.forEach(function (el) { root.appendChild(el); });
+    Object.keys(kept).forEach(function (q) { var el = root.querySelector(q); if (el) { el.classList.add("still"); el.scrollTop = kept[q]; } });
     if (S.tour) drawTour(0);                      // a redraw wipes the overlay: put it back on the same step, without scrolling
     if (S.tab === "messages" && S.data) setTimeout(markChannelRead, 0);
     // Timeline wider than the screen (phones): keep the scroll position, or start with today in view.
@@ -381,7 +397,7 @@
     return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
       return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
         '<span class="pill ' + (x.role === "admin" ? "dark" : "") + '">' + roleName(x.role) + (x.role === "crew" ? " · " + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
-        (admin && x.email !== S.me.email && x.role !== "admin" ? (x.active ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '">Turn off</button>' : '<button class="btn ghost sm" data-a="teamOn" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Turn back on</button>') : "") + "</div>";
+        (admin && x.email !== S.me.email && x.role !== "admin" ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Remove</button>' : "") + "</div>";
     }).join("") + "</div>" +
       (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
         '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
@@ -425,7 +441,7 @@
     if (staff()) tabs.push(["people", "People", 0]);
     var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
-      '<section class="phead' + (!p.cover && p.lat != null ? " has-map" : "") + '" style="' + bg(p.cover) + '">' + (!p.cover ? mapHtml(p) : "") + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
+      '<section class="phead' + (p.lat != null ? " has-map" : "") + '" style="' + (p.lat != null ? "" : bg(p.cover)) + '">' + mapHtml(p) + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
       '<div class="ph-right">' + hereNow() + (staff() ? '<button class="btn light sm" data-a="modal" data-m="project" data-id="' + esc(p.id) + '">Edit project</button>' : "") + "</div></div></section>" +
       '<div class="stepper" aria-label="Project phase: ' + esc(p.phase) + '">' + PHASES.map(function (ph, i) { return '<div class="step ' + (i < idx ? "done" : i === idx ? "now" : "") + '"><i></i><span>' + esc(ph) + "</span></div>"; }).join("") + "</div>" +
@@ -508,7 +524,7 @@
   function isDm(ch) { return /^dm:/.test(String(ch || "")); }
   function dmWith(ch) { var ks = String(ch).slice(3).split("-"), other = ks[0] === S.me.key ? ks[1] : ks[0]; return ((S.data && S.data.members) || []).filter(function (m) { return m.key === other; })[0] || { name: "Someone", key: other }; }
   function dmKey(otherKey) { return "dm:" + [S.me.key, otherKey].sort().join("-"); }
-  function myDms() { var seen = {}; (S.data.messages || []).forEach(function (m) { if (isDm(m.channel)) seen[m.channel] = 1; }); if (isDm(S.chan)) seen[S.chan] = 1; return Object.keys(seen); }
+  function myDms() { var seen = {}; (S.data.messages || []).forEach(function (m) { if (isDm(m.channel) && dmWith(m.channel).role) seen[m.channel] = 1; }); if (isDm(S.chan)) seen[S.chan] = 1; return Object.keys(seen); }
   function chanLabel(ch) { return isDm(ch) ? "@ " + dmWith(ch).name : "# " + CH_INFO[ch][0]; }
   function chanMsgs(ch) { return S.data.messages.filter(function (m) { return (m.channel || "client") === ch; }); }
   function unreadIn(ch) { var r = (S.data.reads || {})[ch] || ""; return chanMsgs(ch).filter(function (m) { return !m.mine && m.at > r; }).length; }
@@ -533,11 +549,11 @@
       '<span class="rx-add"><button class="rx ghost" data-a="rxPick" data-id="' + esc(m.id) + '" aria-label="Add a reaction">☺+</button>' +
       (S.picker === m.id ? '<span class="rx-pop">' + EMOJI.map(function (e) { return '<button data-a="react" data-id="' + esc(m.id) + '" data-e="' + e + '">' + e + "</button>"; }).join("") + "</span>" : "") + "</span></div>";
   }
-  var EV = { invoice: ["🧾", "Invoice"], paid: ["💚", "Payment received"], update: ["📸", "Project update"], change: ["✍️", "Change order"], todo: ["✅", "New to-do"], done: ["🎉", "Done"], date: ["📅", "New date"], call: ["📹", "Video call"], plan: ["📐", "Plans"] };
+  var EV = { invoice: ["receipt", "Invoice"], paid: ["paid", "Payment received"], update: ["camera", "Project update"], change: ["pen", "Change order"], todo: ["todo", "New to-do"], done: ["party", "Done"], date: ["calendar", "New date"], call: ["video", "Video call"], plan: ["ruler", "Plans"] };
   /* Something happened (an invoice, an update, a to-do): a colored card the client can't miss, with a button straight to it. */
   function eventHtml(m, opts) {
-    var ev = EV[m.status] || ["✨", "Update"], lines = String(m.text || "").split("\n"), canDel = S.me && S.me.admin;
-    return '<div class="ev ev-' + esc(m.status || "x") + '" id="m-' + esc(m.id) + '"><div class="ev-ico" aria-hidden="true">' + ev[0] + '</div><div class="ev-body">' +
+    var ev = EV[m.status] || ["spark", "Update"], lines = String(m.text || "").split("\n"), canDel = S.me && S.me.admin;
+    return '<div class="ev ev-' + esc(m.status || "x") + '" id="m-' + esc(m.id) + '"><div class="ev-ico" aria-hidden="true">' + ICON[ev[0]] + '</div><div class="ev-body">' +
       '<div class="ev-top"><span class="ev-kind">' + ev[1] + '</span><span class="muted small">' + day(m.at) + "</span>" +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Ask about this</button>' : "") + (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
       '<div class="ev-line"><b>' + esc(m.author) + "</b> " + esc(lines[0]) + "</div>" + (lines[1] ? '<div class="ev-detail">' + esc(lines.slice(1).join(" ")).replace(/\d{4}-\d{2}-\d{2}/g, function (d) { return day(d); }) + "</div>" : "") +
@@ -678,9 +694,8 @@
     try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible" });
       S.presence = r; if (!S.myStatus && r.me) S.myStatus = r.me.s;
       if (r.pulse) onPulse(r.pulse);
-      var pb = root.querySelector(".people-btn"); if (pb) pb.outerHTML = peopleButton();
-      var hn = root.querySelector(".here-now"); if (hn) hn.outerHTML = hereNow();
-      if (S.peopleOpen) keepScroll(render);
+      patch(".people-btn", peopleButton()); patch(".here-now", hereNow());
+      if (S.peopleOpen) { var pl = root.querySelector(".pp-list"), lh = ppList(); if (pl && pl.dataset.h !== String(scHash(lh))) { pl.innerHTML = lh; pl.dataset.h = scHash(lh); } }
     } catch (e) {}
   }
   // Every 20 s while you're looking, every minute in the background (so other devices hear about new messages quickly).
@@ -695,12 +710,8 @@
     if (S.pid === p.pid && S.data) refresh();
     loadNotif(); refreshList();
     if (here) return;
-    var where = p.dm ? "🔒 privately" : p.kind === "event" ? "" : "in #" + p.channel, line = p.kind === "event" ? p.author + " " + p.text : p.text;
-    var old = document.getElementById("bsp-pop"); if (old) old.remove();
-    var pop = document.createElement("button"); pop.id = "bsp-pop"; pop.className = "pop";
-    pop.setAttribute("data-a", "actOpen"); pop.dataset.p = p.pid; pop.dataset.c = p.channel; pop.dataset.th = p.thread_id || "";
-    pop.innerHTML = av(p.author, p.avatar, "", "", p.akey) + '<span class="pop-txt"><b>' + esc(p.author) + "</b> " + esc(where) + ((S.projects || []).length > 1 ? ' <small>· ' + esc(p.project) + "</small>" : "") + "<span>" + esc(line) + "</span></span>";
-    root.appendChild(pop); setTimeout(function () { pop.classList.add("out"); setTimeout(function () { pop.remove(); }, 400); }, 9000);
+    var where = p.dm ? "privately" : p.kind === "event" ? "" : "in #" + p.channel, line = p.kind === "event" ? p.author + " " + p.text : p.text;
+    showPop(p, where, line);
     try {
       if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") {
         var n = new Notification(p.author + (p.dm ? " (private)" : " · " + p.project), { body: line, tag: "bsp-" + p.id });
@@ -708,41 +719,69 @@
       }
     } catch (e) {}
   }
+  /* The little card that slides in when someone writes. One at a time: a newer message updates it in place.
+     Tap to open, × or swipe it up to dismiss; it waits while your pointer is on it. */
+  var popTimer = null;
+  function showPop(p, where, line) {
+    var pop = document.getElementById("bsp-pop"), fresh = !pop;
+    if (fresh) { pop = document.createElement("div"); pop.id = "bsp-pop"; pop.className = "pop"; pop.setAttribute("role", "status"); root.appendChild(pop); }
+    pop.classList.remove("out", "bump"); if (!fresh) { void pop.offsetWidth; pop.classList.add("bump"); }
+    pop.innerHTML = '<button class="pop-main" data-a="actOpen" data-p="' + esc(p.pid) + '" data-c="' + esc(p.channel) + '" data-th="' + esc(p.thread_id || "") + '">' + av(p.author, p.avatar, "", "", p.akey) +
+      '<span class="pop-txt"><span class="pop-top"><b>' + esc(p.author) + "</b>" + (where ? " " + (p.dm ? ICON.lock + " " : "") + esc(where) : "") + ((S.projects || []).length > 1 ? ' <small>· ' + esc(p.project) + "</small>" : "") + "</span><span>" + esc(line) + '</span></span></button><button class="pop-x" aria-label="Dismiss">' + ICON.x + '</button><i class="pop-bar"></i>';
+    pop.querySelector(".pop-x").onclick = function (e) { e.stopPropagation(); hidePop(); };
+    pop.querySelector(".pop-main").addEventListener("click", function () { hidePop(); });
+    var bar = pop.querySelector(".pop-bar"); bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = "";
+    clearTimeout(popTimer); popTimer = setTimeout(hidePop, 8000);
+    pop.onmouseenter = function () { clearTimeout(popTimer); pop.classList.add("hold"); };
+    pop.onmouseleave = function () { pop.classList.remove("hold"); popTimer = setTimeout(hidePop, 3000); };
+    var y0 = null; pop.onpointerdown = function (e) { y0 = e.clientY; }; pop.onpointerup = function (e) { if (y0 != null && y0 - e.clientY > 30) hidePop(); y0 = null; };
+  }
+  function hidePop() { var pop = document.getElementById("bsp-pop"); clearTimeout(popTimer); if (!pop || pop.classList.contains("out")) return; pop.classList.add("out"); setTimeout(function () { if (pop.classList.contains("out")) pop.remove(); }, 320); }
   document.addEventListener("visibilitychange", function () { ping(); });
   var pingSoon = null; function pingLater() { clearTimeout(pingSoon); pingSoon = setTimeout(ping, 1200); }
+  /* Swap one piece of the page only when it really changed (no flicker every 20 seconds). */
+  function patch(sel, html) { var el = root.querySelector(sel), h = String(scHash(html)); if (!el || el.dataset.h === h) return; var t = document.createElement("div"); t.innerHTML = html; var n = t.firstElementChild; n.dataset.h = h; el.replaceWith(n); }
   function peopleButton() {
     var on = ((S.presence && S.presence.people) || []).filter(function (x) { return x.state === "online" || x.state === "busy"; });
-    return '<button class="people-btn' + (S.peopleOpen ? " on" : "") + '" data-a="people" aria-label="Who\'s around: ' + on.length + ' online"><span class="faces">' +
-      (on.length ? on.slice(0, 3).map(function (x) { return av(x.name, x.avatar, x.role, "xs", x.key); }).join("") : '<span class="pp-ico">👥</span>') + "</span>" + (on.length ? '<b>' + on.length + "</b>" : "") + "</button>";
+    return '<button class="people-btn' + (S.peopleOpen ? " on" : "") + (on.length ? " has" : "") + '" data-a="people" aria-label="Who\'s around: ' + on.length + ' online" title="Who\'s around">' +
+      (on.length ? '<span class="faces">' + on.slice(0, 3).map(function (x) { return av(x.name, x.avatar, x.role, "xs", ""); }).join("") + '</span><b>' + on.length + "</b>" : ICON.people) + '<i class="live"></i></button>';
   }
   function hereNow() {
     var here = ((S.presence && S.presence.people) || []).filter(function (x) { return x.pid === S.pid && x.state !== "offline"; });
     return '<div class="here-now">' + (here.length ? here.slice(0, 5).map(function (x) { return '<button class="hn" data-a="person" data-k="' + esc(x.key) + '" title="' + esc(x.name + " · " + STATE_TXT[x.state] + (x.tab ? " · on " + (TABN[x.tab] || x.tab) : "")) + '">' + av(x.name, x.avatar, x.role, "sm", x.key) + "</button>"; }).join("") + '<span>here now</span>' : "") + "</div>";
   }
   function sharedPid(x) { return x.shared.indexOf(S.pid) > -1 ? S.pid : x.shared[0]; }
-  function peoplePanel() {
+  function ppList() {
     var list = ((S.presence && S.presence.people) || []).slice().sort(function (a, b) { var o = { online: 0, busy: 1, away: 2, offline: 3 }; return o[a.state] - o[b.state] || b.last - a.last; });
     var row = function (x) {
-      var pid = sharedPid(x), where = x.state !== "offline" && x.project ? " · " + (x.pid === S.pid ? "here" : x.project) + (x.tab ? ", " + (TABN[x.tab] || x.tab) : "") : "";
-      return '<div class="pp-row' + (S.peopleFocus === x.key ? " focus" : "") + '" id="pp-' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) +
-        '<div class="pp-who"><b>' + esc(x.name) + '</b><small>' + esc(roleName(x.role)) + " · " + (x.inCall ? "📹 In a call" : STATE_TXT[x.state]) + esc(where) + (x.state === "offline" && x.last ? " · " + ago(x.last) : "") + "</small></div>" +
-        (pid ? '<div class="pp-act"><button class="icon-btn" data-a="wave" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Say hi">👋</button><button class="icon-btn" data-a="dmGo" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Message privately">💬</button>' +
-          (pid === S.pid ? '<button class="icon-btn" data-a="callPerson" data-k="' + esc(x.key) + '" title="Video call">📹</button>' : "") + "</div>" : "") + "</div>";
+      var pid = sharedPid(x), where = x.state !== "offline" && x.project ? (x.pid === S.pid ? "here" : x.project) + (x.tab ? " · " + (TABN[x.tab] || x.tab) : "") : "";
+      var st = x.inCall ? "In a call" : STATE_TXT[x.state] + (x.state === "offline" && x.last ? " · " + ago(x.last) : "");
+      return '<div class="pp-row s-' + x.state + (S.peopleFocus === x.key ? " focus" : "") + '" id="pp-' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) +
+        '<div class="pp-who"><b>' + esc(x.name) + '</b><small><span class="pp-role">' + esc(roleName(x.role)) + "</span> · " + esc(st) + (where ? ' · <span class="pp-where">' + esc(where) + "</span>" : "") + "</small></div>" +
+        (pid ? '<div class="pp-act"><button class="pp-btn hi" data-a="wave" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Say hi" aria-label="Say hi to ' + esc(x.name) + '">' + ICON.wave + '</button><button class="pp-btn" data-a="dmGo" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Message privately" aria-label="Message ' + esc(x.name) + '">' + ICON.chat + "</button>" +
+          (pid === S.pid ? '<button class="pp-btn" data-a="callPerson" data-k="' + esc(x.key) + '" title="Video call" aria-label="Call ' + esc(x.name) + '">' + ICON.video + "</button>" : "") + "</div>" : "") + "</div>";
     };
-    var groups = [["online", "Online"], ["busy", "Busy"], ["away", "Away"], ["offline", "Offline"]].map(function (g) { var l = list.filter(function (x) { return x.state === g[0]; }); return l.length ? '<div class="pp-sec">' + g[1] + " · " + l.length + "</div>" + l.map(row).join("") : ""; }).join("");
-    var st = S.myStatus || "available";
-    return '<div class="pp-bg" data-a="peopleClose"></div><aside class="pp-panel" data-lenis-prevent role="dialog" aria-label="Who\'s around"><div class="pp-head"><div><h3>Who\'s around</h3><span class="muted small">' + (S.pid ? "Wave, message or call anyone, right from here." : "Everyone on your projects.") + '</span></div><button class="icon-btn" data-a="peopleClose" aria-label="Close">✕</button></div>' +
-      '<div class="pp-me">' + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '<div class="chips">' + [["available", "🟢 Available"], ["busy", "🔴 Busy"], ["away", "🌙 Away"]].map(function (o) { return '<button class="chip' + (st === o[0] ? " on" : "") + '" data-a="myStatus" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
-      (S.presence ? groups || '<div class="empty">Nobody else is on your projects yet.</div>' : '<div class="loading" style="min-height:20vh">Checking who\'s around…</div>') + "</aside>";
+    if (!S.presence) return '<div class="pp-empty">Checking who\'s around…</div>';
+    var groups = [["online", "Online"], ["busy", "Busy"], ["away", "Away"], ["offline", "Offline"]].map(function (g) { var l = list.filter(function (x) { return x.state === g[0]; }); return l.length ? '<div class="pp-sec">' + g[1] + " <span>" + l.length + "</span></div>" + l.map(row).join("") : ""; }).join("");
+    return groups || '<div class="pp-empty">Nobody else is on your projects yet.</div>';
+  }
+  function peoplePanel() {
+    var st = S.myStatus || "available", lh = ppList();
+    return '<div class="pp-bg" data-a="peopleClose"></div><aside class="pp-panel" data-lenis-prevent role="dialog" aria-label="Who\'s around"><div class="pp-head"><div><h3>Who\'s around</h3><span class="muted small">' + (S.pid ? "Wave, message or call anyone, right from here." : "Everyone on your projects.") + '</span></div><button class="icon-btn" data-a="peopleClose" aria-label="Close">' + ICON.x + "</button></div>" +
+      '<div class="pp-me">' + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '<div class="pp-status">' + [["available", "Available"], ["busy", "Busy"], ["away", "Away"]].map(function (o) { return '<button class="st-chip' + (st === o[0] ? " on" : "") + '" data-a="myStatus" data-v="' + o[0] + '"><i class="sd sd-' + o[0] + '"></i>' + o[1] + "</button>"; }).join("") + "</div></div>" +
+      '<div class="pp-list" data-h="' + scHash(lh) + '">' + lh + "</div></aside>";
   }
 
   /* ---------------- the site map behind the project header (OpenStreetMap, darkened) ---------------- */
   function mapHtml(p) {
     if (p.lat == null || p.lon == null) { if (staff() && p.address) findSite(p); return ""; }
     var z = 17, n = Math.pow(2, z), lat = p.lat * Math.PI / 180, fx = (p.lon + 180) / 360 * n, fy = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * n, out = [];
-    for (var tx = Math.floor(fx) - 3; tx <= Math.floor(fx) + 3; tx++) for (var ty = Math.floor(fy) - 1; ty <= Math.floor(fy) + 1; ty++)
-      out.push('<img src="https://tile.openstreetmap.org/' + z + "/" + tx + "/" + ty + '.png" alt="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="left:calc(50% + ' + Math.round((tx - fx) * 256) + "px);top:calc(50% + " + Math.round((ty - fy) * 256) + 'px)">');
-    return '<div class="ph-map" aria-hidden="true">' + out.join("") + '<i class="ph-pin"></i></div><a class="ph-osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>';
+    for (var tx = Math.floor(fx) - 4; tx <= Math.floor(fx) + 3; tx++) for (var ty = Math.floor(fy) - 2; ty <= Math.floor(fy) + 2; ty++)
+      out.push('<img src="https://tile.openstreetmap.org/' + z + "/" + tx + "/" + ty + '.png" alt="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="left:calc(var(--mx) + ' + Math.round((tx - fx) * 256) + "px);top:calc(var(--my) + " + Math.round((ty - fy) * 256) + 'px)">');
+    // The pin: gold, with the project's cover photo inside (or the Blue Sierra mark), and a soft pulse where the property is.
+    var pin = '<span class="ph-pin"><i class="pulse"></i><svg viewBox="0 0 48 60" aria-hidden="true"><path d="M24 58C24 58 4 36.5 4 22.5a20 20 0 0 1 40 0C44 36.5 24 58 24 58Z" fill="#c39a5a" stroke="#fff" stroke-width="2.5"/></svg>' +
+      '<span class="pin-face"' + (p.cover ? ' style="' + bg(p.cover) + '"' : "") + ">" + (p.cover ? "" : '<svg viewBox="0 0 80 33" aria-hidden="true"><path d="M13.3 21.4c-.1.1-.3.1-.4 0L.4 8.8C.3 8.7 0 8.8 0 9v23.5c0 .1.1.2.3.2h25.6V8.3c-.1 0-.2 0-.2.1L13.3 21.4ZM56 7.4c-.1-.1-.2-.1-.3 0L42.1 21.4c-.1.1-.2.1-.3 0L30.3 8.4c-.1-.1-.1-.1-.2-.1v24.4h16.5l9.1-10.4c.1-.1.3-.1.3 0l9.9 10.4h13.1c.2 0 .3-.3.2-.5L56 7.4Z" fill="#111"/></svg>') + "</span></span>";
+    return '<div class="ph-map" aria-hidden="true">' + out.join("") + "</div>" + pin + '<a class="ph-osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>';
   }
   /* Team only, once per project: find the address on the map and save it, so nobody else's browser ever has to look it up. */
   async function findSite(p) {
@@ -825,14 +864,14 @@
   function bellPanel() {
     var m = notifModel();
     var row = function (it) {
-      var ev = it.kind === "event" ? (EV[it.status] || ["✨"])[0] : it.kind === "question" ? "❓" : it.files ? "📎" : it.dm ? "🔒" : "💬";
+      var evk = it.kind === "event" ? (EV[it.status] || ["spark"])[0] : it.kind === "question" ? "question" : it.files ? "clip" : it.dm ? "lock" : "chat", ev = ICON[evk];
       var line = it.kind === "event" ? "<b>" + esc(it.author) + "</b> " + esc(String(it.text).split("\n")[0]) : "<b>" + esc(it.author) + "</b> " + (it.dm ? "privately" : "in #" + esc(it.channel)) + ': <span class="n-msg">' + esc(String(it.text || (it.files ? "📎 attachment" : "")).slice(0, 140)) + "</span>";
       var open = it.kind === "event" && it.ref ? 'data-a="ref" data-ref="' + esc(it.ref) + '" data-p="' + esc(it.project_id) + '"' : 'data-a="actOpen" data-p="' + esc(it.project_id) + '" data-c="' + esc(it.channel) + '" data-th="' + esc(it.thread_id || "") + '"';
       return '<div class="n-wrap" data-swipe="' + esc(it.id) + '"><div class="n-under">Clear</div><button class="n-row' + (it.unread ? " new" : "") + '" ' + open + ">" +
-        '<span class="n-face">' + av(it.author, it.avatar, it.role, "sm", it.akey) + '<i>' + ev + '</i></span><span class="n-txt">' + line + "<small>" + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span></button>" +
-        '<button class="n-x" data-a="nClear" data-id="' + esc(it.id) + '" aria-label="Clear">✕</button></div>';
+        '<span class="n-face">' + av(it.author, it.avatar, it.role, "sm", it.akey) + '<i class="nb nb-' + evk + '">' + ev + '</i></span><span class="n-txt">' + line + "<small>" + day(it.at) + ((S.projects || []).length > 1 ? " · " + esc(it.project) : "") + "</small></span></button>" +
+        '<button class="n-x" data-a="nClear" data-id="' + esc(it.id) + '" aria-label="Clear">' + ICON.x + '</button></div>';
     };
-    var tiles = [["pay", "💵", staff() ? "Overdue" : "To pay"], ["ask", "💬", "Questions"], ["todo", "✅", "To-dos"], ["soon", "📅", "Next 2 weeks"]].filter(function (t) { return m.groups[t[0]].length; });
+    var tiles = [["pay", ICON.dollar, staff() ? "Overdue" : "To pay"], ["ask", ICON.chat, "Questions"], ["todo", ICON.todo, "To-dos"], ["soon", ICON.calendar, "Next 2 weeks"]].filter(function (t) { return m.groups[t[0]].length; });
     var open = S.needOpen && m.groups[S.needOpen] && m.groups[S.needOpen].length ? S.needOpen : null;
     var day0 = tiles.length ? '<div class="bp-sec">Your day</div><div class="day-tiles">' + tiles.map(function (t) {
         var g = m.groups[t[0]]; return '<button class="day-tile t-' + t[0] + (open === t[0] ? " on" : "") + '" data-a="needOpen" data-v="' + t[0] + '"><span class="dt-ico">' + t[1] + '</span><b>' + g.length + "</b><span>" + t[2] + "</span></button>";
@@ -843,14 +882,14 @@
     var caught = !m.fresh.length && !m.nNeeds;
     return '<div class="bell-bg" data-a="bellClose"></div><div class="bell-panel" role="dialog" aria-label="Notifications" data-lenis-prevent>' +
       '<div class="bp-head"><div><div class="bp-hi">' + esc(hello()) + '</div><div class="muted small">' + (caught ? "Nothing needs you right now." : m.fresh.length ? m.fresh.length + " new since you last looked." : "Here's your day.") + "</div></div>" +
-      '<div class="bp-tools">' + (m.fresh.length || m.old.length ? '<button class="clear-all" data-a="nClearAll">Clear all</button>' : "") + '<button class="icon-btn" data-a="bellClose" aria-label="Close">✕</button></div></div>' +
+      '<div class="bp-tools">' + (m.fresh.length || m.old.length ? '<button class="clear-all" data-a="nClearAll">Clear all</button>' : "") + '<button class="icon-btn" data-a="bellClose" aria-label="Close">' + ICON.x + '</button></div></div>' +
       (S.notif == null ? '<div class="bp-load">Checking for news…</div>' : "") +
       (m.fresh.length ? '<div class="bp-sec">New</div><div class="n-list">' + m.fresh.map(row).join("") + "</div>" : "") +
       day0 +
       (caught && S.notif != null ? '<div class="bp-empty">' + EMPTY_ART + "<b>You're all caught up!</b><span>Go enjoy your day. We'll ping you when something happens.</span></div>" : "") +
       (m.old.length ? '<div class="bp-sec">Earlier</div><div class="n-list">' + m.old.map(row).join("") + "</div>" : "") +
-      (window.Notification && Notification.permission === "default" ? '<button class="alerts-btn" data-a="alertsOn">🔔 Get alerts on this device when someone writes</button>' : "") +
-      '<div class="bp-foot"><span class="muted small">Swipe left or tap ✕ to clear</span><button class="link small" data-a="tour">Take the tour</button></div></div>';
+      (window.Notification && Notification.permission === "default" ? '<button class="alerts-btn" data-a="alertsOn">' + ICON.bell + ' Get alerts on this device when someone writes</button>' : "") +
+      '<div class="bp-foot"><span class="muted small">Swipe left or tap × to clear</span><button class="link small" data-a="tour">Take the tour</button></div></div>';
   }
   var EMPTY_ART = '<svg viewBox="0 0 160 110" width="150" aria-hidden="true"><circle cx="80" cy="58" r="44" fill="#f3e7d3"/><path d="M48 70c10-16 22-24 32-24s22 8 32 24" fill="none" stroke="#c39a5a" stroke-width="4" stroke-linecap="round"/><circle cx="80" cy="38" r="12" fill="#eda100"/><g stroke="#eda100" stroke-width="3" stroke-linecap="round"><path d="M80 18v-6M98 26l5-4M62 26l-5-4M104 40h6M50 40h6"/></g><path d="M30 92h100" stroke="#2f6b4a" stroke-width="4" stroke-linecap="round"/><path d="M44 92c2-8 6-12 10-12M60 92c0-6 3-10 6-11M112 92c-2-8-6-12-10-12" stroke="#2f6b4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
   async function loadNotif() {
@@ -1420,6 +1459,51 @@
   }
 
   /* ---------------- modals + lightbox ---------------- */
+  /* ---- the character maker (profile) ---- */
+  var MK_TABS = [["hair", "Hair"], ["face", "Face"], ["gear", "Hats & gear"], ["outfit", "Outfit"], ["color", "Color"]];
+  var MK_MOOD = { "22": "Smile", "25": "Grin", "08": "Big grin", "03": "Happy", "14": "Cheerful", "06": "Toothy", "12": "Cheeky", "30": "Smirk", "15": "Whistle", "29": "Wow" };
+  function makerHtml() {
+    var o = S.scDraft, tab = S.scTab || "hair";
+    if (!CREW) return '<div class="loading" style="min-height:30vh">Getting the crew ready…</div>';
+    var opt = function (k, v, crop, label, extra) {
+      var t = Object.assign({}, o, extra || {}); t[k] = v;
+      return '<button type="button" class="mk-opt' + (String(o[k]) === String(v) && !(extra && extra.x !== undefined && extra.x !== o.x) ? " on" : "") + '" data-a="scSet" data-k="' + k + '" data-v="' + esc(v) + '"' + (label ? ' title="' + esc(label) + '"' : "") + ' style="background:' + SC_BG[o.c] + '"><img src="' + scUrl(t, crop) + '" alt="' + esc(label || "") + '" loading="lazy"></button>';
+    };
+    var none = function (k) { return '<button type="button" class="mk-opt mk-none' + (!o[k] ? " on" : "") + '" data-a="scSet" data-k="' + k + '" data-v="">None</button>'; };
+    var row = function (title, html) { return '<div class="mk-row"><span class="mk-label">' + title + '</span><div class="mk-strip">' + html + "</div></div>"; };
+    var body = "";
+    if (tab === "hair") body = (o.x && o.x !== "" ? '<p class="mk-note">Your hat is covering your hair. Pick a hairstyle and the hat comes off.</p>' : "") +
+      '<div class="mk-grid">' + scKeys("hair").filter(function (k) { return k !== "hat"; }).map(function (k) { return opt("h", k, SC_HEAD, "Hair " + k, { x: "" }); }).join("") + "</div>";
+    if (tab === "face") body = row("Mood", scKeys("lips").map(function (k) { return opt("l", k, SC_FACE, MK_MOOD[k]); }).join("")) +
+      row("Eyes", scKeys("eyes").map(function (k) { return opt("e", k, SC_FACE); }).join("")) +
+      row("Brows", scKeys("brows").map(function (k) { return opt("b", k, SC_FACE); }).join("")) +
+      row("Nose", scKeys("nose").map(function (k) { return opt("n", k, SC_FACE); }).join("")) +
+      row("Glasses", none("g") + scKeys("glasses").map(function (k) { return opt("g", k, SC_FACE); }).join("")) +
+      row("Beard", none("d") + scKeys("beard").map(function (k) { return opt("d", k, SC_HEAD); }).join(""));
+    if (tab === "gear") body = row("Hat", SC_HATS.map(function (hh) { return opt("x", hh[0], SC_FULL, hh[1]); }).join("")) +
+      row("Safety vest", opt("v", 0, SC_FULL, "No vest") + opt("v", 1, SC_FULL, "Hi-vis vest"));
+    if (tab === "outfit") body = (o.v ? '<p class="mk-note">The vest is on. Pick an outfit and it comes off.</p>' : "") + '<div class="mk-grid">' + scKeys("body").map(function (k) { return opt("y", k, SC_FULL, "Outfit", { v: 0 }); }).join("") + "</div>";
+    if (tab === "color") body = '<div class="mk-colors">' + SC_BG.map(function (c, i) { return '<button type="button" class="mk-sw' + (o.c === i ? " on" : "") + '" data-a="scSet" data-k="c" data-v="' + i + '" style="background:' + c + '" aria-label="Color ' + (i + 1) + '"></button>'; }).join("") + "</div>";
+    return '<div class="mk-head"><div class="mk-stage" style="background:' + SC_BG[o.c] + '"><img src="' + scUrl(o) + '" alt="Your character"></div>' +
+      '<div class="mk-intro"><h2>Make your character</h2><p class="muted small">' + esc(S.me.name) + " · " + esc(roleName(S.me.role)) + '</p><button type="button" class="btn ghost sm mk-dice" data-a="scShuffle">' + ICON.dice + " Shuffle</button></div></div>" +
+      '<div class="mk-tabs" role="tablist">' + MK_TABS.map(function (t) { return '<button type="button" role="tab" class="mk-tab' + (tab === t[0] ? " on" : "") + '" data-a="scTab" data-v="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="mk-body" data-lenis-prevent>' + body + "</div>";
+  }
+  function redrawMaker(bounce) {
+    var w = root.querySelector(".maker-wrap"); if (!w) return;
+    var mb = w.querySelector(".mk-body"), top = mb ? mb.scrollTop : 0, lefts = [].map.call(w.querySelectorAll(".mk-strip"), function (x) { return x.scrollLeft; });
+    w.innerHTML = makerHtml();
+    var nb = w.querySelector(".mk-body"); if (nb && !bounce) nb.scrollTop = top;
+    if (!bounce) w.querySelectorAll(".mk-strip").forEach(function (x, i) { x.scrollLeft = lefts[i] || 0; });
+    var st = w.querySelector(".mk-stage"); if (st) { st.classList.remove("bounce"); void st.offsetWidth; st.classList.add("bounce"); }
+  }
+  function scShuffle() {
+    var o = scAuto(Math.random() + ":" + Date.now(), S.me.role), k = function (n) { var l = scKeys(n); return l[Math.floor(Math.random() * l.length)]; };
+    o.h = k("hair"); if (o.h === "hat") o.h = "01"; o.l = k("lips"); o.e = k("eyes"); o.b = k("brows"); o.n = k("nose"); o.y = k("body");
+    o.g = Math.random() < .3 ? k("glasses") : ""; o.d = Math.random() < .3 ? k("beard") : ""; o.c = Math.floor(Math.random() * SC_BG.length);
+    var r = Math.random(); o.x = r < .2 ? "hard" : r < .32 ? "cowboy" : r < .42 ? "cap" : ""; o.v = o.x === "hard" && Math.random() < .7 ? 1 : 0;
+    return o;
+  }
   function renderModal() {
     var m = S.modal, d = S.data, body = "";
     if (m.type === "project") {
@@ -1499,15 +1583,10 @@
         '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-a="close">Cancel</button></div>';
     }
     if (m.type === "profile") {
-      var o = S.fxDraft || (S.fxDraft = fxParse(S.me.avatar) || { slug: "man-construction-worker", t: 3, bg: 0 });
-      var tile = function (p) { var on = o.slug === p[0]; return '<button type="button" class="fx-opt' + (on ? " on" : "") + '" data-a="fxPick" data-s="' + p[0] + '" title="' + esc(p[1]) + '"><img src="' + esc(fxSrc({ slug: p[0], t: o.t })) + '" alt="' + esc(p[1]) + '" loading="lazy"></button>'; };
-      body = '<div class="ch-head"><div class="fx-big" style="background:' + FX_BG[o.bg] + '"><img src="' + esc(fxSrc(o)) + '" alt=""></div><div><h2>Pick your character</h2><p class="muted small">' + esc(S.me.name) + " · " + esc(roleName(S.me.role)) + "</p>" +
-        '<button type="button" class="btn ghost sm" data-a="fxRandom">🎲 Surprise me</button></div></div>' +
-        '<form class="form fx-form" data-form="profile"><div class="ch-row"><span class="ch-label">Skin tone</span><div class="ch-opts">' + FX_TONES.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.t === i ? " on" : "") + '" data-a="fxTone" data-v="' + i + '" style="background:' + c + '" aria-label="Skin tone ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
-        '<div class="fx-grid">' + FX_PEOPLE.map(tile).join("") + '</div><div class="ch-label" style="margin-top:4px">Faces & friends</div><div class="fx-grid">' + FX_FUN.map(tile).join("") + "</div>" +
-        '<div class="ch-row"><span class="ch-label">Background</span><div class="ch-opts">' + FX_BG.map(function (c, i) { return '<button type="button" class="ch-sw' + (o.bg === i ? " on" : "") + '" data-a="fxBg" data-v="' + i + '" style="background:' + c + '" aria-label="Background ' + (i + 1) + '"></button>'; }).join("") + "</div></div>" +
-        '<div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>' +
-        '<form class="form pin-form" data-form="changepin"><div class="ch-label">🔐 ' + (S.me.hasPin ? "Change my PIN" : "Set a PIN so you can log in without codes") + '</div><div class="pin-row"><input type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" placeholder="6 digits" required><button class="btn ghost sm" type="submit">Save PIN</button></div></form>';
+      if (!S.scDraft) S.scDraft = scFor(S.me.avatar, S.me.key || S.me.name, S.me.role);
+      body = '<div class="maker-wrap">' + makerHtml() + "</div>" +
+        '<form class="form" data-form="profile"><div class="actions"><button type="button" class="link small" data-a="logout" style="margin-right:auto">Log out</button><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>' +
+        '<form class="form pin-form" data-form="changepin"><div class="ch-label">' + ICON.lock + " " + (S.me.hasPin ? "Change my PIN" : "Set a PIN so you can log in without codes") + '</div><div class="pin-row"><input type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" placeholder="6 digits" required><button class="btn ghost sm" type="submit">Save PIN</button></div></form>';
     }
     if (m.type === "thread") {
       var rootM = d.messages.filter(function (x) { return x.id === m.id; })[0];
@@ -1570,7 +1649,7 @@
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "" }; return keepScroll(render);
-      case "close": S.modal = null; S.chDraft = null; S.fxDraft = null; return keepScroll(render);
+      case "close": S.modal = null; S.scDraft = null; return keepScroll(render);
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
@@ -1579,7 +1658,7 @@
       case "toggle": run(null, async function () { await call("toggleChecklist", { itemId: b.dataset.id }); await reload(); }); return;
       case "delCheck": sure("Delete this checklist item?", function () { run(null, async function () { await call("deleteChecklistItem", { itemId: b.dataset.id }); await reload(); }); }); return;
       case "closeQ": run(b, async function () { await call("closeQuestion", { questionId: b.dataset.id }); await reload(true); }); return;
-      case "removePerson": sure("Remove " + b.dataset.email + " from this project?", function () { run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); toast("Access removed"); }); }); return;
+      case "removePerson": sure("Remove " + b.dataset.email + " from this project?", function () { run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); ping(); toast("Access removed"); }); }); return;
       case "cover": run(b, async function () { await call("setCover", { projectId: S.pid, fileId: b.dataset.id }); S.lb = null; await reload(true); toast("Cover photo updated"); }); return;
       case "schedMode": S.sched.view = b.dataset.v; return keepScroll(render);
       case "calMove":
@@ -1615,7 +1694,7 @@
         S.wantChan = b.dataset.c; S.openThread = b.dataset.th || null;
         if (S.pid === b.dataset.p) { S.chan = b.dataset.c; S.readMark = {}; if (S.openThread) { S.modal = { type: "thread", id: S.openThread }; S.openThread = null; } S.wantChan = null; }
         return go(b.dataset.p, "messages");
-      case "teamOff": sure("Turn off this person's access? They won't be able to log in.", function () { run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; render(); toast("Access turned off"); }); }); return;
+      case "teamOff": sure("Remove " + (b.dataset.name || b.dataset.email) + " from the portal? They can't log in anymore and disappear from Who's around. Their old messages stay.", function () { run(b, async function () { await call("removePerson", { email: b.dataset.email }); S.team = null; S.presence && (S.presence.people = S.presence.people.filter(function (x) { return x.name !== b.dataset.name; })); render(); ping(); toast("Removed"); }); }); return;
       case "teamOn": run(b, async function () { await call("addPerson", { email: b.dataset.email, name: b.dataset.name, role: "staff" }); S.team = null; render(); toast("Access back on"); }); return;
       case "ref": return openRef(b.dataset.ref, b.dataset.p);
       case "bell": S.bell = !S.bell; if (S.bell) loadNotif(); return keepScroll(render);
@@ -1675,14 +1754,9 @@
           run(null, async function () { try { await call("deleteInvoice", { invoiceId: iid }); } catch (e) { await refresh(); throw e; } await refresh(); toast("Invoice deleted"); });
         });
         return;
-      case "fxPick": S.fxDraft.slug = b.dataset.s; return keepScroll(render);
-      case "fxTone": S.fxDraft.t = +b.dataset.v; return keepScroll(render);
-      case "fxBg": S.fxDraft.bg = +b.dataset.v; return keepScroll(render);
-      case "fxRandom": var all = FX_PEOPLE.concat(FX_FUN); S.fxDraft = { slug: all[Math.floor(Math.random() * all.length)][0], t: Math.floor(Math.random() * 6), bg: Math.floor(Math.random() * FX_BG.length) }; return keepScroll(render);
-      case "chSet": S.chDraft[b.dataset.k] = +b.dataset.v; return keepScroll(render);
-      case "chRandom": var rr = function (n) { return Math.floor(Math.random() * n); }; S.chDraft = { skin: rr(6), hair: rr(9), hairc: rr(7), hat: rr(6), beard: rr(4), glasses: rr(3), shirt: rr(7), bg: rr(8), face: rr(3) }; return keepScroll(render);
-      case "pickAv": var fp = b.closest("form"); fp.querySelectorAll(".av-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fp.dataset.emoji = b.dataset.e; fp.querySelector(".av-preview").innerHTML = b.dataset.e; return;
-      case "pickCol": var fc = b.closest("form"); fc.querySelectorAll(".col-opt").forEach(function (x) { x.classList.toggle("on", x === b); }); fc.dataset.color = b.dataset.c; fc.querySelector(".av-preview").style.background = b.dataset.c; return;
+      case "scSet": var sk = b.dataset.k, sv = b.dataset.v; S.scDraft[sk] = sk === "v" || sk === "c" ? +sv : sv; if (sk === "h") S.scDraft.x = ""; if (sk === "y") S.scDraft.v = 0; if (sk === "v" && +sv) S.scDraft.x = S.scDraft.x || "hard"; return redrawMaker();
+      case "scTab": S.scTab = b.dataset.v; return redrawMaker(true);
+      case "scShuffle": S.scDraft = scShuffle(); return redrawMaker();
       case "delProject":
         var cf = root.querySelector("[data-del-confirm]");
         run(b, async function () { await call("deleteProject", { projectId: b.dataset.id, confirm: cf ? cf.value : "" }); S.modal = null; S.projects = null; toast("Project deleted. You can restore it from Home."); go(null); });
@@ -1815,7 +1889,7 @@
         S.modal = null; await refresh(); toast(res.first ? res.n + " sheets uploaded" : res.changed ? res.changed + " sheet" + (res.changed > 1 ? "s" : "") + " changed. They're highlighted." : "Uploaded. No sheet changes found."); return;
       }
       if (kind === "profile") {
-        var o2 = S.fxDraft, rp = await call("saveProfile", { avatar: "fx:" + o2.slug + ";t=" + o2.t + ";bg=" + o2.bg }); S.me.avatar = rp.avatar; S.fxDraft = null; S.modal = null; await refresh(); toast("Looking good ✨"); return;
+        var rp = await call("saveProfile", { avatar: scEncode(S.scDraft) }); S.me.avatar = rp.avatar; S.scDraft = null; S.modal = null; if (S.pid) await refresh(); else { keepScroll(render); refreshList(); } toast("Looking good ✨"); return;
       }
       if (kind === "team") {
         await call("addPerson", { name: v("name"), email: v("email"), role: "staff", invite: !!fd.get("invite") });

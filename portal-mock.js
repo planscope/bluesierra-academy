@@ -257,11 +257,13 @@
     },
     removePerson: function (db, me, b) {
       needStaff(me); var x = db.people.filter(function (q) { return q.email === b.email; })[0]; if (!x) return {};
+      if (x.email === me.email) throw new Error("You can't remove yourself."); if (x.role === "admin") throw new Error("Jesús can't be removed.");
       if (isStaff(x) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
-      if (x.email === me.email && !b.projectId) throw new Error("You can't turn off your own access.");
-      if (b.projectId) { x.project_ids = ids(x.project_ids).filter(function (i) { return i !== b.projectId; }).join(",");
-        if (!x.project_ids && !isTeam(x)) { db.people = db.people.filter(function (q) { return q.email !== x.email; }); Object.keys(db.sessions).forEach(function (t) { if (db.sessions[t] === x.email) delete db.sessions[t]; }); return { removed: true }; } }
-      else x.active = "no"; return {};
+      var gone = function (q) { db.people = db.people.filter(function (y) { return y.email !== q.email; }); Object.keys(db.sessions).forEach(function (t) { if (db.sessions[t] === q.email) delete db.sessions[t]; }); };
+      var left = ids(x.project_ids).filter(function (i) { return i !== b.projectId; });
+      if (!b.projectId || (!left.length && !isStaff(x))) gone(x); else x.project_ids = left.join(",");
+      db.people.filter(function (q) { return q.role !== "admin" && (q.active === "no" || (!isStaff(q) && !ids(q.project_ids).length)); }).forEach(gone);
+      return {};
     },
     postUpdate: function (db, me, b) {
       needStaff(me); var p = needProject(db, me, b.projectId), text = clean(b.text, 5000);
