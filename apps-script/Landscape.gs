@@ -793,11 +793,11 @@ ACTIONS.lsMoveDay = function (me, b) {
    Uses logged crew time from the last 90 days when there is some, otherwise the planned minutes per visit. */
 ACTIONS.lsPricing = function (me, b) {
   if (!lsMoney(me)) throw new Error("That's #money."); var cfg = lsCfg(), W = lsWeek(), drive = {}, today = lsDay(new Date()), since = lsAdd(today, -90);
+  // Each property's share of the day's driving = the day's drive × (the driving it adds ÷ what all of them add). The last stop no longer pays the whole trip home.
   Object.keys(W.week).forEach(function (k) {
-    var list = W.week[k], pts = list.map(function (p) { return { lat: num(p.lat), lon: num(p.lon), p: p }; }), o = lsBestOrder(pts, cfg.yard);
-    o.forEach(function (idx, i) { var from = i ? pts[o[i - 1]] : cfg.yard; var m = from ? lsEstMin(from, pts[idx]) : 0;
-      if (i === o.length - 1 && cfg.yard) m += lsEstMin(pts[idx], cfg.yard);
-      var id = pts[idx].p.id; drive[id] = (drive[id] || 0) + m; });
+    var list = W.week[k], total = lsTourMin(list, cfg.yard); if (!list.length) return;
+    var add = list.map(function (p) { return Math.max(0.1, total - lsTourMin(list.filter(function (x) { return x !== p; }), cfg.yard)); }), sum = add.reduce(function (a, x) { return a + x; }, 0);
+    list.forEach(function (p, i) { drive[p.id] = (drive[p.id] || 0) + total * add[i] / sum; });
   });
   var logged = {}; rows("LsVisits").filter(function (v) { return v.status === "completed" && v.date >= since && v.kind === "maintenance"; }).forEach(function (v) {
     var mins = lsLabor(v).reduce(function (a, l) { return a + num(l.min); }, 0); if (!mins) return; var x = logged[v.property_id] = logged[v.property_id] || { n: 0, min: 0 }; x.n++; x.min += mins; });
