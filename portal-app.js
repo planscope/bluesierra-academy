@@ -504,7 +504,7 @@
     if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
     var admin = S.me && S.me.admin;
     return (admin ? '<div class="card va-card"><div><b>See what everyone else sees</b><div class="muted small">Preview the portal as #client, #architect or #crew to check nothing private is leaking.</div></div><button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview</button></div>" : "") +
-      qbSettings() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
+      qbSettings() + rtCard() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
       return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="team">Change</button>' : "") +
@@ -2583,7 +2583,7 @@
         } catch (e) {}
       }
       liveLoop();
-    }, soon ? 300 : !vis ? 30000 : fast ? 2500 : 8000);
+    }, soon ? 300 : !vis ? 30000 : RT && RT.open ? 20000 : fast ? 2500 : 8000);
   }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") liveLoop(true); });
   function onVer(pid, v) {
@@ -2787,6 +2787,103 @@
     if (a === "helpOpen") { e.preventDefault(); e.stopImmediatePropagation(); helpOpen(); return; }
     if (a === "fbDone") { e.preventDefault(); e.stopImmediatePropagation(); call("setFeedback", { id: b.dataset.id, status: b.dataset.s }).then(function () { (S.fb || []).forEach(function (f) { if (f.id === b.dataset.id) f.status = b.dataset.s; }); keepScroll(render); }).catch(function (er) { toast(er.message); }); return; }
     if (a === "chatDock") { e.preventDefault(); e.stopImmediatePropagation(); S.dock.closed = false; dockAction("dkOpen", b); return; }
+  }, true);
+  /* ---------- Instant (Firebase): the server rings a private doorbell; we hear it in well under a second ---------- */
+  var RT = { es: null, url: "", u: "", open: false, tes: null, tkey: "", typ: {} };
+  function rtStart() {
+    var cfg = S.me && S.me.rt; if (!cfg || !window.EventSource || S.viewAs) return rtStop();
+    if (RT.es && RT.u === cfg.u) return;
+    rtStop(); RT.url = cfg.url; RT.u = cfg.u;
+    var es = RT.es = new EventSource(cfg.url + "/rt/u/" + cfg.u + ".json"), first = true;
+    es.onopen = function () { RT.open = true; };
+    es.onerror = function () { RT.open = false; };
+    var on = function (ev) {
+      var d; try { d = JSON.parse(ev.data); } catch (e) { return; } if (!d) return;
+      RT.open = true;
+      if (first && d.path === "/") { first = false; return; }                      // what was there before we connected
+      first = false;
+      if (d.path === "/m" && d.data && d.data.m) return rtMessage(d.data);
+      var mv = /^\/v\/(.+)$/.exec(d.path || ""); if (mv) return onVer(mv[1], d.data);
+      if (d.path === "/v" && d.data) Object.keys(d.data).forEach(function (pid) { onVer(pid, d.data[pid]); });
+    };
+    es.addEventListener("put", on); es.addEventListener("patch", on);
+  }
+  function rtStop() { if (RT.es) try { RT.es.close(); } catch (e) {} RT.es = null; RT.open = false; RT.u = ""; rtTypingWatch(null); }
+  /* A message arrived: put it in place (replacing our own grey "sending" copy), redraw only what shows it. */
+  function rtMessage(e) {
+    var m = e.m, pid = e.pid, add = function (list) {
+      if (!list) return list; if (list.some(function (x) { return x.id === m.id; })) return list;
+      var i = -1; list.forEach(function (x, j) { if (i < 0 && x.pending && x.mine && m.mine && x.text === m.text && (x.channel || "client") === m.channel) i = j; });
+      if (i > -1) { list = list.slice(); list[i] = m; return list; } return list.concat([m]);
+    };
+    var here = S.pid === pid && S.data;
+    if (here) {
+      var atBottom = window.innerHeight + window.scrollY > document.body.scrollHeight - 220;
+      S.data.messages = add(S.data.messages);
+      if (S.tab === "messages" && !S.modal) { keepScroll(render); if (atBottom) window.scrollTo(0, document.body.scrollHeight); if (m.channel === S.chan && document.visibilityState === "visible") markChannelRead(); }
+    }
+    if (S.dockData && S.dockData[pid]) S.dockData[pid].messages = add(S.dockData[pid].messages);
+    if (RT.typ) Object.keys(RT.typ).forEach(function (k) { if (RT.typ[k].n === first(m.author)) delete RT.typ[k]; });
+    rtShowTyping();
+    if (!m.mine) {
+      var seen = (here && S.tab === "messages" && S.chan === m.channel && document.visibilityState === "visible") || (S.dock.open && !S.dock.min && S.dock.pid === pid && S.dock.ch === m.channel && document.visibilityState === "visible");
+      if (!seen) {
+        var pr = (S.projects || []).filter(function (x) { return x.id === pid; })[0]; if (pr) pr.unread = (pr.unread || 0) + 1;
+        S.pulseId = m.id; if (S.dock.closed) { S.dock.closed = false; dockSave(); }
+        var pp = { id: m.id, pid: pid, channel: m.channel, thread_id: m.thread_id || "", author: m.author, avatar: m.avatar, akey: m.akey, project: pr ? pr.name : "", dm: isDm(m.channel), kind: m.kind };
+        var where = pp.dm ? "privately" : m.kind === "event" ? "" : "in #" + m.channel, line = m.kind === "event" ? m.author + " " + String(m.text).split("\n")[0] : String(m.text).split("\n")[0];
+        showPop(pp, where, line);
+        try { if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") { var n = new Notification(m.author + (pp.dm ? " (private)" : " · " + pp.project), { body: line, tag: "bsp-" + m.id }); n.onclick = function () { window.focus(); S.wantChan = m.channel; go(pid, "messages"); n.close(); }; } } catch (er) {}
+        var bb = root.querySelector(".bell"); if (bb) loadNotif();
+      }
+    }
+    dockPaint(true);
+  }
+  /* Typing, browser to browser: write my dot, watch the channel I have open. */
+  function rtSecretFor(pid, ch) { var r = (S.data && S.pid === pid && S.data.rt) || ((S.dockData || {})[pid] || {}).rt; return r ? r[ch] : ""; }
+  function rtTypingWatch(sec) {
+    if (RT.tkey === (sec || "")) return; if (RT.tes) try { RT.tes.close(); } catch (e) {} RT.tes = null; RT.tkey = sec || ""; RT.typ = {}; rtShowTyping();
+    if (!sec || !RT.url) return;
+    var es = RT.tes = new EventSource(RT.url + "/rt/t/" + sec + ".json"), first = true;
+    var on = function (ev) { var d; try { d = JSON.parse(ev.data); } catch (e) { return; } if (!d) return;
+      var now = Date.now(), put = function (k, v) { if (k === S.me.key) return; if (v && v.n && !first) RT.typ[k] = { n: v.n, at: now }; else if (!v) delete RT.typ[k]; };
+      if (d.path === "/") { if (d.data) Object.keys(d.data).forEach(function (k) { put(k, d.data[k]); }); }
+      else { var k = String(d.path).split("/")[1]; if (k) put(k, d.data); }
+      first = false; rtShowTyping(); };
+    es.addEventListener("put", on); es.addEventListener("patch", on);
+  }
+  function rtShowTyping() { var now = Date.now(), names = Object.keys(RT.typ || {}).filter(function (k) { return now - RT.typ[k].at < 5000; }).map(function (k) { return RT.typ[k].n; }); if (RT.tes) { S.typing = names; showTyping(); } }
+  setInterval(function () { if (RT.tes) rtShowTyping(); var tg = liveTarget(); rtTypingWatch(tg && RT.es ? rtSecretFor(tg[0], tg[1]) : null); if (S.me && S.me.rt && !RT.es) rtStart(); if ((!S.me || !S.token) && RT.es) rtStop(); }, 1000);
+  var _typedIn = typedIn;
+  typedIn = function (pid, ch) {
+    var sec = RT.es && rtSecretFor(pid, ch);
+    if (!sec) return _typedIn(pid, ch);
+    var t = Date.now(); if (t - typedAt < 2000) return; typedAt = t;
+    fetch(RT.url + "/rt/t/" + sec + "/" + S.me.key + ".json", { method: "PUT", body: JSON.stringify({ n: first(S.me.name), t: t }) }).catch(function () {});
+  };
+  /* Admin: Home → Team → Instant chat (Firebase). */
+  function rtCard() {
+    if (!S.me || !S.me.admin) return "";
+    if (!S.rtSt) { S.rtSt = "loading"; call("rtStatus").then(function (r) { S.rtSt = r; }).catch(function () { S.rtSt = { on: false }; }).then(function () { if (!S.pid && S.home === "team") keepScroll(render); }); return ""; }
+    if (S.rtSt === "loading") return "";
+    var st = S.rtSt;
+    return '<div class="card rt-card' + (st.on ? " on" : "") + '"><div class="qb-h"><span class="rt-mark" aria-hidden="true">⚡</span><div><b>Instant chat (Firebase)</b><div class="muted small">' +
+      (st.on ? "On: messages and “is typing” arrive in under a second. " + (RT.open ? "This browser is connected." : "Connecting…") : "Off: chat updates every few seconds. Paste your Firebase Realtime Database address and its Database secret to make it instant.") + "</div></div></div>" +
+      '<form class="form" data-form="rtKeys"><div class="row2"><label class="f">Database address<input type="url" name="url" placeholder="https://your-project-default-rtdb.firebaseio.com" value="' + esc(st.url || "") + '"></label>' +
+      '<label class="f">Database secret<input type="password" name="secret" autocomplete="new-password" placeholder="' + (st.hasSecret ? "Saved. Leave blank to keep it" : "Project settings → Service accounts → Database secrets") + '"></label></div>' +
+      '<div class="actions">' + (st.on ? '<button type="button" class="btn ghost sm" data-a="rtOff">Turn off</button>' : "") + '<button class="btn sm" type="submit">' + (st.on ? "Save" : "Turn on") + "</button></div></form></div>";
+  }
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=rtKeys]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var btn = f.querySelector("[type=submit]"); btn.disabled = true;
+    call("rtSave", { url: f.url.value, secret: f.secret.value }).then(function (r) { S.rtSt = r; f.secret.value = ""; return call("me"); })
+      .then(function (r) { S.me = Object.assign(S.me, r.me); rtStart(); keepScroll(render); toast("Instant chat is on ⚡"); })
+      .catch(function (er) { toast(er.message); }).then(function () { btn.disabled = false; });
+  }, true);
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a=rtOff]"); if (!b) return; e.preventDefault(); e.stopImmediatePropagation();
+    if (!window.confirm("Turn off instant chat? Chat keeps working, updating every few seconds.")) return;
+    call("rtSave", { off: true }).then(function (r) { S.rtSt = r; S.me.rt = null; rtStop(); keepScroll(render); toast("Instant chat is off"); }).catch(function (er) { toast(er.message); });
   }, true);
   liveLoop();
   if (S.token) { render(); route(); } else render();

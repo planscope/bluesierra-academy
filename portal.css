@@ -1393,3 +1393,6 @@
 #bs-portal #bsp-dock *,#bs-portal #bsp-dock *::before,#bs-portal #bsp-dock *::after{box-sizing:border-box}
 #bs-portal .dk-form textarea{min-width:0}
 #bs-portal .dk-m{min-width:0}#bs-portal .dk-b{max-width:100%}
+#bs-portal .rt-card{margin-bottom:16px;border-left:4px solid var(--muted)}
+#bs-portal .rt-card.on{border-left-color:#e8a317}
+#bs-portal .rt-mark{width:34px;height:34px;border-radius:10px;background:#fff4dc;display:grid;place-items:center;font-size:18px;flex:none}

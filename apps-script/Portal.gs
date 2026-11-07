@@ -126,6 +126,7 @@ function doPost(e) {
     res = res || {}; res.ok = true;
   } catch (err) { res = { ok: false, error: String(err.message || err) }; }
   flushMail();                                   // emails go out after the lock is released, so nobody waits behind them
+  rtFlush();                                     // then the instant doorbell (Firebase)
   if (notices.length && res.ok) res.notice = notices[0];
   return out(res);
 }
@@ -134,7 +135,7 @@ function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setM
 function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(25000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); } }
 var WRITE_TABLES = ["Projects", "Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads", "Sessions"];
 /* Every save bumps a version number; open portals see it in their next ping and reload only when something really changed. */
-function bumpVersion(pid) { var t = Date.now(); try { CacheService.getScriptCache().put("ver:" + (pid || "*"), String(t), 21600); } catch (e) {} return t; }
+function bumpVersion(pid) { var t = Date.now(); try { CacheService.getScriptCache().put("ver:" + (pid || "*"), String(t), 21600); } catch (e) {} try { if (pid) rtVersion(pid, t); } catch (e) {} return t; }
 function versionOf(pid) { try { var g = CacheService.getScriptCache().getAll(["ver:" + pid, "ver:*"]); return Math.max(Number(g["ver:" + pid] || 0), Number(g["ver:*"] || 0)); } catch (e) { return 0; } }
 
 /* ============================ login ============================ */
@@ -224,7 +225,7 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "" }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
@@ -314,7 +315,8 @@ var ACTIONS = {
         .map(function (x) { return schedOut(x, team, ppl); }),
       contract: !bill ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
       plans: plansOut(by("Plans"), me),
-      phases: CONFIG.PHASES
+      phases: CONFIG.PHASES,
+      rt: (function () { try { return rtProject(me, p); } catch (e) { return null; } })()
     };
     if (me.role === "admin") data.wipe = lastWipe(id);
     if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), avatar: x.avatar || "" }; });
@@ -481,6 +483,7 @@ var ACTIONS = {
     var id = newId("m");
     insert("Messages", { id: id, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: kind, text: text, question_id: "", status: kind === "question" ? "open" : "",
       via: "portal", channel: channel, thread_id: root, files: files.length ? JSON.stringify(files) : "", reactions: "" });
+    try { rtMessage(p, findBy("Messages", "id", id)); } catch (e) {}
     var emailed = {};
     var body = "<p>" + nl2br(esc(text)) + "</p>" + (files.length ? "<p style='color:#666'>" + files.length + " attachment" + (files.length > 1 ? "s" : "") + " in the portal.</p>" : "") + "<p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>";
     var important = !!b.important || kind === "question";
@@ -1786,7 +1789,7 @@ ACTIONS.typing = function (me, b) {
 ACTIONS.chatFeed = function (me, b) {
   var p = needProject(me, b.projectId);
   return { pid: p.id, name: p.name, messages: messagesOut(rows("Messages").filter(function (m) { return m.project_id === p.id; }), me), reads: readsFor(me, p.id), channels: channelsFor(me),
-    members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }), ver: versionOf(p.id) };
+    members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }), ver: versionOf(p.id), rt: (function () { try { return rtProject(me, p); } catch (e) { return null; } })() };
 };
 /* Chat email rule: no email for every message. People who are in the portal right now get it live; someone who isn't
    gets one short "new messages" email at most every 3 hours per project. "Important" and questions always email. */
@@ -1832,6 +1835,69 @@ ACTIONS.listFeedback = function (me) {
 ACTIONS.setFeedback = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús can do that."); var f = findBy("Feedback", "id", b.id); if (!f) throw new Error("Not found.");
   update("Feedback", "id", f.id, { status: b.status === "done" ? "done" : "open" }); return {};
+};
+
+/* ============ Instant (Firebase Realtime Database) ============
+   Apps Script stays the source of truth; Firebase is only the doorbell. After each save the server pushes a tiny event
+   to each person who may see it, at an unguessable address only they know (/rt/u/<secret>): a new chat message (already
+   filtered for them) or "project X changed". Browsers listen with EventSource, so a message lands in well under a second.
+   Typing dots go straight between browsers at /rt/t/<channel secret>, an address only people who can read that channel get.
+   Nobody can list the database, and only the server can write events (rules below). */
+var RT_OUT = null;
+function rtCfg() { var pr = PropertiesService.getScriptProperties(); return { url: (pr.getProperty("RT_URL") || "").replace(/\/+$/, ""), secret: pr.getProperty("RT_SECRET") || "", key: pr.getProperty("RT_KEY") || "" }; }
+function rtOn() { var c = rtCfg(); return !!(c.url && c.secret && c.key); }
+function rtHash(s) { var c = rtCfg(); return Utilities.computeHmacSha256Signature(String(s), c.key).map(function (b) { return ("0" + (b & 255).toString(16)).slice(-2); }).join("").slice(0, 40); }
+function rtUser(email) { return rtHash("u|" + normEmail(email)); }
+function rtChan(pid, ch) { return rtHash("c|" + pid + "|" + ch); }
+function rtClient(me) { return rtOn() && !me.preview ? { url: rtCfg().url, u: rtUser(me.email) } : null; }
+/* Typing addresses for the channels this person can read on one project (DMs with each member included). */
+function rtProject(me, p) {
+  if (!rtOn() || me.preview) return null;
+  var out = {}; channelsFor(me).forEach(function (ch) { out[ch] = rtChan(p.id, ch); });
+  var k = pkey(me.email); membersOf(p).forEach(function (x) { if (x.email === me.email) return; var dm = "dm:" + [k, pkey(x.email)].sort().join("-"); out[dm] = rtChan(p.id, dm); });
+  return out;
+}
+function rtQueue(path, method, body) { if (!rtOn()) return; (RT_OUT = RT_OUT || []).push({ path: path, method: method, body: body }); }
+/* A new chat message: each person who can see it gets it, shaped for them (clients never get team-only fields). */
+function rtMessage(p, row) {
+  if (!rtOn() || !row) return;
+  var ch = chOf(row);
+  membersOf(p).forEach(function (x) {
+    if (!canRead(x, ch) || !seesMsg(x, row)) return;
+    var m = messagesOut([row], x)[0]; if (!m) return;
+    m.text = String(m.text || "").slice(0, 4000);
+    rtQueue("rt/u/" + rtUser(x.email) + "/m", "put", { pid: p.id, ch: ch, m: m, ts: Date.now() });
+  });
+}
+function rtVersion(pid, v) {
+  if (!rtOn() || !pid) return; var p = findBy("Projects", "id", pid); if (!p) return;
+  membersOf(p).forEach(function (x) { rtQueue("rt/u/" + rtUser(x.email) + "/v/" + pid, "put", v); });
+}
+function rtFlush() {
+  var list = RT_OUT || []; RT_OUT = null; if (!list.length || !rtOn()) return;
+  var c = rtCfg(), seen = {}, reqs = [];
+  for (var i = list.length - 1; i >= 0; i--) { var q = list[i], key = q.method + q.path; if (seen[key] && q.path.indexOf("/m") < 0) continue; seen[key] = 1;   // versions: only the latest
+    reqs.unshift({ url: c.url + "/" + q.path + ".json?auth=" + encodeURIComponent(c.secret), method: q.method, contentType: "application/json", payload: JSON.stringify(q.body), muteHttpExceptions: true }); }
+  try { var res = UrlFetchApp.fetchAll(reqs); res.forEach(function (r) { if (r.getResponseCode() !== 200) console.error("Firebase " + r.getResponseCode() + " " + String(r.getContentText()).slice(0, 200)); }); } catch (e) { console.error("Firebase: " + e.message); }
+}
+var RT_RULES = { rules: { ".read": false, ".write": false, rt: {
+  u: { "$s": { ".read": "$s.length >= 40", ".write": false } },
+  t: { "$s": { ".read": "$s.length >= 40", "$k": { ".write": "$k.length <= 40 && $k.length >= 4", ".validate": "newData.hasChildren(['n','t']) && newData.child('n').isString() && newData.child('n').val().length <= 40 && newData.child('t').isNumber()" } } } } } };
+ACTIONS.rtStatus = function (me) {
+  if (me.role !== "admin") throw new Error("Only Jesús sets this up."); var c = rtCfg();
+  return { on: rtOn(), url: c.url, hasSecret: !!c.secret };
+};
+ACTIONS.rtSave = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús sets this up.");
+  var pr = PropertiesService.getScriptProperties(), url = String(b.url || "").trim().replace(/\/+$/, ""), secret = String(b.secret || "").trim();
+  if (b.off) { ["RT_URL", "RT_SECRET"].forEach(function (k) { pr.deleteProperty(k); }); return ACTIONS.rtStatus(me); }
+  if (!/^https:\/\/[a-z0-9-]+\.(firebaseio\.com|[a-z0-9-]+\.firebasedatabase\.app)$/.test(url)) throw new Error("That doesn't look like a Realtime Database address. It looks like https://your-project-default-rtdb.firebaseio.com");
+  if (!secret) secret = pr.getProperty("RT_SECRET") || ""; if (!/^[A-Za-z0-9]{20,80}$/.test(secret)) throw new Error("Paste the Database secret (Project settings → Service accounts → Database secrets).");
+  // Lock the database down with our rules; this also proves the address and the secret work.
+  var r = UrlFetchApp.fetch(url + "/.settings/rules.json?auth=" + encodeURIComponent(secret), { method: "put", contentType: "application/json", payload: JSON.stringify(RT_RULES), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error("Firebase said no (" + r.getResponseCode() + "): " + String(r.getContentText()).slice(0, 160) + ". Check the address and the secret.");
+  pr.setProperties({ RT_URL: url, RT_SECRET: secret }); if (!pr.getProperty("RT_KEY")) pr.setProperty("RT_KEY", Utilities.getUuid() + Utilities.getUuid());
+  return ACTIONS.rtStatus(me);
 };
 
 var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];
@@ -1921,7 +1987,7 @@ function checkEmailReplies() {
       });
     });
   } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
-  flushMail(); bumpVersion("");
+  flushMail(); bumpVersion(""); rtFlush();
 }
 
 /* "Name <a@b.com>" or "a@b.com" only; anything with extra angle brackets or an @ in the display name is rejected. */
@@ -2084,8 +2150,10 @@ function messagesOut(list, me) {
 }
 /* Events: things that happened (an invoice was sent, a to-do was added) show up in #client as colored cards. They never email anyone. */
 function postEvent(p, me, type, action, detail, ref, channel) {
-  insert("Messages", { id: newId("m"), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: (action + (detail ? "\n" + detail : "")).slice(0, 600),
+  var eid = newId("m");
+  insert("Messages", { id: eid, project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: (action + (detail ? "\n" + detail : "")).slice(0, 600),
     question_id: "", status: type, via: "portal", channel: channel || "client", thread_id: "", files: "", reactions: "", ref: ref || "" });
+  try { rtMessage(p, findBy("Messages", "id", eid)); } catch (e) {}
 }
 function coEvent(p, me, line, id, verb) {
   postEvent(p, me, "change", verb + " change order" + (line.number ? " " + line.number : ""), line.title + " · " + (num(line.amount) < 0 ? "−$" + money(-num(line.amount)) : "+$" + money(line.amount)), "co:" + id, billChannel(p));
