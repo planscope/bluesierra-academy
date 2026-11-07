@@ -2557,7 +2557,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106193140";
+  var BUILD = "20261106193744";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3187,7 +3187,7 @@
     var crews = S.ls.crews.map(function (c) {
       var mine = tv.filter(function (v) { return v.crew_id === c.id; }).sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }), d = mine.filter(function (v) { return v.status === "completed"; }).length;
       var next = mine.filter(function (v) { return ["scheduled", "in_progress"].indexOf(v.status) > -1; })[0], load = mine.reduce(function (a, v) { return a + v.est_min; }, 0) / Math.max(1, c.members.length);
-      return '<div class="ls-crewrow">' + lsDot(c) + '<div class="lc-name"><b>' + esc(c.name) + '</b><small class="muted">' + c.members.length + " people · " + lsHm(load) + " of work" + (load > 8 * 60 ? ' · <span class="bad-t">overloaded</span>' : "") + "</small></div>" +
+      return '<div class="ls-crewrow">' + lsDot(c) + '<div class="lc-name"><b>' + esc(c.name) + '</b><small class="muted">' + c.members.length + (c.members.length === 1 ? " person · " : " people · ") + lsHm(load) + " of work" + (load > 8 * 60 ? ' · <span class="bad-t">overloaded</span>' : "") + "</small></div>" +
         '<div class="lc-bar"><div class="mini"><i style="width:' + (mine.length ? Math.round(d / mine.length * 100) : 0) + '%"></i></div><small class="muted">' + d + " of " + mine.length + " stops" + (next ? " · next: " + esc(lsP(next.property_id).name) : "") + "</small></div>" +
         (mine.length ? '<button class="btn ghost sm" data-a="lsRoute" data-c="' + esc(c.id) + '" data-d="' + today + '">Plan route</button>' : "") + "</div>";
     }).join("");
@@ -3250,7 +3250,7 @@
     var go2 = function () {
       if (el._map) { el._map.remove(); el._map = null; }
       var map = el._map = L.map(el, { scrollWheelZoom: false }); el.dataset.k = key;
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin", crossOrigin: false }).addTo(map);
       var d = S.lsMapDay || S.ls.today, pts = [], byCrew = {};
       lsFiltered().filter(function (v) { return v.date === d && v.status !== "canceled"; }).forEach(function (v) { (byCrew[v.crew_id] = byCrew[v.crew_id] || []).push(v); });
       Object.keys(byCrew).forEach(function (cid) {
