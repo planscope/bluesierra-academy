@@ -2540,6 +2540,21 @@
     catch (e) { if (action === "requestCode" || action === "verifyCode") { S.err = e.message; renderLogin(); } throw e; }
   };
 
+  /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
+  var BUILD = "20261106182432";
+  function checkBuild() {
+    if (!API) return;
+    var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
+    if (!base) return;
+    fetch(base + "portal-version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+      if (!v || !v.build || v.build === BUILD || BUILD === "0") return;
+      var busy = S.modal || S.busy || document.querySelector(".hp-panel") || [].some.call(document.querySelectorAll("textarea, input[type=text]"), function (t) { return t.value && t === document.activeElement; });
+      if (busy) { S.newBuild = true; return; }
+      try { if (sessionStorage.getItem("bsp-reload-" + v.build)) return; sessionStorage.setItem("bsp-reload-" + v.build, "1"); } catch (e) { return; }   // once per version, never a loop
+      location.reload();
+    }).catch(function () {});
+  }
+  setInterval(checkBuild, 5 * 60000); document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(); });
   /* ================= Beta v1.1: live chat, chat dock, support widget, smoother redraws ================= */
   // The Webflow page smooth-scrolls with Lenis, which makes the wheel lag behind. Inside the portal: plain, instant scrolling.
   root.setAttribute("data-lenis-prevent", "");
