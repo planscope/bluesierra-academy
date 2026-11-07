@@ -1061,10 +1061,9 @@ ACTIONS.lsFixTime = function (me, b) {
 /* ---- fuel ---- */
 function lsFuelRecs() { return parseJson(PropertiesService.getScriptProperties().getProperty("LS_FUEL"), {}); }
 var LS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"], LS_OSM_ERR = "";
-function lsOsmFuel(s, w, n, e) {
-  var key = "osmfuel:" + [s, w, n, e].map(function (x) { return x.toFixed(2); }).join(",");
-  return lsCacheJson(key, 21600, function () {
-    var q = "[out:json][timeout:25];nwr[\"amenity\"=\"fuel\"](" + [s, w, n, e].map(function (x) { return x.toFixed(4); }).join(",") + ");out center tags 200;";
+/* One Overpass request (several servers, the first that answers). No caching here. */
+function lsOverpassFetch(s, w, n, e) {
+    var q = "[out:json][timeout:90];nwr[\"amenity\"=\"fuel\"](" + [s, w, n, e].map(function (x) { return x.toFixed(4); }).join(",") + ");out center tags 4000;";
     var j = null; LS_OSM_ERR = "";
     LS_OVERPASS.some(function (url) {                                   // the public Overpass servers sometimes refuse or are busy: try the next one
       try { var r = UrlFetchApp.fetch(url + "?data=" + encodeURIComponent(q), { muteHttpExceptions: true, headers: { "User-Agent": "BlueSierraPortal/1.0 (landscape maintenance routing; info@bluesierracorp.com)", Accept: "application/json" } });
@@ -1081,7 +1080,36 @@ function lsOsmFuel(s, w, n, e) {
         addr: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"]].filter(Boolean).join(", "), hours: t.opening_hours || "",
         diesel: t["fuel:diesel"] || "", gas: t["fuel:octane_87"] || t["fuel:octane_89"] || t["fuel:octane_91"] || t["fuel:octane_93"] || "", hgv: t.hgv || "" };
     }).filter(Boolean);
-  });
+}
+/* Every station in the service area (yard + all properties), fetched once and kept 6 h: Overpass can take ~40 s. */
+function lsFuelArea() {
+  var y = lsCfg().yard, pts = rows("LsProps").filter(function (p) { return p.status === "active" && lsRoutable(p); }).map(function (p) { return { lat: num(p.lat), lon: num(p.lon) }; }); if (y) pts.push(y); if (!pts.length) return null;
+  var a = { s: 90, w: 180, n: -90, e: -180 }; pts.forEach(function (p) { a.s = Math.min(a.s, p.lat); a.n = Math.max(a.n, p.lat); a.w = Math.min(a.w, p.lon); a.e = Math.max(a.e, p.lon); });
+  var dn = function (x) { return Math.floor(x / 0.05) * 0.05; }, up = function (x) { return Math.ceil(x / 0.05) * 0.05; };
+  a = { s: dn(a.s - 0.06), w: dn(a.w - 0.06), n: up(a.n + 0.06), e: up(a.e + 0.06) };
+  if (a.n - a.s > 1.4 || a.e - a.w > 1.4) return null;                      // too spread out for one request
+  return a;
+}
+function lsFuelAll(fetchIfMissing, force) {
+  var a = lsFuelArea(); if (!a) return null; var key = "osmarea:" + [a.s, a.w, a.n, a.e].map(function (x) { return x.toFixed(2); }).join(",");
+  var hit = force ? null : cacheGetBig(key); if (hit) return { area: a, list: hit };
+  if (!fetchIfMissing) return null;
+  var list = lsOverpassFetch(a.s, a.w, a.n, a.e); if (!list) return null;
+  cachePutBig(key, list, 21600); PropertiesService.getScriptProperties().setProperty("LS_FUEL_AT", String(Date.now()));
+  return { area: a, list: list };
+}
+function lsOsmFuel(s, w, n, e) {
+  var all = lsFuelAll(true);
+  if (all && s >= all.area.s && n <= all.area.n && w >= all.area.w && e <= all.area.e) return all.list.filter(function (x) { return x.lat >= s && x.lat <= n && x.lon >= w && x.lon <= e; });
+  var key = "osmfuel:" + [s, w, n, e].map(function (x) { return x.toFixed(2); }).join(",");
+  return lsCacheJson(key, 21600, function () { return lsOverpassFetch(s, w, n, e); });
+}
+/* Keep the station list fresh in the background (every 4 h), so a fuel search answers right away. */
+function lsWarm() { try { var at = Number(PropertiesService.getScriptProperties().getProperty("LS_FUEL_AT") || 0); if (Date.now() - at > 4.5 * 3600000 || !lsFuelAll(false)) lsFuelAll(true, true); return "ok"; } catch (e) { console.warn("lsWarm: " + e.message); return "error"; } }
+function lsWarmEnsure() {
+  var pr = PropertiesService.getScriptProperties(); if (pr.getProperty("LS_WARM") === "1") return;
+  try { var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "lsWarm"; });
+    if (!has) ScriptApp.newTrigger("lsWarm").timeBased().everyHours(4).create(); pr.setProperty("LS_WARM", "1"); } catch (e) { console.warn("lsWarmEnsure: " + e.message); }
 }
 function lsDecodePoly(str) {
   var i = 0, lat = 0, lng = 0, out = []; str = String(str || "");
@@ -1323,6 +1351,7 @@ ACTIONS.lsSaveEstimate = function (me, b) {
 var _lsHomeB3 = ACTIONS.lsHome;
 ACTIONS.lsHome = function (me, b) {
   var out = _lsHomeB3(me, b); if (out.role !== "office") return out;
+  if (me.role === "admin" && !me.preview) lsWarmEnsure();
   out.places = rows("LsPlaces").filter(function (p) { return p.status !== "deleted"; }).map(lsPlaceOut);
   var pids = {}; out.props.forEach(function (p) { pids[p.id] = 1; });
   out.opps = rows("LsOpps").filter(function (o) { return pids[o.property_id]; }).map(lsOppOut).sort(function (a, c) { return a.created_at < c.created_at ? 1 : -1; });

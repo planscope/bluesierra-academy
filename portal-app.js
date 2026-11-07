@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107132147";
+  var BUILD = "20261107132826";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4216,7 +4216,7 @@
       var res = ui.res, pref = r.fuel_pref || {};
       h += '<div class="lsd-xpanel"><form class="lsd-fopts" data-form="lsxFuelFind"><b>Find fuel</b><label><input type="radio" name="fuel" value="gas"' + ((ui.fuelT || pref.fuel) !== "diesel" ? " checked" : "") + '> Gas</label><label><input type="radio" name="fuel" value="diesel"' + ((ui.fuelT || pref.fuel) === "diesel" ? " checked" : "") + '> Diesel</label>' +
         '<label><input type="checkbox" name="trailer"' + ((ui.trailer != null ? ui.trailer : pref.trailer) ? " checked" : "") + '> Towing a trailer</label><select name="near"><option value="route"' + (ui.near !== "office" ? " selected" : "") + '>Along the route</option><option value="office"' + (ui.near === "office" ? " selected" : "") + '>Near the office</option></select><button class="btn sm" type="submit">Search</button></form>' +
-        (!res ? '<p class="muted small">Searches OpenStreetMap for stations, then checks the extra drive with Google.</p>' : res.busy ? '<p class="muted small">Looking for stations…</p>' : res.err ? '<p class="bad-t small">' + esc(res.err) + "</p>" : !res.stations.length ? '<p class="muted small">No stations found there.</p>' :
+        (!res ? '<p class="muted small">Searches OpenStreetMap for stations, then checks the extra drive with Google.</p>' : res.busy ? '<p class="muted small">Looking for stations… The station list is refreshed every few hours; when it isn\'t ready this can take up to a minute.</p>' : res.err ? '<p class="bad-t small">' + esc(res.err) + "</p>" : !res.stations.length ? '<p class="muted small">No stations found there.</p>' :
           res.stations.map(function (st, k) {
             var pl = st.place, rec = st.rec || {}, ver = function (ok, txt) { return '<span class="' + (ok ? "lsd-ok2" : "lsd-chk") + '">' + (ok ? "✓ " : "? ") + txt + "</span>"; };
             var hours = pl && pl.hours ? ver(true, "Hours: " + pl.hours + " (checked by " + (pl.checked_by || "the office") + ")") : st.hours ? ver(false, "Hours listed on OpenStreetMap: " + st.hours + " · confirm") : ver(false, "Hours not listed · call to confirm");
