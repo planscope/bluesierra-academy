@@ -134,7 +134,7 @@
       p.pinLock = 0; return { token: t, me: meOut(p), needPin: !p.pin || !!b.resetPin };
     }
   };
-  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: !p.preview && (p.role === "admin" || (p.role === "staff" && p.money === "yes")), key: pk(p.email), avatar: p.avatar || "", hasPin: !!p.pin, preview: p.preview || "" }; }
+  function meOut(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: !p.preview && (p.role === "admin" || (p.role === "staff" && p.money === "yes")), key: pk(p.email), avatar: p.avatar || "", hasPin: !!p.pin, preview: p.preview || "", calls: (load().daily ? "portal" : "meet") }; }
   function asg(c) { return String(c.assignee || "").split(",").filter(Boolean); }
   function isAsg(c, e) { return asg(c).indexOf(e) > -1; }
   function pk(e) { var h = 0; String(e).split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return ("0000000000" + h.toString(16)).slice(-10); }
@@ -625,6 +625,15 @@
   ACTIONS.feedback = function (db, me, b) { (db.feedback = db.feedback || []).unshift({ id: "f" + Date.now(), at: now(), name: me.name, role: me.role, project: "", tab: (b.meta || {}).tab || "", text: b.text, status: "open", shot: b.image || "", link: b.image || "" }); db.feedback = db.feedback.slice(0, 20); return { id: db.feedback[0].id }; };
   ACTIONS.listFeedback = function (db) { return { items: db.feedback || [] }; };
   ACTIONS.setFeedback = function (db, me, b) { (db.feedback || []).forEach(function (f) { if (f.id === b.id) f.status = b.status; }); return {}; };
+  ACTIONS.callSave = function (db, me, b) { db.daily = !b.off; return { on: db.daily }; };
+  var _mCall = ACTIONS.startCall;
+  ACTIONS.startCall = function (db, me, b) { var r = _mCall(db, me, b); if (!db.daily) return r;
+    var ev = db.messages[db.messages.length - 1]; if (ev && ev.kind === "event") ev.ref = "call:room" + Date.now();
+    return { url: "about:blank#preview-call", code: "preview", embed: true }; };
+  ACTIONS.joinCall = function () { return { url: "about:blank#preview-call", embed: true }; };
+  ACTIONS.deleteMessages = function (db, me, b) { var ids = b.ids || []; var bad = db.messages.filter(function (m) { return ids.indexOf(m.id) > -1 && m.author_email !== me.email && me.role !== "admin"; }); if (bad.length) throw new Error("You can only delete your own messages.");
+    var n = db.messages.length; db.messages = db.messages.filter(function (m) { return ids.indexOf(m.id) < 0; }); return { deleted: n - db.messages.length }; };
+  ACTIONS.clearChat = function (db, me, b) { var n = db.messages.length; db.messages = db.messages.filter(function (m) { return !(m.project_id === b.projectId && (m.channel || "client") === b.channel); }); return { deleted: n - db.messages.length }; };
   var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   function previewMe(db, role) {
     if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");

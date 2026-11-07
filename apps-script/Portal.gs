@@ -225,7 +225,7 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })() }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
@@ -644,6 +644,7 @@ var ACTIONS = {
     var keys = (b.invite || []).map(String), who = membersOf(p).filter(function (x) { return x.email !== me.email && keys.indexOf(pkey(x.email)) > -1 && canRead(x, ch); });
     if (!who.length) throw new Error("Pick at least one person to call.");
     c.put(k, String(n + 1), 3600);
+    if (dailyOn()) return dailyCall(me, p, ch, who);          // video inside the portal
     var start = new Date(), end = new Date(start.getTime() + 60 * 60000), names = who.map(function (x) { return x.name; });
     var ev = Calendar.Events.insert({ summary: "Call · " + p.name + " (" + me.name + ")", description: "Started from the Blue Sierra portal.",
       start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
@@ -1902,6 +1903,82 @@ ACTIONS.rtSave = function (me, b) {
   if (r.getResponseCode() !== 200) throw new Error("Firebase said no (" + r.getResponseCode() + "): " + String(r.getContentText()).slice(0, 160) + ". Check the address and the secret.");
   pr.setProperties({ RT_URL: url, RT_SECRET: secret }); if (!pr.getProperty("RT_KEY")) pr.setProperty("RT_KEY", Utilities.getUuid() + Utilities.getUuid());
   return ACTIONS.rtStatus(me);
+};
+
+/* ============ Video calls inside the portal (Daily.co) ============
+   Google Meet can't be embedded in another page, Daily can. Each call is a private room that closes after 2 hours;
+   everyone gets their own entry ticket (a meeting token), so the room link alone lets nobody in. */
+function dailyKey() { return PropertiesService.getScriptProperties().getProperty("DAILY_KEY") || ""; }
+function dailyOn() { return !!dailyKey(); }
+function dailyApi(method, path, body, key) {
+  var o = { method: method, muteHttpExceptions: true, headers: { Authorization: "Bearer " + (key || dailyKey()) } };
+  if (body) { o.contentType = "application/json"; o.payload = JSON.stringify(body); }
+  var r = UrlFetchApp.fetch("https://api.daily.co/v1" + path, o), j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+  if (r.getResponseCode() >= 300) throw new Error("Daily said: " + (j.info || j.error || r.getResponseCode()));
+  return j;
+}
+function dailyTicket(room, person, owner, exp) { return dailyApi("post", "/meeting-tokens", { properties: { room_name: room, user_name: person.name, exp: exp, is_owner: !!owner, enable_screenshare: true } }).token; }
+function dailyCall(me, p, ch, who) {
+  var exp = Math.floor(Date.now() / 1000) + 2 * 3600, names = who.map(function (x) { return x.name; });
+  var room = dailyApi("post", "/rooms", { privacy: "private", properties: { exp: exp, eject_at_room_exp: true, enable_chat: true, enable_screenshare: true, enable_prejoin_ui: false, enable_knocking: false, start_video_off: false } });
+  var mine = room.url + "?t=" + dailyTicket(room.name, me, true, exp);
+  withLock(function () {
+    _ROWS = {}; prefetch(["People", "Projects", "Messages"]);
+    postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
+      "Video call inside the portal. Tap Join; it works for the next 2 hours.", "call:" + room.name, ch);
+  });
+  who.forEach(function (x) {
+    var link = room.url + "?t=" + dailyTicket(room.name, x, false, exp);
+    try { rtQueue("rt/u/" + rtUser(x.email) + "/call", "put", { id: newId("c"), pid: p.id, project: p.name, channel: ch, from: me.name, akey: pkey(me.email), avatar: me.avatar || "", url: link, embed: true, room: room.name, ts: Date.now() }); } catch (e) {}
+    if (!isLive(x.email)) safeMail(function () { sendMail(x.email, "📹 " + me.name + " is calling you · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> started a video call about <b>" + esc(p.name) + "</b> and is waiting for you.</p>" +
+      "<p><a href='" + link + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p><p style='color:#555'>The link is just for you and works for 2 hours.</p>"); }, "");
+  });
+  try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
+  bumpVersion(p.id);
+  return { url: mine, code: room.name, embed: true };
+}
+/* Join from the chat card: only someone on the project who can read that channel gets a ticket. */
+ACTIONS.joinCall = function (me, b) {
+  var p = needProject(me, b.projectId), room = String(b.room || ""); if (!/^[A-Za-z0-9_-]{1,80}$/.test(room)) throw new Error("That call isn't here anymore.");
+  var ev = rows("Messages").filter(function (m) { return m.project_id === p.id && m.kind === "event" && m.ref === "call:" + room; })[0];
+  if (!ev || !canRead(me, chOf(ev))) throw new Error("That call isn't here anymore.");
+  if (!dailyOn()) throw new Error("Calls inside the portal are off.");
+  var exp = Math.floor(Date.now() / 1000) + 2 * 3600, info = dailyApi("get", "/rooms/" + room);
+  if (info.config && info.config.exp && info.config.exp * 1000 < Date.now()) throw new Error("That call ended.");
+  return { url: info.url + "?t=" + dailyTicket(room, me, ev.author_email === me.email, Math.min(exp, (info.config && info.config.exp) || exp)), embed: true };
+};
+ACTIONS.callStatus = function (me) { if (me.role !== "admin") throw new Error("Only Jesús sets this up."); return { on: dailyOn() }; };
+ACTIONS.callSave = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús sets this up."); var pr = PropertiesService.getScriptProperties();
+  if (b.off) { pr.deleteProperty("DAILY_KEY"); return { on: false }; }
+  var key = String(b.key || "").trim(); if (!/^[A-Za-z0-9]{20,100}$/.test(key)) throw new Error("Paste the API key from Daily (Developers → API keys).");
+  dailyApi("get", "/rooms?limit=1", null, key);                                     // proves the key works
+  pr.setProperty("DAILY_KEY", key); return { on: true };
+};
+
+/* ============ Cleaning up the chat ============ */
+function dropMessages(p, pick) {
+  var gone = rows("Messages").filter(function (x) { return x.project_id === p.id && pick(x); }), ids = {};
+  gone.forEach(function (x) { ids[x.id] = 1; });
+  rows("Messages").forEach(function (x) { if (x.project_id === p.id && ((x.thread_id && ids[x.thread_id]) || (x.question_id && ids[x.question_id]))) { ids[x.id] = 1; gone.push(x); } });
+  gone.forEach(function (x) { parseJson(x.files, []).forEach(function (f) { try { DriveApp.getFileById(f.id).setTrashed(true); } catch (e) {} }); });
+  removeWhere("Messages", function (r) { return ids[r.id]; });
+  return Object.keys(ids).length;
+}
+/* Several at once: your own messages (Jesús: any). */
+ACTIONS.deleteMessages = function (me, b) {
+  var p = needProject(me, b.projectId), want = {}; [].concat(b.ids || []).slice(0, 300).forEach(function (id) { want[String(id)] = 1; });
+  var bad = rows("Messages").filter(function (x) { return want[x.id] && x.project_id === p.id && x.author_email !== me.email && me.role !== "admin"; });
+  if (bad.length) throw new Error("You can only delete your own messages.");
+  return { deleted: dropMessages(p, function (x) { return want[x.id] && seesMsg(me, x); }) };
+};
+/* Clear a whole conversation: a private chat by either of the two; a project channel only by Jesús. */
+ACTIONS.clearChat = function (me, b) {
+  var p = needProject(me, b.projectId), ch = String(b.channel || "");
+  if (isDm(ch)) { if (!canRead(me, ch)) throw new Error("That isn't your conversation."); }
+  else if (me.role !== "admin") throw new Error("Only Jesús can clear a project channel.");
+  else if (CHANNELS.indexOf(ch) < 0) throw new Error("Pick a channel.");
+  return { deleted: dropMessages(p, function (x) { return chOf(x) === ch; }) };
 };
 
 var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];

@@ -504,7 +504,7 @@
     if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
     var admin = S.me && S.me.admin;
     return (admin ? '<div class="card va-card"><div><b>See what everyone else sees</b><div class="muted small">Preview the portal as #client, #architect or #crew to check nothing private is leaking.</div></div><button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview</button></div>" : "") +
-      qbSettings() + rtCard() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
+      qbSettings() + rtCard() + callCard() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
       return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="team">Change</button>' : "") +
@@ -694,12 +694,14 @@
   /* Something happened (an invoice, an update, a to-do): a colored card the client can't miss, with a button straight to it. */
   function eventHtml(m, opts) {
     var ev = EV[m.status] || ["spark", "Update"], lines = String(m.text || "").split("\n"), canDel = S.me && S.me.admin;
-    return '<div class="ev ev-' + esc(m.status || "x") + '" id="m-' + esc(m.id) + '"><div class="ev-ico" aria-hidden="true">' + ICON[ev[0]] + '</div><div class="ev-body">' +
+    var selEv = S.sel && !opts.inThread && S.me && S.me.admin;
+    return '<div class="ev ev-' + esc(m.status || "x") + (selEv ? " sel-able" : "") + (selEv && S.sel[m.id] ? " picked" : "") + '" id="m-' + esc(m.id) + '"' + (selEv ? ' data-a="selPick" data-id="' + esc(m.id) + '"' : "") + '><div class="ev-ico" aria-hidden="true">' + ICON[ev[0]] + '</div><div class="ev-body">' +
       '<div class="ev-top"><span class="ev-kind">' + ev[1] + '</span><span class="muted small">' + day(m.at) + "</span>" +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Ask about this</button>' : "") + (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
       '<div class="ev-line"><b>' + esc(m.author) + "</b> " + esc(lines[0]) + "</div>" + (lines[1] ? '<div class="ev-detail">' + esc(lines.slice(1).join(" ")).replace(/\d{4}-\d{2}-\d{2}/g, function (d) { return day(d); }) + "</div>" : "") +
       (m.status === "call" && m.ref ? '<div class="meet-row"><span class="meet-code" title="Meeting code">' + esc(meetCode(m.ref)) + '</span><button class="link small" data-a="copyCode" data-c="' + esc(meetCode(m.ref)) + '">Copy code</button></div>' + (!API ? '<div class="muted small">Preview: this is a sample code, not a real meeting.</div>' : "") : "") +
-      (m.ref && /^meet:https:\/\/meet\.google\.com\//.test(m.ref) ? '<a class="ev-btn" href="' + esc(meetUrl(m.ref)) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + " Join the call →</a>" :
+      (m.ref && /^call:/.test(m.ref) ? '<button class="ev-btn" data-a="joinCall" data-room="' + esc(m.ref.slice(5)) + '" data-p="' + esc(S.pid || "") + '">' + ICON.video + " Join the call →</button>" :
+       m.ref && /^meet:https:\/\/meet\.google\.com\//.test(m.ref) ? '<a class="ev-btn" href="' + esc(meetUrl(m.ref)) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + " Join the call →</a>" :
        m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule", meet: "Join the call 📹", plan: "See what changed" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
       reactHtml(m) + (!opts.inThread && opts.replies && opts.replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '">' + opts.replies.length + " repl" + (opts.replies.length > 1 ? "ies" : "y") + "</button>" : "") +
       "</div></div>";
@@ -719,7 +721,8 @@
     if (m.kind === "event") return eventHtml(m, opts);
     var q = m.kind === "question", replies = opts.replies || [], answers = opts.answers || [];
     var canDel = m.mine || (S.me && S.me.admin);
-    return '<div class="msg' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + (m.mention ? " ping" : "") + '" id="m-' + esc(m.id) + '">' + '<button class="av-btn" data-a="person" data-k="' + esc(m.akey || "") + '" aria-label="' + esc(m.author) + '">' + av(m.author, m.avatar, m.role, "", m.akey) + "</button>" + '<div class="bubble ' + (q ? "question" : "") + '">' +
+    var selOk = S.sel && !opts.inThread && (m.mine || (S.me && S.me.admin));
+    return '<div class="msg' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + (m.mention ? " ping" : "") + (selOk ? " sel-able" : "") + (selOk && S.sel[m.id] ? " picked" : "") + '" id="m-' + esc(m.id) + '"' + (selOk ? ' data-a="selPick" data-id="' + esc(m.id) + '"' : "") + ">" + '<button class="av-btn" data-a="person" data-k="' + esc(m.akey || "") + '" aria-label="' + esc(m.author) + '">' + av(m.author, m.avatar, m.role, "", m.akey) + "</button>" + '<div class="bubble ' + (q ? "question" : "") + '">' +
       '<div class="who-line"><b>' + esc(m.author) + "</b>" + roleTag(m.role) + "<span>" + day(m.at) + "</span>" + (m.via === "email" ? '<span class="pill">by email</span>' : "") +
       (q ? (m.status === "open" ? '<span class="pill gold">Question · waiting</span>' : '<span class="pill ok">Answered</span>') : "") +
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Reply in thread</button>' : "") +
@@ -759,7 +762,10 @@
     var head = isDm(ch) ? '<h2>@ ' + esc(dmWith(ch).name) + '</h2><span class="muted small">🔒 Private: only you and ' + esc(first(dmWith(ch).name)) + " can see this.</span>"
       : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Live chat. People who are away get one email at most every few hours; ⚑ Important always emails. Email replies show up here." : " Live chat. Replies by email also show up here.") : "") + "</span>";
     var pinsHere = list.filter(function (m) { return isPinned(m) && !m.thread_id; });
-    return bar + '<div class="chan-head"><div>' + head + '</div><button class="btn ghost sm call-btn" data-a="call" title="Start a Google Meet video call here">📹 Video call</button></div>' +
+    var canClear = isDm(ch) || (S.me && S.me.admin);
+    return bar + '<div class="chan-head"><div>' + head + '</div><div class="ch-acts">' + (S.sel ? "" : '<button class="btn ghost sm" data-a="selStart" title="Select messages to delete">Select</button>' + (canClear ? '<button class="btn ghost sm" data-a="clearChat" title="Delete every message here">Clear</button>' : "")) +
+      '<button class="btn ghost sm call-btn" data-a="call" title="Start a video call here">📹 Video call</button></div></div>' +
+      (S.sel ? '<div class="sel-bar"><span>' + (Object.keys(S.sel).length ? Object.keys(S.sel).length + " selected" : "Tap your messages to select them" + (S.me && S.me.admin ? " (you can pick any)" : "")) + '</span><button class="btn ghost sm" data-a="selCancel">Cancel</button><button class="btn sm danger-btn" data-a="selDelete"' + (Object.keys(S.sel).length ? "" : " disabled") + ">Delete</button></div>" : "") +
       pinnedHtml(pinsHere, "msg") + (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
       '<div class="typing-line" aria-live="polite"></div><div class="reply-bar">' + composer(ch) + "</div>";
   }
@@ -786,12 +792,17 @@
   var PHONE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
   /* Start a call. On a computer the Meet tab opens right away; on a phone the browser can't hand a link to the Meet app
      by itself, so we show a big Join button (a real tap opens the app). */
-  function startCallNow(btn, keys) {
-    var w = PHONE ? null : window.open("", "bsp-meet", "width=1180,height=780"); if (w) try { w.document.write('<p style="font:16px sans-serif;padding:30px">Starting your Google Meet…</p>'); } catch (e) {}
+  function startCallNow(btn, keys, pid, ch, label) {
+    pid = pid || S.pid; ch = ch || S.chan;
+    var inPortal = S.me && S.me.calls === "portal";
+    var w = inPortal || PHONE ? null : window.open("", "bsp-meet", "width=1180,height=780"); if (w) try { w.document.write('<p style="font:16px sans-serif;padding:30px">Starting your Google Meet…</p>'); } catch (e) {}
     return run(btn, async function () {
-      try { var r = await call("startCall", { projectId: S.pid, channel: S.chan, invite: keys }); if (w) w.location = r.url; }
+      try { var r = await call("startCall", { projectId: pid, channel: ch, invite: keys }); }
       catch (e) { if (w) w.close(); throw e; }
-      S.modal = PHONE || !w ? { type: "callReady", url: r.url, code: r.code } : null; await refresh(); if (!S.modal) window.scrollTo(0, document.body.scrollHeight);
+      if (r.embed) { if (w) w.close(); callWindow(r.url, label || "Calling…"); }
+      else if (w) { w.location = r.url; toast("Calling " + (label || "") + "… Google Meet opened in a new window."); }
+      else { S.modal = { type: "callReady", url: r.url, code: r.code }; keepScroll(render); }
+      loadFeed(pid);
     });
   }
   function meetCode(ref) { return String(ref || "").replace(/^meet:/, "").split("/").pop().split("?")[0]; }
@@ -906,7 +917,7 @@
       return '<div class="pp-row s-' + x.state + (S.peopleFocus === x.key ? " focus" : "") + '" id="pp-' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) +
         '<div class="pp-who"><b>' + esc(x.name) + '</b><small><span class="pp-role">' + esc(roleName(x.role)) + "</span> · " + esc(st) + (where ? ' · <span class="pp-where">' + esc(where) + "</span>" : "") + "</small></div>" +
         (pid ? '<div class="pp-act"><button class="pp-btn hi" data-a="wave" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Say hi" aria-label="Say hi to ' + esc(x.name) + '">' + ICON.wave + '</button><button class="pp-btn" data-a="dmGo" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Message privately" aria-label="Message ' + esc(x.name) + '">' + ICON.chat + "</button>" +
-          (pid === S.pid ? '<button class="pp-btn" data-a="callPerson" data-k="' + esc(x.key) + '" title="Video call" aria-label="Call ' + esc(x.name) + '">' + ICON.video + "</button>" : "") + "</div>" : "") + "</div>";
+          (pid ? '<button class="pp-btn" data-a="callPerson" data-k="' + esc(x.key) + '" data-p="' + esc(pid) + '" title="Video call" aria-label="Call ' + esc(x.name) + '">' + ICON.video + "</button>" : "") + "</div>" : "") + "</div>";
     };
     if (!S.presence) return '<div class="pp-empty">Checking who\'s around…</div>';
     var groups = [["online", "Online"], ["busy", "Busy"], ["away", "Away"], ["offline", "Offline"]].map(function (g) { var l = list.filter(function (x) { return x.state === g[0]; }); return l.length ? '<div class="pp-sec">' + g[1] + " <span>" + l.length + "</span></div>" + l.map(row).join("") : ""; }).join("");
@@ -2541,7 +2552,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106184121";
+  var BUILD = "20261106185909";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2570,7 +2581,7 @@
         var next = document.createElement("div"); desc.set.call(next, html);
         try {
           MORPH(root, next, { childrenOnly: true,
-            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast")))); },
+            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast") || n.classList.contains("call-win")))); },
             onBeforeElUpdated: function (from, to) {
               if (from.isEqualNode(to)) return false;
               if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
@@ -2679,10 +2690,12 @@
   }
   function dockMsg(m) {
     if (m.kind === "event") {
-      var isCall = m.status === "call" && /^meet:/.test(m.ref || "");
-      return '<div class="dk-ev">' + esc(m.author) + " " + esc(String(m.text || "").split("\n")[0]) + (isCall ? ' <a class="dk-join" href="' + esc(meetUrl(m.ref)) + '" target="_blank" rel="noopener">Join</a>' : "") + '<small>' + day(m.at) + "</small></div>";
+      var isMeet = m.status === "call" && /^meet:/.test(m.ref || ""), isRoom = /^call:/.test(m.ref || "");
+      return '<div class="dk-ev' + (S.dock.sel && S.me.admin ? " sel-able" : "") + (S.dock.sel && S.dock.sel[m.id] ? " picked" : "") + '"' + (S.dock.sel && S.me.admin ? ' data-a="dkSel" data-id="' + esc(m.id) + '"' : "") + ">" + esc(m.author) + " " + esc(String(m.text || "").split("\n")[0]) +
+        (isRoom ? ' <button class="dk-join" data-a="joinCall" data-room="' + esc(m.ref.slice(5)) + '" data-p="' + esc(S.dock.pid) + '">Join</button>' : isMeet ? ' <a class="dk-join" href="' + esc(meetUrl(m.ref)) + '" target="_blank" rel="noopener">Join</a>' : "") + '<small>' + day(m.at) + "</small></div>";
     }
-    return '<div class="dk-m' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + '">' + (m.mine ? "" : av(m.author, m.avatar, m.role, "xs", m.akey)) +
+    var canSel = S.dock.sel && (m.mine || (S.me && S.me.admin));
+    return '<div class="dk-m' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + (canSel ? " sel-able" : "") + (canSel && S.dock.sel[m.id] ? " picked" : "") + '"' + (canSel ? ' data-a="dkSel" data-id="' + esc(m.id) + '"' : "") + ">" + (m.mine ? "" : av(m.author, m.avatar, m.role, "xs", m.akey)) +
       '<div class="dk-b">' + (m.mine ? "" : "<b>" + esc(first(m.author)) + "</b>") + (m.text ? '<div class="text">' + richText(m.text) + "</div>" : "") +
       ((m.files || []).length ? '<div class="dk-files">📎 ' + m.files.length + " file" + (m.files.length > 1 ? "s" : "") + "</div>" : "") + "<small>" + day(m.at) + "</small></div></div>";
   }
@@ -2708,7 +2721,7 @@
   }
   function dockPaint(fromFeed) {
     if (!DOCK) return;
-    var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid) && !(d.open && !d.min);
+    var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid);           // the full chat is on screen: no need for the window too
     if (!d.pid && S.pid) d.pid = S.pid;
     if (!d.pid && (S.projects || []).length) d.pid = S.projects[0].id;
     DOCK.className = (d.open && !d.min ? "open" : "") + (d.closed || onFull ? " gone" : "");
@@ -2719,10 +2732,24 @@
     var chans = dockChans(data); if (chans.indexOf(d.ch) < 0) d.ch = chans[0];
     var projs = S.projects || [], pname = (projs.filter(function (p) { return p.id === d.pid; })[0] || {}).name || "Chat";
     DOCK.querySelector(".dk-head").innerHTML = (projs.length > 1 ? '<select class="dk-proj" aria-label="Project">' + projs.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === d.pid ? " selected" : "") + ">" + esc(p.name) + (p.unread ? " (" + p.unread + ")" : "") + "</option>"; }).join("") + "</select>" : "<b>" + esc(pname) + "</b>") +
-      '<button class="dk-x" data-a="dkFull" title="Open the full chat">⤢</button><button class="dk-x" data-a="dkMin" title="Minimize">–</button><button class="dk-x" data-a="dkClose" title="Close">×</button>';
+      '<button class="dk-x dk-call" data-a="dkCall" title="Video call">' + ICON.video + '</button><button class="dk-x" data-a="dkMore" title="More">⋯</button><button class="dk-x" data-a="dkFull" title="Open the full chat">⤢</button><button class="dk-x" data-a="dkMin" title="Minimize">–</button><button class="dk-x" data-a="dkClose" title="Close">×</button>' +
+      (d.more ? '<div class="dk-menu"><button data-a="dkSelStart">Select messages to delete</button>' + (isDm(d.ch) || (S.me && S.me.admin) ? '<button data-a="dkClear" class="bad">Clear this ' + (isDm(d.ch) ? "private chat" : "channel") + "</button>" : "") + "</div>" : "");
     var unreadOf = function (c) { if (!data || c === d.ch) return 0; var r = (data.reads || {})[c] || ""; return (data.messages || []).filter(function (m) { return (m.channel || "client") === c && !m.mine && m.at > r; }).length; };
     DOCK.querySelector(".dk-chans").innerHTML = chans.map(function (c) { var n = unreadOf(c); return '<button class="dk-chan' + (c === d.ch ? " on" : "") + (isDm(c) ? " dm" : "") + '" data-a="dkChan" data-c="' + esc(c) + '">' + esc(dockLabel(data, c)) + (n ? "<i>" + n + "</i>" : "") + "</button>"; }).join("") +
       '<button class="dk-chan add' + (d.picking ? " on" : "") + '" data-a="dkPick" title="Message one person privately">＋ Private</button>';
+    var form = DOCK.querySelector(".dk-form"), selBar = DOCK.querySelector(".dk-selbar");
+    if (!selBar) { selBar = document.createElement("div"); selBar.className = "dk-selbar"; form.parentNode.insertBefore(selBar, form); }
+    var nSel = d.sel ? Object.keys(d.sel).length : 0;
+    selBar.innerHTML = d.sel ? '<span>' + (nSel ? nSel + " selected" : "Tap messages to select them") + '</span><button class="btn ghost sm" data-a="dkSelCancel">Cancel</button><button class="btn sm danger-btn" data-a="dkSelDel"' + (nSel ? "" : " disabled") + ">Delete</button>" : "";
+    selBar.style.display = d.sel ? "" : "none"; form.style.display = d.sel ? "none" : "";
+    if (d.calling) {
+      var cands = dockCallables(data, d.ch), bodyC = DOCK.querySelector(".dk-body");
+      var htmlC = '<div class="dk-pick"><b>Who do you want to call?</b><span class="muted small">They get a ring right away, wherever they are in the portal.</span>' +
+        (cands.length ? cands.map(function (x) { return '<label class="dk-who"><input type="checkbox" value="' + esc(x.key) + '" checked>' + av(x.name, x.avatar, x.role, "xs", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></label>"; }).join("") +
+          '<button class="btn" data-a="dkCallGo">' + ICON.video + " Call</button>" : '<p class="muted small">Nobody else can be called here.</p>') + "</div>";
+      if (bodyC.dataset.h !== String(scHash(htmlC))) { bodyC.innerHTML = htmlC; bodyC.dataset.h = scHash(htmlC); }
+      return;
+    }
     if (d.picking) {
       var who = ((data && data.members) || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
       var bodyP = DOCK.querySelector(".dk-body"), htmlP = '<div class="dk-pick"><b>Message privately</b><span class="muted small">Only the two of you will see it.' + (staff() ? "" : " You can message Blue Sierra.") + "</span>" +
@@ -2738,6 +2765,11 @@
       var last = list[list.length - 1], r = ((data.reads || {})[d.ch] || "");
       if (!last.mine && last.at > r) { (data.reads = data.reads || {})[d.ch] = last.at; call("markRead", { projectId: d.pid, channel: d.ch }).then(function () { var pr = (S.projects || []).filter(function (p) { return p.id === d.pid; })[0]; if (pr) { pr.unread = 0; dockPaint(); } }).catch(function () {}); }
     }
+  }
+  function dropLocal(pid, test) {
+    if (S.dockData && S.dockData[pid]) S.dockData[pid].messages = (S.dockData[pid].messages || []).filter(function (m) { return !test(m); });
+    if (S.data && S.pid === pid) { S.data.messages = S.data.messages.filter(function (m) { return !test(m); }); if (S.tab === "messages") keepScroll(render); }
+    S.sel = null; if (DOCK) { DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(true); }
   }
   async function dockSend() {
     var d = S.dock, ta = DOCK.querySelector(".dk-form textarea"), imp = DOCK.querySelector("[name=important]"), text = ta.value.trim(); if (!text || !d.pid) return;
@@ -2757,9 +2789,28 @@
     if (a === "dkOpen") { d.open = true; d.min = false; d.closed = false; if (S.pid) d.pid = d.pid || S.pid; dockSave(); dockPaint(); loadFeed(d.pid); liveLoop(true); setTimeout(function () { var t = DOCK.querySelector("textarea"); if (t && !PHONE) t.focus(); }, 50); return true; }
     if (a === "dkMin") { d.min = true; d.open = false; dockSave(); dockPaint(); return true; }
     if (a === "dkClose") { d.closed = true; d.open = false; dockSave(); dockPaint(); toast("Chat closed. It comes back when someone writes, or from the 💬 in the top bar."); return true; }
-    if (a === "dkPick") { d.picking = !d.picking; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); return true; }
+    if (a === "dkMore") { d.more = !d.more; dockPaint(); return true; }
+    if (a === "dkSelStart") { d.more = false; d.picking = false; d.calling = false; d.sel = {}; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); return true; }
+    if (a === "dkSel") { if (d.sel[b.dataset.id]) delete d.sel[b.dataset.id]; else d.sel[b.dataset.id] = 1; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(true); return true; }
+    if (a === "dkSelCancel") { d.sel = null; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(true); return true; }
+    if (a === "dkSelDel") { var ids = Object.keys(d.sel || {}); if (!ids.length) return true;
+      sure("Delete " + ids.length + " message" + (ids.length > 1 ? "s" : "") + "? Everyone stops seeing " + (ids.length > 1 ? "them" : "it") + ".", function () {
+        call("deleteMessages", { projectId: d.pid, ids: ids }).then(function () { d.sel = null; dropLocal(d.pid, function (m) { return ids.indexOf(m.id) > -1; }); toast("Deleted"); }).catch(function (er) { toast(er.message); }); });
+      return true; }
+    if (a === "dkClear") { d.more = false; var chx = d.ch;
+      sure("Clear the whole " + (isDm(chx) ? "private chat" : "#" + chx + " channel") + "? Every message in it is deleted for everyone, and it can't be undone.", function () {
+        call("clearChat", { projectId: d.pid, channel: chx }).then(function (r) { dropLocal(d.pid, function (m) { return (m.channel || "client") === chx; }); toast("Cleared (" + r.deleted + " messages)"); }).catch(function (er) { toast(er.message); }); });
+      dockPaint(); return true; }
+    if (a === "dkCall") { d.more = false; d.picking = false; d.sel = null;
+      var dd = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? S.data : null);
+      if (isDm(d.ch)) { var other = dockCallables(dd, d.ch)[0]; if (other) startCallNow(b, [other.key], d.pid, d.ch, other.name); return true; }
+      d.calling = !d.calling; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); return true; }
+    if (a === "dkCallGo") { var keys = [].map.call(DOCK.querySelectorAll(".dk-pick input:checked"), function (x) { return x.value; }); if (!keys.length) { toast("Pick someone to call"); return true; }
+      var dd2 = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? S.data : null), one = keys.length === 1 ? (dockCallables(dd2, d.ch).filter(function (x) { return x.key === keys[0]; })[0] || {}).name : keys.length + " people";
+      d.calling = false; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); startCallNow(b, keys, d.pid, d.ch, one); return true; }
+    if (a === "dkPick") { d.calling = false; d.picking = !d.picking; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); return true; }
     if (a === "dkDm") { d.picking = false; d.ch = dmKey(b.dataset.k); dockSave(); DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); liveLoop(true); setTimeout(function () { var t = DOCK.querySelector("textarea"); if (t) t.focus(); }, 30); return true; }
-    if (a === "dkChan") { d.picking = false; d.ch = b.dataset.c; dockSave(); var body = DOCK.querySelector(".dk-body"); body.dataset.h = ""; dockPaint(); liveLoop(true); return true; }
+    if (a === "dkChan") { d.picking = false; d.calling = false; d.sel = null; d.more = false; d.ch = b.dataset.c; dockSave(); var body = DOCK.querySelector(".dk-body"); body.dataset.h = ""; dockPaint(); liveLoop(true); return true; }
     if (a === "dkFull") { d.open = false; d.min = true; dockSave(); S.wantChan = d.ch; go(d.pid, "messages"); return true; }
     return false;
   }
@@ -2856,6 +2907,30 @@
     if (/^dk/.test(a)) { e.preventDefault(); e.stopImmediatePropagation(); dockAction(a, b); return; }
     if (a === "helpOpen") { e.preventDefault(); e.stopImmediatePropagation(); helpOpen(); return; }
     if (a === "fbDone") { e.preventDefault(); e.stopImmediatePropagation(); call("setFeedback", { id: b.dataset.id, status: b.dataset.s }).then(function () { (S.fb || []).forEach(function (f) { if (f.id === b.dataset.id) f.status = b.dataset.s; }); keepScroll(render); }).catch(function (er) { toast(er.message); }); return; }
+    // Chat clean-up (full chat)
+    if (a === "selStart") { e.preventDefault(); e.stopImmediatePropagation(); S.sel = {}; keepScroll(render); return; }
+    if (a === "selCancel") { e.preventDefault(); e.stopImmediatePropagation(); S.sel = null; keepScroll(render); return; }
+    if (a === "selPick") { if (e.target.closest("a, .m-tools, .rx, .rx-pop, .m-replies, .ev-btn")) return; e.preventDefault(); e.stopImmediatePropagation(); if (S.sel[b.dataset.id]) delete S.sel[b.dataset.id]; else S.sel[b.dataset.id] = 1; keepScroll(render); return; }
+    if (a === "selDelete") { e.preventDefault(); e.stopImmediatePropagation(); var ids = Object.keys(S.sel || {}); if (!ids.length) return; var pidD = S.pid;
+      sure("Delete " + ids.length + " message" + (ids.length > 1 ? "s" : "") + "? Everyone stops seeing " + (ids.length > 1 ? "them" : "it") + ".", function () {
+        call("deleteMessages", { projectId: pidD, ids: ids }).then(function () { dropLocal(pidD, function (m) { return ids.indexOf(m.id) > -1; }); toast("Deleted"); }).catch(function (er) { toast(er.message); }); });
+      return; }
+    if (a === "clearChat") { e.preventDefault(); e.stopImmediatePropagation(); var chc = S.chan, pidC = S.pid;
+      sure("Clear the whole " + (isDm(chc) ? "private chat with " + dmWith(chc).name : "#" + chc + " channel") + "? Every message in it is deleted for everyone, and it can't be undone.", function () {
+        call("clearChat", { projectId: pidC, channel: chc }).then(function (r) { dropLocal(pidC, function (m) { return (m.channel || "client") === chc; }); toast("Cleared (" + r.deleted + " messages)"); }).catch(function (er) { toast(er.message); }); });
+      return; }
+    if (a === "chan") S.sel = null;
+    // Join a call inside the portal (from a chat card)
+    if (a === "joinCall") { e.preventDefault(); e.stopImmediatePropagation(); var pj = b.dataset.p || S.pid;
+      run(b, async function () { var jr = await call("joinCall", { projectId: pj, room: b.dataset.room }); callWindow(jr.url, "Video call"); }); return; }
+    // Never leave the page to talk to someone: the message pop-up, the person card and Who's around open the chat window
+    if (S.tab !== "messages" || !S.pid) {
+      if (a === "actOpen" && b.closest("#bsp-pop")) { e.preventDefault(); e.stopImmediatePropagation(); hidePop(); S.dock.pid = b.dataset.p; S.dock.ch = b.dataset.c; S.dock.picking = S.dock.calling = false; S.dock.sel = null; S.dock.closed = false; if (DOCK) DOCK.querySelector(".dk-body").dataset.h = ""; dockAction("dkOpen", b); loadFeed(b.dataset.p); return; }
+      if (a === "dmPick" && S.pid) { e.preventDefault(); e.stopImmediatePropagation(); S.modal = null; keepScroll(render); S.dock.pid = S.pid; S.dock.ch = dmKey(b.dataset.k); S.dock.picking = S.dock.calling = false; S.dock.closed = false; if (DOCK) DOCK.querySelector(".dk-body").dataset.h = ""; dockAction("dkOpen", b); loadFeed(S.pid); return; }
+    }
+    if (a === "callPerson") { e.preventDefault(); e.stopImmediatePropagation(); S.peopleOpen = false; S.modal = null; keepScroll(render); var pidP = b.dataset.p || S.pid; if (!pidP) return toast("Open a project first");
+      var wp = ((S.presence && S.presence.people) || []).filter(function (x) { return x.key === b.dataset.k; })[0];
+      startCallNow(null, [b.dataset.k], pidP, dmKey(b.dataset.k), wp ? wp.name : ""); return; }
     if (a === "chatDock") { e.preventDefault(); e.stopImmediatePropagation(); S.dock.closed = false; if (S.dock.open && !S.dock.min) dockAction("dkMin", b); else dockAction("dkOpen", b); return; }
     if (a === "dmGo" && !(S.pid === b.dataset.p && S.tab === "messages")) { e.preventDefault(); e.stopImmediatePropagation(); S.peopleOpen = false; keepScroll(render);
       S.dock.pid = b.dataset.p; S.dock.ch = dmKey(b.dataset.k); S.dock.picking = false; S.dock.closed = false; DOCK && (DOCK.querySelector(".dk-body").dataset.h = ""); dockAction("dkOpen", b); loadFeed(b.dataset.p); return; }
@@ -2934,6 +3009,31 @@
     var t = Date.now(); if (t - typedAt < 2000) return; typedAt = t;
     fetch(RT.url + "/rt/t/" + sec + "/" + S.me.key + ".json", { method: "PUT", body: JSON.stringify({ n: first(S.me.name), t: t }) }).catch(function () {});
   };
+  /* ---------- The call, inside the portal: a floating window you can drag, shrink to a pill, or pop out ---------- */
+  function callWindow(url, title) {
+    endIncoming(); var old = root.querySelector(".call-win"); if (old) old.remove();
+    var w = document.createElement("div"); w.className = "call-win"; w.setAttribute("data-lenis-prevent", "");
+    w.innerHTML = '<div class="cw-head"><span class="cw-dot"></span><b>' + esc(title || "Video call") + '</b><span class="cw-time">0:00</span>' +
+      '<button type="button" data-cw="min" title="Shrink (the call keeps going)">–</button><button type="button" data-cw="pop" title="Open in its own window">⤢</button><button type="button" data-cw="end" class="cw-end">Leave</button></div>' +
+      '<iframe src="' + esc(url) + '" allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write; speaker-selection" allowfullscreen title="Video call"></iframe>';
+    root.appendChild(w);
+    var t0 = Date.now(), tm = w.querySelector(".cw-time"), iv = setInterval(function () { if (!w.isConnected) return clearInterval(iv); var s = Math.floor((Date.now() - t0) / 1000); tm.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }, 1000);
+    w.querySelector("[data-cw=min]").onclick = function () { w.classList.toggle("min"); this.textContent = w.classList.contains("min") ? "▢" : "–"; };
+    w.querySelector("[data-cw=pop]").onclick = function () { window.open(url, "bsp-call", "width=1180,height=780"); w.remove(); };
+    w.querySelector("[data-cw=end]").onclick = function () { w.remove(); toast("You left the call"); };
+    // drag by the title bar (desktop)
+    var head = w.querySelector(".cw-head"), sx, sy, ox, oy;
+    head.addEventListener("pointerdown", function (e) { if (e.target.closest("button") || PHONE) return; var r = w.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId); w.classList.add("drag"); });
+    head.addEventListener("pointermove", function (e) { if (sx == null) return; w.style.left = Math.max(8, Math.min(window.innerWidth - 120, ox + e.clientX - sx)) + "px"; w.style.top = Math.max(8, Math.min(window.innerHeight - 60, oy + e.clientY - sy)) + "px"; w.style.right = "auto"; w.style.bottom = "auto"; });
+    head.addEventListener("pointerup", function () { sx = null; w.classList.remove("drag"); });
+  }
+  /* Calls from the chat window and from Who's around: no page change. */
+  function dockCallables(d, ch) {
+    return ((d && d.members) || []).filter(function (mb) {
+      if (!mb.key || mb.key === S.me.key) return false;
+      return isDm(ch) ? ch.indexOf(mb.key) > -1 : ch === "team" ? ["admin", "staff", "crew"].indexOf(mb.role) > -1 : ch === "architect" ? ["admin", "staff", "architect"].indexOf(mb.role) > -1 : ch === "crew" ? ["admin", "staff", "crew"].indexOf(mb.role) > -1 : mb.role !== "crew";
+    });
+  }
   /* ---------- Incoming call: rings wherever you are, with Accept / Decline ---------- */
   var RING = null;
   function ringStart() {
@@ -2952,16 +3052,35 @@
       '<div class="ic-acts"><button class="ic-no" aria-label="Decline">' + ICON.x + '<span>Decline</span></button><a class="ic-yes" href="' + esc(c.url) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + "<span>Accept</span></a></div></div>";
     root.appendChild(w); ringStart();
     var done = function () { endIncoming(); };
-    w.querySelector(".ic-yes").addEventListener("click", function (e) { if (!PHONE) { e.preventDefault(); window.open(c.url, "bsp-meet", "width=1180,height=780"); } done(); });
+    w.querySelector(".ic-yes").addEventListener("click", function (e) { if (c.embed) { e.preventDefault(); done(); callWindow(c.url, c.from); return; } if (!PHONE) { e.preventDefault(); window.open(c.url, "bsp-meet", "width=1180,height=780"); } done(); });
     w.querySelector(".ic-no").addEventListener("click", function () {
       done(); toast("Declined. We let " + first(c.from) + " know.");
       call("sendMessage", { projectId: c.pid, channel: dmKey(c.akey), text: "📵 I can't take the call right now. I'll call you back." }).catch(function () {});
     });
     S.callTimer = setTimeout(function () { if (document.querySelector(".inc-call")) { endIncoming(); toast("Missed call from " + c.from); } }, 60000);
-    try { if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") { var n = new Notification("📹 " + c.from + " is calling you", { body: c.project + " · tap to join", tag: "bsp-call-" + c.id, requireInteraction: true }); n.onclick = function () { window.focus(); window.open(c.url, "bsp-meet", "width=1180,height=780"); endIncoming(); n.close(); }; } } catch (e) {}
+    try { if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") { var n = new Notification("📹 " + c.from + " is calling you", { body: c.project + " · tap to join", tag: "bsp-call-" + c.id, requireInteraction: true }); n.onclick = function () { window.focus(); if (c.embed) callWindow(c.url, c.from); else window.open(c.url, "bsp-meet", "width=1180,height=780"); endIncoming(); n.close(); }; } } catch (e) {}
   }
   if (!API) window.__bspTestCall = function (c) { incomingCall(Object.assign({ id: "t" + Date.now(), ts: Date.now(), pid: S.pid || "p1", project: "Hillside Residence", from: "Nayeli Toto", akey: "x", url: "https://meet.google.com/abc-defg-hij", code: "abc-defg-hij" }, c || {})); };   // preview only
   function endIncoming() { if (RING) RING(); clearTimeout(S.callTimer); var w = document.querySelector(".inc-call"); if (w) w.remove(); }
+  /* Admin: Home → Team → Video calls inside the portal (Daily.co). */
+  function callCard() {
+    if (!S.me || !S.me.admin) return "";
+    var on = S.me.calls === "portal";
+    return '<div class="card rt-card' + (on ? " on" : "") + '"><div class="qb-h"><span class="rt-mark" aria-hidden="true">📹</span><div><b>Video calls inside the portal (Daily.co)</b><div class="muted small">' +
+      (on ? "On: calls open in a window inside the portal, and the person you call gets a ring." : "Off: calls open Google Meet in a new window (Google doesn't allow Meet inside other pages). Paste a Daily.co API key to keep calls inside the portal (free up to 10,000 minutes a month).") + "</div></div></div>" +
+      '<form class="form" data-form="callKey"><label class="f">Daily API key<input type="password" name="key" autocomplete="new-password" placeholder="' + (on ? "Saved. Paste a new one to replace it" : "dashboard.daily.co → Developers → API key") + '"></label>' +
+      '<div class="actions">' + (on ? '<button type="button" class="btn ghost sm" data-a="callOff">Back to Google Meet</button>' : "") + '<button class="btn sm" type="submit">' + (on ? "Save" : "Turn on") + "</button></div></form></div>";
+  }
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=callKey]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var btn = f.querySelector("[type=submit]"); btn.disabled = true;
+    call("callSave", { key: f.key.value }).then(function () { f.key.value = ""; return call("me"); }).then(function (r) { S.me = Object.assign(S.me, r.me); keepScroll(render); toast("Calls now open inside the portal 📹"); })
+      .catch(function (er) { toast(er.message); }).then(function () { btn.disabled = false; });
+  }, true);
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a=callOff]"); if (!b) return; e.preventDefault(); e.stopImmediatePropagation();
+    call("callSave", { off: true }).then(function () { return call("me"); }).then(function (r) { S.me = Object.assign(S.me, r.me); keepScroll(render); toast("Calls use Google Meet again"); }).catch(function (er) { toast(er.message); });
+  }, true);
   /* Admin: Home → Team → Instant chat (Firebase). */
   function rtCard() {
     if (!S.me || !S.me.admin) return "";
