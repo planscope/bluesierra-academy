@@ -1619,8 +1619,10 @@ function qbVendorSites() {
 /* A store's web address from its name: known brands first, then a guess (name.com) that Google's logo service confirms exists. */
 function qbLogoKey(name) { return "LG2|" + String(name).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 60); }
 function qbLogo(name, sites, isPerson) {
-  if (!name) return ""; if (sites.site && sites.site[name]) return sites.site[name];
+  if (!name) return "";
   for (var i = 0; i < QB_BRANDS.length; i++) if (QB_BRANDS[i][0].test(name)) return QB_BRANDS[i][1];
+  if (qbLooksPerson(name)) return "";                                                // people never get a logo, whatever QuickBooks has on file
+  if (sites.site && sites.site[name]) return sites.site[name];
   var known = (sites.guessed || {})[qbLogoKey(name)]; return known && known !== "-" ? known : "";
 }
 /* "Jorge Rendon" or "Jose Luis Ramirez": two to five capitalized words and nothing business-like. Never guess a logo for a person. */
