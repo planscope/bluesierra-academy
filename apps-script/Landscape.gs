@@ -1060,13 +1060,22 @@ ACTIONS.lsFixTime = function (me, b) {
 };
 /* ---- fuel ---- */
 function lsFuelRecs() { return parseJson(PropertiesService.getScriptProperties().getProperty("LS_FUEL"), {}); }
+var LS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"], LS_OSM_ERR = "";
 function lsOsmFuel(s, w, n, e) {
   var key = "osmfuel:" + [s, w, n, e].map(function (x) { return x.toFixed(2); }).join(",");
   return lsCacheJson(key, 21600, function () {
     var q = "[out:json][timeout:25];nwr[\"amenity\"=\"fuel\"](" + [s, w, n, e].map(function (x) { return x.toFixed(4); }).join(",") + ");out center tags 200;";
-    var r = UrlFetchApp.fetch("https://overpass-api.de/api/interpreter", { method: "post", payload: { data: q }, muteHttpExceptions: true });
-    if (r.getResponseCode() !== 200) return null;
-    return (JSON.parse(r.getContentText()).elements || []).map(function (el) {
+    var j = null; LS_OSM_ERR = "";
+    LS_OVERPASS.some(function (url) {                                   // the public Overpass servers sometimes refuse or are busy: try the next one
+      try { var r = UrlFetchApp.fetch(url + "?data=" + encodeURIComponent(q), { muteHttpExceptions: true, headers: { "User-Agent": "BlueSierraPortal/1.0 (landscape maintenance routing; info@bluesierracorp.com)", Accept: "application/json" } });
+        var t = r.getContentText(), code = r.getResponseCode();
+        if (code === 200 && /^\s*\{/.test(t)) { var x = JSON.parse(t); if (x && Array.isArray(x.elements)) { j = x; return true; } }
+        LS_OSM_ERR += url.split("/")[2] + " " + code + "; ";
+      } catch (e) { LS_OSM_ERR += url.split("/")[2] + " " + e.message.slice(0, 60) + "; "; }
+      return false;
+    });
+    if (!j) { console.warn("overpass: " + LS_OSM_ERR); return null; }
+    return (j.elements || []).map(function (el) {
       var t = el.tags || {}, c = el.center || el; if (c.lat == null) return null;
       return { id: el.type.charAt(0) + el.id, lat: Math.round(c.lat * 1e6) / 1e6, lon: Math.round(c.lon * 1e6) / 1e6, name: t.name || t.brand || "Gas station", brand: t.brand || "",
         addr: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"]].filter(Boolean).join(", "), hours: t.opening_hours || "",
@@ -1092,7 +1101,7 @@ ACTIONS.lsFuelFind = function (me, b) {
   line.forEach(function (p) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lon); e = Math.max(e, p.lon); }); s -= pad; n += pad; w -= pad; e += pad;
   if (n - s > 1.2 || e - w > 1.2) { var cy = (n + s) / 2, cx = (e + w) / 2; s = cy - 0.6; n = cy + 0.6; w = cx - 0.6; e = cx + 0.6; }
   var raw = null; try { raw = lsOsmFuel(s, w, n, e); } catch (er) { console.warn("overpass: " + er.message); }
-  if (!raw) return { prefs: prefs, near: near, stations: [], err: "The station map (OpenStreetMap) didn't answer. Try again in a minute." };
+  if (!raw) return { prefs: prefs, near: near, stations: [], err: "The station map (OpenStreetMap) didn't answer. Try again in a minute.", detail: LS_OSM_ERR };
   var recs = lsFuelRecs(), seqPts = (origin ? [origin] : []).concat(stops), nS = stops.length;
   var pairs = [];                                                                       // [pos, from, to]; pos = stops before the station
   if (near === "office") pairs.push([0, origin, stops.length ? stops[0] : origin]);
