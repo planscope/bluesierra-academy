@@ -229,7 +229,7 @@
         if (S.qbReturnErr) { toast("QuickBooks wasn't connected (" + S.qbReturnErr + ")."); S.qbReturnErr = null; }
         if (!S.viewAs) { try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects }); }
       }
-      if (!h.p && !staff() && S.projects.length === 1) h.p = S.projects[0].id; // a client with one project goes straight to it
+      if (!h.p && !staff() && S.projects.length === 1 && !(S.me && S.me.ls)) h.p = S.projects[0].id; // a client with one project goes straight to it (unless they also have maintenance: Home shows both)
       S.tab = h.t || "overview";
       if (h.c) { S.wantChan = h.c; if (S.data && S.pid === h.p) { S.chan = h.c; S.readMark = {}; } history.replaceState(null, "", "#p=" + h.p + "&t=" + S.tab); }
       if (h.p) {
@@ -398,7 +398,8 @@
   }
 
   function renderList() {
-    var list = S.projects || [], view = staff() ? (S.home || "projects") : "projects";
+    var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
+    var list = list0, view = staff() ? (S.home || "projects") : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
     var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
@@ -412,9 +413,11 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
     var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
+    if (!staff() && lsRoleMe) head = head + '<div class="chips home-chips">' + [["projects", "Projects"], ["ls", lsRoleMe === "crew" ? "My route" : "My property"]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
+    if (view === "ls") return head + '<div class="ls-wrap">' + lsView() + "</div>";
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
     if (view === "finance" && S.me.money) return head + homeFinance();
@@ -527,13 +530,13 @@
     S.homeLoading = null; if (!S.pid) keepScroll(render);
   }
   /* Slack-style sidebar (wide screens): home, activity, team, every project with unread counts, and the open project's channels. */
-  function hasSide() { return !!(S.projects && (staff() || S.projects.length > 1)); }
+  function hasSide() { return !!(S.projects && (staff() || S.projects.length > 1 || (S.me && S.me.ls))); }
   function sidebar() {
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
-        : item('data-a="home"', "All projects", home)) +
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+        : item('data-a="home"', "All projects", home && S.home !== "ls") + (S.me && S.me.ls ? item('data-a="homeView" data-v="ls"', S.me.ls === "crew" ? "My route" : "My property", home && S.home === "ls") : "")) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
         return item('data-a="open" data-id="' + esc(p.id) + '"', esc(p.name), on, on && S.data ? 0 : p.unread, chans);
@@ -763,8 +766,9 @@
       : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Live chat. People who are away get one email at most every few hours; ⚑ Important always emails. Email replies show up here." : " Live chat. Replies by email also show up here.") : "") + "</span>";
     var pinsHere = list.filter(function (m) { return isPinned(m) && !m.thread_id; });
     var canClear = isDm(ch) || (S.me && S.me.admin);
-    return bar + '<div class="chan-head"><div>' + head + '</div><div class="ch-acts">' + (S.sel ? "" : '<button class="btn ghost sm" data-a="selStart" title="Select messages to delete">Select</button>' + (canClear ? '<button class="btn ghost sm" data-a="clearChat" title="Delete every message here">Clear</button>' : "")) +
-      '<button class="btn ghost sm call-btn" data-a="call" title="Start a video call here">📹 Video call</button></div></div>' +
+    return bar + '<div class="chan-head"><div class="ch-title">' + head + '</div><div class="ch-acts">' +
+      '<button class="ch-btn call" data-a="call" title="Start a video call here">' + ICON.video + "<span>Call</span></button>" +
+      (S.sel ? "" : '<button class="ch-btn" data-a="selStart" title="Select messages to delete">' + ICON.todo + "<span>Select</span></button>" + (canClear ? '<button class="ch-btn" data-a="clearChat" title="Delete every message here">' + ICON.x + "<span>Clear</span></button>" : "")) + "</div></div>" +
       (S.sel ? '<div class="sel-bar"><span>' + (Object.keys(S.sel).length ? Object.keys(S.sel).length + " selected" : "Tap your messages to select them" + (S.me && S.me.admin ? " (you can pick any)" : "")) + '</span><button class="btn ghost sm" data-a="selCancel">Cancel</button><button class="btn sm danger-btn" data-a="selDelete"' + (Object.keys(S.sel).length ? "" : " disabled") + ">Delete</button></div>" : "") +
       pinnedHtml(pinsHere, "msg") + (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
       '<div class="typing-line" aria-live="polite"></div><div class="reply-bar">' + composer(ch) + "</div>";
@@ -1951,6 +1955,7 @@
   }
   function renderModal() {
     var m = S.modal, d = S.data, body = "";
+    if (/^ls/.test(m.type)) body = lsModal(m);
     if (m.type === "project") {
       var p = m.id && d ? d.project : {};
       body = "<h2>" + (m.id ? "Edit project" : "New project") + '</h2><form class="form" data-form="project">' +
@@ -2177,7 +2182,7 @@
         run(b, async function () { var key = b.dataset.key; await call("qbUndo", { logId: S.spUndo[key] }); delete S.spUndo[key]; S.fin = null; if (S.spend && S.spend.fin) loadSpend("fin", S.spend.fin.params); spRefreshAll(); toast("Undone in QuickBooks"); }); return;
       case "spJump": var el = root.querySelector("#sp-nojob"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return;
       case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
-      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "" }; return keepScroll(render);
+      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
       case "close": S.modal = null; S.scDraft = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
@@ -2552,7 +2557,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106185909";
+  var BUILD = "20261106193140";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2584,6 +2589,7 @@
             onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast") || n.classList.contains("call-win")))); },
             onBeforeElUpdated: function (from, to) {
               if (from.isEqualNode(to)) return false;
+              if (from.hasAttribute && from.hasAttribute("data-keep")) return false;
               if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
               return true;
             } });
@@ -2609,7 +2615,7 @@
     var find = function (k) { var hit = null; root.querySelectorAll("textarea[data-chat], input[data-sp-q]").forEach(function (t) { if (!hit && !t.closest("#bsp-dock") && draftKey(t) === k) hit = t; }); return hit; };
     keep.forEach(function (kv) { var t = find(kv[0]); if (t && !t.value && kv[1]) t.value = kv[1]; });
     if (actKey) { var t = find(actKey); if (t) { t.focus({ preventScroll: true }); try { t.setSelectionRange(sel[0], sel[1]); } catch (e) {} } }
-    mountFloat(); showTyping();
+    mountFloat(); showTyping(); if (root.querySelector("#ls-map")) setTimeout(lsMapInit, 0);
     return r;
   };
 
@@ -2724,7 +2730,8 @@
     var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid);           // the full chat is on screen: no need for the window too
     if (!d.pid && S.pid) d.pid = S.pid;
     if (!d.pid && (S.projects || []).length) d.pid = S.projects[0].id;
-    DOCK.className = (d.open && !d.min ? "open" : "") + (d.closed || onFull ? " gone" : "");
+    DOCK.className = (d.open && !d.min ? "open" : "") + (d.closed || onFull || (S.modal && !(d.open && !d.min)) ? " gone" : "");
+    if (HELP) HELP.style.display = S.modal ? "none" : "";
     var n = dockUnread(), cnt = DOCK.querySelector(".dk-count"); cnt.textContent = n ? (n > 99 ? "99+" : n) : ""; cnt.style.display = n ? "" : "none";
     if (!(d.open && !d.min)) return;
     var data = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? { messages: S.data.messages, channels: S.data.channels, members: S.data.members, reads: S.data.reads } : null);
@@ -3104,6 +3111,458 @@
     var b = e.target.closest("[data-a=rtOff]"); if (!b) return; e.preventDefault(); e.stopImmediatePropagation();
     if (!window.confirm("Turn off instant chat? Chat keeps working, updating every few seconds.")) return;
     call("rtSave", { off: true }).then(function (r) { S.rtSt = r; S.me.rt = null; rtStop(); keepScroll(render); toast("Instant chat is off"); }).catch(function (er) { toast(er.message); });
+  }, true);
+  /* ======================= Landscape maintenance (office · crew · client) ======================= */
+  var LS_ST = { scheduled: ["Scheduled", ""], in_progress: ["In progress", "gold"], blocked: ["Blocked", "bad"], completed: ["Completed", "ok"], canceled: ["Canceled", ""], weather: ["Weather delay", "bad"] };
+  var LS_ISS = { new: ["New", "bad"], review: ["Office review", "gold"], included: ["Included", "ok"], correction: ["Correction", "gold"], billable: ["Billable", "gold"], scheduled: ["Scheduled", "ok"], closed: ["Closed", ""] };
+  var LS_FREQ_TXT = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly", seasonal: "Seasonal (4×/yr)", none: "No recurring visits" };
+  var LS_FEATURES = ["Lawn", "Planting beds", "Trees", "Shrubs", "Irrigation", "Drainage", "Hardscape", "Gutters", "Pool area", "Slopes"];
+  var LS_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  function lsToday() { var d = new Date(), p = function (x) { return String(x).padStart(2, "0"); }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); }
+  function lsAddD(s, n) { var d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); var p = function (x) { return String(x).padStart(2, "0"); }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); }
+  function lsDow(s) { return LS_DAYS[new Date(s + "T12:00:00").getDay()]; }
+  function lsPill(st) { var x = LS_ST[st] || [st, ""]; return '<span class="pill ' + x[1] + '">' + esc(x[0]) + "</span>"; }
+  function lsIssPill(st) { var x = LS_ISS[st] || [st, ""]; return '<span class="pill ' + x[1] + '">' + esc(x[0]) + "</span>"; }
+  function lsHm(min) { min = Math.round(min || 0); return min >= 60 ? Math.floor(min / 60) + " h" + (min % 60 ? " " + (min % 60) + " min" : "") : min + " min"; }
+  function lsP(id) { return ((S.ls && S.ls.props) || []).filter(function (p) { return p.id === id; })[0] || {}; }
+  function lsC(id) { return ((S.ls && S.ls.crews) || []).filter(function (c) { return c.id === id; })[0] || null; }
+  function lsV(id) { return ((S.ls && S.ls.visits) || []).filter(function (v) { return v.id === id; })[0] || (S.lsProp && (S.lsProp.visits || []).filter(function (v) { return v.id === id; })[0]) || null; }
+  function lsDot(c) { return '<i class="ls-dot" style="background:' + esc((c && c.color) || "#999") + '"></i>'; }
+  function lsMissed(v, today) { return v.date < today && ["scheduled", "in_progress"].indexOf(v.status) > -1; }
+  function lsNav(p) { var q = p.lat != null ? p.lat + "," + p.lon : [p.address, p.city].filter(Boolean).join(", "); return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(q); }
+  async function lsLoad(force) {
+    if (S.lsBusy) return; S.lsBusy = 1; var f = S.lsF || {};
+    try { var r = await call("lsHome", { from: f.from, to: f.to }); S.ls = r; } catch (e) { S.ls = { err: e.message }; }
+    S.lsBusy = 0; if (!S.pid && S.home === "ls") keepScroll(render);
+    if (S.ls && S.ls.role && S.ls.role !== "client") lsWeather();
+  }
+  /* 7-day rain forecast where the properties are (Open-Meteo, free, no key). Labeled as a forecast. */
+  async function lsWeather() {
+    if (S.lsWx || S.lsWxBusy) return; S.lsWxBusy = 1;
+    var p = ((S.ls && S.ls.props) || []).filter(function (x) { return x.lat != null; })[0], lat = p ? p.lat : 37.56, lon = p ? p.lon : -122.32;
+    try { var r = await (await fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&daily=precipitation_probability_max,weather_code&timezone=auto&forecast_days=10")).json();
+      S.lsWx = {}; (r.daily.time || []).forEach(function (d, i) { S.lsWx[d] = { rain: r.daily.precipitation_probability_max[i], code: r.daily.weather_code[i] }; });
+    } catch (e) { S.lsWx = { _off: true }; }
+    S.lsWxBusy = 0; if (!S.pid && S.home === "ls") keepScroll(render);
+  }
+  function lsWxTag(d) { var w = S.lsWx && S.lsWx[d]; if (!w) return ""; return '<span class="ls-wx' + (w.rain >= 60 ? " wet" : "") + '" title="Forecast (Open-Meteo): ' + w.rain + '% chance of rain">' + (w.rain >= 60 ? "🌧 " : w.rain >= 30 ? "🌦 " : "☀️ ") + w.rain + "%</span>"; }
+
+  function lsView() {
+    if (!S.ls) { lsLoad(); return '<div class="loading" style="min-height:30vh">Loading maintenance…</div>'; }
+    if (S.ls.err) return '<div class="empty">' + esc(S.ls.err) + ' <button class="link" data-a="lsReload">Try again</button></div>';
+    if (!S.ls.role) return '<div class="empty">Nothing here yet.</div>';
+    if (S.ls.role === "crew") return lsCrewView();
+    if (S.ls.role === "client") return lsClientView();
+    var t = S.lsTab || "today", tabs = [["today", "Dashboard"], ["schedule", "Schedule"], ["props", "Properties"], ["requests", "Requests"], ["crews", "Crews"]].concat(S.ls.money ? [["costs", "Costs"]] : []);
+    var newReq = S.ls.issues.filter(function (i) { return i.status === "new"; }).length;
+    var head = '<div class="ls-tabs">' + tabs.map(function (x) { return '<button class="chip' + (t === x[0] ? " on" : "") + '" data-a="lsTab" data-v="' + x[0] + '">' + x[1] + (x[0] === "requests" && newReq ? ' <span class="count">' + newReq + "</span>" : "") + "</button>"; }).join("") +
+      '<span class="ls-sp"></span>' + (S.me.admin && !S.ls.props.some(function (p) { return p.sample; }) && !S.ls.props.length ? '<button class="btn ghost sm" data-a="lsSeed">Load sample data</button>' : "") +
+      (S.me.admin && S.ls.props.some(function (p) { return p.sample; }) ? '<button class="btn ghost sm" data-a="lsClearSample">Remove sample data</button>' : "") + "</div>" +
+      (S.ls.props.some(function (p) { return p.sample; }) ? '<div class="ls-sample">Sample data is loaded (names start with SAMPLE). Remove it before going live.</div>' : "");
+    return head + (t === "schedule" ? lsSchedule() : t === "props" ? lsProps() : t === "requests" ? lsRequests() : t === "crews" ? lsCrews() : t === "costs" ? lsCosts() : lsDash());
+  }
+  /* ---- office dashboard ---- */
+  function lsFilters() {
+    var f = S.lsF || {}, ranges = [["", "Next 3 weeks"], ["today", "Today"], ["week", "This week"], ["month", "This month"], ["last30", "Last 30 days"]];
+    return '<div class="ls-filters"><select data-ls-f="range">' + ranges.map(function (r) { return '<option value="' + r[0] + '"' + ((f.range || "") === r[0] ? " selected" : "") + ">" + r[1] + "</option>"; }).join("") + "</select>" +
+      '<select data-ls-f="crew"><option value="">All crews</option>' + S.ls.crews.map(function (c) { return '<option value="' + esc(c.id) + '"' + (f.crew === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select>" +
+      '<select data-ls-f="prop"><option value="">All properties</option>' + S.ls.props.map(function (p) { return '<option value="' + esc(p.id) + '"' + (f.prop === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select>" +
+      '<select data-ls-f="kind"><option value="">All work</option><option value="maintenance"' + (f.kind === "maintenance" ? " selected" : "") + '>Recurring maintenance</option><option value="extra"' + (f.kind === "extra" ? " selected" : "") + '>Additional work</option><option value="correction"' + (f.kind === "correction" ? " selected" : "") + ">Corrections</option></select></div>";
+  }
+  function lsFiltered() {
+    var f = S.lsF || {}; return S.ls.visits.filter(function (v) { return (!f.crew || v.crew_id === f.crew) && (!f.prop || v.property_id === f.prop) && (!f.kind || v.kind === f.kind); });
+  }
+  function lsDash() {
+    var today = S.ls.today, vs = lsFiltered(), tv = vs.filter(function (v) { return v.date === today; });
+    var done = tv.filter(function (v) { return v.status === "completed"; }).length, prog = tv.filter(function (v) { return v.status === "in_progress"; }).length;
+    var attention = vs.filter(function (v) { return lsMissed(v, today) || v.status === "blocked" || v.status === "weather"; });
+    var newIss = S.ls.issues.filter(function (i) { return i.status === "new" || i.status === "review"; }), urgent = newIss.filter(function (i) { return i.urgency === "urgent"; }).length;
+    var st = S.ls.stats, tot = st && st.total;
+    var cards = '<div class="grid g4 ls-kpis">' +
+      '<button class="stat ls-kpi" data-a="lsTab" data-v="schedule"><span class="eyebrow">Today</span><b>' + tv.length + ' visits</b><small>' + done + " done · " + prog + " in progress</small></button>" +
+      '<button class="stat ls-kpi' + (attention.length ? " warn" : "") + '" data-a="lsJump" data-v="attention"><span class="eyebrow">Needs attention</span><b>' + attention.length + "</b><small>Missed, blocked or weather</small></button>" +
+      '<button class="stat ls-kpi' + (urgent ? " warn" : "") + '" data-a="lsTab" data-v="requests"><span class="eyebrow">Client requests</span><b>' + newIss.length + "</b><small>" + (urgent ? urgent + " urgent" : "Waiting for the office") + "</small></button>" +
+      (tot ? '<button class="stat ls-kpi" data-a="lsTab" data-v="costs"><span class="eyebrow">Profit · ' + esc(lsRangeTxt()) + '</span><b class="' + (tot.profit < 0 ? "neg" : "") + '">' + m0(tot.profit) + "</b><small>" + m0(tot.revenue) + " revenue · " + m0(tot.labor) + " labor · " + m0(tot.expenses + tot.materials + tot.shared) + " costs</small></button>"
+        : '<div class="stat ls-kpi"><span class="eyebrow">Approvals</span><b>—</b><small>Estimates & change orders come in stage 2</small></div>') + "</div>";
+    var crews = S.ls.crews.map(function (c) {
+      var mine = tv.filter(function (v) { return v.crew_id === c.id; }).sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }), d = mine.filter(function (v) { return v.status === "completed"; }).length;
+      var next = mine.filter(function (v) { return ["scheduled", "in_progress"].indexOf(v.status) > -1; })[0], load = mine.reduce(function (a, v) { return a + v.est_min; }, 0) / Math.max(1, c.members.length);
+      return '<div class="ls-crewrow">' + lsDot(c) + '<div class="lc-name"><b>' + esc(c.name) + '</b><small class="muted">' + c.members.length + " people · " + lsHm(load) + " of work" + (load > 8 * 60 ? ' · <span class="bad-t">overloaded</span>' : "") + "</small></div>" +
+        '<div class="lc-bar"><div class="mini"><i style="width:' + (mine.length ? Math.round(d / mine.length * 100) : 0) + '%"></i></div><small class="muted">' + d + " of " + mine.length + " stops" + (next ? " · next: " + esc(lsP(next.property_id).name) : "") + "</small></div>" +
+        (mine.length ? '<button class="btn ghost sm" data-a="lsRoute" data-c="' + esc(c.id) + '" data-d="' + today + '">Plan route</button>' : "") + "</div>";
+    }).join("");
+    var attn = attention.slice(0, 12).map(lsVisitRow).join("");
+    var over = st && st.over && st.over.length ? '<div class="card ls-list">' + st.over.slice(0, 6).map(function (x) { return '<div class="ls-row"><div><b>' + esc(x.name) + '</b><small class="muted">' + x.visits + " visits · " + lsHm(x.labor_min) + " worked vs " + lsHm(x.est_min) + ' planned</small></div><span class="pill bad">+' + x.over + "% over</span></div>"; }).join("") + "</div>" : "";
+    return lsFilters() + cards +
+      '<div class="section-title"><h2>Crews today</h2><span class="muted small">' + lsDow(today) + " " + day(today) + " " + lsWxTag(today) + "</span></div>" + '<div class="card ls-list">' + (crews || '<p class="muted small">Add a crew to start.</p>') + "</div>" +
+      '<div class="section-title" id="ls-attention"><h2>Needs attention</h2><span class="muted small">Missed, blocked and weather-delayed visits</span></div>' + (attn ? '<div class="card ls-list">' + attn + "</div>" : '<div class="empty">Nothing missed. 🌿</div>') +
+      '<div class="section-title"><h2>New requests</h2><button class="link small" data-a="lsTab" data-v="requests">All requests →</button></div>' + (newIss.length ? '<div class="card ls-list">' + newIss.slice(0, 6).map(lsIssueRow).join("") + "</div>" : '<div class="empty">No requests waiting.</div>') +
+      (over ? '<div class="section-title"><h2>Going over the labor budget</h2><span class="muted small">Actual crew time vs the time planned in the agreement</span></div>' + over : "") +
+      '<div class="section-title"><h2>Seasonal opportunities</h2></div><div class="card ls-soon"><b>Coming in stage 2</b><p class="muted small">Fertilizing, mulching, pruning before the rains, gutter cleaning and irrigation checks, suggested per property from its agreement, history and crew observations, with the office deciding what goes to the client.</p></div>';
+  }
+  function lsRangeTxt() { var r = (S.lsF || {}).range || ""; return { "": "next 3 weeks", today: "today", week: "this week", month: "this month", last30: "last 30 days" }[r] || ""; }
+  function lsVisitRow(v) {
+    var p = lsP(v.property_id), c = lsC(v.crew_id), today = S.ls.today;
+    return '<div class="ls-row' + (lsMissed(v, today) ? " missed" : "") + '">' + lsDot(c) + '<div class="ls-main" data-a="lsOpenVisit" data-id="' + esc(v.id) + '"><b>' + (v.stop ? '<span class="ls-stop">' + v.stop + "</span>" : "") + esc(p.name || "Property") + "</b><small class=\"muted\">" +
+      esc([lsDow(v.date).slice(0, 3) + " " + day(v.date), c ? c.name : "No crew", lsHm(v.est_min), v.kind !== "maintenance" ? (v.kind === "extra" ? "Additional work" : "Correction") : ""].filter(Boolean).join(" · ")) + (v.reason ? " · " + esc(v.reason) : "") + "</small></div>" +
+      (lsMissed(v, today) ? '<span class="pill bad">Missed</span>' : lsPill(v.status)) + "</div>";
+  }
+  function lsIssueRow(i) {
+    var p = lsP(i.property_id);
+    return '<div class="ls-row"><span class="ls-urg u-' + esc(i.urgency) + '" title="' + esc(i.urgency) + '"></span><div class="ls-main" data-a="lsTriageOpen" data-id="' + esc(i.id) + '"><b>' + esc(p.name || "Property") + '</b><small class="muted">' + esc(i.text.slice(0, 140)) + "</small><small class=\"muted\">" + esc(i.by_name || "") + " · " + day(String(i.at).slice(0, 10)) + (i.photos.length ? " · 📷 " + i.photos.length : "") + "</small></div>" + lsIssPill(i.status) + "</div>";
+  }
+  /* ---- schedule: list by day / map ---- */
+  function lsSchedule() {
+    var mode = S.lsMode || "list", vs = lsFiltered().filter(function (v) { return v.status !== "canceled"; }), today = S.ls.today, days = {};
+    vs.forEach(function (v) { (days[v.date] = days[v.date] || []).push(v); });
+    var keys = Object.keys(days).sort(), mapDay = S.lsMapDay || today;
+    var top = lsFilters() + '<div class="ls-bar"><div class="chips">' + [["list", "List"], ["map", "Map"]].map(function (x) { return '<button class="chip' + (mode === x[0] ? " on" : "") + '" data-a="lsMode" data-v="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>" +
+      '<button class="btn sm" data-a="modal" data-m="lsVisit">＋ One-time visit / work order</button></div>';
+    if (mode === "map") {
+      var dayList = keys.length ? keys : [today];
+      return top + '<div class="ls-bar"><select data-ls-mapday>' + dayList.map(function (d) { return '<option value="' + d + '"' + (d === mapDay ? " selected" : "") + ">" + lsDow(d) + " " + day(d) + " (" + (days[d] || []).length + ")</option>"; }).join("") + "</select>" + lsWxTag(mapDay) + "</div>" +
+        '<div class="card ls-mapcard"><div id="ls-map" data-keep="1"></div></div><p class="muted small">Stops in route order for each crew. Drive times are estimates (straight-line distance), not live traffic.</p>';
+    }
+    if (!keys.length) return top + '<div class="empty">No visits in this range. Add properties with an agreement, or a one-time visit.</div>';
+    return top + keys.map(function (d) {
+      var list = days[d], byCrew = {}; list.forEach(function (v) { (byCrew[v.crew_id || ""] = byCrew[v.crew_id || ""] || []).push(v); });
+      var wx = S.lsWx && S.lsWx[d], wet = wx && wx.rain >= 60;
+      return '<div class="ls-day' + (d === today ? " today" : "") + '"><div class="ls-dayh"><b>' + lsDow(d) + " " + day(d) + "</b>" + lsWxTag(d) + '<span class="muted small">' + list.length + " visit" + (list.length === 1 ? "" : "s") + "</span>" +
+        (d >= today ? '<button class="btn ghost sm' + (wet ? " warn" : "") + '" data-a="lsRainDay" data-d="' + d + '">' + (wet ? "🌧 " : "") + "Move this day…</button>" : "") + "</div>" +
+        Object.keys(byCrew).map(function (cid) {
+          var c = lsC(cid), vv = byCrew[cid].sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }), load = vv.reduce(function (a, v) { return a + v.est_min; }, 0) / Math.max(1, c ? c.members.length : 1);
+          return '<div class="ls-crewblock"><div class="ls-cbh">' + lsDot(c) + "<b>" + esc(c ? c.name : "No crew assigned") + '</b><small class="muted">' + vv.length + " stops · ~" + lsHm(load) + (load > 8 * 60 ? ' · <span class="bad-t">overloaded</span>' : "") + "</small>" +
+            (c ? '<button class="link small" data-a="lsRoute" data-c="' + esc(cid) + '" data-d="' + d + '">Suggest order</button>' : "") + "</div>" +
+            vv.map(function (v, i) {
+              var p = lsP(v.property_id);
+              return '<div class="ls-stoprow"><span class="ls-stop">' + (v.stop || i + 1) + '</span><div class="ls-main" data-a="lsOpenVisit" data-id="' + esc(v.id) + '"><b>' + esc(p.name) + '</b><small class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + " · " + lsHm(v.est_min) + (v.travel_min ? " · ~" + v.travel_min + " min drive" : "") + (v.kind !== "maintenance" ? " · " + (v.kind === "extra" ? "Additional work" : "Correction") : "") + "</small></div>" +
+                (c && vv.length > 1 ? '<span class="ls-ord"><button title="Earlier" data-a="lsOrd" data-id="' + esc(v.id) + '" data-dir="-1"' + (i ? "" : " disabled") + '>↑</button><button title="Later" data-a="lsOrd" data-id="' + esc(v.id) + '" data-dir="1"' + (i < vv.length - 1 ? "" : " disabled") + ">↓</button></span>" : "") +
+                (lsMissed(v, today) ? '<span class="pill bad">Missed</span>' : lsPill(v.status)) + "</div>";
+            }).join("") + "</div>";
+        }).join("") + "</div>";
+    }).join("");
+  }
+  /* Leaflet map of one day's stops, numbered and joined per crew. */
+  var LEAF = null;
+  function lsMapInit() {
+    var el = document.getElementById("ls-map"); if (!el || !S.ls) return;
+    var key = (S.lsMapDay || S.ls.today) + "|" + JSON.stringify(S.lsF || {}) + "|" + S.ls.visits.length; if (el.dataset.k === key && el._map) return;
+    var go2 = function () {
+      if (el._map) { el._map.remove(); el._map = null; }
+      var map = el._map = L.map(el, { scrollWheelZoom: false }); el.dataset.k = key;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+      var d = S.lsMapDay || S.ls.today, pts = [], byCrew = {};
+      lsFiltered().filter(function (v) { return v.date === d && v.status !== "canceled"; }).forEach(function (v) { (byCrew[v.crew_id] = byCrew[v.crew_id] || []).push(v); });
+      Object.keys(byCrew).forEach(function (cid) {
+        var c = lsC(cid), col = (c && c.color) || "#555", line = [];
+        byCrew[cid].sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }).forEach(function (v, i) {
+          var p = lsP(v.property_id); if (p.lat == null) return; var ll = [p.lat, p.lon]; pts.push(ll); line.push(ll);
+          L.marker(ll, { icon: L.divIcon({ className: "ls-pin", html: '<span style="background:' + col + '">' + (v.stop || i + 1) + "</span>", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map)
+            .bindPopup("<b>" + esc(p.name) + "</b><br>" + esc(c ? c.name : "") + "<br>" + esc((LS_ST[v.status] || [v.status])[0]));
+        });
+        if (line.length > 1) L.polyline(line, { color: col, weight: 3, opacity: .7, dashArray: "6 6" }).addTo(map);
+      });
+      if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 }); else map.setView([37.5, -122.25], 10);
+    };
+    if (window.L) return go2();
+    if (!document.getElementById("leaf-css")) { var l = document.createElement("link"); l.id = "leaf-css"; l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l); }
+    var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = go2; document.head.appendChild(sc);
+  }
+  /* ---- properties ---- */
+  function lsProps() {
+    var list = S.ls.props.filter(function (p) { return p.status !== "ended" || S.lsShowEnded; });
+    var next = function (p) { var v = S.ls.visits.filter(function (x) { return x.property_id === p.id && x.date >= S.ls.today && x.status === "scheduled"; })[0]; return v ? lsDow(v.date).slice(0, 3) + " " + day(v.date) : "—"; };
+    return '<div class="ls-bar"><span class="muted small">' + list.length + " properties</span><button class=\"btn sm\" data-a=\"modal\" data-m=\"lsProp\">＋ Property</button></div>" +
+      (list.length ? '<div class="ls-pgrid">' + list.map(function (p) {
+        var c = lsC(p.crew_id);
+        return '<button class="card ls-pcard" data-a="lsOpenProp" data-id="' + esc(p.id) + '"><div class="ls-pch"><b>' + esc(p.name) + "</b>" + (p.status !== "active" ? '<span class="pill">' + esc(p.status) + "</span>" : "") + "</div>" +
+          '<small class="muted">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + "</small>" +
+          '<div class="ls-pcm"><span>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.freq !== "none" && p.weekday !== "" ? " · " + LS_DAYS[+p.weekday].slice(0, 3) : "") + "</span><span>" + lsDot(c) + esc(c ? c.name : "No crew") + "</span></div>" +
+          '<div class="ls-pcm"><span>Next: ' + next(p) + "</span>" + (p.price != null ? "<b>" + m0(p.price) + "/" + ({ monthly: "mo", per_visit: "visit", quarterly: "qtr", annual: "yr" }[p.billing] || "mo") + "</b>" : "") + "</div>" +
+          (p.features.length ? '<div class="ls-tags">' + p.features.slice(0, 5).map(function (f) { return "<span>" + esc(f) + "</span>"; }).join("") + "</div>" : "") + "</button>";
+      }).join("") + "</div>" : '<div class="empty">No properties yet. Add the first one with its maintenance agreement' + (S.me.admin ? ', or load sample data to try it out.' : ".") + "</div>");
+  }
+  /* ---- requests (issues) ---- */
+  function lsRequests() {
+    var f = S.lsReqF || "open", list = S.ls.issues.filter(function (i) { return f === "all" || (f === "open" ? ["new", "review"].indexOf(i.status) > -1 : f === "work" ? ["billable", "correction", "included", "scheduled"].indexOf(i.status) > -1 : i.status === "closed"); });
+    return '<div class="ls-bar"><div class="chips">' + [["open", "To review"], ["work", "In the works"], ["closed", "Closed"], ["all", "All"]].map(function (x) { return '<button class="chip' + (f === x[0] ? " on" : "") + '" data-a="lsReqF" data-v="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>" +
+      '<button class="btn sm" data-a="modal" data-m="lsIssue">＋ Log a request</button></div>' +
+      (list.length ? '<div class="card ls-list">' + list.map(lsIssueRow).join("") + "</div>" : '<div class="empty">Nothing here.</div>') +
+      '<p class="muted small">Clients report from their portal; crews report what they find at a stop. The office decides: included in the agreement, a correction (our fix, no charge), or billable additional work, and can turn it into a work order.</p>';
+  }
+  /* ---- crews & rates ---- */
+  function lsCrews() {
+    var rates = S.ls.rates || [], rateOf = function (e) { var r = rates.filter(function (x) { return x.email === e; })[0]; return r ? r.rate : ""; };
+    return '<div class="ls-bar"><span class="muted small">' + S.ls.crews.length + " crews</span><button class=\"btn sm\" data-a=\"modal\" data-m=\"lsCrew\">＋ Crew</button></div>" +
+      (S.ls.crews.length ? '<div class="card ls-list">' + S.ls.crews.map(function (c) { return '<div class="ls-row">' + lsDot(c) + '<div class="ls-main" data-a="modal" data-m="lsCrew" data-id="' + esc(c.id) + '"><b>' + esc(c.name) + '</b><small class="muted">' + esc(c.members.map(function (m) { return m.name; }).join(", ") || "No members") + (c.skills ? " · " + esc(c.skills) : "") + (c.hours ? " · " + esc(c.hours) : "") + "</small></div></div>"; }).join("") + "</div>" : '<div class="empty">No crews yet.</div>') +
+      (S.me.admin && S.ls.money ? '<div class="section-title"><h2>Labor rates</h2><span class="muted small">Hourly cost per person (wages + burden). Only you see these. Default: $' + S.ls.default_rate + '/h</span></div><form class="card ls-rates" data-form="lsRates">' +
+        (S.ls.people || []).filter(function (x) { return x.role !== "admin"; }).map(function (x) { return '<label class="ls-rate"><span>' + esc(x.name) + '</span><span class="ls-money">$<input type="number" step="0.5" min="0" name="r:' + esc(x.email) + '" value="' + esc(rateOf(x.email)) + '" placeholder="' + S.ls.default_rate + '"></span></label>'; }).join("") +
+        '<label class="ls-rate"><span><b>Default for everyone else</b></span><span class="ls-money">$<input type="number" step="0.5" min="0" name="default" value="' + S.ls.default_rate + '"></span></label><div class="actions"><button class="btn sm" type="submit">Save rates</button></div></form>' : "");
+  }
+  /* ---- costs & profitability ---- */
+  function lsCosts() {
+    var st = S.ls.stats, tot = st.total, pend = (S.ls.expenses || []).filter(function (e) { return e.status === "pending"; });
+    var tbl = st.props.length ? '<div class="card tbl" data-lenis-prevent><table class="t"><thead><tr><th>Property</th><th class="num">Visits</th><th class="num">Revenue</th><th class="num">Labor</th><th class="num">Materials + expenses</th><th class="num">Profit</th><th class="num">Crew time vs plan</th></tr></thead><tbody>' +
+      st.props.map(function (x) { return "<tr><td>" + esc(x.name) + '</td><td class="num">' + x.visits + '</td><td class="num">' + m0(x.revenue) + '</td><td class="num">' + m0(x.labor) + '</td><td class="num">' + m0(x.materials + x.expenses) + '</td><td class="num"><b class="' + (x.profit < 0 ? "neg" : "") + '">' + m0(x.profit) + "</b>" + (x.margin != null ? ' <small class="muted">' + x.margin + "%</small>" : "") + '</td><td class="num">' + (x.over != null ? (x.over > 15 ? '<span class="pill bad">+' + x.over + "%</span>" : x.over + "%") : "—") + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<div class="empty">No completed visits in this range yet.</div>';
+    return lsFilters() + '<div class="grid g4 ls-kpis">' + stat("Revenue", m0(tot.revenue), tot.visits + " completed visits") + stat("Labor", m0(tot.labor), lsHm(tot.labor_min) + " of crew time") + stat("Materials & expenses", m0(tot.materials + tot.expenses + tot.shared), m0(tot.shared) + " shared (not on a property)") + stat("Profit", m0(tot.profit), tot.revenue ? Math.round(tot.profit / tot.revenue * 100) + "% margin" : "") + "</div>" +
+      (pend.length ? '<div class="section-title"><h2>Expenses to review</h2><span class="muted small">Logged by crews</span></div><div class="card ls-list">' + pend.map(function (e) { var p = lsP(e.property_id);
+        return '<div class="ls-row"><div class="ls-main"><b>' + esc(e.category) + " · " + m0(e.amount) + '</b><small class="muted">' + esc([p.name, e.vendor, e.by, day(e.date)].filter(Boolean).join(" · ")) + (e.note ? " · " + esc(e.note) : "") + "</small></div>" + (e.receipt ? '<a class="btn ghost sm" href="' + esc(e.receipt) + '" target="_blank" rel="noopener">Receipt</a>' : "") +
+          '<button class="btn ghost sm" data-a="lsExp" data-id="' + esc(e.id) + '" data-s="rejected">Reject</button><button class="btn sm" data-a="lsExp" data-id="' + esc(e.id) + '" data-s="approved">Approve</button></div>'; }).join("") + "</div>" : "") +
+      '<div class="section-title"><h2>By property</h2><span class="muted small">Least profitable first</span></div>' + tbl +
+      '<div class="card ls-explain"><b>How this is counted</b><p class="muted small">Recurring revenue: each agreement\'s price is spread evenly over the visits it pays for (e.g. $650/month on a weekly schedule ≈ $150 per visit) and counted when a visit is completed. Additional work counts at its own price. Labor: each person\'s minutes × their hourly rate (a 3-person crew for 2 hours = 6 labor hours). Materials and expenses tied to a visit or property count there once; costs with no property (fuel for the whole fleet, for example) are shown as shared and never added to a property, so nothing is counted twice.</p></div>';
+  }
+
+  /* ======================= crew: my route (phone first) ======================= */
+  function lsCrewView() {
+    var d = S.lsDay || S.ls.today, vs = S.ls.visits.filter(function (v) { return v.date === d && v.status !== "canceled"; }).sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); });
+    var done = vs.filter(function (v) { return v.status === "completed"; }).length, crew = S.ls.crews.map(function (c) { return c.name; }).join(", ");
+    var nav = '<div class="ls-daynav"><button class="btn ghost sm" data-a="lsDay" data-v="-1">‹</button><b>' + (d === S.ls.today ? "Today" : lsDow(d)) + " · " + day(d) + '</b><button class="btn ghost sm" data-a="lsDay" data-v="1">›</button></div>';
+    return '<div class="ls-crewhead"><div><div class="eyebrow">' + esc(crew) + "</div><h2>My route</h2></div>" + '<div class="ls-prog"><b>' + done + "/" + vs.length + '</b><small class="muted">stops done</small></div></div>' + nav +
+      (vs.length ? vs.map(function (v, i) {
+        var p = lsP(v.property_id), cur = !["completed", "canceled"].indexOf(v.status) > -1;
+        return '<div class="card ls-stopcard s-' + esc(v.status) + '"><div class="lsc-top"><span class="ls-stop big">' + (v.stop || i + 1) + '</span><div class="ls-main" data-a="lsOpenVisit" data-id="' + esc(v.id) + '"><b>' + esc(p.name) + '</b><small class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + "</small><small class=\"muted\">" + lsHm(v.est_min) + (v.kind !== "maintenance" ? " · " + (v.kind === "extra" ? "Additional work" : "Correction") : "") + (v.priority === "high" ? ' · <span class="bad-t">priority</span>' : "") + "</small></div>" + lsPill(v.status) + "</div>" +
+          '<div class="lsc-acts"><a class="btn ghost sm" href="' + esc(lsNav(p)) + '" target="_blank" rel="noopener">🧭 Navigate</a><button class="btn sm" data-a="lsOpenVisit" data-id="' + esc(v.id) + '">' + (v.status === "completed" ? "See report" : v.status === "in_progress" ? "Continue" : "Open work order") + "</button></div></div>";
+      }).join("") : '<div class="empty">No stops ' + (d === S.ls.today ? "today" : "this day") + ". 🌿</div>");
+  }
+  /* ======================= client: my property ======================= */
+  function lsClientView() {
+    var today = S.ls.today;
+    return S.ls.props.map(function (p) {
+      var up = S.ls.visits.filter(function (v) { return v.property_id === p.id && v.date >= today && v.status !== "completed"; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      var past = S.ls.visits.filter(function (v) { return v.property_id === p.id && v.status === "completed"; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+      var reqs = S.ls.issues.filter(function (i) { return i.property_id === p.id; });
+      return '<div class="ls-client"><div class="ls-chero card"><div><div class="eyebrow">Your property</div><h2>' + esc(p.name) + '</h2><p class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + "</p>" +
+        '<div class="ls-next">' + (up[0] ? "Next visit: <b>" + lsDow(up[0].date) + " " + day(up[0].date) + "</b>" + (up[0].status === "weather" ? " (moved for weather)" : "") : "No visit scheduled yet") + "</div></div>" +
+        '<button class="btn" data-a="modal" data-m="lsIssue" data-id="' + esc(p.id) + '">Report an issue</button></div>' +
+        '<div class="section-title"><h2>Your agreement</h2><span class="muted small">' + esc(LS_FREQ_TXT[p.freq] || "") + (p.price != null ? " · " + m0(p.price) + " " + ({ monthly: "per month", per_visit: "per visit", quarterly: "per quarter", annual: "per year" }[p.billing] || "") : "") + "</span></div>" +
+        '<div class="grid g2"><div class="card"><b>Included</b><p class="muted small ls-pre">' + esc(p.included || "—") + '</p></div><div class="card"><b>Not included (priced separately)</b><p class="muted small ls-pre">' + esc(p.excluded || "—") + "</p></div></div>" +
+        '<div class="section-title"><h2>Your requests</h2></div>' + (reqs.length ? '<div class="card ls-list">' + reqs.map(function (i) { return '<div class="ls-row"><span class="ls-urg u-' + esc(i.urgency) + '"></span><div class="ls-main"><b>' + esc(i.text.slice(0, 120)) + '</b><small class="muted">' + day(String(i.at).slice(0, 10)) + (i.office_note ? " · Blue Sierra: " + esc(i.office_note) : "") + "</small></div>" + lsIssPill(i.status) + "</div>"; }).join("") + "</div>" : '<div class="empty">No requests. Something wrong? Tap Report an issue.</div>') +
+        '<div class="section-title"><h2>Visit reports</h2></div>' + (past.length ? past.slice(0, 8).map(function (v) {
+          return '<div class="card ls-report"><div class="ls-row"><div class="ls-main"><b>' + lsDow(v.date) + " " + day(v.date) + "</b><small class=\"muted\">" + esc(v.scope || "Maintenance visit") + "</small></div>" + lsPill("completed") + "</div>" +
+            (v.checklist.length ? '<ul class="ls-done">' + v.checklist.filter(function (c) { return c.done; }).map(function (c) { return "<li>✓ " + esc(c.t) + "</li>"; }).join("") + "</ul>" : "") + (v.notes ? '<p class="small">' + esc(v.notes) + "</p>" : "") +
+            (v.after.length ? '<div class="ls-photos">' + v.after.map(function (ph) { return '<a href="' + esc(ph.full) + '" target="_blank" rel="noopener"><img src="' + esc(ph.thumb) + '" alt="After" loading="lazy"></a>'; }).join("") + "</div>" : "") + "</div>";
+        }).join("") : '<div class="empty">Reports appear here after each visit.</div>') + "</div>";
+    }).join("") || '<div class="empty">No property on your account yet.</div>';
+  }
+
+  /* ======================= windows (modals) ======================= */
+  function lsModal(m) {
+    var d = S.ls || {};
+    if (m.type === "lsProp") {
+      var p = m.id ? lsP(m.id) : { freq: "weekly", billing: "monthly", visit_min: 90, features: [], status: "active", start: lsToday(), weekday: String(new Date().getDay()), checklist: [] };
+      var cl = (p.checklist && p.checklist.length ? p.checklist : ["Mow and edge lawn areas", "Blow walks, drive and patios", "Weed planting beds", "Check irrigation (leaks, broken heads)", "Prune as needed", "Remove green waste"]).join("\n");
+      return "<h2>" + (m.id ? "Edit property" : "New property") + '</h2><form class="form" data-form="lsProp">' +
+        '<label class="f">Property name<input name="name" required value="' + esc(p.name) + '" placeholder="e.g. Oak Knoll Estate"></label>' +
+        '<div class="row2"><label class="f">Client<input name="client_name" value="' + esc(p.client_name) + '"></label><label class="f">Client emails (they get portal access to this property)<input name="client_emails" value="' + esc(p.client_emails) + '" placeholder="name@email.com, other@email.com"></label></div>' +
+        '<div class="row2"><label class="f">Address<input name="address" value="' + esc(p.address) + '"></label><label class="f">City<input name="city" value="' + esc(p.city) + '"></label></div>' +
+        '<div class="row2"><label class="f">On-site contact<input name="contacts" value="' + esc(p.contacts) + '" placeholder="Name · phone"></label><label class="f">Access instructions<input name="access" value="' + esc(p.access) + '" placeholder="Gate code, dog, parking…"></label></div>' +
+        '<div class="f"><span>Features</span><div class="ls-checks">' + LS_FEATURES.map(function (f) { return '<label><input type="checkbox" name="features" value="' + f + '"' + (p.features.indexOf(f) > -1 ? " checked" : "") + "> " + f + "</label>"; }).join("") + "</div></div>" +
+        '<label class="f">Service notes (team only)<textarea name="notes">' + esc(p.notes) + "</textarea></label>" +
+        "<h3>Maintenance agreement</h3>" +
+        '<div class="row2"><label class="f">How often<select name="freq">' + Object.keys(LS_FREQ_TXT).map(function (k) { return '<option value="' + k + '"' + (p.freq === k ? " selected" : "") + ">" + LS_FREQ_TXT[k] + "</option>"; }).join("") + '</select></label><label class="f">Day<select name="weekday">' + LS_DAYS.map(function (n, i) { return '<option value="' + i + '"' + (String(p.weekday) === String(i) ? " selected" : "") + ">" + n + "</option>"; }).join("") + "</select></label></div>" +
+        '<div class="row2"><label class="f">Starts<input type="date" name="start" value="' + esc(p.start) + '"></label><label class="f">Crew<select name="crew_id"><option value="">No crew yet</option>' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (p.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
+        '<div class="row2"><label class="f">Planned labor per visit (person-minutes)<input type="number" name="visit_min" min="10" step="5" value="' + esc(p.visit_min) + '"></label>' +
+        (d.money ? '<label class="f">Price<span class="ls-money">$<input type="number" name="price" step="0.01" min="0" value="' + esc(p.price == null ? "" : p.price) + '"></span><select name="billing">' + [["monthly", "per month"], ["per_visit", "per visit"], ["quarterly", "per quarter"], ["annual", "per year"]].map(function (o) { return '<option value="' + o[0] + '"' + (p.billing === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" : '<span class="muted small" style="align-self:end">Price: only Jesús and #money</span>') + "</div>" +
+        '<div class="row2"><label class="f">Included in the agreement<textarea name="included" placeholder="Mowing, edging, blowing, bed weeding…">' + esc(p.included) + '</textarea></label><label class="f">Not included (priced separately)<textarea name="excluded" placeholder="Tree work, plant replacement, hauling…">' + esc(p.excluded) + "</textarea></label></div>" +
+        '<label class="f">Visit checklist (one per line)<textarea name="checklist" rows="5">' + esc(cl) + "</textarea></label>" +
+        (m.id ? '<label class="f">Status<select name="status">' + [["active", "Active"], ["paused", "Paused (no new visits)"], ["ended", "Ended"]].map(function (o) { return '<option value="' + o[0] + '"' + (p.status === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" : "") +
+        '<p class="muted small">Changing the day, how often, or the crew re-plans future visits nobody has moved or started. Moved and completed visits stay as they are.</p>' +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
+    if (m.type === "lsCrew") {
+      var c = m.id ? lsC(m.id) : { members: [], color: "#2f6db0" }, mem = (c.members || []).map(function (x) { return x.email; });
+      return "<h2>" + (m.id ? "Edit crew" : "New crew") + '</h2><form class="form" data-form="lsCrew"><div class="row2"><label class="f">Name<input name="name" required value="' + esc(c.name) + '" placeholder="e.g. Crew A"></label><label class="f">Color<input type="color" name="color" value="' + esc(c.color || "#2f6db0") + '"></label></div>' +
+        '<div class="f"><span>Members (they see this crew\'s route on their phone)</span><div class="ls-checks">' + (d.people || []).filter(function (x) { return x.role !== "admin"; }).map(function (x) { return '<label><input type="checkbox" name="members" value="' + esc(x.email) + '"' + (mem.indexOf(x.email) > -1 ? " checked" : "") + "> " + esc(x.name) + "</label>"; }).join("") + "</div><span class=\"muted small\">Add people as #crew in Home → Team first.</span></div>" +
+        '<div class="row2"><label class="f">Skills & equipment<input name="skills" value="' + esc(c.skills) + '" placeholder="Irrigation, tree work, trailer…"></label><label class="f">Working hours<input name="hours" value="' + esc(c.hours) + '" placeholder="7:00–15:30"></label></div>' +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
+    if (m.type === "lsVisit") {
+      var v = m.id ? lsV(m.id) : { date: lsToday(), kind: "extra", est_min: 60, priority: "normal", property_id: m.prop || "" };
+      return "<h2>" + (m.id ? "Edit visit" : "One-time visit / work order") + '</h2><form class="form" data-form="lsVisit">' +
+        (m.id ? "" : '<label class="f">Property<select name="property_id" required><option value="">Pick…</option>' + (d.props || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (v.property_id === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select></label>") +
+        '<div class="row2"><label class="f">Date<input type="date" name="date" value="' + esc(v.date) + '"></label><label class="f">Crew<select name="crew_id"><option value="">No crew</option>' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (v.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
+        '<div class="row2"><label class="f">Type<select name="kind">' + [["maintenance", "Recurring maintenance"], ["extra", "Additional work (billable)"], ["correction", "Correction (no charge)"]].map(function (o) { return '<option value="' + o[0] + '"' + (v.kind === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select></label><label class="f">Planned labor (person-minutes)<input type="number" name="est_min" min="5" step="5" value="' + esc(v.est_min) + '"></label></div>' +
+        '<label class="f">Scope of work<textarea name="scope">' + esc(v.scope) + "</textarea></label>" +
+        (m.id ? '<div class="row2"><label class="f">Status<select name="status">' + Object.keys(LS_ST).map(function (k) { return '<option value="' + k + '"' + (v.status === k ? " selected" : "") + ">" + LS_ST[k][0] + "</option>"; }).join("") + '</select></label><label class="f">Reason (if it can\'t happen)<input name="reason" value="' + esc(v.reason) + '"></label></div>' : "") +
+        (d.money ? '<label class="f">Price (additional work)<span class="ls-money">$<input type="number" name="price" step="0.01" min="0" value="' + esc(v.price || "") + '"></span></label>' : "") +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
+    if (m.type === "lsWork") return lsWorkOrder(lsV(m.id));
+    if (m.type === "lsIssue") {
+      var props = d.props || [];
+      return "<h2>Report an issue</h2><p class=\"muted\" style=\"margin:4px 0 12px\">A leak, a damaged plant, a branch that looks unsafe, standing water… Blue Sierra reviews it and tells you what happens next.</p>" +
+        '<form class="form" data-form="lsIssue">' + (props.length > 1 || !m.id ? '<label class="f">Property<select name="property_id" required>' + props.map(function (p) { return '<option value="' + esc(p.id) + '"' + (m.id === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select></label>" : '<input type="hidden" name="property_id" value="' + esc(m.id) + '">') +
+        '<input type="hidden" name="visit_id" value="' + esc(m.visit || "") + '">' +
+        '<label class="f">What\'s going on?<textarea name="text" required placeholder="e.g. The sprinkler by the front walk is spraying the house"></textarea></label>' +
+        '<div class="row2"><label class="f">Where exactly<input name="place" placeholder="Front walk, back corner…"></label><label class="f">How urgent<select name="urgency"><option value="low">Whenever you\'re next here</option><option value="normal" selected>Soon</option><option value="urgent">Urgent (water, safety)</option></select></label></div>' +
+        '<label class="f">Photos (up to 5)<input type="file" name="photos" accept="image/*" multiple' + (PHONE ? ' capture="environment"' : "") + "></label>" +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Send to Blue Sierra</button></div></form>';
+    }
+    if (m.type === "lsTriage") {
+      var i = (d.issues || []).filter(function (x) { return x.id === m.id; })[0] || {}, pp = lsP(i.property_id);
+      return "<h2>" + esc(pp.name || "Request") + '</h2><p class="muted small">' + esc(i.by_name) + " · " + day(String(i.at).slice(0, 10)) + " · " + esc(i.urgency) + (i.place ? " · " + esc(i.place) : "") + "</p><p>" + esc(i.text) + "</p>" +
+        (i.photos && i.photos.length ? '<div class="ls-photos">' + i.photos.map(function (ph) { return '<a href="' + esc(ph.full) + '" target="_blank" rel="noopener"><img src="' + esc(ph.thumb) + '" alt=""></a>'; }).join("") + "</div>" : "") +
+        '<div class="ls-agree"><div><b>Included</b><p class="muted small ls-pre">' + esc(pp.included || "—") + '</p></div><div><b>Not included</b><p class="muted small ls-pre">' + esc(pp.excluded || "—") + "</p></div></div>" +
+        '<form class="form" data-form="lsTriage"><div class="f"><span>What is it?</span><div class="ls-radio">' + [["included", "Included in the agreement"], ["correction", "Correction (our fix, no charge)"], ["billable", "Billable additional work"], ["review", "Still reviewing"], ["closed", "Close (nothing to do)"]].map(function (o) { return '<label><input type="radio" name="status" value="' + o[0] + '"' + ((i.status === o[0]) || (i.status === "new" && o[0] === "review") ? " checked" : "") + "> " + o[1] + "</label>"; }).join("") + "</div></div>" +
+        '<label class="f">Note for the client<textarea name="office_note" placeholder="What we\'ll do and when">' + esc(i.office_note) + "</textarea></label>" +
+        '<details class="ls-mk"' + (i.visit_id ? "" : " open") + "><summary>" + (i.visit_id ? "Work order already created" : "Create a work order") + '</summary><label class="check-line"><input type="checkbox" name="make_visit"' + (i.visit_id ? "" : " checked") + '> Schedule it</label><div class="row2"><label class="f">Date<input type="date" name="date" value="' + lsAddD(lsToday(), 2) + '"></label><label class="f">Crew<select name="crew_id">' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (pp.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
+        (d.money ? '<label class="f">Price if billable<span class="ls-money">$<input type="number" name="price" step="0.01" min="0"></span></label>' : "") + "</details>" +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    }
+    if (m.type === "lsPropView") return lsPropView();
+    return "";
+  }
+  function lsPropView() {
+    var x = S.lsProp; if (!x) return '<div class="loading">Loading…</div>'; var p = x.prop, c = lsC(p.crew_id), office = S.ls && S.ls.role === "office";
+    return '<div class="ls-pv"><div class="ls-pvh"><div><div class="eyebrow">' + esc(p.client_name || "Property") + "</div><h2>" + esc(p.name) + '</h2><p class="muted small">' + esc([p.address, p.city].filter(Boolean).join(", ")) + (p.lat != null ? ' · <a href="' + esc(lsNav(p)) + '" target="_blank" rel="noopener">Directions</a>' : "") + "</p></div>" +
+      (office ? '<div class="actions"><button class="btn ghost sm" data-a="modal" data-m="lsProp" data-id="' + esc(p.id) + '">Edit</button><button class="btn sm" data-a="lsNewWO" data-id="' + esc(p.id) + '">＋ Work order</button></div>' : "") + "</div>" +
+      '<div class="grid g3"><div class="card"><span class="eyebrow">Agreement</span><b>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.weekday !== "" && p.freq !== "none" ? " · " + LS_DAYS[+p.weekday] : "") + "</b><small class=\"muted\">" + (p.price != null ? m0(p.price) + " " + ({ monthly: "per month", per_visit: "per visit", quarterly: "per quarter", annual: "per year" }[p.billing] || "") + " · " : "") + lsHm(p.visit_min) + " planned per visit</small></div>" +
+      '<div class="card"><span class="eyebrow">Crew</span><b>' + lsDot(c) + esc(c ? c.name : "No crew") + '</b><small class="muted">' + esc(p.access || "No access notes") + "</small></div>" +
+      '<div class="card"><span class="eyebrow">Features</span><div class="ls-tags">' + (p.features.map(function (f) { return "<span>" + esc(f) + "</span>"; }).join("") || '<small class="muted">—</small>') + "</div></div></div>" +
+      '<div class="ls-agree"><div><b>Included</b><p class="muted small ls-pre">' + esc(p.included || "—") + '</p></div><div><b>Not included (priced separately)</b><p class="muted small ls-pre">' + esc(p.excluded || "—") + "</p></div></div>" +
+      (p.notes ? '<p class="small"><b>Service notes:</b> ' + esc(p.notes) + "</p>" : "") +
+      '<h3>Visits</h3><div class="ls-list">' + (x.visits.length ? x.visits.slice(0, 20).map(lsVisitRow).join("") : '<p class="muted small">No visits yet.</p>') + "</div>" +
+      '<h3>Requests</h3><div class="ls-list">' + (x.issues.length ? x.issues.map(lsIssueRow).join("") : '<p class="muted small">None.</p>') + "</div>" +
+      (x.log.length ? '<details class="inv-hist"><summary>History · ' + x.log.length + "</summary>" + x.log.map(function (l) { return '<div class="ih-row"><b>' + esc(l.by) + "</b> " + esc(l.text) + '<small class="muted">' + esc(l.at) + "</small></div>"; }).join("") + "</details>" : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div></div>';
+  }
+  /* The work order: what the crew sees at the stop (and the office, with prices). */
+  function lsWorkOrder(v) {
+    if (!v) return '<p class="muted">This visit isn\'t here anymore.</p><div class="actions"><button class="btn ghost" data-a="close">Close</button></div>';
+    var p = lsP(v.property_id), role = S.ls.role, c = lsC(v.crew_id), done = v.status === "completed", closed = done || v.status === "canceled";
+    var members = (c && c.members) || [], lab = {}; (v.labor || []).forEach(function (l) { lab[l.email || l.name] = l.min; });
+    var guess = v.started_at ? Math.max(5, Math.round((Date.now() - new Date(String(v.started_at).replace(" ", "T")).getTime()) / 60000)) : "";
+    return '<div class="ls-wo"><div class="ls-woh"><div><div class="eyebrow">' + lsDow(v.date) + " " + day(v.date) + (v.stop ? " · stop " + v.stop : "") + "</div><h2>" + esc(p.name) + '</h2><p class="muted small">' + esc([p.address, p.city].filter(Boolean).join(", ")) + "</p></div>" + lsPill(v.status) + "</div>" +
+      '<div class="ls-woacts"><a class="btn ghost sm" href="' + esc(lsNav(p)) + '" target="_blank" rel="noopener">🧭 Navigate</a>' + (role === "office" && !done ? '<button class="btn ghost sm" data-a="modal" data-m="lsVisit" data-id="' + esc(v.id) + '">Edit / move</button>' : "") + (!closed ? (v.status !== "in_progress" ? '<button class="btn sm" data-a="lsAct" data-act="start" data-id="' + esc(v.id) + '">▶ Start</button>' : "") : "") + "</div>" +
+      (p.access ? '<div class="ls-note"><b>Access:</b> ' + esc(p.access) + "</div>" : "") + (p.contacts ? '<div class="ls-note"><b>Contact:</b> ' + esc(p.contacts) + "</div>" : "") + (p.notes && role !== "client" ? '<div class="ls-note"><b>Notes:</b> ' + esc(p.notes) + "</div>" : "") +
+      '<h3>Scope</h3><p class="small">' + esc(v.scope || "") + "</p>" + (v.kind === "maintenance" ? '<p class="muted small">Included: ' + esc(p.included || "see agreement") + (p.excluded ? " · <b>Not included:</b> " + esc(p.excluded) : "") + "</p>" : "") +
+      (v.checklist.length ? '<h3>Checklist</h3><div class="ls-cl">' + v.checklist.map(function (cl, i) { return '<label class="ls-cli' + (cl.done ? " on" : "") + '"><input type="checkbox" data-ls-check="' + i + '" data-id="' + esc(v.id) + '"' + (cl.done ? " checked" : "") + (closed ? " disabled" : "") + "><span>" + esc(cl.t) + "</span></label>"; }).join("") + "</div>" : "") +
+      '<h3>Photos</h3><div class="ls-ph2"><div><b class="small">Before</b><div class="ls-photos">' + v.before.map(function (ph) { return '<a href="' + esc(ph.full) + '" target="_blank" rel="noopener"><img src="' + esc(ph.thumb) + '" alt=""></a>'; }).join("") + "</div>" + (!closed ? '<label class="btn ghost sm">＋ Before<input type="file" accept="image/*" multiple capture="environment" hidden data-ls-photo="before" data-id="' + esc(v.id) + '"></label>' : "") + "</div>" +
+      '<div><b class="small">After</b><div class="ls-photos">' + v.after.map(function (ph) { return '<a href="' + esc(ph.full) + '" target="_blank" rel="noopener"><img src="' + esc(ph.thumb) + '" alt=""></a>'; }).join("") + "</div>" + (!closed ? '<label class="btn ghost sm">＋ After<input type="file" accept="image/*" multiple capture="environment" hidden data-ls-photo="after" data-id="' + esc(v.id) + '"></label>' : "") + "</div></div>" +
+      '<h3>Materials used</h3><div class="ls-mats">' + (v.materials || []).map(function (mt, i) { return '<div class="ls-mat"><span>' + esc(mt.item) + (mt.qty ? " · " + esc(mt.qty) : "") + (mt.cost ? " · " + money(mt.cost) : "") + "</span>" + (!closed ? '<button class="link small" data-a="lsMatDel" data-id="' + esc(v.id) + '" data-i="' + i + '">Remove</button>' : "") + "</div>"; }).join("") +
+        (!closed ? '<form class="ls-matf" data-form="lsMat" data-id="' + esc(v.id) + '"><input name="item" placeholder="e.g. Mulch" required><input name="qty" placeholder="Qty" size="6">' + (S.ls.money ? '<input name="cost" type="number" step="0.01" placeholder="$" size="6">' : "") + '<button class="btn ghost sm" type="submit">Add</button></form>' : "") + "</div>" +
+      (role !== "client" ? '<h3>Crew time</h3><form class="ls-labor" data-form="lsLabor" data-id="' + esc(v.id) + '">' + (members.length ? members.map(function (mb) { var key = mb.email || mb.name; return '<label class="ls-rate"><span>' + esc(mb.name) + '</span><span class="ls-money"><input type="number" min="0" step="5" name="' + esc(key) + '" value="' + esc(lab[key] != null ? lab[key] : guess) + '"' + (closed && role !== "office" ? " disabled" : "") + "> min</span></label>"; }).join("") : '<p class="muted small">No crew on this visit.</p>') +
+        '<p class="muted small">Minutes each person worked here (a 3-person crew for 2 hours = 120 each).' + (v.started_at && !done ? " Filled in from when you pressed Start." : "") + "</p></form>" : "") +
+      '<h3>Notes & problems found</h3><textarea class="ls-ta" data-ls-notes data-id="' + esc(v.id) + '" placeholder="What you did, anything the office should know"' + (closed && role !== "office" ? " disabled" : "") + ">" + esc(v.notes || "") + "</textarea>" +
+      '<textarea class="ls-ta" data-ls-problems placeholder="Problems found / extra work to recommend (leaks, damaged plants, unsafe branches, gutters, drainage…)"' + (closed ? " disabled" : "") + ">" + esc(v.problems || "") + "</textarea>" +
+      '<div class="ls-woacts"><button class="btn ghost sm" data-a="modal" data-m="lsIssue" data-id="' + esc(p.id) + '" data-visit="' + esc(v.id) + '">⚠ Report a problem to the office</button>' + (role !== "client" ? '<button class="btn ghost sm" data-a="lsExpOpen" data-id="' + esc(v.id) + '">🧾 Add expense / receipt</button>' : "") + "</div>" +
+      (v.reason ? '<div class="ls-note bad">Reason: ' + esc(v.reason) + "</div>" : "") +
+      (!closed ? '<div class="ls-finish"><button class="btn ghost" data-a="lsCannot" data-id="' + esc(v.id) + '">Can\'t complete…</button><button class="btn" data-a="lsComplete" data-id="' + esc(v.id) + '">✓ Complete visit</button></div>' : '<div class="actions"><button class="btn ghost" data-a="close">Close</button></div>') + "</div>";
+  }
+  /* ---- Maintenance: actions ---- */
+  function lsRefresh() { return lsLoad(true).then(function () { if (S.modal && S.modal.type === "lsWork") keepScroll(render); }); }
+  function lsApplyVisit(v) { if (!v || !S.ls) return; S.ls.visits = S.ls.visits.map(function (x) { return x.id === v.id ? v : x; }); if (!S.ls.visits.some(function (x) { return x.id === v.id; })) S.ls.visits.push(v); keepScroll(render); }
+  function lsRangeDates(r) {
+    var t = lsToday(), d = new Date(t + "T12:00:00");
+    if (r === "today") return [t, t];
+    if (r === "week") { var s = lsAddD(t, -((d.getDay() + 6) % 7)); return [s, lsAddD(s, 6)]; }
+    if (r === "month") { var p = function (x) { return String(x).padStart(2, "0"); }; var a = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-01", e = new Date(d.getFullYear(), d.getMonth() + 1, 0); return [a, e.getFullYear() + "-" + p(e.getMonth() + 1) + "-" + p(e.getDate())]; }
+    if (r === "last30") return [lsAddD(t, -30), t];
+    return [lsAddD(t, -7), lsAddD(t, 21)];
+  }
+  async function lsFiles(input, max) { var out = []; var fl = [].slice.call(input && input.files || [], 0, max || 5); for (var i = 0; i < fl.length; i++) out.push(await readFile(fl[i])); return out; }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^ls/.test(a)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (a === "lsTab") { S.lsTab = b.dataset.v; S.home = "ls"; if (S.pid) return go(null); return keepScroll(render); }
+    if (a === "lsReload") { S.ls = null; return keepScroll(render); }
+    if (a === "lsMode") { S.lsMode = b.dataset.v; return keepScroll(render); }
+    if (a === "lsReqF") { S.lsReqF = b.dataset.v; return keepScroll(render); }
+    if (a === "lsJump") { var el = document.getElementById("ls-" + b.dataset.v); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+    if (a === "lsDay") { S.lsDay = lsAddD(S.lsDay || S.ls.today, Number(b.dataset.v)); var dd = S.lsDay; if (dd < S.ls.from || dd > S.ls.to) { S.lsF = Object.assign({}, S.lsF || {}, { from: lsAddD(dd, -3), to: lsAddD(dd, 10) }); S.ls = null; } return keepScroll(render); }
+    if (a === "lsOpenVisit") { S.modal = { type: "lsWork", id: b.dataset.id }; return keepScroll(render); }
+    if (a === "lsOpenProp") { S.lsProp = null; S.modal = { type: "lsPropView", id: b.dataset.id }; keepScroll(render); call("lsProperty", { id: b.dataset.id }).then(function (r) { S.lsProp = r; keepScroll(render); }).catch(function (er) { toast(er.message); S.modal = null; keepScroll(render); }); return; }
+    if (a === "lsNewWO") { S.modal = { type: "lsVisit", prop: b.dataset.id }; return keepScroll(render); }
+    if (a === "lsTriageOpen") { if (S.ls.role !== "office") return; S.modal = { type: "lsTriage", id: b.dataset.id }; return keepScroll(render); }
+    if (a === "lsSeed") return run(b, async function () { await call("lsSeed"); S.ls = null; keepScroll(render); toast("Sample data loaded (names start with SAMPLE)"); });
+    if (a === "lsClearSample") { sure("Remove all the SAMPLE properties, crews, visits and requests?", function () { call("lsClearSample").then(function () { S.ls = null; keepScroll(render); toast("Sample data removed"); }).catch(function (er) { toast(er.message); }); }); return; }
+    if (a === "lsRoute") return run(b, async function () { var r = await call("lsRoute", { date: b.dataset.d, crew_id: b.dataset.c }); await lsLoad(true); toast(r.stops + " stops ordered · ~" + r.drive_min + " min driving (estimate)" + (r.missing ? " · " + r.missing + " without a map location" : "")); });
+    if (a === "lsOrd") {
+      var v = lsV(b.dataset.id); if (!v) return; var list = S.ls.visits.filter(function (x) { return x.date === v.date && x.crew_id === v.crew_id && x.status !== "canceled"; }).sort(function (x, y) { return (x.stop || 99) - (y.stop || 99); });
+      var i = list.indexOf(v), j = i + Number(b.dataset.dir); if (j < 0 || j >= list.length) return; var t = list[i]; list[i] = list[j]; list[j] = t;
+      list.forEach(function (x, k) { x.stop = k + 1; }); keepScroll(render);
+      call("lsRoute", { date: v.date, crew_id: v.crew_id, order: list.map(function (x) { return x.id; }) }).catch(function (er) { toast(er.message); }); return;
+    }
+    if (a === "lsRainDay") {
+      var day0 = b.dataset.d, ids = S.ls.visits.filter(function (x) { return x.date === day0 && ["scheduled", "weather"].indexOf(x.status) > -1; }).map(function (x) { return x.id; });
+      if (!ids.length) return toast("Nothing to move that day.");
+      var to = window.prompt("Move " + ids.length + " visit" + (ids.length > 1 ? "s" : "") + " from " + day0 + " to which date? (YYYY-MM-DD)", lsAddD(day0, 1)); if (!to) return;
+      var tell = window.confirm("Email the clients that their visit moved?");
+      return run(b, async function () { var r = await call("lsMoveVisits", { ids: ids, to: to, reason: "weather", notify: tell }); await lsLoad(true); toast(r.moved + " visits moved" + (r.told ? " · " + r.told + " clients told" : "")); });
+    }
+    if (a === "lsAct") return run(b, async function () { var r = await call("lsVisitUpdate", { id: b.dataset.id, act: b.dataset.act }); lsApplyVisit(r.visit); });
+    if (a === "lsMatDel") return run(b, async function () { var r = await call("lsVisitUpdate", { id: b.dataset.id, act: "material", remove: Number(b.dataset.i) }); lsApplyVisit(r.visit); });
+    if (a === "lsComplete") {
+      var f = root.querySelector("form[data-form=lsLabor]"), lab = f ? [].map.call(f.querySelectorAll("input[type=number]"), function (x) { return { email: x.name, min: Number(x.value) || 0 }; }).filter(function (l) { return l.min > 0; }) : [];
+      var notes = (root.querySelector("[data-ls-notes]") || {}).value, problems = (root.querySelector("[data-ls-problems]") || {}).value, vid = b.dataset.id;
+      return run(b, async function () {
+        var r = await call("lsVisitUpdate", { id: vid, act: "complete", labor: lab, notes: notes, problems: problems });
+        if (problems && problems.trim()) await call("lsReportIssue", { property_id: r.visit.property_id, visit_id: vid, text: "Found at the visit: " + problems.trim(), urgency: "normal" }).catch(function () {});
+        S.modal = null; lsApplyVisit(r.visit); toast("Visit completed ✓" + (problems && problems.trim() ? " · problems sent to the office" : ""));
+      });
+    }
+    if (a === "lsCannot") {
+      var why = window.prompt("Why can't this visit be completed? (gate locked, rain, client asked to skip…)"); if (!why) return;
+      var st = /rain|weather|storm|lluvia/i.test(why) ? "weather" : /cancel/i.test(why) ? "canceled" : "blocked";
+      return run(b, async function () { var r = await call("lsVisitUpdate", { id: b.dataset.id, act: "cannot", reason: why, status: st }); S.modal = null; lsApplyVisit(r.visit); toast("Marked " + (LS_ST[st] || [st])[0].toLowerCase() + ". The office sees it."); });
+    }
+    if (a === "lsExp") return run(b, async function () { await call("lsReviewExpense", { id: b.dataset.id, status: b.dataset.s }); await lsLoad(true); toast(b.dataset.s === "approved" ? "Approved" : "Rejected"); });
+    if (a === "lsExpOpen") {
+      var amt = window.prompt("Expense amount ($)"); if (!amt) return; var cat = window.prompt("Category: materials, fertilizer, hauling, disposal, fuel, equipment, subcontractor or other", "materials") || "other";
+      var vendor = window.prompt("Where? (vendor)", "") || "", inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf";
+      var send = async function (rec) { await call("lsSaveExpense", { visit_id: b.dataset.id, amount: amt, category: cat.trim().toLowerCase(), vendor: vendor, receipt: rec }); toast(S.ls.money ? "Expense saved" : "Expense sent to the office for review"); };
+      if (window.confirm("Add a photo of the receipt?")) { inp.onchange = function () { lsFiles(inp, 1).then(function (fs) { return send(fs[0] || null); }).catch(function (er) { toast(er.message); }); }; inp.click(); }
+      else send(null).catch(function (er) { toast(er.message); });
+      return;
+    }
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.matches("[data-ls-f]")) { S.lsF = Object.assign({}, S.lsF || {}); S.lsF[t.dataset.lsF] = t.value; if (t.dataset.lsF === "range") { var r = lsRangeDates(t.value); S.lsF.from = r[0]; S.lsF.to = r[1]; S.ls = null; } keepScroll(render); return; }
+    if (t.matches("[data-ls-mapday]")) { S.lsMapDay = t.value; keepScroll(render); return; }
+    if (t.matches("[data-ls-check]")) { var vid = t.dataset.id, i = Number(t.dataset.lsCheck); t.closest(".ls-cli").classList.toggle("on", t.checked); call("lsVisitUpdate", { id: vid, act: "check", i: i, done: t.checked }).then(function (r) { var v = lsV(vid); if (v) v.checklist = r.visit.checklist; }).catch(function (er) { toast(er.message); t.checked = !t.checked; }); return; }
+    if (t.matches("[data-ls-photo]")) { var id = t.dataset.id, which = t.dataset.lsPhoto; toast("Uploading photos…"); lsFiles(t, 6).then(function (fs) { return call("lsVisitUpdate", { id: id, act: "photo", which: which, files: fs }); }).then(function (r) { lsApplyVisit(r.visit); toast("Photos added"); }).catch(function (er) { toast(er.message); }); return; }
+    if (t.matches("[data-ls-notes]")) { call("lsVisitUpdate", { id: t.dataset.id, act: "notes", notes: t.value }).catch(function (er) { toast(er.message); }); return; }
+    if (t.matches("form[data-form=lsLabor] input")) { var f = t.form, lab = [].map.call(f.querySelectorAll("input[type=number]"), function (x) { return { email: x.name, min: Number(x.value) || 0 }; }); call("lsVisitUpdate", { id: f.dataset.id, act: "labor", labor: lab }).then(function (r) { var v = lsV(f.dataset.id); if (v) { v.labor = r.visit.labor; v.labor_min = r.visit.labor_min; } }).catch(function (er) { toast(er.message); }); return; }
+  });
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form^=ls]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var kind = f.dataset.form, fd = new FormData(f), v = function (k) { return String(fd.get(k) == null ? "" : fd.get(k)).trim(); }, btn = f.querySelector("[type=submit]");
+    run(btn, async function () {
+      if (kind === "lsProp") {
+        var prop = { id: S.modal.id || undefined, name: v("name"), client_name: v("client_name"), client_emails: v("client_emails"), address: v("address"), city: v("city"), contacts: v("contacts"), access: v("access"), notes: v("notes"),
+          features: fd.getAll("features"), freq: v("freq"), weekday: v("weekday"), start: v("start"), crew_id: v("crew_id"), visit_min: v("visit_min"), included: v("included"), excluded: v("excluded"), checklist: v("checklist").split("\n").map(function (x) { return x.trim(); }).filter(Boolean) };
+        if (fd.has("price")) { prop.price = v("price") || 0; prop.billing = v("billing"); } if (fd.has("status")) prop.status = v("status");
+        var old = S.modal.id ? lsP(S.modal.id) : {};
+        if (prop.address && (prop.address !== old.address || prop.city !== old.city || old.lat == null)) try {
+          var g = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent([prop.address, prop.city, "CA"].filter(Boolean).join(", ")))).json();
+          if (g && g[0]) { prop.lat = +(+g[0].lat).toFixed(6); prop.lon = +(+g[0].lon).toFixed(6); }
+        } catch (er) {}
+        await call("lsSaveProperty", { prop: prop }); S.modal = null; await lsLoad(true); toast(prop.id ? "Property saved" : "Property added · visits scheduled"); return;
+      }
+      if (kind === "lsCrew") { await call("lsSaveCrew", { crew: { id: S.modal.id || undefined, name: v("name"), color: v("color"), members: fd.getAll("members"), skills: v("skills"), hours: v("hours") } }); S.modal = null; await lsLoad(true); toast("Crew saved"); return; }
+      if (kind === "lsVisit") {
+        var vis = { id: S.modal.id || undefined, property_id: v("property_id") || undefined, date: v("date"), crew_id: v("crew_id"), kind: v("kind"), est_min: v("est_min"), scope: v("scope") };
+        if (fd.has("status")) { vis.status = v("status"); vis.reason = v("reason"); } if (fd.has("price") && v("price")) vis.price = v("price");
+        await call("lsSaveVisit", { visit: vis }); S.modal = null; await lsLoad(true); toast("Saved"); return;
+      }
+      if (kind === "lsIssue") {
+        var photos = await lsFiles(f.querySelector("[name=photos]"), 5);
+        await call("lsReportIssue", { property_id: v("property_id"), visit_id: v("visit_id"), text: v("text"), place: v("place"), urgency: v("urgency"), photos: photos });
+        S.modal = null; await lsLoad(true); toast("Sent. Blue Sierra will review it and let you know."); return;
+      }
+      if (kind === "lsTriage") {
+        var body = { id: S.modal.id, status: fd.get("status"), office_note: v("office_note") };
+        if (fd.get("make_visit")) { body.make_visit = true; body.date = v("date"); body.crew_id = v("crew_id"); if (v("price")) body.price = v("price"); }
+        await call("lsTriage", body); S.modal = null; await lsLoad(true); toast(body.make_visit ? "Work order scheduled" : "Saved"); return;
+      }
+      if (kind === "lsMat") { var r = await call("lsVisitUpdate", { id: f.dataset.id, act: "material", item: v("item"), qty: v("qty"), cost: v("cost") }); lsApplyVisit(r.visit); return; }
+      if (kind === "lsRates") {
+        var jobs = []; fd.forEach(function (val, k) { if (k.indexOf("r:") === 0 && String(val).trim() !== "") jobs.push(call("lsSetRate", { email: k.slice(2), rate: val })); });
+        if (v("default")) jobs.push(call("lsSetRate", { default: true, rate: v("default") }));
+        await Promise.all(jobs); await lsLoad(true); toast("Rates saved"); return;
+      }
+    });
   }, true);
   liveLoop();
   if (S.token) { render(); route(); } else render();

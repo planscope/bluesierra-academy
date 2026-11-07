@@ -63,8 +63,8 @@ var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone"
 /* Speed: everything a request needs is read from the sheet in one Sheets API call, then kept for the rest of the request. */
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "QbLog"],
-  listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule", "LsCrews", "LsProps"],
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People", "LsCrews", "LsProps"], markRead: ["People", "Projects", "Reads"]
 };
 var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
@@ -225,7 +225,7 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })() }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
