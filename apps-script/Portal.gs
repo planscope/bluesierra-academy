@@ -1025,6 +1025,15 @@ function qbFetch(path, accept) {
 function qbTid(r) { try { var h = r.getAllHeaders() || {}; return h.intuit_tid || h["Intuit_tid"] || h["intuit-tid"] || ""; } catch (e) { return ""; } }
 function qbGet(path) { return JSON.parse(qbFetch(path).getContentText()); }
 function qbQuery(sql) { return qbGet("/query?query=" + encodeURIComponent(sql)).QueryResponse || {}; }
+/* Every row, 1000 at a time (QuickBooks never returns more than 1000 per ask). sql has no maxresults. */
+function qbQueryAll(sql, entity) {
+  var out = [];
+  for (var start = 1; start < 20001; start += 1000) {
+    var page = qbQuery(sql + " startposition " + start + " maxresults 1000")[entity] || [];
+    out = out.concat(page); if (page.length < 1000) break;
+  }
+  return out;
+}
 function qbInvoiceOut(i, imported) {
   return { id: String(i.Id), number: i.DocNumber || "", date: i.TxnDate || "", due: i.DueDate || "", total: num(i.TotalAmt), balance: num(i.Balance), customer: (i.CustomerRef || {}).name || "", imported: imported[String(i.Id)] || "" };
 }
@@ -1140,13 +1149,14 @@ function qbCompanyFinance() {
   var cash = { total: 0, accounts: [] }, cards = { total: 0, accounts: [] };
   acc.forEach(function (a) {
     if (a.AccountType === "Bank") { cash.total += num(a.CurrentBalance); cash.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
-    if (a.AccountType === "Credit Card") { cards.total += num(a.CurrentBalance); cards.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
+    if (a.AccountType === "Credit Card") { var owed = Math.abs(num(a.CurrentBalance)); if (!owed) return; cards.total += owed; cards.accounts.push({ name: a.Name, balance: r2(owed) }); }   // owed, always positive (QuickBooks sends it negative)
   });
   var ar = { open: 0, overdue: 0, count: 0 };
-  tryIt("open invoices", function () { (qbQuery("select * from Invoice where Balance > '0' maxresults 1000").Invoice || []).forEach(function (i) { var b = num(i.Balance); ar.open += b; ar.count++; if (i.DueDate && i.DueDate < t) ar.overdue += b; }); });
-  var ap = { open: 0, overdue: 0, count: 0, soon: [] }, soonLim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
-  tryIt("bills", function () { (qbQuery("select * from Bill where Balance > '0' maxresults 1000").Bill || []).forEach(function (b) {
+  tryIt("open invoices", function () { qbQueryAll("select * from Invoice where Balance > '0'", "Invoice").forEach(function (i) { var b = num(i.Balance); ar.open += b; ar.count++; if (i.DueDate && i.DueDate < t) ar.overdue += b; }); });
+  var staleLim = Utilities.formatDate(new Date(Date.now() - 60 * 864e5), CONFIG.TZ, "yyyy-MM-dd"), ap = { open: 0, overdue: 0, count: 0, soon: [], stale: { count: 0, amount: 0 } }, soonLim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
+  tryIt("bills", function () { qbQueryAll("select * from Bill where Balance > '0'", "Bill").forEach(function (b) {
     var bal = num(b.Balance), late = !!(b.DueDate && b.DueDate < t); ap.open += bal; ap.count++; if (late) ap.overdue += bal;
+    if (late && b.DueDate < staleLim) { ap.stale.count++; ap.stale.amount += bal; return; }
     if (late || (b.DueDate && b.DueDate <= soonLim)) ap.soon.push({ vendor: (b.VendorRef || {}).name || "Vendor", due: b.DueDate || "", amount: r2(bal), late: late });
   }); });
   ap.soon.sort(function (a, b) { return (a.due || "9") < (b.due || "9") ? -1 : 1; });
@@ -1168,17 +1178,17 @@ function qbCompanyFinance() {
   ytd.top = ytd.top.sort(function (a, b) { return b.amount - a.amount; }).slice(0, 8);
   ["income", "expenses", "labor", "materials", "subs", "other"].forEach(function (k) { ytd[k] = r2(ytd[k]); });
   // Every customer/job, all time: billed, cost, profit
-  var jobs = [];
+  var jobs = [], unassigned = 0;
   tryIt("jobs report", function () {
     var g = qbReportGroups(qbGet("/reports/ProfitAndLoss?start_date=2010-01-01&end_date=" + t + "&summarize_column_by=Customers&accounting_method=Accrual"));
-    g.cols.forEach(function (c, i) { if (/^total$/i.test(c) || !g.keys[i]) return; var inc = g.inc(i), cost = g.cost(i); if (!inc && !cost) return;
+    g.cols.forEach(function (c, i) { if (/^total$/i.test(c) || /^not specified$/i.test(c)) { if (/^not specified$/i.test(c)) unassigned = r2(g.cost(i)); return; } if (!g.keys[i]) return; var inc = g.inc(i), cost = g.cost(i); if (!inc && !cost) return;
       jobs.push({ id: g.keys[i], name: c, income: r2(inc), costs: r2(cost), net: r2(inc - cost) }); });
   });
   jobs.sort(function (a, b) { return b.income - a.income; });
   var customers = tryIt("customers", qbCustomerList, []);
   return { company: qbCfg().company, updated: now(), cash: { total: r2(cash.total), accounts: cash.accounts }, cards: { total: r2(cards.total), accounts: cards.accounts },
-    ar: { open: r2(ar.open), overdue: r2(ar.overdue), count: ar.count }, ap: { open: r2(ap.open), overdue: r2(ap.overdue), count: ap.count, soon: ap.soon.slice(0, 12) },
-    months: months, ytd: ytd, jobs: jobs.slice(0, 60), customers: customers, warnings: warn };
+    ar: { open: r2(ar.open), overdue: r2(ar.overdue), count: ar.count }, ap: { open: r2(ap.open), overdue: r2(ap.overdue), count: ap.count, soon: ap.soon.slice(0, 12), stale: { count: ap.stale.count, amount: r2(ap.stale.amount) } },
+    months: months, ytd: ytd, jobs: jobs.slice(0, 60), unassigned: unassigned, customers: customers, warnings: warn };
 }
 ACTIONS.qbFinance = function (me, b) {
   if (!canMoney(me)) throw new Error("That's #money. Ask Jesús to tag you #money.");
@@ -1274,7 +1284,7 @@ function qbJobMoney(cust) {
   // What we owe: open bills with lines on this job (only this job's share)
   var bills = [], owe = { open: 0, overdue: 0 };
   tryIt("bills", function () {
-    (qbQuery("select * from Bill where Balance > '0' maxresults 1000").Bill || []).forEach(function (b) {
+    qbQueryAll("select * from Bill where Balance > '0'", "Bill").forEach(function (b) {
       var job = qbLinesFor(b, cust).reduce(function (a, l) { return a + num(l.Amount); }, 0); if (!job) return;
       var share = num(b.TotalAmt) ? job / num(b.TotalAmt) : 1, due = r2(num(b.Balance) * share), late = !!(b.DueDate && b.DueDate < t);
       owe.open += due; if (late) owe.overdue += due;
