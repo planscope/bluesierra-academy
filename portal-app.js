@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107121154";
+  var BUILD = "20261107123520";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3205,7 +3205,7 @@
       var next = mine.filter(function (v) { return ["scheduled", "in_progress"].indexOf(v.status) > -1; })[0], load = mine.reduce(function (a, v) { return a + lsSite(v).min; }, 0);
       return '<div class="ls-crewrow">' + lsDot(c) + '<div class="lc-name"><b>' + esc(c.name) + '</b><small class="muted">' + c.members.length + (c.members.length === 1 ? " person · " : " people · ") + lsHm(load) + " on site" + (load > lsCrewHrs(c).end - lsCrewHrs(c).start ? ' · <span class="bad-t">overloaded</span>' : "") + "</small></div>" +
         '<div class="lc-bar"><div class="mini"><i style="width:' + (mine.length ? Math.round(d / mine.length * 100) : 0) + '%"></i></div><small class="muted">' + d + " of " + mine.length + " stops" + (next ? " · next: " + esc(lsP(next.property_id).name) : "") + "</small></div>" +
-        (mine.length ? '<button class="btn ghost sm" data-a="lsRoute" data-c="' + esc(c.id) + '" data-d="' + today + '">Plan route</button>' : "") + "</div>";
+        (mine.length ? '<button class="btn ghost sm" data-a="lsxPlan" data-c="' + esc(c.id) + '" data-d="' + today + '">Plan route</button>' : "") + "</div>";
     }).join("");
     var attn = attention.slice(0, 12).map(lsVisitRow).join("");
     var over = st && st.over && st.over.length ? '<div class="card ls-list">' + st.over.slice(0, 6).map(function (x) { return '<div class="ls-row"><div><b>' + esc(x.name) + '</b><small class="muted">' + x.visits + " visits · " + lsHm(x.labor_min) + " worked vs " + lsHm(x.est_min) + ' planned</small></div><span class="pill bad">+' + x.over + "% over</span></div>"; }).join("") + "</div>" : "";
@@ -3249,7 +3249,7 @@
         Object.keys(byCrew).map(function (cid) {
           var c = lsC(cid), vv = byCrew[cid].sort(lsCmp), load = vv.reduce(function (a, v) { return a + lsSite(v).min; }, 0);
           return '<div class="ls-crewblock"><div class="ls-cbh">' + lsDot(c) + "<b>" + esc(c ? c.name : "No crew assigned") + '</b><small class="muted">' + vv.length + (vv.length === 1 ? " stop · " : " stops · ") + lsHm(load) + " on site" + (c ? "" : " · 1 person assumed") + (load > (c ? lsCrewHrs(c).end - lsCrewHrs(c).start : 510) ? ' · <span class="bad-t">overloaded</span>' : "") + "</small>" +
-            (c ? '<button class="link small" data-a="lsRoute" data-c="' + esc(cid) + '" data-d="' + d + '">Suggest order</button>' : "") + "</div>" +
+            (vv.length ? '<button class="link small" data-a="lsxPlan" data-c="' + esc(cid) + '" data-d="' + d + '">Plan route</button>' : "") + "</div>" +
             vv.map(function (v, i) {
               var p = lsP(v.property_id);
               return '<div class="ls-stoprow"><span class="ls-stop">' + (v.stop || i + 1) + '</span><div class="ls-main" data-a="lsOpenVisit" data-id="' + esc(v.id) + '"><b>' + esc(p.name) + '</b><small class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + " · " + lsSiteTxt(v) + (v.travel_min ? " · ~" + v.travel_min + " min drive" : "") + (v.kind !== "maintenance" ? " · " + (v.kind === "extra" ? "Additional work" : "Correction") : "") + "</small></div>" +
@@ -3377,6 +3377,8 @@
         '<div class="row2"><label class="f">Address<input name="address" value="' + esc(p.address) + '"></label><label class="f">City<input name="city" value="' + esc(p.city) + '"></label></div>' +
         '<div class="row2"><label class="f">On-site contact<input name="contacts" value="' + esc(p.contacts) + '" placeholder="Name · phone"></label><label class="f">Access instructions<input name="access" value="' + esc(p.access) + '" placeholder="Gate code, dog, parking…"></label></div>' +
         '<div class="f"><span>Features</span><div class="ls-checks">' + LS_FEATURES.map(function (f) { return '<label><input type="checkbox" name="features" value="' + f + '"' + (p.features.indexOf(f) > -1 ? " checked" : "") + "> " + f + "</label>"; }).join("") + "</div></div>" +
+        '<div class="row2"><label class="f">Access window: from<input type="time" name="window_from" value="' + esc(p.window_from || "") + '"></label><label class="f">to<input type="time" name="window_to" value="' + esc(p.window_to || "") + '"></label></div>' +
+        '<div class="row2"><div class="f" role="group" aria-label="Days the client allows">Days the client allows <small class="muted">(none = any day)</small><span class="ls-days">' + LS_DAYS.map(function (n, i) { return '<label class="ls-dayc"><input type="checkbox" name="days_ok" value="' + i + '"' + (String(p.days_ok || "").split(",").indexOf(String(i)) > -1 ? " checked" : "") + "><span>" + n.slice(0, 3) + "</span></label>"; }).join("") + '</span></div><label class="f">Needs on the truck<input name="equipment" value="' + esc(p.equipment || "") + '" placeholder="e.g. trailer, aerator, hedge trimmer"></label></div>' +
         '<label class="f">Service notes (team only)<textarea name="notes">' + esc(p.notes) + "</textarea></label>" +
         "<h3>Maintenance agreement</h3>" +
         '<div class="row2"><label class="f">How often<select name="freq">' + Object.keys(LS_FREQ_TXT).map(function (k) { return '<option value="' + k + '"' + (p.freq === k ? " selected" : "") + ">" + LS_FREQ_TXT[k] + "</option>"; }).join("") + '</select></label><div class="f" role="group" aria-label="Service days">Day(s)<span class="ls-days">' + LS_DAYS.map(function (n, i) { return '<label class="ls-dayc"><input type="checkbox" name="weekday" value="' + i + '"' + (String(p.weekday).split(",").indexOf(String(i)) > -1 ? " checked" : "") + "><span>" + n.slice(0, 3) + "</span></label>"; }).join("") + "</span></div></div>" +
@@ -3394,11 +3396,12 @@
       var c = m.id ? lsC(m.id) : { members: [], color: "#2f6db0" }, mem = (c.members || []).map(function (x) { return x.email; });
       return "<h2>" + (m.id ? "Edit crew" : "New crew") + '</h2><form class="form" data-form="lsCrew"><div class="row2"><label class="f">Name<input name="name" required value="' + esc(c.name) + '" placeholder="e.g. Crew A"></label><label class="f">Color<input type="color" name="color" value="' + esc(c.color || "#2f6db0") + '"></label></div>' +
         '<div class="f"><span>Members (they see this crew\'s route on their phone)</span><div class="ls-checks">' + (d.people || []).filter(function (x) { return x.role !== "admin"; }).map(function (x) { return '<label><input type="checkbox" name="members" value="' + esc(x.email) + '"' + (mem.indexOf(x.email) > -1 ? " checked" : "") + "> " + esc(x.name) + "</label>"; }).join("") + "</div><span class=\"muted small\">Add people as #crew in Home → Team first.</span></div>" +
-        '<div class="row2"><label class="f">Skills & equipment<input name="skills" value="' + esc(c.skills) + '" placeholder="Irrigation, tree work, trailer…"></label><label class="f">Working hours<input name="hours" value="' + esc(c.hours) + '" placeholder="7:00–15:30"></label></div>' +
+        '<div class="row2"><label class="f">Equipment on the truck & skills<input name="skills" value="' + esc(c.skills) + '" placeholder="Trailer, mower, aerator, irrigation…"></label><label class="f">Shift (working hours)<input name="hours" value="' + esc(c.hours) + '" placeholder="7:00–15:30"></label></div>' +
+        '<label class="f">Vehicle<input name="vehicle" value="' + esc(c.vehicle || "") + '" placeholder="e.g. Truck 2 (F-250) + 12 ft trailer"></label>' +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "lsVisit") {
-      var v = m.id ? lsV(m.id) : { date: lsToday(), kind: "extra", est_min: 60, priority: "normal", property_id: m.prop || "" };
+      var v = m.id ? lsV(m.id) : { date: m.date || lsToday(), kind: m.date ? "maintenance" : "extra", est_min: m.prop ? (lsP(m.prop).visit_min || 60) : 60, priority: "normal", property_id: m.prop || "", crew_id: m.crew || "" };
       return "<h2>" + (m.id ? "Edit visit" : "One-time visit / work order") + '</h2><form class="form" data-form="lsVisit">' +
         (m.id ? "" : '<label class="f">Property<select name="property_id" required><option value="">Pick…</option>' + (d.props || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (v.property_id === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select></label>") +
         '<div class="row2"><label class="f">Date<input type="date" name="date" value="' + esc(v.date) + '"></label><label class="f">Crew<select name="crew_id"><option value="">No crew</option>' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (v.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
@@ -3555,7 +3558,7 @@
     run(btn, async function () {
       if (kind === "lsProp") {
         var prop = { id: S.modal.id || undefined, name: v("name"), client_name: v("client_name"), client_emails: v("client_emails"), address: v("address"), city: v("city"), contacts: v("contacts"), access: v("access"), notes: v("notes"),
-          features: fd.getAll("features"), freq: v("freq"), weekday: fd.getAll("weekday").join(","), start: v("start"), crew_id: v("crew_id"), visit_min: v("visit_min"), visit_dur: v("visit_dur"), labor_ok: !!fd.get("labor_ok"), included: v("included"), excluded: v("excluded"), checklist: v("checklist").split("\n").map(function (x) { return x.trim(); }).filter(Boolean) };
+          features: fd.getAll("features"), freq: v("freq"), weekday: fd.getAll("weekday").join(","), start: v("start"), crew_id: v("crew_id"), visit_min: v("visit_min"), visit_dur: v("visit_dur"), labor_ok: !!fd.get("labor_ok"), window_from: v("window_from"), window_to: v("window_to"), days_ok: fd.getAll("days_ok").join(","), equipment: v("equipment"), included: v("included"), excluded: v("excluded"), checklist: v("checklist").split("\n").map(function (x) { return x.trim(); }).filter(Boolean) };
         if (fd.has("price")) { prop.price = v("price") || 0; prop.billing = v("billing"); } if (fd.has("status")) prop.status = v("status");
         var old = S.modal.id ? lsP(S.modal.id) : {};
         if (prop.address && (prop.address !== old.address || prop.city !== old.city || old.lat == null)) try {
@@ -3564,7 +3567,7 @@
         } catch (er) {}
         await call("lsSaveProperty", { prop: prop }); S.modal = null; await lsLoad(true); toast(prop.id ? "Property saved" : "Property added · visits scheduled"); return;
       }
-      if (kind === "lsCrew") { await call("lsSaveCrew", { crew: { id: S.modal.id || undefined, name: v("name"), color: v("color"), members: fd.getAll("members"), skills: v("skills"), hours: v("hours") } }); S.modal = null; await lsLoad(true); toast("Crew saved"); return; }
+      if (kind === "lsCrew") { await call("lsSaveCrew", { crew: { id: S.modal.id || undefined, name: v("name"), color: v("color"), members: fd.getAll("members"), skills: v("skills"), hours: v("hours"), vehicle: v("vehicle") } }); S.modal = null; await lsLoad(true); toast("Crew saved"); return; }
       if (kind === "lsVisit") {
         var vis = { id: S.modal.id || undefined, property_id: v("property_id") || undefined, date: v("date"), crew_id: v("crew_id"), kind: v("kind"), est_min: v("est_min"), scope: v("scope") };
         if (fd.has("status")) { vis.status = v("status"); vis.reason = v("reason"); } if (fd.has("price") && v("price")) vis.price = v("price");
@@ -3838,7 +3841,7 @@
     var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = go2; document.head.appendChild(sc);
   };
   root.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^lsx/.test(a)) return;
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^lsx(YardEdit|SugHide|PinHide|Pins|Save|Reopt|Keep)$/.test(a)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (a === "lsxYardEdit") { S.lsYardEdit = !S.lsYardEdit; return keepScroll(render); }
     if (a === "lsxSugHide") { S.lsSugHide = true; return keepScroll(render); }
@@ -3915,6 +3918,281 @@
     var t = e.target; if (!t.matches || !t.matches("[data-lsx-pv]")) return; e.stopImmediatePropagation();
     S.viewAsLs = t.value || null; var keep = S.ls && S.ls.pick; S.lsGen = (S.lsGen || 0) + 1; S.ls = null; S.lsBusy = 0; S.lsProp = null; S.modal = null; keepScroll(render);
   }, true);
+  /* ======================= batch 2: dispatch map: property list + day route beside the map ======================= */
+  S.lsPlan = {}; S.lsOrder = {}; S.lsStart = {}; S.lsLine = {}; S.lsPTab = "all"; S.lsSort = "office"; S.lsPF = {};
+  function mi(km) { return km == null ? "—" : (Math.round(km * 0.621371 * 10) / 10) + " mi"; }
+  function clk(m) { if (m == null) return ""; m = Math.round(m); var h = Math.floor(m / 60) % 24, mm = m % 60, ap = h >= 12 ? "PM" : "AM", h12 = h % 12 || 12; return h12 + ":" + (mm < 10 ? "0" : "") + mm + " " + ap; }
+  function hhmm(s) { var m = String(s || "").match(/^(\d\d):(\d\d)$/); return m ? +m[1] * 60 + +m[2] : null; }
+  function lsDayVisits(d) { return lsFiltered().filter(function (v) { return v.date === d && v.status !== "canceled"; }).sort(lsCmp); }
+  function lsGroups(d) { var g = {}; lsDayVisits(d).forEach(function (v) { (g[v.crew_id || ""] = g[v.crew_id || ""] || []).push(v); }); return g; }
+  function lsCrewPick(d) { var g = lsGroups(d), ks = Object.keys(g).sort(function (a, b) { return a === "" ? 1 : b === "" ? -1 : (lsC(a) || {}).name < (lsC(b) || {}).name ? -1 : 1; }); if (S.lsPCrew == null || ks.indexOf(S.lsPCrew) < 0) S.lsPCrew = ks.length ? ks[0] : (S.lsPCrew || ""); return { groups: g, keys: ks, cur: S.lsPCrew }; }
+  function lsDk() { var d = lsMapDayGet(); lsCrewPick(d); return d + "|" + (S.lsPCrew || ""); }
+  function lsNextVisit(p) { var t = S.ls.today; return S.ls.visits.filter(function (v) { return v.property_id === p.id && v.date >= t && ["scheduled", "in_progress", "weather"].indexOf(v.status) > -1; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0]; }
+  function lsOpenIss(p) { return (S.ls.issues || []).filter(function (i) { return i.property_id === p.id && i.status !== "closed"; }); }
+  function lsODGet() { if (!S.ls.yard) return null; if (!S.lsOD && !S.lsODBusy) lsLazy("lsOD", "lsODBusy", "lsOfficeDist"); return S.lsOD && S.lsOD.props ? S.lsOD.props : null; }
+  function lsPlanGet() {
+    var dk = lsDk(), d = lsMapDayGet(), crew = S.lsPCrew || "", vs = (lsGroups(d)[crew] || []), ids = vs.map(function (v) { return v.id; }), ord = S.lsOrder[dk], st = S.lsStart[dk] || {};
+    if (!ids.length) return { empty: true };
+    var key = dk + "|" + ids.join(",") + "|" + (ord ? ord.join(",") : "") + "|" + (st.address || "") + "|" + (st.time || "");
+    if (S.lsPlan[key]) return S.lsPlan[key];
+    if (S.lsPlanBusy !== key) { S.lsPlanBusy = key; call("lsPlanDay", { date: d, crew_id: crew, ids: ids, order: ord || undefined, start: st.address || undefined, start_time: st.time || undefined })
+      .then(function (r) { S.lsPlan[key] = r; }).catch(function (e) { S.lsPlan[key] = { err: e.message }; if (st.address) S.lsStart[dk] = Object.assign({}, st, { address: "" }); }).then(function () { S.lsPlanBusy = null; keepScroll(render); }); }
+    return null;
+  }
+  function lsDaySel() {
+    var d = lsMapDayGet(), t = S.ls.today, opts = [], x = t, end = S.ls.to > lsAddD(t, 21) ? S.ls.to : lsAddD(t, 21);
+    for (var i = 0; x <= end && i < 40; i++, x = lsAddD(x, 1)) opts.push(x); if (opts.indexOf(d) < 0) opts.unshift(d);
+    return '<div class="lsd-days"><button class="btn ghost sm" data-a="lsxDayStep" data-v="-1" aria-label="Previous day">‹</button><select data-lsx-day aria-label="Day">' + opts.map(function (o) { var n = lsDayVisits(o).length; return '<option value="' + o + '"' + (o === d ? " selected" : "") + ">" + (o === t ? "Today · " : "") + lsDow(o).slice(0, 3) + " " + day(o) + " · " + n + " visit" + (n === 1 ? "" : "s") + "</option>"; }).join("") +
+      '</select><button class="btn ghost sm" data-a="lsxDayStep" data-v="1" aria-label="Next day">›</button>' + lsWxTag(d) + "</div>";
+  }
+  function lsCrewChips(d) {
+    var cp = lsCrewPick(d); if (!cp.keys.length) return "";
+    return '<div class="chips lsd-crews">' + cp.keys.map(function (k) { var c = lsC(k), n = cp.groups[k].length; return '<button class="chip' + (k === cp.cur ? " on" : "") + '" data-a="lsxCrew" data-v="' + esc(k) + '">' + lsDot(c) + esc(c ? c.name : "No crew") + " · " + n + "</button>"; }).join("") + "</div>";
+  }
+  /* ---------- All properties ---------- */
+  function lsPropCards() {
+    var od = lsODGet(), f = S.lsPF || {}, q = String(S.lsQ || "").toLowerCase().trim(), all = S.ls.props.filter(function (p) { return p.status !== "ended"; });
+    var cities = all.map(function (p) { return p.city || ""; }).filter(function (c, i, a) { return c && a.indexOf(c) === i; }).sort();
+    var list = all.filter(function (p) {
+      if (q && (p.name + " " + p.address + " " + p.city + " " + p.client_name).toLowerCase().indexOf(q) < 0) return false;
+      if (f.city && p.city !== f.city) return false; if (f.crew != null && f.crew !== "" && (f.crew === "-" ? p.crew_id : p.crew_id !== f.crew)) return false;
+      if (f.day && String(p.weekday).split(",").indexOf(f.day) < 0) return false; if (f.freq && p.freq !== f.freq) return false; return true;
+    });
+    var dist = function (p) { var o = od && od[p.id]; return o ? o.min : 9999; }, firstDay = function (p) { var l = String(p.weekday).split(",").filter(Boolean).map(Number); return p.freq === "none" || !l.length ? 9 : l[0] === 0 ? 7 : l[0]; };
+    list.sort(function (a, b) { var s = S.lsSort; var r = s === "office" ? dist(a) - dist(b) : s === "city" ? (a.city || "~").localeCompare(b.city || "~") : s === "day" ? firstDay(a) - firstDay(b) : 0; return r || a.name.localeCompare(b.name); });
+    var sel = function (name, opts, cur) { return '<select data-lsx-pf="' + name + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(cur || "") === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>"; };
+    var ctl = '<div class="lsd-ctl"><input type="search" data-lsx-q placeholder="Search name, address, client" value="' + esc(S.lsQ || "") + '">' +
+      '<div class="lsd-filters">' + sel("city", [["", "All cities"]].concat(cities.map(function (c) { return [c, c]; })), f.city) +
+      sel("day", [["", "Any day"]].concat([1, 2, 3, 4, 5, 6, 0].map(function (i) { return [String(i), LS_DAYS[i]]; })), f.day) +
+      sel("crew", [["", "Any crew"], ["-", "No crew"]].concat(S.ls.crews.map(function (c) { return [c.id, c.name]; })), f.crew) +
+      sel("freq", [["", "Any service"]].concat(Object.keys(LS_FREQ_TXT).map(function (k) { return [k, LS_FREQ_TXT[k]]; })), f.freq) +
+      '<label class="lsd-sort">Sort ' + sel("sort", [["office", "Distance from office"], ["city", "City"], ["day", "Service day"], ["name", "Name"]], S.lsSort) + "</label></div>" +
+      '<small class="muted">' + (list.length === all.length ? all.length + " properties" : "Showing " + list.length + " of " + all.length + " properties") + (S.ls.yard ? (od ? " · drive from the office: Google" : " · getting drive times from the office…") : " · set the office address to see drive times") + "</small></div>";
+    return ctl + '<div class="lsd-plist">' + (list.length ? list.map(lsPropCard).join("") : '<div class="empty">No property matches.</div>') + "</div>";
+  }
+  function lsPropCard(p) {
+    var od = lsODGet(), o = od && od[p.id], c = lsC(p.crew_id), nv = lsNextVisit(p), iss = lsOpenIss(p), on = S.lsSel === p.id, size = c ? Math.max(1, c.members.length) : 1;
+    var onSite = p.visit_dur ? p.visit_dur : Math.ceil((p.visit_min || 60) / size), d = lsMapDayGet(), stop = lsDayVisits(d).filter(function (v) { return v.property_id === p.id; })[0];
+    var pills = (stop ? '<span class="pill ok">' + (lsDow(d).slice(0, 3)) + (stop.stop ? " · stop " + stop.stop : "") + "</span>" : "") + (p.routable === false ? '<span class="pill bad" title="' + esc(p.route_why) + '">Address incomplete</span>' : "") + (iss.length ? '<span class="pill warn">' + iss.length + " open issue" + (iss.length === 1 ? "" : "s") + "</span>" : "") + (p.access || p.window_from ? '<span class="pill" title="Access instructions">🔑</span>' : "");
+    var h = '<div class="lsd-pc' + (on ? " sel" : "") + '" id="lsd-p-' + esc(p.id) + '"><div class="lsd-pch" data-a="lsxSel" data-id="' + esc(p.id) + '"><b>' + esc(p.name) + "</b>" + pills + "</div>" +
+      '<small class="muted" data-a="lsxSel" data-id="' + esc(p.id) + '">' + esc([p.address, p.city].filter(Boolean).join(", ") || "No address") + (p.client_name ? " · " + esc(p.client_name) : "") + "</small>" +
+      '<div class="lsd-pcm" data-a="lsxSel" data-id="' + esc(p.id) + '"><span>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.freq !== "none" && p.weekday !== "" ? " · " + lsDaysTxt(p.weekday, true) : "") + "</span><span>" + lsDot(c) + esc(c ? c.name : "No crew") + "</span><span>" + lsHm(onSite) + " on site" + (p.visit_dur ? "" : " · " + (p.visit_min || 60) + " person-min") + (p.labor_ok ? "" : ' <i class="muted">(unconfirmed)</i>') + "</span></div>" +
+      '<div class="lsd-pcm" data-a="lsxSel" data-id="' + esc(p.id) + '"><span class="lsd-od">🏠 ' + (p.routable === false ? '<span class="bad-t">' + esc(p.route_why) + "</span>" : !S.ls.yard ? "office not set" : o ? lsHm(o.min) + " · " + mi(o.km) + " from office" + (o.real ? "" : " (estimate)") : "…") + "</span><span>Next: " + (nv ? lsDow(nv.date).slice(0, 3) + " " + day(nv.date) : "—") + "</span></div>";
+    if (on) {
+      var det = [["Access", p.access], ["Access window", p.window_from || p.window_to ? (p.window_from ? clk(hhmm(p.window_from)) : "any time") + " – " + (p.window_to ? clk(hhmm(p.window_to)) : "end of day") : ""], ["Client allows", p.days_ok ? lsDaysTxt(p.days_ok) : ""], ["Needs on the truck", p.equipment], ["Service", (p.features || []).join(", ") + (p.included ? ((p.features || []).length ? " · " : "") + p.included : "")], ["On-site contact", p.contacts], ["Team notes", p.notes]]
+        .filter(function (x) { return x[1]; }).map(function (x) { return "<dt>" + x[0] + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("");
+      var nav = S.ls.yard && lsHasPin(p) ? "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" + encodeURIComponent(S.ls.yard.lat + "," + S.ls.yard.lon) + "&destination=" + encodeURIComponent(p.lat + "," + p.lon) : lsNav(p);
+      h += '<div class="lsd-pdet">' + (det ? "<dl>" + det + "</dl>" : '<p class="muted small">No access notes or instructions yet.</p>') +
+        (iss.length ? '<div class="lsd-iss">' + iss.slice(0, 3).map(function (i) { return '<button class="link small" data-a="lsTriageOpen" data-id="' + esc(i.id) + '">' + (i.urgency === "urgent" ? "🔴 " : "") + esc(i.text.slice(0, 80)) + "</button>"; }).join("") + "</div>" : "") +
+        '<div class="lsd-acts"><button class="btn ghost sm" data-a="lsOpenProp" data-id="' + esc(p.id) + '">Open property</button>' +
+        (nv ? '<button class="btn ghost sm" data-a="lsOpenVisit" data-id="' + esc(nv.id) + '">Work order (' + lsDow(nv.date).slice(0, 3) + " " + day(nv.date) + ")</button>" : "") +
+        (!stop ? '<button class="btn ghost sm" data-a="lsxAddRoute" data-id="' + esc(p.id) + '">Add to ' + lsDow(d).slice(0, 3) + " " + day(d) + "</button>" : "") +
+        '<a class="btn sm" href="' + esc(nav) + '" target="_blank" rel="noopener">🧭 Navigate</a></div></div>';
+    }
+    return h + "</div>";
+  }
+  /* ---------- the day's route for one crew ---------- */
+  function lsRouteTab() {
+    var d = lsMapDayGet(), cp = lsCrewPick(d), crew = cp.cur, c = lsC(crew), dk = lsDk(), st = S.lsStart[dk] || {};
+    if (!cp.keys.length) {
+      var nxt = lsFiltered().filter(function (v) { return v.status !== "canceled" && v.date > d; }).map(function (v) { return v.date; }).sort()[0];
+      return '<div class="empty lsd-empty"><b>No visits on ' + lsDow(d) + " " + day(d) + ".</b><br>" + (nxt ? '<button class="btn sm" data-a="lsxDay" data-v="' + nxt + '">Go to ' + lsDow(nxt) + " " + day(nxt) + "</button><br>" : "") + 'To build a route for this day, open a property in <button class="link" data-a="lsxPTab" data-v="all">All properties</button> and use “Add to ' + lsDow(d).slice(0, 3) + '”.</div>';
+    }
+    var r = lsPlanGet(); if (!r) return '<div class="card ls-rload">Planning the day with Google drive times…</div>';
+    if (r.err) return '<div class="card">' + esc(r.err) + "</div>";
+    var cur = r.current, sug = r.suggested, showS = sug && S.lsShowSug === dk, P = showS ? sug : cur, hrs = r.hours, over = P.finish > hrs.end, size = r.size, dcfg = S.ls.day_cfg || {};
+    var head = '<div class="lsd-rhead">' + lsDot(c) + "<div><b>" + esc(c ? c.name : "No crew assigned") + '</b><small class="muted">' + (r.no_crew ? "No crew: 1 person assumed" : size + (size === 1 ? " person" : " people")) + (c && c.vehicle ? " · 🚚 " + esc(c.vehicle) : c ? " · no vehicle set" : "") + " · shift " + clk(hrs.start) + "–" + clk(hrs.end) + (hrs.set || !c ? "" : " (default)") + "</small></div>" + '<span class="pill' + (P.real ? " ok" : "") + '">' + (P.real ? "Google road times" : "Estimated times") + "</span></div>";
+    var start = '<form class="lsd-start" data-form="lsxStart">From ' + (st.address ? "<b>" + esc((r.origin || {}).address || st.address) + '</b> <button type="button" class="link small" data-a="lsxStartReset">use the office</button>' : r.origin ? "🏠 <b>the office</b>" : '<span class="bad-t">no office set</span>') +
+      ' at <input type="time" name="time" value="' + esc(st.time || (function (m) { var h = Math.floor(m / 60), mm = m % 60; return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm; })(r.start_time)) + '"> <input type="text" name="address" placeholder="Start somewhere else (address)" value=""><button class="btn ghost sm" type="submit">Update</button></form>';
+    var cmp = "";
+    if (sug) {
+      var conf = function (pl) { var l = pl.rows.filter(function (x) { return x.late; }).length; return (l ? l + " late" : "") + (pl.over_min ? (l ? ", " : "") + "over shift " + lsHm(pl.over_min) : ""); };
+      cmp = '<div class="lsd-cmp"><div><span class="eyebrow">Current order</span><b>' + lsHm(cur.drive_min) + " driving · " + mi(cur.km) + "</b><small>back " + clk(cur.finish) + (conf(cur) ? ' · <span class="bad-t">' + conf(cur) + "</span>" : "") + "</small></div>" +
+        '<div class="good"><span class="eyebrow">Suggested</span><b>' + lsHm(sug.drive_min) + " driving · " + mi(sug.km) + "</b><small>back " + clk(sug.finish) + (conf(sug) ? ' · <span class="bad-t">' + conf(sug) + "</span>" : " · no conflicts") + "</small></div>" +
+        '<div class="lsd-save"><b>Saves ' + lsHm(Math.max(0, r.save_min)) + " and " + mi(Math.max(0, r.save_km)) + (r.save_finish > 0 ? ", back " + lsHm(r.save_finish) + " earlier" : "") + '</b><div><button class="btn ghost sm" data-a="lsxShowSug">' + (showS ? "Show current" : "Show suggested") + '</button><button class="btn sm" data-a="lsxApply" data-o="' + esc(sug.order.join(",")) + '">Use suggested order</button></div></div></div>';
+    } else if (cur.rows.length > 1) cmp = '<div class="lsd-ok">✓ This is already the best order we found' + (cur.late_min ? " (but see the conflicts below)" : "") + ".</div>";
+    var dirty = S.lsOrder[dk] && !showS;
+    var rowsH = '<div class="lsd-tl"><div class="lsd-trow yard"><span class="ls-stop">🏠</span><div><b>' + (r.origin && r.origin.kind === "custom" ? esc(r.origin.address) : "Office / yard") + '</b><small class="muted">' + (P.load_min ? "Load " + clk(P.start) + "–" + clk(P.leave) + " · " : "") + "leave " + clk(P.leave) + "</small></div></div>" +
+      P.rows.map(function (x, i) {
+        var brk = x.brk ? '<div class="lsd-leg brk">☕ Lunch ' + lsHm(x.brk) + "</div>" : "", leg = '<div class="lsd-leg">↓ ' + lsHm(x.drive_min) + " · " + mi(x.km) + (i || r.origin ? " from the " + (i ? "previous stop" : "office") : "") + "</div>";
+        if (x.fuel) return brk + leg + '<div class="lsd-trow fuel"><span class="ls-stop">⛽</span><div><b>' + esc(x.name) + '</b><small class="muted">' + clk(x.arrive) + "–" + clk(x.depart) + " · " + x.svc + " min</small></div></div>";
+        var v = lsV(x.visit_id) || {}, p = lsP(x.property_id), lack = (x.lack || []).length, n = P.rows.filter(function (y, j) { return j <= i && !y.fuel; }).length;
+        var notes = [];
+        if (x.fixed) notes.push("🔒 locked at " + clk(hhmm(x.fixed)));
+        if (x.window) notes.push("window " + (x.window[0] ? clk(hhmm(x.window[0])) : "…") + "–" + (x.window[1] ? clk(hhmm(x.window[1])) : "…"));
+        if (x.wait) notes.push("waits " + lsHm(x.wait));
+        if (p.access) notes.push("🔑 " + p.access);
+        if (v.kind === "extra") notes.push("➕ approved extra work: " + (v.scope || ""));
+        if (v.kind === "correction") notes.push("correction: " + (v.scope || ""));
+        return brk + leg + '<div class="lsd-trow' + (x.late ? " late" : "") + (S.lsSel === x.property_id ? " sel" : "") + '"' + (!showS ? ' draggable="true" data-vid="' + esc(x.visit_id) + '"' : "") + ' id="lsd-r-' + esc(x.property_id) + '"><span class="ls-stop" style="background:' + esc((c && c.color) || "#2f6db0") + '">' + n + "</span>" +
+          '<div class="lsd-tmain"><div class="lsd-tt"><b data-a="lsxSel" data-id="' + esc(x.property_id) + '">' + esc(p.name || "Visit") + '</b><span class="lsd-time">' + clk(x.arrive) + (x.wait ? " → " + clk(x.start) : "") + " – " + clk(x.depart) + "</span></div>" +
+          '<small class="muted">' + lsHm(x.svc) + " on site (" + esc(lsSiteWhy(x.svc_src, x.person_min, size, r.no_crew)) + ") · office " + (x.office_min != null ? lsHm(x.office_min) + " · " + mi(x.office_km) : "—") + "</small>" +
+          (notes.length ? '<small class="lsd-notes">' + notes.map(esc).join(" · ") + "</small>" : "") +
+          (x.late ? '<small class="bad-t">⛔ ' + lsHm(x.late) + " " + esc((x.why || []).join(", ")) + "</small>" : "") + (lack ? '<small class="bad-t">🧰 crew doesn\'t list: ' + esc(x.lack.join(", ")) + "</small>" : "") +
+          (S.lsLock === x.visit_id ? '<form class="lsd-lock" data-form="lsxLock" data-id="' + esc(x.visit_id) + '"><input type="time" name="time" value="' + esc(x.fixed) + '" required><button class="btn sm" type="submit">Lock</button>' + (x.fixed ? '<button type="button" class="btn ghost sm" data-a="lsxUnlock" data-id="' + esc(x.visit_id) + '">Unlock</button>' : "") + '<button type="button" class="link small" data-a="lsxLockX">Cancel</button></form>' : "") + "</div>" +
+          (!showS ? '<div class="lsd-rbtn"><button title="Earlier" data-a="lsxMv" data-id="' + esc(x.visit_id) + '" data-dir="-1"' + (i ? "" : " disabled") + '>↑</button><button title="Later" data-a="lsxMv" data-id="' + esc(x.visit_id) + '" data-dir="1"' + (i < P.rows.length - 1 ? "" : " disabled") + '>↓</button><button title="Lock to a time (client appointment)" data-a="lsxLockOpen" data-id="' + esc(x.visit_id) + '">' + (x.fixed ? "🔒" : "🕘") + "</button></div>" : "") + "</div>";
+      }).join("") +
+      (r.missing.length ? r.missing.map(function (m) { return '<div class="lsd-trow miss"><span class="ls-stop">!</span><div><b>' + esc(m.name) + '</b><small class="bad-t">Not in the drive times: ' + esc(m.why || "address incomplete") + '</small><button class="link small" data-a="modal" data-m="lsProp" data-id="' + esc(m.property_id) + '">Fix the address</button></div></div>'; }).join("") : "") +
+      (r.origin && P.rows.length ? (P.break_min && !P.rows.some(function (x) { return x.brk; }) ? "" : "") + '<div class="lsd-leg">↓ ' + lsHm(P.back_min) + " · " + mi(P.back_km) + " back</div>" + '<div class="lsd-trow yard"><span class="ls-stop">🏠</span><div><b>Back at the yard ' + clk(P.finish) + "</b></div></div>" : "") + "</div>";
+    var tot = '<div class="lsd-tot"><div><span class="eyebrow">Miles</span><b>' + mi(P.km).replace(" mi", "") + "</b></div><div><span class=\"eyebrow\">Driving</span><b>" + lsHm(P.drive_min) + "</b></div><div><span class=\"eyebrow\">On site</span><b>" + lsHm(P.svc_min) + "</b></div><div" + (over ? ' class="over"' : "") + '><span class="eyebrow">Back by</span><b>' + clk(P.finish) + "</b><small>" + (over ? "over the shift by " + lsHm(P.finish - hrs.end) : "shift ends " + clk(hrs.end)) + "</small></div></div>" +
+      '<small class="muted">Includes ' + (P.load_min ? lsHm(P.load_min) + " loading at the yard" : "no loading time") + (P.break_min ? ", " + lsHm(P.break_min) + " lunch" : "") + (P.wait_min ? ", " + lsHm(P.wait_min) + " waiting for access windows or locked times" : "") + ". Travel labor = driving × " + size + (size === 1 ? " person" : " people") + " in the truck.</small>";
+    var acts = '<div class="lsd-racts">' + (dirty ? '<button class="btn sm" data-a="lsxApply" data-o="' + esc(cur.order.join(",")) + '">Save this order for the crew</button><button class="btn ghost sm" data-a="lsxUndo">Undo changes</button>' : !r.saved && !sug ? '<button class="btn ghost sm" data-a="lsxApply" data-o="' + esc(cur.order.join(",")) + '">Save this order for the crew</button>' : "") +
+      (P.maps ? '<a class="btn ghost sm" href="' + esc(P.maps) + '" target="_blank" rel="noopener">Open in Google Maps</a>' : "") + "</div>" + (dirty ? '<small class="muted">Your new order isn\'t saved yet. The crew\'s phone and navigation keep the saved order until you save.</small>' : "");
+    return head + start + cmp + rowsH + tot + acts + lsDispatchSheet(r, P);
+  }
+  /* What to load and what to know before the truck leaves. */
+  function lsDispatchSheet(r, P) {
+    var need = {}, extras = [], access = [], urgent = [], c = lsC(r.crew_id);
+    P.rows.forEach(function (x) { if (x.fuel) return; var p = lsP(x.property_id), v = lsV(x.visit_id) || {};
+      (x.need || []).forEach(function (e) { var k = e.toLowerCase(); need[k] = need[k] || { e: e, at: [], lack: false }; need[k].at.push(p.name); if ((x.lack || []).indexOf(e) > -1) need[k].lack = true; });
+      if (v.kind !== "maintenance") extras.push(p.name + ": " + (v.scope || "work order"));
+      if (p.access || x.window || x.fixed) access.push(p.name + ": " + [p.access, x.fixed ? "locked " + clk(hhmm(x.fixed)) : "", x.window ? "window " + (x.window[0] ? clk(hhmm(x.window[0])) : "…") + "–" + (x.window[1] ? clk(hhmm(x.window[1])) : "…") : ""].filter(Boolean).join(" · "));
+      lsOpenIss(p).filter(function (i) { return i.urgency === "urgent"; }).forEach(function (i) { urgent.push(p.name + ": " + i.text.slice(0, 100)); }); });
+    var ks = Object.keys(need), blk = function (t, l, empty) { return '<div class="lsd-ds"><b>' + t + "</b>" + (l.length ? "<ul>" + l.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>" : '<p class="muted small">' + empty + "</p>") + "</div>"; };
+    return '<div class="lsd-sheet"><div class="lsd-sh"><span class="eyebrow">Before the truck leaves</span>' + (c ? "<small>" + esc(c.name) + (c.vehicle ? " · " + esc(c.vehicle) : "") + "</small>" : "") + "</div>" +
+      blk("Load the truck", ks.map(function (k) { return esc(need[k].e) + ' <small class="muted">(' + esc(need[k].at.join(", ")) + ")</small>" + (need[k].lack ? ' <span class="bad-t">not on this crew\'s list</span>' : ""); }), "No special equipment set on these properties (set “Needs on the truck” on a property).") +
+      blk("Approved extra work and corrections", extras.map(esc), "Only regular maintenance today.") +
+      blk("Access and appointments", access.map(esc), "No gate codes, windows or locked times on these stops.") +
+      blk("Urgent client requests", urgent.map(esc), "None.") + "</div>";
+  }
+  /* ---------- the panel ---------- */
+  function lsDispatchPanel() {
+    var d = lsMapDayGet(), nAll = S.ls.props.filter(function (p) { return p.status !== "ended"; }).length, nDay = lsDayVisits(d).length, tab = S.lsPTab || "all", mob = S.lsMob || "list";
+    return lsYardRow() + lsPinNote() + '<div class="lsd-bar">' + lsDaySel() + lsCrewChips(d) + '<div class="chips lsd-mob">' + [["map", "Map"], ["list", "List"]].map(function (x) { return '<button class="chip' + (mob === x[0] ? " on" : "") + '" data-a="lsxMob" data-v="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div></div>" +
+      '<div class="lsd-grid mob-' + mob + '"><div class="card lsd-map"><div class="ls-mapbar"><span class="lsd-legend"><i class="lg y">🏠</i> office <i class="lg s">1</i> stops in order <i class="lg o"></i> other properties <i class="lg x">!</i> address incomplete <i class="lg sel"></i> selected + road from the office</span></div><div id="ls-map" data-keep="1"></div></div>' +
+      '<div class="card lsd-side"><div class="lsd-tabs" role="tablist"><button role="tab" class="' + (tab === "all" ? "on" : "") + '" data-a="lsxPTab" data-v="all">All properties <span class="count">' + nAll + '</span></button><button role="tab" class="' + (tab === "route" ? "on" : "") + '" data-a="lsxPTab" data-v="route">' + lsDow(d).slice(0, 3) + " " + day(d) + ' route <span class="count">' + nDay + "</span></button></div>" +
+      '<div class="lsd-body" data-lenis-prevent>' + (tab === "route" ? lsRouteTab() : lsPropCards()) + "</div></div></div>";
+  }
+  var _lsSchedule2 = lsSchedule;
+  lsSchedule = function () {
+    var h = _lsSchedule2.apply(this, arguments);
+    if ((S.lsMode || "list") !== "map") return h;
+    var i = h.indexOf('<div class="ls-bar"><select data-ls-mapday>'); if (i < 0) i = h.indexOf("<div class=\"ls-yard"); return i < 0 ? h : h.slice(0, i) + lsDispatchPanel();
+  };
+  /* ---------- the map ---------- */
+  function lsPinIcon(cls, txt, col) { return L.divIcon({ className: "ls-pin " + cls, html: "<span" + (col ? ' style="background:' + col + '"' : "") + ">" + txt + "</span>", iconSize: [28, 28], iconAnchor: [14, 14] }); }
+  lsMapInit = function () {
+    var el = document.getElementById("ls-map"); if (!el || !S.ls) return;
+    var go2 = function () {
+      var d = lsMapDayGet(), dk = lsDk(), r = lsPlanGet(), sug = r && r.suggested && S.lsShowSug === dk, P = r && !r.err && !r.empty ? (sug ? r.suggested : r.current) : null, c = lsC(S.lsPCrew), col = (c && c.color) || "#2f6db0";
+      var key = d + "|" + dk + "|" + (P ? P.order.join(",") + P.poly.length : "-") + "|" + (S.ls.yard ? S.ls.yard.lat : "") + "|" + S.ls.props.length + "|" + S.ls.visits.length;
+      if (!el._map) { el._map = L.map(el, { scrollWheelZoom: false }); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin", crossOrigin: false }).addTo(el._map); el._base = L.layerGroup().addTo(el._map); el._sel = L.layerGroup().addTo(el._map); el._marks = {}; }
+      var map = el._map;
+      if (el.dataset.k !== key) {
+        el.dataset.k = key; el._base.clearLayers(); el._marks = {}; var pts = [], onRoute = {};
+        if (P) P.rows.forEach(function (x, i) { if (x.fuel) { el._base.addLayer(L.marker([x.lat, x.lon], { icon: lsPinIcon("fuel", "⛽"), zIndexOffset: 550 }).bindTooltip(esc(x.name))); return; }
+          var p = lsP(x.property_id); onRoute[p.id] = 1; var ll = [x.lat, x.lon]; pts.push(ll); var n = P.rows.filter(function (y, j) { return j <= i && !y.fuel; }).length;
+          var mk = L.marker(ll, { icon: lsPinIcon("", n, col), zIndexOffset: 500 }).bindTooltip(n + ". " + esc(p.name) + " · " + clk(x.arrive)); mk.on("click", function () { lsSelect(p.id, true); }); el._base.addLayer(mk); el._marks[p.id] = mk; });
+        if (P && P.poly) el._base.addLayer(L.polyline(lsDecode(P.poly), { color: col, weight: 4, opacity: .8 }));
+        else if (pts.length > 1) el._base.addLayer(L.polyline(pts, { color: col, weight: 3, opacity: .7, dashArray: "6 6" }));
+        lsDayVisits(d).forEach(function (v) { var p = lsP(v.property_id); if (onRoute[p.id] || !lsHasPin(p) || (v.crew_id || "") === (S.lsPCrew || "")) return; var oc = lsC(v.crew_id); onRoute[p.id] = 1;
+          var mk = L.circleMarker([+p.lat, +p.lon], { radius: 9, color: "#fff", weight: 2, fillColor: (oc && oc.color) || "#555", fillOpacity: 1 }).bindTooltip(esc(p.name) + " · " + esc(oc ? oc.name : "No crew")); mk.on("click", function () { lsSelect(p.id, true); }); el._base.addLayer(mk); el._marks[p.id] = mk; });
+        S.ls.props.forEach(function (p) { if (!lsHasPin(p) || onRoute[p.id] || p.status === "ended") return; var bad = p.routable === false;
+          var mk = bad ? L.marker([+p.lat, +p.lon], { icon: lsPinIcon("approx", "!") }) : L.circleMarker([+p.lat, +p.lon], { radius: 8, color: "#fff", weight: 2, fillColor: "#7d8794", fillOpacity: .95 });
+          mk.bindTooltip(esc(p.name) + (bad ? " · approximate location" : "")); mk.on("click", function () { lsSelect(p.id, true); }); el._base.addLayer(mk); el._marks[p.id] = mk; });
+        if (S.ls.yard) { var yl = [S.ls.yard.lat, S.ls.yard.lon]; el._base.addLayer(L.marker(yl, { icon: lsPinIcon("yard", "🏠"), zIndexOffset: 600 }).bindTooltip("Office / yard")); }
+        var fit = pts.length ? pts.concat(S.ls.yard ? [[S.ls.yard.lat, S.ls.yard.lon]] : []) : S.ls.props.filter(lsHasPin).map(function (p) { return [+p.lat, +p.lon]; });
+        if (el.dataset.fit !== d + dk) { el.dataset.fit = d + dk; if (fit.length) map.fitBounds(fit, { padding: [30, 30], maxZoom: 14 }); else map.setView([37.45, -122.15], 10); }
+        el.dataset.sel = "";
+      }
+      lsDrawSel(el);
+      setTimeout(function () { map.invalidateSize(); }, 50);
+    };
+    if (window.L) return go2();
+    if (!document.getElementById("leaf-css")) { var l = document.createElement("link"); l.id = "leaf-css"; l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l); }
+    if (!document.getElementById("leaf-js")) { var sc = document.createElement("script"); sc.id = "leaf-js"; sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = function () { lsMapInit(); }; document.head.appendChild(sc); }
+  };
+  function lsDrawSel(el) {
+    var id = S.lsSel || ""; if (el.dataset.sel === id + "|" + (S.lsLine[id] ? 1 : 0)) return; el.dataset.sel = id + "|" + (S.lsLine[id] ? 1 : 0); el._sel.clearLayers(); if (!id) return;
+    var p = lsP(id); if (!lsHasPin(p)) return; var ll = [+p.lat, +p.lon];
+    el._sel.addLayer(L.circleMarker(ll, { radius: 21, color: "#e07b00", weight: 5, opacity: 1, fill: true, fillColor: "#e07b00", fillOpacity: .15 }));
+    var ln = S.lsLine[id];
+    if (S.ls.yard && p.routable !== false) {
+      if (ln === undefined && S.lsLineBusy !== id) { S.lsLineBusy = id; call("lsPropLine", { id: id }).then(function (r) { S.lsLine[id] = r; }).catch(function () { S.lsLine[id] = { poly: "" }; }).then(function () { S.lsLineBusy = null; var e2 = document.getElementById("ls-map"); if (e2 && e2._map) lsDrawSel(e2); }); }
+      if (ln && ln.poly) el._sel.addLayer(L.polyline(lsDecode(ln.poly), { color: "#e07b00", weight: 5, opacity: 1 }));
+      else if (ln) el._sel.addLayer(L.polyline([[S.ls.yard.lat, S.ls.yard.lon], ll], { color: "#e07b00", weight: 4, opacity: 1, dashArray: "10 8" }));
+    }
+    if (el._selFit !== id) { el._selFit = id; var b = [ll].concat(S.ls.yard ? [[S.ls.yard.lat, S.ls.yard.lon]] : []); el._map.fitBounds(b, { padding: [50, 50], maxZoom: 14 }); }
+  }
+  function lsSelect(id, fromMap) {
+    S.lsSel = S.lsSel === id && !fromMap ? null : id;
+    if (fromMap) { var onR = (lsGroups(lsMapDayGet())[S.lsPCrew || ""] || []).some(function (v) { return v.property_id === id; }); S.lsPTab = onR && S.lsPTab === "route" ? "route" : "all"; S.lsMob = "list"; }
+    keepScroll(render);
+    setTimeout(function () { var c = document.getElementById((S.lsPTab === "route" ? "lsd-r-" : "lsd-p-") + id) || document.getElementById("lsd-p-" + id), body = document.querySelector(".lsd-body"); if (c && body) { body.scrollTop = c.offsetTop - body.offsetTop - 8; } }, 30);
+  }
+  function lsRefreshPlan() { S.lsPlan = {}; }
+  function lsMove(dk, ids) { S.lsOrder[dk] = ids; S.lsShowSug = null; keepScroll(render); }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a;
+    if (a === "lsxPlan") { e.preventDefault(); e.stopImmediatePropagation(); S.lsTab = "schedule"; S.lsMode = "map"; S.lsMapDay = b.dataset.d; S.lsPCrew = b.dataset.c || ""; S.lsPTab = "route"; window.scrollTo(0, 0); return keepScroll(render); }
+    if (!/^lsx/.test(a)) return;
+    var dk = lsDk(), handled = true;
+    if (a === "lsxSel") lsSelect(b.dataset.id, false);
+    else if (a === "lsxPTab") { S.lsPTab = b.dataset.v; keepScroll(render); }
+    else if (a === "lsxMob") { S.lsMob = b.dataset.v; keepScroll(render); }
+    else if (a === "lsxCrew") { S.lsPCrew = b.dataset.v; S.lsShowSug = null; keepScroll(render); }
+    else if (a === "lsxDay") { S.lsMapDay = b.dataset.v; S.lsShowSug = null; S.lsPCrew = null; keepScroll(render); }
+    else if (a === "lsxDayStep") { var nd = lsAddD(lsMapDayGet(), Number(b.dataset.v)); S.lsMapDay = nd; S.lsPCrew = null; S.lsShowSug = null; if (nd < S.ls.from || nd > S.ls.to) { S.lsF = Object.assign({}, S.lsF || {}, { from: lsAddD(nd, -7), to: lsAddD(nd, 21) }); S.lsGen = (S.lsGen || 0) + 1; S.ls = null; S.lsBusy = 0; } keepScroll(render); }
+    else if (a === "lsxShowSug") { S.lsShowSug = S.lsShowSug === dk ? null : dk; keepScroll(render); }
+    else if (a === "lsxUndo") { delete S.lsOrder[dk]; keepScroll(render); }
+    else if (a === "lsxStartReset") { S.lsStart[dk] = Object.assign({}, S.lsStart[dk] || {}, { address: "" }); keepScroll(render); }
+    else if (a === "lsxMv") { var r = lsPlanGet(); if (!r || !r.current) return; var o = r.current.order.slice(), i = o.indexOf(b.dataset.id), j = i + Number(b.dataset.dir); if (i < 0 || j < 0 || j >= o.length) return; o.splice(j, 0, o.splice(i, 1)[0]); lsMove(dk, o); }
+    else if (a === "lsxLockOpen") { S.lsLock = S.lsLock === b.dataset.id ? null : b.dataset.id; keepScroll(render); }
+    else if (a === "lsxLockX") { S.lsLock = null; keepScroll(render); }
+    else if (a === "lsxUnlock") run(b, async function () { await call("lsFixTime", { id: b.dataset.id, time: "" }); S.lsLock = null; lsRefreshPlan(); await lsLoad(true); toast("Unlocked"); });
+    else if (a === "lsxApply") run(b, async function () { var st = S.lsStart[dk] || {}, r = await call("lsSaveOrder", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", order: b.dataset.o.split(","), start: st.address || undefined, start_time: st.time || undefined }); delete S.lsOrder[dk]; S.lsShowSug = null; lsRefreshPlan(); S.lsRoutes = {}; await lsLoad(true); toast("Saved for the list, the map, the crew's phone and navigation: " + r.stops + " stops · back " + clk(r.finish)); });
+    else if (a === "lsxAddRoute") { S.modal = { type: "lsVisit", prop: b.dataset.id, date: lsMapDayGet(), crew: S.lsPCrew || lsP(b.dataset.id).crew_id || "" }; keepScroll(render); }
+    else handled = false;
+    if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches) return;
+    if (t.matches("[data-lsx-day]")) { e.stopImmediatePropagation(); S.lsMapDay = t.value; S.lsPCrew = null; S.lsShowSug = null; return keepScroll(render); }
+    if (t.matches("[data-lsx-pf]")) { e.stopImmediatePropagation(); if (t.dataset.lsxPf === "sort") S.lsSort = t.value; else { S.lsPF = Object.assign({}, S.lsPF); S.lsPF[t.dataset.lsxPf] = t.value; } return keepScroll(render); }
+  }, true);
+  root.addEventListener("input", function (e) { var t = e.target; if (!t.matches || !t.matches("[data-lsx-q]")) return; S.lsQ = t.value; clearTimeout(S.lsQT); S.lsQT = setTimeout(function () { keepScroll(render); }, 150); }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=lsxStart], form[data-form=lsxLock]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var fd = new FormData(f), dk = lsDk();
+    if (f.dataset.form === "lsxStart") { var cur = S.lsStart[dk] || {}, ad = String(fd.get("address") || "").trim(); S.lsStart[dk] = { time: String(fd.get("time") || ""), address: ad || cur.address || "" }; return keepScroll(render); }
+    run(f.querySelector("[type=submit]"), async function () { await call("lsFixTime", { id: f.dataset.id, time: String(fd.get("time") || "") }); S.lsLock = null; lsRefreshPlan(); await lsLoad(true); toast("Locked at " + clk(hhmm(String(fd.get("time"))))); });
+  }, true);
+  /* drag and drop to reorder stops (then the route is recalculated, not saved until you save) */
+  root.addEventListener("dragstart", function (e) { var r = e.target.closest && e.target.closest(".lsd-trow[data-vid]"); if (!r) return; S.lsDrag = r.dataset.vid; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", r.dataset.vid); } catch (x) {} r.classList.add("drag"); });
+  root.addEventListener("dragover", function (e) { var r = e.target.closest && e.target.closest(".lsd-trow[data-vid]"); if (!r || !S.lsDrag) return; e.preventDefault(); root.querySelectorAll(".lsd-trow.over").forEach(function (x) { x.classList.remove("over"); }); r.classList.add("over"); });
+  root.addEventListener("dragend", function () { S.lsDrag = null; root.querySelectorAll(".lsd-trow.over, .lsd-trow.drag").forEach(function (x) { x.classList.remove("over", "drag"); }); });
+  root.addEventListener("drop", function (e) {
+    var r = e.target.closest && e.target.closest(".lsd-trow[data-vid]"); if (!r || !S.lsDrag) return; e.preventDefault();
+    var pl = lsPlanGet(); if (!pl || !pl.current) return; var o = pl.current.order.slice(), i = o.indexOf(S.lsDrag), j = o.indexOf(r.dataset.vid); S.lsDrag = null; if (i < 0 || j < 0 || i === j) return keepScroll(render);
+    o.splice(j, 0, o.splice(i, 1)[0]); lsMove(lsDk(), o);
+  });
+  /* Moving a recurring day: show exactly what changes before anything changes. */
+  var _lsModal2 = lsModal;
+  lsModal = function (m) {
+    if (m.type === "lsVisit" && !m.id && (m.date || m.crew)) { var h0 = _lsModal2.apply(this, arguments); if (m.date) h0 = h0.replace(/name="date" value="[^"]*"/, 'name="date" value="' + esc(m.date) + '"'); if (m.crew) h0 = h0.replace('<option value="' + esc(m.crew) + '">', '<option value="' + esc(m.crew) + '" selected>'); return h0.replace("<h2>One-time visit / work order</h2>", "<h2>Add a visit to the route</h2><p class=\"muted small\">Creates a one-time visit for this day. Pick the type: regular maintenance, billable additional work, or a correction.</p>"); }
+    if (m.type !== "lsxMovePrev") return _lsModal2.apply(this, arguments);
+    var x = m.data; if (!x) return '<div class="loading">Checking which visits would change…</div>';
+    var ds = function (l) { return l.length ? l.map(function (d) { return lsDow(d).slice(0, 3) + " " + day(d); }).join(", ") : "none"; };
+    return "<h2>Move " + esc(x.name) + " to " + LS_DAYS[x.to] + "s?</h2>" +
+      (!x.allowed ? '<div class="ls-incomplete">⛔ The client only allows ' + esc(lsDaysTxt(x.days_ok)) + ". This move isn't possible unless you change the allowed days on the property first.</div>" : "") +
+      (x.multi ? '<div class="ls-incomplete">This property has several service days (' + esc(lsDaysTxt(x.from)) + "). Moving puts all of them on one day.</div>" : "") +
+      '<dl class="lsd-mv"><dt>Starts</dt><dd>' + lsDow(x.start) + " " + day(x.start) + "</dd><dt>Visits removed</dt><dd>" + ds(x.remove) + "</dd><dt>Visits added</dt><dd>" + ds(x.add) + "</dd><dt>Staying as they are</dt><dd>" + (x.stay.length ? x.stay.map(function (s) { return lsDow(s.date).slice(0, 3) + " " + day(s.date) + " (" + (s.moved ? "moved by hand" : s.status) + ")"; }).join(", ") : "none") + "</dd></dl>" +
+      '<p class="muted small">Only future visits nobody has moved or started change. The client isn\'t notified automatically: tell them about the new day.</p>' +
+      '<div class="actions"><button class="btn ghost" data-a="close">Cancel</button>' + (x.allowed ? '<button class="btn" data-a="lsxMoveGo" data-id="' + esc(x.id) + '" data-v="' + x.to + '" data-n="' + esc(x.name) + '">Move to ' + LS_DAYS[x.to] + "s</button>" : "") + "</div>";
+  };
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a=lsxMove], [data-a=lsxMoveGo]"); if (!b) return; e.preventDefault(); e.stopImmediatePropagation();
+    if (b.dataset.a === "lsxMove") { S.modal = { type: "lsxMovePrev" }; keepScroll(render); call("lsMoveDayPreview", { id: b.dataset.id, weekday: Number(b.dataset.v) }).then(function (r) { if (S.modal && S.modal.type === "lsxMovePrev") { S.modal.data = r; keepScroll(render); } }).catch(function (er) { S.modal = null; toast(er.message); keepScroll(render); }); return; }
+    var nm = b.dataset.n, to = LS_DAYS[+b.dataset.v];
+    run(b, async function () { await call("lsMoveDay", { id: b.dataset.id, weekday: Number(b.dataset.v) }); S.modal = null; S.lsSug = null; lsRefreshPlan(); await lsLoad(true); toast(nm + " is now on " + to + "s"); });
+  }, true);
+  var _lsSugCard2 = lsSugCard;
+  lsSugCard = function () {
+    var h = _lsSugCard2.apply(this, arguments); if (!h || !S.lsSug || !S.lsSug.moves) return h;
+    S.lsSug.moves.forEach(function (m) { if (!m.with || !m.with.length) return; var why = "It's " + m.with[0].mi + " mi from " + m.with[0].name + (m.with.length > 1 ? " and near " + m.with.slice(1, 3).map(function (w) { return w.name + " (" + w.mi + " mi)"; }).join(", ") : "") + ", already on " + LS_DAYS[m.to] + "s" + (m.was_with && m.was_with.length > 1 ? ". Today it's on its own trip on " + LS_DAYS[m.from] + "s" : "") + ".";
+      h = h.replace("Near " + esc(m.near), esc(why)); });
+    return h.replace(/>Move<\/button>/g, ">Review the move</button>");
+  };
   liveLoop();
   if (S.token) { render(); route(); } else render();
 })();

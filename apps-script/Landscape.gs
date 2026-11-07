@@ -10,7 +10,7 @@
    ====================================================================================================== */
 TABLES.LsProps = ["id", "name", "client_name", "client_emails", "address", "city", "lat", "lon", "contacts", "access", "notes", "features", "crew_id", "freq", "weekday", "start", "visit_min",
   "price", "billing", "included", "excluded", "status", "created_at", "sample", "checklist"];
-TABLES.LsCrews = ["id", "name", "members", "lead", "color", "skills", "hours", "sample"];
+TABLES.LsCrews = ["id", "name", "members", "lead", "color", "skills", "hours", "sample", "vehicle"];
 TABLES.LsVisits = ["id", "property_id", "date", "plan_date", "series", "kind", "crew_id", "status", "reason", "stop", "est_min", "scope", "checklist", "notes", "problems",
   "photos_before", "photos_after", "materials", "labor", "travel_min", "started_at", "done_at", "done_by", "priority", "issue_id", "price", "sample", "updated_by", "updated_at"];
 TABLES.LsIssues = ["id", "property_id", "at", "by_email", "by_name", "text", "photos", "urgency", "place", "status", "office_note", "visit_id", "source", "sample"];
@@ -268,6 +268,7 @@ ACTIONS.lsSaveProperty = function (me, b) {
 };
 ACTIONS.lsSaveCrew = function (me, b) {
   lsNeedOffice(me); var f = b.crew || {}, patch = { name: clean(f.name, 80), color: /^#[0-9a-f]{6}$/i.test(f.color || "") ? f.color : "#2f6db0", skills: clean(f.skills, 300), hours: clean(f.hours, 40) };
+  if (f.vehicle != null) patch.vehicle = clean(f.vehicle, 80);
   if (!patch.name) throw new Error("The crew needs a name.");
   var members = [].concat(f.members || []).map(normEmail).filter(function (e) { return !!findPerson(e); }); patch.members = members.join(",");
   patch.lead = f.lead && members.indexOf(normEmail(f.lead)) > -1 ? normEmail(f.lead) : (members[0] || "");
@@ -598,7 +599,9 @@ PREFETCH.lsImport = ["People", "Projects"].concat(LS_TABLES);
 var LS_WORKDAYS = [1, 2, 3, 4, 5];
 function lsCfg() {
   var pr = PropertiesService.getScriptProperties();
-  return { yard: parseJson(pr.getProperty("LS_YARD"), null), target: num(pr.getProperty("LS_TARGET")) || 75, rate: num(pr.getProperty("LS_DEFAULT_RATE")) || 32 };
+  var g = function (k, d) { var v = pr.getProperty(k); return v == null || v === "" ? d : num(v); };
+  return { yard: parseJson(pr.getProperty("LS_YARD"), null), target: num(pr.getProperty("LS_TARGET")) || 75, rate: num(pr.getProperty("LS_DEFAULT_RATE")) || 32,
+    load_min: g("LS_LOAD", 15), break_min: g("LS_BREAK", 30), break_at: g("LS_BREAK_AT", 690) };            // loading at the yard, lunch, and when lunch starts (11:30)
 }
 function lsCacheJson(key, secs, fn) {
   var c = CacheService.getScriptCache(), k = key.length > 200 ? key.slice(0, 40) + sha(key).slice(0, 32) : key, hit = c.get(k);
@@ -726,6 +729,9 @@ ACTIONS.lsSettings = function (me, b) {
     else { var g = lsGeocode(q); if (!g) throw new Error("Google couldn't find that address. Add the street number and city."); pr.setProperty("LS_YARD", JSON.stringify({ address: g.address, lat: g.lat, lon: g.lon })); }
   }
   if (b.target != null) pr.setProperty("LS_TARGET", String(Math.max(10, Math.min(500, Math.round(num(b.target)) || 75))));
+  if (b.load_min != null) pr.setProperty("LS_LOAD", String(Math.max(0, Math.min(120, Math.round(num(b.load_min))))));
+  if (b.break_min != null) pr.setProperty("LS_BREAK", String(Math.max(0, Math.min(120, Math.round(num(b.break_min))))));
+  if (b.break_at != null) { var ba = lsMinOf(lsHHMM(b.break_at)); if (ba == null) throw new Error("Write the break time like 11:30."); pr.setProperty("LS_BREAK_AT", String(ba)); }
   return { cfg: lsCfg() };
 };
 /* A typical week: which properties each crew does on each workday (biweekly ones count half). */
@@ -913,19 +919,21 @@ function lsWithFuel(seq, fuel) {
   nodes.splice(Math.max(0, Math.min(seq.length, Math.round(num(fuel.pos)))), 0, f); return nodes;
 }
 /* Walk the day: arrive, wait for a locked time or the access window, work, leave. legs[i] = drive into node i. */
-function lsTimeline(nodes, startMin, hrs, legs, back) {
-  var t = startMin, rowsOut = [], late = 0, wait = 0, drive = 0, km = 0, svc = 0, fuelMin = 0;
+function lsTimeline(nodes, startMin, hrs, legs, back, opt) {
+  opt = opt || {}; var load = opt.load || 0, brk = opt.brk || 0, brkAt = opt.brkAt == null ? 690 : opt.brkAt, took = !brk || !nodes.length, brkTotal = 0;
+  var t = startMin + load, rowsOut = [], late = 0, wait = 0, drive = 0, km = 0, svc = 0, fuelMin = 0;
   nodes.forEach(function (s, i) {
+    var b0 = 0; if (!took && t >= brkAt) { b0 = brk; t += brk; took = true; brkTotal += brk; }            // lunch when the crew leaves a stop after the break time
     var lg = legs[i] || { min: 0, km: 0 }; t += lg.min; drive += lg.min; km += lg.km;
     var arrive = t, w = 0, lt = 0, why = [];
     if (s.fixed != null) { if (t < s.fixed) w = s.fixed - t; else if (t > s.fixed + 10) { lt = t - s.fixed; why.push("late for the locked time"); } }
     if (s.wf != null && t + w < s.wf) w = s.wf - t;
-    if (s.wt != null && t + w > s.wt) { lt = Math.max(lt, t + w - s.wt); why.push("after the access window"); }
+    if (s.wt != null && t + w + s.svc > s.wt) { lt = Math.max(lt, t + w + s.svc - s.wt); why.push("runs past the access window"); }      // the work has to be done inside the window
     t += w; var st = t; t += s.svc; if (s.fuel) fuelMin += s.svc; else svc += s.svc; wait += w; late += lt;
-    rowsOut.push({ node: s, drive_min: lg.min, km: lg.km, arrive: arrive, start: st, depart: t, wait: w, late: lt, why: why });
+    rowsOut.push({ node: s, drive_min: lg.min, km: lg.km, arrive: arrive, start: st, depart: t, wait: w, late: lt, why: why, brk: b0 });
   });
   if (back) { t += back.min; drive += back.min; km += back.km; }
-  return { rows: rowsOut, drive_min: drive, km: Math.round(km * 10) / 10, svc_min: svc, fuel_min: fuelMin, wait_min: wait, late_min: late, start: startMin, finish: t, end: hrs.end,
+  return { rows: rowsOut, drive_min: drive, km: Math.round(km * 10) / 10, svc_min: svc, fuel_min: fuelMin, wait_min: wait, late_min: late, start: startMin, leave: startMin + load, load_min: load, break_min: brkTotal, finish: t, end: hrs.end,
     over_min: Math.max(0, t - hrs.end), back_min: back ? back.min : 0, back_km: back ? back.km : 0, cost: drive + wait * 0.3 + late * 30 + Math.max(0, t - hrs.end) * 3 };
 }
 /* Legs for a sequence: Google when it answers (one call), otherwise straight-line estimates scaled by k. */
@@ -948,7 +956,7 @@ function lsSolve(stops, origin, fuel, startMin, hrs, k) {
     for (var i = 0; i < seq.length; i++) {
       var j = seq[i], s = all[j], d = prev < 0 ? 0 : M[prev][j], w = 0; t += d; drive += d;
       if (s.fixed != null) { if (t < s.fixed) w = s.fixed - t; else if (t > s.fixed + 10) late += t - s.fixed; }
-      if (s.wf != null && t + w < s.wf) w = s.wf - t; if (s.wt != null && t + w > s.wt) late += t + w - s.wt;
+      if (s.wf != null && t + w < s.wf) w = s.wf - t; if (s.wt != null && t + w + s.svc > s.wt) late += t + w + s.svc - s.wt;
       t += w + s.svc; wait += w; prev = j;
     }
     if (O >= 0 && prev >= 0) { t += M[prev][O]; drive += M[prev][O]; }
@@ -969,15 +977,15 @@ function lsSolve(stops, origin, fuel, startMin, hrs, k) {
 function lsPlanRows(tl, store, y) {
   return tl.rows.map(function (r) {
     var s = r.node;
-    if (s.fuel) return { fuel: true, id: s.id, name: s.name, address: s.address, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, depart: r.depart, svc: s.svc };
+    if (s.fuel) return { fuel: true, id: s.id, name: s.name, address: s.address, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, depart: r.depart, svc: s.svc, brk: r.brk };
     var od = lsOfficeOf(store, y, s.p);
     return { visit_id: s.v.id, property_id: s.p.id, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, start: r.start, depart: r.depart, wait: r.wait, late: r.late, why: r.why, svc: s.svc, svc_src: s.src, person_min: num(s.v.est_min),
-      fixed: s.v.fixed_time || "", window: (s.wf != null || s.wt != null) ? [s.p.window_from || "", s.p.window_to || ""] : null, need: s.need, lack: s.lack,
+      fixed: s.v.fixed_time || "", window: (s.wf != null || s.wt != null) ? [s.p.window_from || "", s.p.window_to || ""] : null, need: s.need, lack: s.lack, brk: r.brk,
       office_min: od ? od.min : null, office_km: od ? od.km : null, office_real: od ? od.real : false };
   });
 }
 function lsPlanOut(nodes, tl, lg, origin, store, y) {
-  return { rows: lsPlanRows(tl, store, y), drive_min: tl.drive_min, km: tl.km, svc_min: tl.svc_min, fuel_min: tl.fuel_min, wait_min: tl.wait_min, late_min: tl.late_min, start: tl.start, finish: tl.finish, end: tl.end, over_min: tl.over_min,
+  return { rows: lsPlanRows(tl, store, y), leave: tl.leave, load_min: tl.load_min, break_min: tl.break_min, drive_min: tl.drive_min, km: tl.km, svc_min: tl.svc_min, fuel_min: tl.fuel_min, wait_min: tl.wait_min, late_min: tl.late_min, start: tl.start, finish: tl.finish, end: tl.end, over_min: tl.over_min,
     back_min: tl.back_min, back_km: tl.back_km, real: lg.real, poly: lg.poly, order: nodes.filter(function (s) { return !s.fuel; }).map(function (s) { return s.v.id; }), maps: nodes.length ? lsMapsLink(nodes, origin) : "" };
 }
 /* A crew's day, planned: the current order (saved, or the one dragged on screen) and the best one, with times. */
@@ -1001,16 +1009,16 @@ ACTIONS.lsPlanDay = function (me, b) {
   var fuel = b.nofuel ? null : parseJson(pr.getProperty(lsFuelKey(date, crew)), null); if (fuel) fuel.pos = Math.min(num(fuel.pos), stops.length);
   var ord = b.order ? [].concat(b.order).map(String) : null, cmp = lsStopCmp(props);
   var cur = stops.slice().sort(function (a, c) { if (ord) { var ia = ord.indexOf(a.v.id), ic = ord.indexOf(c.v.id); return (ia < 0 ? 999 : ia) - (ic < 0 ? 999 : ic) || cmp(a.v, c.v); } return cmp(a.v, c.v); }), saved = stops.length > 0 && stops.every(function (s) { return num(s.v.stop) > 0; });
-  var curNodes = lsWithFuel(cur, fuel), curLg = lsLegsFor(curNodes, origin, 1), curTl = lsTimeline(curNodes, startMin, hrs, curLg.legs, curLg.back), current = lsPlanOut(curNodes, curTl, curLg, origin, store, cfg.yard);
+  var curNodes = lsWithFuel(cur, fuel), curLg = lsLegsFor(curNodes, origin, 1), opt = { load: cfg.load_min, brk: cfg.break_min, brkAt: cfg.break_at }, curTl = lsTimeline(curNodes, startMin, hrs, curLg.legs, curLg.back, opt), current = lsPlanOut(curNodes, curTl, curLg, origin, store, cfg.yard);
   var suggested = null;
   if (stops.length > 1 && !b.nosuggest) {
     var est = { legs: curNodes.map(function (s, i) { var f = i ? curNodes[i - 1] : origin; return f ? lsEstLeg(f, s, 1) : { min: 0, km: 0 }; }) };
     var estDrive = est.legs.reduce(function (a, l) { return a + l.min; }, 0) + (origin ? lsEstLeg(curNodes[curNodes.length - 1], origin, 1).min : 0);
     var k = curLg.real && estDrive > 0 ? Math.max(0.6, Math.min(2.2, curTl.drive_min / estDrive)) : 1, best = null, t0 = Date.now();
-    lsSolve(cur, origin, fuel, startMin, hrs, k).forEach(function (o, i) {
+    lsSolve(cur, origin, fuel, startMin + (origin ? cfg.load_min : 0), hrs, k).forEach(function (o, i) {
       var seq = o.map(function (j) { return cur[j]; }), nodes = lsWithFuel(seq, fuel);
       var lg = i === 0 || Date.now() - t0 < 15000 ? lsLegsFor(nodes, origin, k) : { real: false, poly: "", legs: nodes.map(function (s, x) { var f = x ? nodes[x - 1] : origin; return f ? lsEstLeg(f, s, k) : { min: 0, km: 0 }; }), back: origin ? lsEstLeg(nodes[nodes.length - 1], origin, k) : null };
-      var tl = lsTimeline(nodes, startMin, hrs, lg.legs, lg.back); if (!best || tl.cost < best.tl.cost) best = { nodes: nodes, tl: tl, lg: lg };
+      var tl = lsTimeline(nodes, startMin, hrs, lg.legs, lg.back, opt); if (!best || tl.cost < best.tl.cost) best = { nodes: nodes, tl: tl, lg: lg };
     });
     var same = best && best.nodes.map(function (s) { return s.fuel ? "f" : s.v.id; }).join() === curNodes.map(function (s) { return s.fuel ? "f" : s.v.id; }).join();
     if (best && !same && best.tl.cost < curTl.cost - 0.5) suggested = lsPlanOut(best.nodes, best.tl, best.lg, origin, store, cfg.yard);
@@ -1121,3 +1129,24 @@ ACTIONS.lsHome = function (me, b) {
     : me.preview === "crew" ? rows("LsCrews").map(function (c) { return { id: c.id, name: c.name }; }) : [];
   return out;
 };
+
+/* Dispatch extras: each crew's vehicle, and the yard routine (loading, lunch) for the office. */
+var _lsHomeDisp = ACTIONS.lsHome;
+ACTIONS.lsHome = function (me, b) {
+  var out = _lsHomeDisp(me, b);
+  if (out.role === "office" || out.role === "crew") (out.crews || []).forEach(function (c) { var r = findBy("LsCrews", "id", c.id); c.vehicle = r ? r.vehicle || "" : ""; });
+  if (out.role === "office") { var cf = lsCfg(); out.day_cfg = { load_min: cf.load_min, break_min: cf.break_min, break_at: cf.break_at }; }
+  return out;
+};
+/* Before moving a property to another recurring day: which future visits move (and to which date), which stay, and any client restriction. Nothing changes. */
+ACTIONS.lsMoveDayPreview = function (me, b) {
+  lsNeedOffice(me); var p = lsProp(b.id), d = Number(b.weekday); if (!(d >= 0 && d <= 6)) throw new Error("Pick a day.");
+  var today = lsDay(new Date()), start = today; while (lsParse(start).getDay() !== d) start = lsAdd(start, 1);
+  var fut = rows("LsVisits").filter(function (v) { return v.property_id === p.id && v.series === "rec" && v.date >= today && v.status !== "canceled"; }).sort(function (a, c) { return a.date < c.date ? -1 : 1; });
+  var moves = fut.filter(function (v) { return v.status === "scheduled" && v.date === v.plan_date && !v.started_at; }), stays = fut.filter(function (v) { return moves.indexOf(v) < 0; });
+  var newDates = lsPlanDates(Object.assign({}, p, { weekday: String(d), start: start }), today, lsAdd(today, 35));
+  return { id: p.id, name: p.name, from: lsWds(p).join(","), to: d, start: start, allowed: lsDayOk(p, d), days_ok: lsDayList(p.days_ok).join(","), multi: lsWds(p).length > 1,
+    remove: moves.map(function (v) { return v.date; }), add: newDates, stay: stays.map(function (v) { return { date: v.date, status: v.status, moved: v.date !== v.plan_date }; }) };
+};
+NO_LOCK.lsMoveDayPreview = 1;
+PREFETCH.lsMoveDayPreview = ["People", "Projects"].concat(LS_TABLES);
