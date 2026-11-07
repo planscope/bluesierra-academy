@@ -617,8 +617,9 @@ function lsGeocode(q) {
   return g && !g.miss ? g : null;
 }
 function lsAddrOf(p) { return [p.address, p.city, "CA"].filter(function (x) { return String(x || "").trim(); }).join(", "); }
-/* Straight-line minutes (roads ≈ 1.35× the straight line, ~40 km/h in town). */
-function lsEstMin(a, b) { return lsKm(a, b) * 1.35 / 40 * 60; }
+/* Straight-line estimate of drive minutes: roads ≈ 1.3× the straight line; town speed (~32 km/h) for the first 6 km,
+   freeway speed (~70 km/h) after that. Only used when Google isn't asked (typical-week planning) or doesn't answer. */
+function lsEstMin(a, b) { var r = lsKm(a, b) * 1.3; return r <= 6 ? r / 32 * 60 : 6 / 32 * 60 + (r - 6) / 70 * 60; }
 /* Shortest visiting order by distance: nearest neighbour from each start, then 2-opt. Returns indexes. */
 function lsBestOrder(pts, yard) {
   var n = pts.length; if (n < 2) return pts.map(function (x, i) { return i; });
@@ -793,11 +794,12 @@ ACTIONS.lsMoveDay = function (me, b) {
    Uses logged crew time from the last 90 days when there is some, otherwise the planned minutes per visit. */
 ACTIONS.lsPricing = function (me, b) {
   if (!lsMoney(me)) throw new Error("That's #money."); var cfg = lsCfg(), W = lsWeek(), drive = {}, today = lsDay(new Date()), since = lsAdd(today, -90);
-  // Each property's share of the day's driving = the day's drive × (the driving it adds ÷ what all of them add). The last stop no longer pays the whole trip home.
+  // Each property's share of the day's driving: what it adds, plus an even part of the shared trip. The last stop no longer pays the whole trip home.
   Object.keys(W.week).forEach(function (k) {
     var list = W.week[k], total = lsTourMin(list, cfg.yard); if (!list.length) return;
-    var add = list.map(function (p) { return Math.max(0.1, total - lsTourMin(list.filter(function (x) { return x !== p; }), cfg.yard)); }), sum = add.reduce(function (a, x) { return a + x; }, 0);
-    list.forEach(function (p, i) { drive[p.id] = (drive[p.id] || 0) + total * add[i] / sum; });
+    var add = list.map(function (p) { return Math.max(0, total - lsTourMin(list.filter(function (x) { return x !== p; }), cfg.yard)); }), sum = add.reduce(function (a, x) { return a + x; }, 0);
+    // each stop pays the driving it adds; the rest (the shared trip out and back) is split evenly
+    list.forEach(function (p, i) { var share = sum > total ? total * add[i] / sum : add[i] + (total - sum) / list.length; drive[p.id] = (drive[p.id] || 0) + share; });
   });
   var logged = {}; rows("LsVisits").filter(function (v) { return v.status === "completed" && v.date >= since && v.kind === "maintenance"; }).forEach(function (v) {
     var mins = lsLabor(v).reduce(function (a, l) { return a + num(l.min); }, 0); if (!mins) return; var x = logged[v.property_id] = logged[v.property_id] || { n: 0, min: 0 }; x.n++; x.min += mins; });
