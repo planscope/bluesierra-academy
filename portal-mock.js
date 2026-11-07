@@ -681,6 +681,29 @@
       L.office.visits.push(JSON.parse(JSON.stringify(v))); L.client.visits.push(JSON.parse(JSON.stringify(v))); e.visit_id = v.id; }
     lsEstSync(L); return { status: "scheduled", visit_id: e.visit_id }; };
   ACTIONS.lsWithdraw = function (db, me, b) { var L = lsDb(db), e = lsEstAll(L).filter(function (x) { return x.id === b.id; })[0]; if (e) e.status = "withdrawn"; lsEstSync(L); return {}; };
+
+  function lsKmM(a, b) { var R = 6371, t = Math.PI / 180, x = Math.pow(Math.sin((b.lat - a.lat) * t / 2), 2) + Math.cos(a.lat * t) * Math.cos(b.lat * t) * Math.pow(Math.sin((b.lon - a.lon) * t / 2), 2); return 2 * R * Math.asin(Math.sqrt(x)); }
+  ACTIONS.lsDayRoutes = function (db, me, b) { var L = lsDb(db), g = {}, yard = L.office.yard || null;
+    L.office.visits.filter(function (v) { return v.date === b.date && v.status !== "canceled"; }).forEach(function (v) { (g[v.crew_id || ""] = g[v.crew_id || ""] || []).push(v); });
+    return { date: b.date, yard: yard, crews: Object.keys(g).map(function (cid) {
+      var vs = g[cid], prev = yard, stops = [], km = 0, site = 0;
+      vs.forEach(function (v) { var p = L.office.props.filter(function (q) { return q.id === v.property_id; })[0] || {}; site += +v.est_min || 60;
+        if (p.lat == null) { stops.push({ visit_id: v.id, drive_min: null, km: null }); return; }
+        var here = { lat: +p.lat, lon: +p.lon }, k = prev ? lsKmM(prev, here) * 1.35 : 0; km += k; stops.push({ visit_id: v.id, drive_min: Math.round(k / 40 * 60) + (prev ? 2 : 0), km: Math.round(k * 10) / 10 }); prev = here; });
+      var back = yard && prev ? Math.round(lsKmM(prev, yard) * 1.35 / 40 * 60) : 0, drive = stops.reduce(function (a, s) { return a + (s.drive_min || 0); }, 0) + back;
+      return { crew_id: cid, size: 2, stops: stops.filter(function (s) { return s.drive_min != null; }).concat(stops.filter(function (s) { return s.drive_min == null; })), back_min: back, drive_min: drive, km: Math.round(km * 10) / 10, site_min: Math.round(site / 2), day_min: Math.round(site / 2) + drive, real: false, poly: "", missing: stops.filter(function (s) { return s.drive_min == null; }).length, kept: false, revenue: 1200, maps: "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=37.45,-122.2" };
+    }) };
+  };
+  ACTIONS.lsSuggestDays = function (db) { var L = lsDb(db), p = L.office.props.filter(function (q) { return q.freq === "weekly"; }), a = p[0], c = p[1];
+    return a && c ? { moves: [{ id: a.id, name: a.name, from: +a.weekday || 4, to: 1, save_min: 35, near: c.name, biweekly: false }], save_min_week: 35, yard: !!L.office.yard } : { moves: [], save_min_week: 0 }; };
+  ACTIONS.lsMoveDay = function (db, me, b) { var L = lsDb(db); L.office.props.forEach(function (p) { if (p.id === b.id) p.weekday = String(b.weekday); }); return { id: b.id }; };
+  ACTIONS.lsFixPins = function (db) { var L = lsDb(db), none = L.office.props.filter(function (p) { return p.lat == null; }).map(function (p) { return p.name; }); return { found: [], check: [], none: none }; };
+  ACTIONS.lsSettings = function (db, me, b) { var L = lsDb(db); if (b.yard != null) L.office.yard = b.yard ? { address: b.yard + " (preview)", lat: 37.5072, lon: -122.2605 } : null; if (b.target != null) L.office.target = +b.target; return { cfg: { yard: L.office.yard || null, target: L.office.target || 75, rate: 32 } }; };
+  ACTIONS.lsPricing = function (db) { var L = lsDb(db), tgt = L.office.target || 75;
+    var rows = L.office.props.filter(function (p) { return p.freq && p.freq !== "none"; }).map(function (p, i) { var rev = +p.price || 0, vis = p.freq === "weekly" ? 4.3 : p.freq === "biweekly" ? 2.2 : 1, site = +p.visit_min || 90, drive = 10 + i * 4, hours = Math.round((site + drive * 2) * vis / 6) / 10, cost = Math.round(hours * 32);
+      return { id: p.id, name: p.name, revenue: rev, visits: vis, site_min: site, drive_min: drive, crew: 2, hours: hours, cost: cost, profit: rev - cost, per_hour: hours ? Math.round(rev / hours) : null, logged: false, no_price: !rev, no_pin: p.lat == null }; })
+      .sort(function (a, b) { return (a.per_hour == null ? -1 : a.per_hour) - (b.per_hour == null ? -1 : b.per_hour); });
+    return { rows: rows, target: tgt, rate: 32, yard: !!L.office.yard }; };
   ACTIONS.lsRoute = function () { return { stops: 3, km: 14.2, drive_min: 29, service_min: 210, missing: 0 }; };
   var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   function previewMe(db, role) {

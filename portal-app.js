@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107071451";
+  var BUILD = "20261107080557";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3473,7 +3473,7 @@
   }
   async function lsFiles(input, max) { var out = []; var fl = [].slice.call(input && input.files || [], 0, max || 5); for (var i = 0; i < fl.length; i++) out.push(await readFile(fl[i])); return out; }
   root.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^ls/.test(a) || /^lsEst/.test(a)) return;
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^ls/.test(a) || /^lsEst|^lsx/.test(a)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (a === "lsTab") { S.lsTab = b.dataset.v; S.home = "ls"; if (S.pid) return go(null); return keepScroll(render); }
     if (a === "lsReload") { S.ls = null; return keepScroll(render); }
@@ -3487,7 +3487,7 @@
     if (a === "lsTriageOpen") { if (S.ls.role !== "office") return; S.modal = { type: "lsTriage", id: b.dataset.id }; return keepScroll(render); }
     if (a === "lsSeed") return run(b, async function () { await call("lsSeed"); S.ls = null; keepScroll(render); toast("Sample data loaded (names start with SAMPLE)"); });
     if (a === "lsClearSample") { sure("Remove all the SAMPLE properties, crews, visits and requests?", function () { call("lsClearSample").then(function () { S.ls = null; keepScroll(render); toast("Sample data removed"); }).catch(function (er) { toast(er.message); }); }); return; }
-    if (a === "lsRoute") return run(b, async function () { var r = await call("lsRoute", { date: b.dataset.d, crew_id: b.dataset.c }); await lsLoad(true); toast(r.stops + " stops ordered · ~" + r.drive_min + " min driving (estimate)" + (r.missing ? " · " + r.missing + " without a map location" : "")); });
+    if (a === "lsRoute") return run(b, async function () { var r = await call("lsRoute", { date: b.dataset.d, crew_id: b.dataset.c }); await lsLoad(true); toast(r.stops + " stops ordered · ~" + r.drive_min + " min driving" + (r.real ? " (Google)" : " (estimate)") + (r.missing ? " · " + r.missing + " without a map location" : "")); });
     if (a === "lsOrd") {
       var v = lsV(b.dataset.id); if (!v) return; var list = S.ls.visits.filter(function (x) { return x.date === v.date && x.crew_id === v.crew_id && x.status !== "canceled"; }).sort(function (x, y) { return (x.stop || 99) - (y.stop || 99); });
       var i = list.indexOf(v), j = i + Number(b.dataset.dir); if (j < 0 || j >= list.length) return; var t = list[i]; list[i] = list[j]; list[j] = t;
@@ -3537,7 +3537,7 @@
     if (t.matches("form[data-form=lsLabor] input")) { var f = t.form, lab = [].map.call(f.querySelectorAll("input[type=number]"), function (x) { return { email: x.name, min: Number(x.value) || 0 }; }); call("lsVisitUpdate", { id: f.dataset.id, act: "labor", labor: lab }).then(function (r) { var v = lsV(f.dataset.id); if (v) { v.labor = r.visit.labor; v.labor_min = r.visit.labor_min; } }).catch(function (er) { toast(er.message); }); return; }
   });
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !f.matches("form[data-form^=ls]") || f.matches("form[data-form=lsEst], form[data-form=lsDecide]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !f.matches("form[data-form^=ls]") || f.matches("form[data-form=lsEst], form[data-form=lsDecide], form[data-form^=lsx]")) return; e.preventDefault(); e.stopImmediatePropagation();
     var kind = f.dataset.form, fd = new FormData(f), v = function (k) { return String(fd.get(k) == null ? "" : fd.get(k)).trim(); }, btn = f.querySelector("[type=submit]");
     run(btn, async function () {
       if (kind === "lsProp") {
@@ -3668,6 +3668,173 @@
       if (go2 === "send") { var s2 = await call("lsSendEstimate", { id: r.id }); toast("Sent as version " + s2.version + ". The client got an email."); } else toast(r.status === "revised" ? "Saved. Send it so the client approves the new version." : "Draft saved");
       S.modal = null; await lsLoad(true);
     });
+  }, true);
+  /* ======================= routes with Google drive times, every pin, better days, pricing check ======================= */
+  S.lsRoutes = {}; S.lsAll = true;
+  var _lsLoad0 = lsLoad;
+  lsLoad = function (force) { if (force) { S.lsRoutes = {}; S.lsSug = null; S.lsPrice = null; } return _lsLoad0.apply(this, arguments); };
+  function lsV(id) { return ((S.ls && S.ls.visits) || []).filter(function (v) { return v.id === id; })[0]; }
+  function lsHasPin(p) { return p && p.lat != null && p.lat !== "" && p.lon != null && p.lon !== ""; }
+  function lsNoPin() { return ((S.ls && S.ls.props) || []).filter(function (p) { return p.status !== "ended" && !lsHasPin(p); }); }
+  function lsLazy(flag, busy, action, body, done) {
+    if (S[busy]) return; S[busy] = 1;
+    call(action, body || {}).then(function (r) { S[flag] = r; }).catch(function (e) { S[flag] = { err: e.message }; }).then(function () { S[busy] = 0; if (done) done(); keepScroll(render); });
+  }
+  /* Google's encoded polyline → [[lat, lon]] (the real road line between stops). */
+  function lsDecode(str) {
+    var i = 0, lat = 0, lng = 0, out = [];
+    while (i < str.length) {
+      var b, sh = 0, res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); lat += res & 1 ? ~(res >> 1) : res >> 1;
+      sh = 0; res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); lng += res & 1 ? ~(res >> 1) : res >> 1;
+      out.push([lat / 1e5, lng / 1e5]);
+    }
+    return out;
+  }
+  function lsRoutesFor(d) {
+    if (S.lsRoutes[d]) return S.lsRoutes[d];
+    if (S.lsRoutesBusy !== d) { S.lsRoutesBusy = d; call("lsDayRoutes", { date: d }).then(function (r) { S.lsRoutes[d] = r; }).catch(function (e) { S.lsRoutes[d] = { err: e.message, crews: [] }; }).then(function () { S.lsRoutesBusy = null; keepScroll(render); }); }
+    return null;
+  }
+  function lsPinNote() {
+    var r = S.lsPinRes, miss = lsNoPin();
+    var res = r ? '<div class="card ls-pinres"><div><b>Map pins</b>' +
+      (r.found.length ? '<p class="small">✓ Found ' + r.found.length + ": " + esc(r.found.map(function (x) { return x.name; }).join(", ")) + "</p>" : "") +
+      (r.check.length ? '<p class="small">⚠️ Placed, please check (Google only found the street or area): ' + r.check.map(function (x) { return "<b>" + esc(x.name) + "</b> → " + esc(x.address); }).join("; ") + "</p>" : "") +
+      (r.none.length ? '<p class="small">✗ Not found, add the street address: ' + r.none.map(function (n) { var p = S.ls.props.filter(function (q) { return q.name === n; })[0]; return p ? '<button class="link small" data-a="modal" data-m="lsProp" data-id="' + esc(p.id) + '">' + esc(n) + "</button>" : esc(n); }).join(", ") + "</p>" : "") +
+      '</div><button class="link small" data-a="lsxPinHide">Close</button></div>' : "";
+    return res + (miss.length && !r ? '<div class="ls-pinbar">📍 ' + miss.length + " " + (miss.length === 1 ? "property has" : "properties have") + ' no map pin: ' + esc(miss.slice(0, 6).map(function (p) { return p.name; }).join(", ")) + (miss.length > 6 ? "…" : "") + ' <button class="btn sm" data-a="lsxPins">Find them with Google</button></div>' : "");
+  }
+  function lsYardRow() {
+    var y = S.ls.yard, admin = S.me && S.me.role === "admin";
+    if (S.lsYardEdit && admin) return '<form class="ls-yard" data-form="lsxYard">🏠 <input type="text" name="yard" required placeholder="Yard / office address, city" value="' + esc(y ? y.address : "") + '"><button class="btn sm" type="submit">Save</button><button type="button" class="btn ghost sm" data-a="lsxYardEdit">Cancel</button></form>';
+    return '<div class="ls-yard">🏠 <span>' + (y ? "Day starts and ends at <b>" + esc(y.address) + "</b>" : "No yard set yet: routes start at the first stop.") + "</span>" + (admin ? '<button class="link small" data-a="lsxYardEdit">' + (y ? "Change" : "Set where the day starts") + "</button>" : "") + "</div>";
+  }
+  function lsRouteCard(g) {
+    var c = lsC(g.crew_id), col = (c && c.color) || "#5b6b7a", over = g.day_min > 8 * 60, pct = Math.min(100, Math.round(g.day_min / 480 * 100)), y = S.ls.yard;
+    var list = (y ? '<div class="ls-rstop yard"><span class="ls-stop">🏠</span><div class="ls-main"><b>Yard</b></div></div>' : "") + g.stops.map(function (s, i) {
+      var v = lsV(s.visit_id) || {}, p = lsP(v.property_id) || {};
+      var leg = s.drive_min == null ? '<div class="ls-leg warn">no map pin, not in the route</div>' : (i || y) ? '<div class="ls-leg">↓ ' + lsHm(s.drive_min) + (s.km ? " · " + s.km + " km" : "") + "</div>" : "";
+      return leg + '<div class="ls-rstop"><span class="ls-stop" style="background:' + col + '">' + (i + 1) + '</span><div class="ls-main" data-a="lsOpenVisit" data-id="' + esc(s.visit_id) + '"><b>' + esc(p.name || "Visit") + '</b><small class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + " · " + lsHm(v.est_min) + " on site</small></div></div>";
+    }).join("") + (y && g.back_min ? '<div class="ls-leg">↓ ' + lsHm(g.back_min) + ' back</div><div class="ls-rstop yard"><span class="ls-stop">🏠</span><div class="ls-main"><b>Yard</b></div></div>' : "");
+    return '<div class="card ls-rcard"><div class="ls-rch">' + lsDot(c) + "<b>" + esc(c ? c.name : "No crew assigned") + '</b><span class="pill' + (g.real ? " ok" : "") + '">' + (g.real ? "Google drive times" : "Estimated") + "</span></div>" +
+      '<div class="ls-rstats"><div><span class="eyebrow">Driving</span><b>' + lsHm(g.drive_min) + "</b></div><div><span class=\"eyebrow\">On site</span><b>" + lsHm(g.site_min) + "</b><small>" + g.size + (g.size === 1 ? " person" : " people") + "</small></div>" +
+      (g.revenue != null ? '<div><span class="eyebrow">Revenue</span><b>' + m0(g.revenue) + "</b>" + (g.day_min ? "<small>" + m0(g.revenue / (g.day_min / 60)) + "/h of the day</small>" : "") + "</div>" : "") + "</div>" +
+      '<div class="ls-daybar' + (over ? " over" : "") + '"><span style="width:' + pct + '%"></span></div><small class="muted">' + lsHm(g.day_min) + " of an 8-hour day" + (over ? ' · <b class="bad-t">over</b>' : g.day_min < 6 * 60 ? " · room for " + lsHm(480 - g.day_min) + " more" : "") + "</small>" +
+      '<div class="ls-rlist">' + list + "</div>" +
+      '<div class="ls-racts">' + (g.maps ? '<a class="btn sm" href="' + esc(g.maps) + '" target="_blank" rel="noopener">Open in Google Maps</a>' : "") +
+      (!g.kept && g.stops.length > 1 && g.crew_id ? '<button class="btn ghost sm" data-a="lsxSave" data-c="' + esc(g.crew_id) + '" data-d="' + esc(S.lsMapDay || S.ls.today) + '">Save this order for the crew</button>' : g.kept && g.stops.length > 2 ? '<button class="link small" data-a="lsxReopt" data-d="' + esc(S.lsMapDay || S.ls.today) + '">Re-check the best order</button>' : "") + "</div>" +
+      (g.missing ? '<small class="muted">' + g.missing + " stop" + (g.missing === 1 ? "" : "s") + " without a map pin aren't counted in the driving.</small>" : "") + "</div>";
+  }
+  function lsRoutePanel() {
+    var d = S.lsMapDay || S.ls.today, r = lsRoutesFor(d);
+    var cards = !r ? '<div class="card ls-rload">Asking Google for drive times…</div>' : r.err ? '<div class="card">' + esc(r.err) + "</div>" : !r.crews.length ? '<div class="empty">No visits this day.</div>' : r.crews.map(lsRouteCard).join("");
+    return lsYardRow() + lsPinNote() + '<div class="ls-routegrid"><div class="card ls-mapcard"><div class="ls-mapbar"><label class="ls-tog"><input type="checkbox" data-lsx-all' + (S.lsAll ? " checked" : "") + "> Show all " + S.ls.props.filter(lsHasPin).length + ' properties</label><span class="muted small">Numbers = today\'s stops in order</span></div><div id="ls-map" data-keep="1"></div></div><div class="ls-routes">' + cards + "</div></div>";
+  }
+  function lsSugCard() {
+    if (!S.ls || S.ls.role !== "office" || S.lsSugHide) return "";
+    if (!S.lsSug) { lsLazy("lsSug", "lsSugBusy", "lsSuggestDays"); return ""; }
+    var r = S.lsSug; if (r.err || !r.moves || !r.moves.length) return "";
+    return '<div class="card ls-sug"><div class="ls-sugh"><div><span class="eyebrow">Save driving</span><b>About ' + lsHm(r.save_min_week) + " less driving a week</b><small class=\"muted\">Move these to a day the crew is already nearby. Estimated for a typical week" + (r.yard ? "" : "; set where the day starts for better suggestions") + '.</small></div><button class="link small" data-a="lsxSugHide">Hide</button></div>' +
+      r.moves.map(function (m) { return '<div class="ls-row"><div class="ls-main"><b>' + esc(m.name) + ": " + LS_DAYS[m.from] + "s → " + LS_DAYS[m.to] + 's</b><small class="muted">Near ' + esc(m.near) + (m.biweekly ? " · every other week" : "") + " · saves ~" + m.save_min + ' min a week</small></div><button class="btn sm" data-a="lsxMove" data-id="' + esc(m.id) + '" data-v="' + m.to + '" data-n="' + esc(m.name) + '">Move</button></div>'; }).join("") + "</div>";
+  }
+  function lsPriceCard() {
+    if (!S.ls || !S.ls.money) return "";
+    if (!S.lsPrice) { lsLazy("lsPrice", "lsPriceBusy", "lsPricing"); return '<div class="section-title"><h2>Pricing check</h2></div><div class="card ls-rload">Working out each agreement\'s money per crew hour…</div>'; }
+    var r = S.lsPrice; if (r.err) return '<div class="card">' + esc(r.err) + "</div>";
+    var tgt = r.target, rows = r.rows || [], below = rows.filter(function (x) { return x.per_hour != null && x.per_hour < tgt; }), tr = rows.reduce(function (a, x) { return a + x.revenue; }, 0), th = rows.reduce(function (a, x) { return a + x.hours; }, 0), tp = rows.reduce(function (a, x) { return a + x.profit; }, 0);
+    var admin = S.me && S.me.role === "admin";
+    return '<div class="section-title"><h2>Pricing check</h2><span class="muted small">Each agreement per month, crew time on site + its share of the driving</span></div>' +
+      '<div class="grid g4 ls-kpis">' + stat("Agreements pay", m0(tr) + "/mo", rows.length + " recurring properties") + stat("Crew hours", Math.round(th) + " h/mo", "on site + driving, all people") + stat("Per crew hour", th ? m0(tr / th) : "—", "goal " + m0(tgt)) + stat("Below the goal", String(below.length), below.length ? "raise or re-route these" : "all good") + "</div>" +
+      '<div class="card tbl" data-lenis-prevent><table class="t ls-price"><thead><tr><th>Property</th><th class="num">$ per crew hour</th><th class="num">Pays /mo</th><th class="num">Profit /mo</th><th class="num">Crew hours /mo</th><th class="num">On site /visit</th><th class="num">Drive /visit</th><th class="num">Visits /mo</th><th class="num">Labor cost</th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        var low = x.per_hour != null && x.per_hour < tgt;
+        return '<tr class="' + (low || x.no_price ? "low" : "") + '"><td><button class="link" data-a="lsOpenProp" data-id="' + esc(x.id) + '">' + esc(x.name) + "</button>" + (x.no_price ? ' <span class="pill bad">No price</span>' : "") + (x.no_pin ? ' <span class="pill">No pin</span>' : "") + '</td><td class="num"><b class="' + (low ? "neg" : "") + '">' + (x.per_hour == null ? "—" : m0(x.per_hour)) + '</b></td><td class="num">' + (x.no_price ? "—" : m0(x.revenue)) + '</td><td class="num"><b class="' + (x.profit < 0 ? "neg" : "") + '">' + m0(x.profit) + '</b></td><td class="num">' + x.hours + ' h</td><td class="num">' + lsHm(x.site_min) + (x.logged ? ' <small class="muted">logged</small>' : ' <small class="muted">plan</small>') + '</td><td class="num">' + (x.no_pin ? "—" : lsHm(x.drive_min)) + '</td><td class="num">' + x.visits + '</td><td class="num">' + m0(x.cost) + "</td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      '<div class="card ls-explain"><b>How this is counted</b><p class="muted small">Revenue per month from the agreement. Crew hours = person-minutes on site per visit (from what crews logged in the last 90 days, otherwise the planned minutes on the property) + driving to it × people in the truck, times visits per month. Labor cost uses each crew member\'s rate (or ' + m0(r.rate) + "/h). Driving is estimated for a typical week" + (r.yard ? ", starting and ending at the yard" : "") + ". $ per crew hour = what the agreement pays ÷ crew hours: the number to compare when you price, re-route, or drop a client.</p>" +
+      (admin ? '<form class="ls-goal" data-form="lsxGoal">Goal per crew hour: $<input type="number" name="target" min="10" max="500" step="5" value="' + tgt + '"><button class="btn ghost sm" type="submit">Save</button></form>' : "") + "</div>";
+  }
+  /* The crew's own day: one tap to drive the stops in order with Google Maps (starts from where they are). */
+  function lsCrewMapsLink(vs) {
+    var pts = vs.slice().sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }).map(function (v) { var p = lsP(v.property_id); return lsHasPin(p) ? p.lat + "," + p.lon : ""; }).filter(Boolean);
+    if (!pts.length) return "";
+    var dest = pts.pop();
+    return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" + encodeURIComponent(dest) + (pts.length ? "&waypoints=" + encodeURIComponent(pts.join("|")) : "");
+  }
+  var _lsCrewView0 = lsCrewView;
+  lsCrewView = function () {
+    var html = _lsCrewView0.apply(this, arguments);
+    try { var mine = (S.ls.visits || []).filter(function (v) { return v.date === S.ls.today && v.status !== "canceled" && v.status !== "completed"; }), u = lsCrewMapsLink(mine);
+      if (u && html.indexOf("ls-crewnav") < 0) html = '<a class="btn ls-crewnav" href="' + esc(u) + '" target="_blank" rel="noopener">🧭 Drive today\'s stops in Google Maps</a>' + html; } catch (e) {}
+    return html;
+  };
+  var _lsSchedule0 = lsSchedule;
+  lsSchedule = function () {
+    var base = _lsSchedule0.apply(this, arguments);
+    if ((S.lsMode || "list") === "map") base = base.replace(/<div class="card ls-mapcard">[\s\S]*$/, lsRoutePanel());
+    return lsSugCard() + base;
+  };
+  var _lsProps0 = lsProps;
+  lsProps = function () { return (S.ls.role === "office" ? lsPinNote() : "") + _lsProps0.apply(this, arguments); };
+  var _lsCosts0 = lsCosts;
+  lsCosts = function () { return lsPriceCard() + _lsCosts0.apply(this, arguments); };
+  /* Map: every property (grey), the yard, and each crew's route for the day on the real roads. */
+  lsMapInit = function () {
+    var el = document.getElementById("ls-map"); if (!el || !S.ls) return;
+    var d = S.lsMapDay || S.ls.today, r = S.lsRoutes[d];
+    var key = d + "|" + JSON.stringify(S.lsF || {}) + "|" + S.ls.visits.length + "|" + (r ? "r" : "") + "|" + (S.lsAll ? "a" : "") + "|" + (S.ls.yard ? S.ls.yard.lat : "");
+    if (el.dataset.k === key && el._map) return;
+    var go2 = function () {
+      if (el._map) { el._map.remove(); el._map = null; }
+      var map = el._map = L.map(el, { scrollWheelZoom: false }); el.dataset.k = key;
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin", crossOrigin: false }).addTo(map);
+      var pts = [], onRoute = {};
+      (r && r.crews || []).forEach(function (g) {
+        var c = lsC(g.crew_id), col = (c && c.color) || "#2f6db0", line = [];
+        g.stops.forEach(function (s, i) {
+          var v = lsV(s.visit_id), p = v && lsP(v.property_id); if (!lsHasPin(p)) return; onRoute[p.id] = 1;
+          var ll = [+p.lat, +p.lon]; pts.push(ll); line.push(ll);
+          L.marker(ll, { zIndexOffset: 500, icon: L.divIcon({ className: "ls-pin", html: '<span style="background:' + col + '">' + (i + 1) + "</span>", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map)
+            .bindPopup("<b>" + esc(p.name) + "</b><br>" + esc(c ? c.name : "No crew") + "<br>Stop " + (i + 1) + (s.drive_min != null && (i || S.ls.yard) ? " · " + lsHm(s.drive_min) + " drive to here" : "") + "<br>" + lsHm(v.est_min) + " on site");
+        });
+        if (g.poly) L.polyline(lsDecode(g.poly), { color: col, weight: 4, opacity: .8 }).addTo(map);
+        else if (line.length > 1) L.polyline(line, { color: col, weight: 3, opacity: .7, dashArray: "6 6" }).addTo(map);
+      });
+      if (!r) lsFiltered().filter(function (v) { return v.date === d && v.status !== "canceled"; }).forEach(function (v) { var p = lsP(v.property_id); if (lsHasPin(p)) { pts.push([+p.lat, +p.lon]); onRoute[p.id] = 1; L.marker([+p.lat, +p.lon], { icon: L.divIcon({ className: "ls-pin", html: "<span>•</span>", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map).bindPopup("<b>" + esc(p.name) + "</b>"); } });
+      if (S.lsAll) S.ls.props.forEach(function (p) {
+        if (!lsHasPin(p) || onRoute[p.id] || p.status === "ended") return; var ll = [+p.lat, +p.lon]; if (!pts.length) pts.push(ll);
+        L.circleMarker(ll, { radius: 7, color: "#fff", weight: 2, fillColor: "#7d8794", fillOpacity: .9 }).addTo(map).bindTooltip(esc(p.name)).bindPopup("<b>" + esc(p.name) + "</b><br>" + esc(LS_FREQ_TXT[p.freq] || "") + (p.weekday !== "" && p.freq !== "none" ? " · " + lsDaysTxt(p.weekday) : "") + "<br>" + esc(p.address || ""));
+      });
+      var all = S.lsAll ? S.ls.props.filter(lsHasPin).map(function (p) { return [+p.lat, +p.lon]; }) : [];
+      if (S.ls.yard) { var yl = [S.ls.yard.lat, S.ls.yard.lon]; pts.push(yl); L.marker(yl, { zIndexOffset: 600, icon: L.divIcon({ className: "ls-pin yard", html: "<span>🏠</span>", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(map).bindPopup("<b>Yard</b><br>" + esc(S.ls.yard.address)); }
+      var fit = pts.concat(all);
+      if (fit.length) map.fitBounds(fit, { padding: [30, 30], maxZoom: 14 }); else map.setView([37.45, -122.15], 10);
+    };
+    if (window.L) return go2();
+    if (!document.getElementById("leaf-css")) { var l = document.createElement("link"); l.id = "leaf-css"; l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l); }
+    var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = go2; document.head.appendChild(sc);
+  };
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^lsx/.test(a)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (a === "lsxYardEdit") { S.lsYardEdit = !S.lsYardEdit; return keepScroll(render); }
+    if (a === "lsxSugHide") { S.lsSugHide = true; return keepScroll(render); }
+    if (a === "lsxPinHide") { S.lsPinRes = null; return keepScroll(render); }
+    if (a === "lsxPins") return run(b, async function () { var r = await call("lsFixPins", {}); S.lsPinRes = r; await lsLoad(true); toast((r.found.length + r.check.length) ? "📍 " + (r.found.length + r.check.length) + " placed on the map" : "Google couldn't place them: add street addresses"); });
+    if (a === "lsxSave") return run(b, async function () { var r = await call("lsRoute", { date: b.dataset.d, crew_id: b.dataset.c }); await lsLoad(true); toast("Saved: " + r.stops + " stops in order · " + lsHm(r.drive_min) + " driving" + (r.real ? "" : " (estimate)")); });
+    if (a === "lsxReopt") return run(b, async function () { S.lsRoutes[b.dataset.d] = await call("lsDayRoutes", { date: b.dataset.d, optimize: true }); keepScroll(render); });
+    if (a === "lsxMove") { var nm = b.dataset.n, to = LS_DAYS[+b.dataset.v];
+      return sure("Move " + nm + " to " + to + "s from next " + to + " on? Its future visits move; visits already done or changed by hand stay.", function () {
+        call("lsMoveDay", { id: b.dataset.id, weekday: Number(b.dataset.v) }).then(function () { S.lsSug = null; return lsLoad(true); }).then(function () { toast(nm + " is now on " + to + "s"); }).catch(function (er) { toast(er.message); }); }); }
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches || !t.matches("[data-lsx-all]")) return; e.stopImmediatePropagation();
+    S.lsAll = t.checked; keepScroll(render);
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=lsxYard], form[data-form=lsxGoal]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var fd = new FormData(f), btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "lsxYard") return run(btn, async function () { var r = await call("lsSettings", { yard: String(fd.get("yard") || "").trim() }); S.ls.yard = r.cfg.yard; S.lsYardEdit = false; S.lsRoutes = {}; S.lsSug = null; S.lsPrice = null; keepScroll(render); toast("Yard saved: " + (r.cfg.yard ? r.cfg.yard.address : "none")); });
+    run(btn, async function () { var r = await call("lsSettings", { target: Number(fd.get("target")) }); S.lsPrice = null; S.ls.target = r.cfg.target; keepScroll(render); toast("Goal: $" + r.cfg.target + " per crew hour"); });
   }, true);
   liveLoop();
   if (S.token) { render(); route(); } else render();

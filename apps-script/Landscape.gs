@@ -243,6 +243,11 @@ ACTIONS.lsSaveProperty = function (me, b) {
   if (f.billing != null) patch.billing = ["monthly", "per_visit", "quarterly", "annual"].indexOf(f.billing) > -1 ? f.billing : "monthly";
   if (f.status != null) patch.status = ["active", "paused", "ended"].indexOf(f.status) > -1 ? f.status : "active";
   ["lat", "lon"].forEach(function (k) { if (f[k] != null) patch[k] = f[k] === "" ? "" : String(Math.round(num(f[k]) * 1e6) / 1e6); });
+  // A new or changed address with no pin: ask Google (cheap, cached). No luck = no pin; the map lists it as missing.
+  if ((patch.address != null || patch.city != null) && f.lat == null && (!old || patch.address !== old.address || patch.city !== old.city)) {
+    try { var gq = lsAddrOf({ address: patch.address != null ? patch.address : old && old.address, city: patch.city != null ? patch.city : old && old.city }), gg = typeof lsGeocode === "function" && gq ? lsGeocode(gq) : null;
+      if (gg && gg.sure) { patch.lat = String(gg.lat); patch.lon = String(gg.lon); } } catch (e) { console.warn("geocode on save: " + e.message); }   // only an exact address; vague ones wait for "Find pins"
+  }
   if (old) {
     old = Object.assign({}, old);                       // update() changes the cached row in place; keep the before-picture to compare
     update("LsProps", "id", old.id, patch); lsLog(me, "property", old.id, "edited the property / agreement");
@@ -583,3 +588,216 @@ ACTIONS.lsImport = function (me, b) {
   return { made: made, skipped: skipped };
 };
 PREFETCH.lsImport = ["People", "Projects"].concat(LS_TABLES);
+
+/* ======================================================================================================
+   Routes & money per hour (stage 2). Real drive times come from Google (Apps Script's built-in Maps service:
+   no key, a daily quota, so every answer is cached for 6 hours). If Google can't answer, we fall back to the
+   straight-line estimate and say so. "Better days" and the pricing check use the cheap straight-line estimate
+   for a typical week, so they never spend the Google quota.
+   ====================================================================================================== */
+var LS_WORKDAYS = [1, 2, 3, 4, 5];
+function lsCfg() {
+  var pr = PropertiesService.getScriptProperties();
+  return { yard: parseJson(pr.getProperty("LS_YARD"), null), target: num(pr.getProperty("LS_TARGET")) || 75, rate: num(pr.getProperty("LS_DEFAULT_RATE")) || 32 };
+}
+function lsCacheJson(key, secs, fn) {
+  var c = CacheService.getScriptCache(), k = key.length > 200 ? key.slice(0, 40) + sha(key).slice(0, 32) : key, hit = c.get(k);
+  if (hit) return JSON.parse(hit);
+  var v = fn(); if (v) { try { c.put(k, JSON.stringify(v), secs); } catch (e) {} } return v;
+}
+/* Google's geocoder, limited to the Bay Area. sure = an exact street address (not a street, town or guess). */
+function lsGeocode(q) {
+  q = String(q || "").trim(); if (!q) return null;
+  var g = lsCacheJson("geo2:" + q.toLowerCase(), 21600, function () {
+    var r = Maps.newGeocoder().setRegion("us").setBounds(36.8, -122.7, 38.2, -121.4).geocode(q);
+    if (!r || r.status !== "OK" || !r.results || !r.results.length) return { miss: 1 };                     // remember "not found" too
+    var x = r.results[0], loc = x.geometry.location, t = x.geometry.location_type;
+    return { lat: Math.round(loc.lat * 1e6) / 1e6, lon: Math.round(loc.lng * 1e6) / 1e6, address: x.formatted_address, sure: !x.partial_match && (t === "ROOFTOP" || t === "RANGE_INTERPOLATED") };
+  });
+  return g && !g.miss ? g : null;
+}
+function lsAddrOf(p) { return [p.address, p.city, "CA"].filter(function (x) { return String(x || "").trim(); }).join(", "); }
+/* Straight-line minutes (roads ≈ 1.35× the straight line, ~40 km/h in town). */
+function lsEstMin(a, b) { return lsKm(a, b) * 1.35 / 40 * 60; }
+/* Shortest visiting order by distance: nearest neighbour from each start, then 2-opt. Returns indexes. */
+function lsBestOrder(pts, yard) {
+  var n = pts.length; if (n < 2) return pts.map(function (x, i) { return i; });
+  var cost = function (o) { var s = 0; for (var i = 1; i < o.length; i++) s += lsKm(pts[o[i - 1]], pts[o[i]]); if (yard) s += lsKm(yard, pts[o[0]]) + lsKm(pts[o[o.length - 1]], yard); return s; };
+  var best = null;
+  for (var st = 0; st < n; st++) {
+    var o = [st], left = []; for (var i = 0; i < n; i++) if (i !== st) left.push(i);
+    while (left.length) { var cur = pts[o[o.length - 1]], bi = 0; left.forEach(function (x, j) { if (lsKm(cur, pts[x]) < lsKm(cur, pts[left[bi]])) bi = j; }); o.push(left.splice(bi, 1)[0]); }
+    var improved = true; while (improved) { improved = false;
+      for (var a = 0; a < n - 1; a++) for (var b2 = a + 1; b2 < n; b2++) { var t = o.slice(0, a).concat(o.slice(a, b2 + 1).reverse(), o.slice(b2 + 1)); if (cost(t) < cost(o) - 1e-9) { o = t; improved = true; } } }
+    if (!best || cost(o) < best.c) best = { o: o, c: cost(o) };
+  }
+  return best.o;
+}
+/* One crew's day: order (kept if the office set one, else optimized), each leg's real drive time, the road line. */
+function lsRouteFor(stops, yard, keepOrder) {
+  var n = stops.length, out = { order: [], legs: [], back_min: 0, drive_min: 0, km: 0, real: false, poly: "" };
+  if (!n) return out;
+  var ord = keepOrder ? stops.map(function (x, i) { return i; }) : lsBestOrder(stops, yard);
+  var seq = ord.map(function (i) { return stops[i]; });
+  var straight = function () {
+    out.legs = seq.map(function (s, i) { var from = i ? seq[i - 1] : yard; return from ? { min: Math.round(lsEstMin(from, s)), km: Math.round(lsKm(from, s) * 13.5) / 10 } : { min: 0, km: 0 }; });
+    out.back_min = yard ? Math.round(lsEstMin(seq[n - 1], yard)) : 0;
+  };
+  try {
+    if (n === 1 && !yard) straight();
+    else {
+      var pts = (yard ? [yard] : []).concat(seq, yard ? [yard] : []);
+      var key = "dir2:" + pts.map(function (p) { return p.lat.toFixed(5) + "," + p.lon.toFixed(5); }).join("|");
+      var g = lsCacheJson(key, 21600, function () {
+        var f = Maps.newDirectionFinder().setMode(Maps.DirectionFinder.Mode.DRIVING).setOrigin(pts[0].lat, pts[0].lon).setDestination(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+        pts.slice(1, -1).forEach(function (p) { f.addWaypoint(p.lat, p.lon); });
+        var r = f.getDirections(); if (!r || r.status !== "OK" || !r.routes || !r.routes.length) return null;
+        var rt = r.routes[0]; return { legs: rt.legs.map(function (l) { return { min: Math.round(l.duration.value / 60), km: Math.round(l.distance.value / 100) / 10 }; }), poly: rt.overview_polyline ? rt.overview_polyline.points : "" };
+      });
+      if (!g) straight();
+      else { out.real = true; out.poly = g.poly;
+        if (yard) { out.legs = g.legs.slice(0, n); out.back_min = g.legs[n] ? g.legs[n].min : 0; }
+        else out.legs = [{ min: 0, km: 0 }].concat(g.legs); }
+    }
+  } catch (e) { console.warn("lsRouteFor: " + e.message); straight(); }
+  out.order = ord;
+  out.drive_min = out.legs.reduce(function (a, l) { return a + l.min; }, 0) + out.back_min;
+  out.km = Math.round(out.legs.reduce(function (a, l) { return a + l.km; }, 0) * 10) / 10;
+  return out;
+}
+function lsMapsLink(seq, yard) {
+  var pt = function (p) { return p.lat + "," + p.lon; }, all = seq.map(pt);
+  var o = yard ? pt(yard) : all.shift(), d = yard ? pt(yard) : all.pop() || o;
+  return "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" + encodeURIComponent(o) + "&destination=" + encodeURIComponent(d) + (all.length ? "&waypoints=" + encodeURIComponent(all.join("|")) : "");
+}
+/* The day on the map: one route per crew with real drive times, time on site, the total against an 8-hour day, and revenue. */
+ACTIONS.lsDayRoutes = function (me, b) {
+  lsNeedOffice(me); var date = dateOrEmpty(b.date) || lsDay(new Date()), cfg = lsCfg(), money = lsMoney(me), groups = {};
+  rows("LsVisits").filter(function (v) { return v.date === date && v.status !== "canceled"; }).forEach(function (v) { (groups[v.crew_id || ""] = groups[v.crew_id || ""] || []).push(v); });
+  var props = {}; rows("LsProps").forEach(function (p) { props[p.id] = p; });
+  var crews = Object.keys(groups).map(function (cid) {
+    var vs = groups[cid].sort(function (a, c) { return (num(a.stop) || 99) - (num(c.stop) || 99); }), cw = cid ? findBy("LsCrews", "id", cid) : null, size = Math.max(1, splitIds(cw && cw.members).length || 2);
+    var keep = vs.every(function (v) { return num(v.stop) > 0; }) && !b.optimize;
+    var withLoc = vs.filter(function (v) { var p = props[v.property_id]; return p && p.lat && p.lon; }), noLoc = vs.filter(function (v) { return withLoc.indexOf(v) < 0; });
+    var stops = withLoc.map(function (v) { var p = props[v.property_id]; return { lat: num(p.lat), lon: num(p.lon), v: v }; });
+    var r = lsRouteFor(stops, cfg.yard, keep), seq = r.order.map(function (i) { return stops[i]; });
+    var site = vs.reduce(function (a, v) { return a + num(v.est_min); }, 0) / size;
+    var o = { crew_id: cid, size: size, stops: seq.map(function (s, i) { return { visit_id: s.v.id, drive_min: r.legs[i] ? r.legs[i].min : 0, km: r.legs[i] ? r.legs[i].km : 0 }; }).concat(noLoc.map(function (v) { return { visit_id: v.id, drive_min: null, km: null }; })),
+      back_min: r.back_min, drive_min: r.drive_min, km: r.km, site_min: Math.round(site), day_min: Math.round(site + r.drive_min), real: r.real, poly: r.poly, missing: noLoc.length, kept: keep,
+      maps: seq.length ? lsMapsLink(seq, cfg.yard) : "" };
+    if (money) o.revenue = Math.round(vs.reduce(function (a, v) { return a + lsVisitRevenue(v, props[v.property_id]); }, 0));
+    return o;
+  });
+  return { date: date, yard: cfg.yard, crews: crews };
+};
+NO_LOCK.lsDayRoutes = 1;
+/* Save the order the office sees on the map (or the optimized one) as the stop numbers, with real drive times. */
+var _lsRouteBase = ACTIONS.lsRoute;
+ACTIONS.lsRoute = function (me, b) {
+  if (b.order) return _lsRouteBase(me, b);
+  lsNeedOffice(me); var r = ACTIONS.lsDayRoutes(me, { date: b.date, optimize: true }), g = r.crews.filter(function (c) { return c.crew_id === String(b.crew_id || ""); })[0];
+  if (!g) return { stops: 0, km: 0, drive_min: 0, service_min: 0, missing: 0 };
+  g.stops.forEach(function (s, i) { update("LsVisits", "id", s.visit_id, { stop: String(i + 1), travel_min: s.drive_min == null ? "" : String(s.drive_min) }); });
+  lsLog(me, "route", g.crew_id + "|" + r.date, "planned the route (" + (g.real ? "Google drive times" : "estimated") + ", " + g.drive_min + " min driving)");
+  return { stops: g.stops.length, km: g.km, drive_min: g.drive_min, service_min: g.site_min, missing: g.missing, real: g.real };
+};
+/* Put every property on the map: Google finds the ones without a pin. Unsure matches are listed to check. */
+ACTIONS.lsFixPins = function (me, b) {
+  lsNeedOffice(me); var found = [], check = [], none = [];
+  rows("LsProps").filter(function (p) { return p.status !== "ended" && (!p.lat || !p.lon || b.all); }).slice(0, 60).forEach(function (p) {
+    var q = lsAddrOf(p), g = null; try { g = lsGeocode(q); } catch (e) { console.warn("geocode: " + e.message); }
+    if (!g) { none.push(p.name); return; }
+    update("LsProps", "id", p.id, { lat: String(g.lat), lon: String(g.lon) });
+    (g.sure ? found : check).push({ id: p.id, name: p.name, address: g.address });
+  });
+  if (found.length + check.length) lsLog(me, "property", "", "found map pins for " + (found.length + check.length) + " properties");
+  return { found: found, check: check, none: none };
+};
+/* Yard (where the day starts and ends) and the $/hour goal (admin). */
+ACTIONS.lsSettings = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús changes these settings.");
+  var pr = PropertiesService.getScriptProperties();
+  if (b.yard != null) {
+    var q = clean(b.yard, 300);
+    if (!q) pr.deleteProperty("LS_YARD");
+    else { var g = lsGeocode(q); if (!g) throw new Error("Google couldn't find that address. Add the street number and city."); pr.setProperty("LS_YARD", JSON.stringify({ address: g.address, lat: g.lat, lon: g.lon })); }
+  }
+  if (b.target != null) pr.setProperty("LS_TARGET", String(Math.max(10, Math.min(500, Math.round(num(b.target)) || 75))));
+  return { cfg: lsCfg() };
+};
+/* A typical week: which properties each crew does on each workday (biweekly ones count half). */
+function lsWeek() {
+  var week = {}, props = rows("LsProps").filter(function (p) { return p.status === "active" && (p.freq === "weekly" || p.freq === "biweekly") && p.lat && p.lon; });
+  props.forEach(function (p) { lsWds(p).forEach(function (d) { var k = (p.crew_id || "") + "|" + d; (week[k] = week[k] || []).push(p); }); });
+  return { week: week, props: props };
+}
+function lsTourMin(list, yard) {
+  if (!list.length) return 0; var pts = list.map(function (p) { return { lat: num(p.lat), lon: num(p.lon) }; }), o = lsBestOrder(pts, yard), s = 0;
+  for (var i = 1; i < o.length; i++) s += lsEstMin(pts[o[i - 1]], pts[o[i]]);
+  if (yard) s += lsEstMin(yard, pts[o[0]]) + lsEstMin(pts[o[o.length - 1]], yard);
+  return s;
+}
+function lsCrewSize(cid) { var c = cid ? findBy("LsCrews", "id", cid) : null; return Math.max(1, splitIds(c && c.members).length || 2); }
+/* Better days: move a property to the day its crew is already nearby. Greedy, up to 6 moves, each saving ≥ 10 min a week,
+   never past a 9-hour day. Uses straight-line estimates for a typical week. */
+ACTIONS.lsSuggestDays = function (me, b) {
+  lsNeedOffice(me); var cfg = lsCfg(), W = lsWeek(), week = W.week, moves = [], moved = {};
+  var dayLoad = function (k, list) { return lsTourMin(list, cfg.yard) + list.reduce(function (a, p) { return a + num(p.visit_min || 60); }, 0) / lsCrewSize(k.split("|")[0]); };
+  for (var round = 0; round < 6; round++) {
+    var best = null;
+    W.props.forEach(function (p) {
+      if (moved[p.id] || lsWds(p).length !== 1) return;
+      var cid = p.crew_id || "", from = lsWds(p)[0], fk = cid + "|" + from, fl = week[fk] || [], wt = p.freq === "biweekly" ? 0.5 : 1;
+      var without = fl.filter(function (x) { return x !== p; }), saveFrom = lsTourMin(fl, cfg.yard) - lsTourMin(without, cfg.yard);
+      LS_WORKDAYS.forEach(function (d) {
+        if (d === from) return; var tk = cid + "|" + d, tl = week[tk] || []; if (!tl.length) return;      // only to a day the crew already works
+        var withP = tl.concat([p]), add = lsTourMin(withP, cfg.yard) - lsTourMin(tl, cfg.yard), save = (saveFrom - add) * wt;
+        if (dayLoad(tk, withP) > 9 * 60) return;
+        if (save >= 10 && (!best || save > best.save)) best = { p: p, from: from, to: d, save: save, fk: fk, tk: tk, near: tl.slice().sort(function (a, c) { return lsKm(p, a) - lsKm(p, c); })[0] };
+      });
+    });
+    if (!best) break;
+    week[best.fk] = week[best.fk].filter(function (x) { return x !== best.p; }); week[best.tk] = week[best.tk].concat([best.p]); moved[best.p.id] = 1;
+    moves.push({ id: best.p.id, name: best.p.name, crew_id: best.p.crew_id || "", from: best.from, to: best.to, save_min: Math.round(best.save), near: best.near ? best.near.name : "", biweekly: best.p.freq === "biweekly" });
+  }
+  var total = moves.reduce(function (a, m) { return a + m.save_min; }, 0);
+  return { moves: moves, save_min_week: total, yard: !!cfg.yard };
+};
+NO_LOCK.lsSuggestDays = 1;
+/* Apply one suggestion: new service day from the next occurrence on; future untouched visits are re-planned. */
+ACTIONS.lsMoveDay = function (me, b) {
+  lsNeedOffice(me); var p = lsProp(b.id), d = Number(b.weekday); if (!(d >= 0 && d <= 6)) throw new Error("Pick a day.");
+  var start = lsDay(new Date()); while (lsParse(start).getDay() !== d) start = lsAdd(start, 1);
+  ACTIONS.lsSaveProperty(me, { prop: { id: p.id, weekday: String(d), start: start } });
+  lsLog(me, "property", p.id, "moved to " + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d] + "s to save driving");
+  return { id: p.id, start: start };
+};
+/* Pricing check (planned): what each agreement pays per hour of crew time, including its share of the driving.
+   Uses logged crew time from the last 90 days when there is some, otherwise the planned minutes per visit. */
+ACTIONS.lsPricing = function (me, b) {
+  if (!lsMoney(me)) throw new Error("That's #money."); var cfg = lsCfg(), W = lsWeek(), drive = {}, today = lsDay(new Date()), since = lsAdd(today, -90);
+  Object.keys(W.week).forEach(function (k) {
+    var list = W.week[k], pts = list.map(function (p) { return { lat: num(p.lat), lon: num(p.lon), p: p }; }), o = lsBestOrder(pts, cfg.yard);
+    o.forEach(function (idx, i) { var from = i ? pts[o[i - 1]] : cfg.yard; var m = from ? lsEstMin(from, pts[idx]) : 0;
+      if (i === o.length - 1 && cfg.yard) m += lsEstMin(pts[idx], cfg.yard);
+      var id = pts[idx].p.id; drive[id] = (drive[id] || 0) + m; });
+  });
+  var logged = {}; rows("LsVisits").filter(function (v) { return v.status === "completed" && v.date >= since && v.kind === "maintenance"; }).forEach(function (v) {
+    var mins = lsLabor(v).reduce(function (a, l) { return a + num(l.min); }, 0); if (!mins) return; var x = logged[v.property_id] = logged[v.property_id] || { n: 0, min: 0 }; x.n++; x.min += mins; });
+  var out = rows("LsProps").filter(function (p) { return p.status === "active" && p.freq && p.freq !== "none" && !isTrue(p.sample); }).map(function (p) {
+    var days = lsWds(p).length, perMonthVisits = lsVisitsPerMonth(p.freq) * (p.freq === "weekly" || p.freq === "biweekly" ? days : 1);
+    var price = num(p.price), b2 = p.billing || "monthly", rev = !price ? 0 : b2 === "per_visit" ? price * perMonthVisits : b2 === "quarterly" ? price / 3 : b2 === "annual" ? price / 12 : price;
+    var lg = logged[p.id], siteMin = lg ? lg.min / lg.n : num(p.visit_min || 60), size = lsCrewSize(p.crew_id);
+    var cw = p.crew_id ? findBy("LsCrews", "id", p.crew_id) : null, ems = splitIds(cw && cw.members), rate = ems.length ? ems.reduce(function (a, e) { return a + lsRateOf(e); }, 0) / ems.length : cfg.rate;
+    var driveMin = (drive[p.id] || 0) / days;                              // per visit, truck minutes
+    var personHours = (siteMin + driveMin * size) * perMonthVisits / 60, cost = personHours * rate;
+    return { id: p.id, name: p.name, revenue: Math.round(rev), visits: Math.round(perMonthVisits * 10) / 10, site_min: Math.round(siteMin), drive_min: Math.round(driveMin), crew: size, hours: Math.round(personHours * 10) / 10,
+      cost: Math.round(cost), profit: Math.round(rev - cost), per_hour: personHours ? Math.round(rev / personHours) : null, logged: !!lg, no_price: !price, no_pin: !(p.lat && p.lon) };
+  }).sort(function (a, c) { return (a.per_hour == null ? -1 : a.per_hour) - (c.per_hour == null ? -1 : c.per_hour); });
+  return { rows: out, target: cfg.target, rate: cfg.rate, yard: !!cfg.yard };
+};
+NO_LOCK.lsPricing = 1;
+["lsDayRoutes", "lsFixPins", "lsSettings", "lsSuggestDays", "lsMoveDay", "lsPricing"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+/* The office sees the yard and the $/hour goal with everything else. */
+var _lsHomeEst = ACTIONS.lsHome;
+ACTIONS.lsHome = function (me, b) { var out = _lsHomeEst(me, b); if (out.role === "office") { var c = lsCfg(); out.yard = c.yard; if (out.money) out.target = c.target; } return out; };
