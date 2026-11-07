@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107132826";
+  var BUILD = "20261107133502";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4336,6 +4336,29 @@
     return h.replace('data-form="lsEst" data-issue="', 'data-form="lsEst" data-opp="' + esc(o.id) + '" data-issue="').replace('name="title" required value=""', 'name="title" required value="' + esc(o.service) + '"').replace('<textarea name="scope" required rows="4"></textarea>', '<textarea name="scope" required rows="4">' + esc(o.service + (o.reason ? ". " + o.reason : "")) + "</textarea>");
   };
   /* ---------- actions ---------- */
+  /* Stations for the whole service area straight from OpenStreetMap (the office's browser is much faster than Google's servers), kept 12 h. */
+  async function lsStationsBrowser() {
+    var pts = S.ls.props.filter(function (p) { return p.status === "active" && p.routable !== false && lsHasPin(p); }).map(function (p) { return [+p.lat, +p.lon]; }); if (S.ls.yard) pts.push([S.ls.yard.lat, S.ls.yard.lon]); if (!pts.length) return null;
+    var a = { s: 90, w: 180, n: -90, e: -180 }; pts.forEach(function (p) { a.s = Math.min(a.s, p[0]); a.n = Math.max(a.n, p[0]); a.w = Math.min(a.w, p[1]); a.e = Math.max(a.e, p[1]); });
+    var dn = function (x) { return Math.floor(x / 0.05) * 0.05; }, up = function (x) { return Math.ceil(x / 0.05) * 0.05; }; a = { s: dn(a.s - 0.06), w: dn(a.w - 0.06), n: up(a.n + 0.06), e: up(a.e + 0.06) };
+    if (a.n - a.s > 1.4 || a.e - a.w > 1.4) return null;
+    var key = "bsp-osm:" + [a.s, a.w, a.n, a.e].map(function (x) { return x.toFixed(2); }).join(",");
+    try { var c = JSON.parse(localStorage.getItem(key) || "null"); if (c && Date.now() - c.at < 12 * 3600000) return c.list; } catch (e) {}
+    var q = '[out:json][timeout:90];nwr["amenity"="fuel"](' + [a.s, a.w, a.n, a.e].map(function (x) { return x.toFixed(4); }).join(",") + ");out center tags 4000;";
+    var urls = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 75000), r = await fetch(urls[i] + "?data=" + encodeURIComponent(q), { signal: ctl.signal }); clearTimeout(tm);
+        if (!r.ok) continue; var j = await r.json(); if (!j || !Array.isArray(j.elements)) continue;
+        var list = j.elements.map(function (el) { var t = el.tags || {}, c = el.center || el; if (c.lat == null) return null;
+          return { id: el.type.charAt(0) + el.id, lat: +c.lat.toFixed(6), lon: +c.lon.toFixed(6), name: t.name || t.brand || "Gas station", brand: t.brand || "", addr: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"]].filter(Boolean).join(", "), hours: t.opening_hours || "",
+            diesel: t["fuel:diesel"] || "", gas: t["fuel:octane_87"] || t["fuel:octane_89"] || t["fuel:octane_91"] || "", hgv: t.hgv || "" }; }).filter(Boolean);
+        try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), list: list })); } catch (e) {}
+        return list;
+      } catch (e) {}
+    }
+    return null;
+  }
   function lsPlanNow() { var r = lsPlanGet(); return r && r.current ? (r.suggested && S.lsShowSug === lsDk() ? r.suggested : r.current) : null; }
   root.addEventListener("click", function (e) {
     var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a, dk, ui;
@@ -4379,7 +4402,7 @@
     var V = function (n) { return String(fd.get(n) == null ? "" : fd.get(n)).trim(); };
     if (k === "lsxAddPlace") return run(btn, async function () { await call("lsStopAdd", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", place_id: f.dataset.id, pos: Number(V("pos")), min: Number(V("min")) }); S.lsPlan = {}; ui.sup = false; keepScroll(render); toast("Stop added to the day"); });
     if (k === "lsxFuelFind") { ui.fuelT = V("fuel"); ui.trailer = !!fd.get("trailer"); ui.near = V("near"); ui.res = { busy: 1 }; keepScroll(render); var r0 = lsPlanNow();
-      return call("lsFuelFind", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", fuel: ui.fuelT, trailer: ui.trailer, near: ui.near, order: r0 ? r0.order : undefined }).then(function (r) { ui.res = r; }).catch(function (er) { ui.res = { err: er.message, stations: [] }; }).then(function () { keepScroll(render); }); }
+      return lsStationsBrowser().catch(function () { return null; }).then(function (stations) { return call("lsFuelFind", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", fuel: ui.fuelT, trailer: ui.trailer, near: ui.near, order: r0 ? r0.order : undefined, stations: stations || undefined }); }).then(function (r) { ui.res = r; }).catch(function (er) { ui.res = { err: er.message, stations: [] }; }).then(function () { keepScroll(render); }); }
     if (k === "lsxFuelAdd") { var st = ui.res.stations[+f.dataset.k];
       return run(btn, async function () { await call("lsFuelSet", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", station: { id: st.id, name: st.name, lat: st.lat, lon: st.lon, addr: st.addr }, pos: Number(V("pos")), min: Number(V("min")) }); S.lsPlan = {}; ui.fuel = false; keepScroll(render); toast("⛽ " + st.name + " added to the day"); }); }
     if (k === "lsxFuelNote") { var s2 = ui.res.stations[+f.dataset.k];

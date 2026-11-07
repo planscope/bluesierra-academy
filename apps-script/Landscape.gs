@@ -1128,7 +1128,10 @@ ACTIONS.lsFuelFind = function (me, b) {
   var pad = near === "office" ? 0.045 : 0.02, s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
   line.forEach(function (p) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lon); e = Math.max(e, p.lon); }); s -= pad; n += pad; w -= pad; e += pad;
   if (n - s > 1.2 || e - w > 1.2) { var cy = (n + s) / 2, cx = (e + w) / 2; s = cy - 0.6; n = cy + 0.6; w = cx - 0.6; e = cx + 0.6; }
-  var raw = null; try { raw = lsOsmFuel(s, w, n, e); } catch (er) { console.warn("overpass: " + er.message); }
+  // The office's browser usually brings the station list (Overpass is slow for Google's shared servers); otherwise ask from here.
+  var raw = null;
+  if (b.stations && b.stations.length) raw = lsCleanStations(b.stations).filter(function (x) { return x.lat >= s && x.lat <= n && x.lon >= w && x.lon <= e; });
+  else try { raw = lsOsmFuel(s, w, n, e); } catch (er) { console.warn("overpass: " + er.message); }
   if (!raw) return { prefs: prefs, near: near, stations: [], err: "The station map (OpenStreetMap) didn't answer. Try again in a minute.", detail: LS_OSM_ERR };
   var recs = lsFuelRecs(), seqPts = (origin ? [origin] : []).concat(stops), nS = stops.length;
   var pairs = [];                                                                       // [pos, from, to]; pos = stops before the station
@@ -1370,3 +1373,10 @@ ACTIONS.lsHome = function (me, b) {
 ["lsHome", "lsSaveProperty", "lsSaveCrew", "lsSaveVisit", "lsMoveVisits", "lsRoute", "lsVisitUpdate", "lsReportIssue", "lsTriage", "lsSaveExpense", "lsReviewExpense", "lsSetRate", "lsSeed", "lsClearSample", "lsProperty",
  "lsSaveEstimate", "lsSendEstimate", "lsDecide", "lsWithdraw", "lsEstimate", "lsDayRoutes", "lsFixPins", "lsSettings", "lsSuggestDays", "lsMoveDay", "lsPricing", "lsImport", "lsOfficeDist", "lsPropLine", "lsPlanDay", "lsSaveOrder",
  "lsFixTime", "lsFuelFind", "lsFuelNote", "lsFuelSet", "lsMoveDayPreview"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+
+function lsCleanStations(list) {
+  return [].concat(list || []).slice(0, 2000).map(function (x) {
+    if (!x || !/^[nwr]\d+$/.test(String(x.id)) || !(Math.abs(num(x.lat)) <= 90) || !(Math.abs(num(x.lon)) <= 180) || x.lat == null) return null;
+    return { id: String(x.id), lat: Math.round(num(x.lat) * 1e6) / 1e6, lon: Math.round(num(x.lon) * 1e6) / 1e6, name: clean(x.name, 80) || "Gas station", brand: clean(x.brand, 60), addr: clean(x.addr, 160), hours: clean(x.hours, 120), diesel: clean(x.diesel, 10), gas: clean(x.gas, 10), hgv: clean(x.hgv, 10) };
+  }).filter(Boolean);
+}
