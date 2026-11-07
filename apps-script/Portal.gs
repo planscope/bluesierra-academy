@@ -1253,13 +1253,34 @@ ACTIONS.qbFinance = function (me, b) {
   var cfg = qbCfg(), projects = rows("Projects").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, qb: p.qb_customer || "", status: p.status }; });
   var base = { connected: !!cfg.refresh, env: cfg.env, projects: projects, admin: me.role === "admin" };
   if (!base.connected) return base;
-  var ck = "qbf2:" + cfg.realm, hit = !b.refresh && cacheGetBig(ck);
+  if (me.role === "admin") qbWarmEnsure();
+  var hit = !b.refresh && cacheGetBig("qbf2:" + cfg.realm);
   if (hit) return Object.assign(hit, base, { cached: true });
+  return Object.assign(qbFinanceBuild(cfg), base);
+};
+/* Ask QuickBooks for the whole company picture (in parallel) and keep it 30 minutes. */
+function qbFinanceBuild(cfg) {
   qbPrefetch(["/companyinfo/" + cfg.realm]);
   qbCheck(); var data = qbCompanyFinance(); data.company = qbCfg().company;
-  if (data.warnings.length < 7) cachePutBig(ck, data, 1800);
-  return Object.assign(data, base);
-};
+  if (data.warnings.length < 7) cachePutBig("qbf2:" + cfg.realm, data, 1800);
+  return data;
+}
+/* Keep Finances warm: every 15 minutes from 6am to 10pm (Pacific), rebuild the saved copy before it expires,
+   so opening Finances never waits on QuickBooks. Read-only; a failure just leaves the old copy. */
+function qbWarm() {
+  var h = Number(Utilities.formatDate(new Date(), CONFIG.TZ, "HH")); if (h < 6 || h >= 22) return "night";
+  var cfg = qbCfg(); if (!cfg.refresh || !cfg.realm) return "off";
+  try { QB_MEMO = {}; _ROWS = {}; qbFinanceBuild(cfg); return "warm"; } catch (e) { console.warn("qbWarm: " + e.message); return "error"; }
+}
+/* Installs the 15-minute timer once (the script can already run timers; the email-reply check uses one). */
+function qbWarmEnsure() {
+  var pr = PropertiesService.getScriptProperties(); if (pr.getProperty("QB_WARM") === "2") return;
+  try {
+    var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "qbWarm"; });
+    if (!has) ScriptApp.newTrigger("qbWarm").timeBased().everyMinutes(15).create();
+    pr.setProperty("QB_WARM", "2");
+  } catch (e) { console.warn("qbWarmEnsure: " + e.message); }
+}
 /* From Finances: a QuickBooks customer/job with no project yet becomes a new portal project, already linked. */
 ACTIONS.qbNewProject = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús creates projects from QuickBooks.");
