@@ -96,7 +96,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var res, notices = [];
+  var res, notices = []; QB_MEMO = {};
   OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
@@ -1045,7 +1045,35 @@ function qbFetch(path, accept) {
   return r;
 }
 function qbTid(r) { try { var h = r.getAllHeaders() || {}; return h.intuit_tid || h["Intuit_tid"] || h["intuit-tid"] || ""; } catch (e) { return ""; } }
-function qbGet(path) { return JSON.parse(qbFetch(path).getContentText()); }
+function qbGet(path) { if (QB_MEMO[path]) return QB_MEMO[path]; return JSON.parse(qbFetch(path).getContentText()); }
+/* Speed: QuickBooks answers each request in ~0.5–1.5 s. Asking one after another made Finances take 20–30 s.
+   qbPrefetch sends a whole list at once (in parallel) and keeps the answers for this request; anything that
+   failed is simply asked again the normal way (with its usual error message). */
+var QB_MEMO = {};
+function qbUrl(path) { var cfg = qbCfg(); return QB.API[cfg.env] + "/v3/company/" + cfg.realm + path + (path.indexOf("?") > -1 ? "&" : "?") + "minorversion=" + QB.MINOR; }
+function qbQ(sql) { return "/query?query=" + encodeURIComponent(sql); }
+function qbPrefetch(paths) {
+  paths = paths.filter(function (p, i, a) { return p && a.indexOf(p) === i && !QB_MEMO[p]; }); if (!paths.length) return;
+  var send = function (list) { var tok = qbAccess(); return UrlFetchApp.fetchAll(list.map(function (p) { return { url: qbUrl(p), muteHttpExceptions: true, headers: { Authorization: "Bearer " + tok, Accept: "application/json" } }; })); };
+  try {
+    var res = send(paths), again = [];
+    res.forEach(function (r, i) { if (r.getResponseCode() === 401) again.push(i); });
+    if (again.length) { CacheService.getScriptCache().remove("qb:access"); var r2 = send(again.map(function (i) { return paths[i]; })); again.forEach(function (i, k) { res[i] = r2[k]; }); }
+    res.forEach(function (r, i) { if (r.getResponseCode() === 200) try { QB_MEMO[paths[i]] = JSON.parse(r.getContentText()); } catch (e) {} });
+  } catch (e) {}
+}
+/* Big answers (Finances) are cached in pieces: one cache entry holds at most ~100 KB. */
+function cachePutBig(key, obj, secs) {
+  var s = JSON.stringify(obj), parts = {}, n = Math.ceil(s.length / 90000); if (n > 20) return;
+  for (var i = 0; i < n; i++) parts[key + "#" + i] = s.slice(i * 90000, (i + 1) * 90000);
+  parts[key + "#n"] = String(n); try { CacheService.getScriptCache().putAll(parts, secs); } catch (e) {}
+}
+function cacheGetBig(key) {
+  var c = CacheService.getScriptCache(), n = Number(c.get(key + "#n") || 0); if (!n) return null;
+  var keys = []; for (var i = 0; i < n; i++) keys.push(key + "#" + i);
+  var got = c.getAll(keys), s = ""; for (var j = 0; j < n; j++) { if (got[keys[j]] == null) return null; s += got[keys[j]]; }
+  try { return JSON.parse(s); } catch (e) { return null; }
+}
 function qbQuery(sql) { return qbGet("/query?query=" + encodeURIComponent(sql)).QueryResponse || {}; }
 /* Every row, 1000 at a time (QuickBooks never returns more than 1000 per ask). sql has no maxresults. */
 function qbQueryAll(sql, entity) {
@@ -1167,6 +1195,13 @@ function qbExplain(e, cfg) {
 function qbCompanyFinance() {
   var t = today(), warn = [], tryIt = function (label, fn, dflt) { try { return fn(); } catch (e) { warn.push(label); return dflt; } };
   var r2 = function (n) { return Math.round(n * 100) / 100; }, d = new Date();
+  var start0 = Utilities.formatDate(new Date(d.getFullYear(), d.getMonth() - 11, 1), CONFIG.TZ, "yyyy-MM-dd");
+  qbPrefetch([qbQ("select * from Account where Active = true maxresults 1000"), qbQ("select * from Invoice where Balance > '0' startposition 1 maxresults 1000"),
+    qbQ("select * from Bill where Balance > '0' startposition 1 maxresults 1000"), qbQ("select * from Customer where Active = true maxresults 1000"),
+    "/reports/ProfitAndLoss?start_date=" + start0 + "&end_date=" + t + "&summarize_column_by=Month&accounting_method=Accrual",
+    "/reports/ProfitAndLoss?start_date=" + d.getFullYear() + "-01-01&end_date=" + t + "&accounting_method=Accrual",
+    "/reports/ProfitAndLoss?start_date=2010-01-01&end_date=" + t + "&summarize_column_by=Customers&accounting_method=Accrual",
+    CacheService.getScriptCache().get("qbv2:" + qbCfg().realm) ? "" : qbQ("select * from Vendor startposition 1 maxresults 1000")]);
   var acc = tryIt("accounts", function () { return qbQuery("select * from Account where Active = true maxresults 1000").Account || []; }, []);
   var cash = { total: 0, accounts: [] }, cards = { total: 0, accounts: [] };
   acc.forEach(function (a) {
@@ -1218,10 +1253,11 @@ ACTIONS.qbFinance = function (me, b) {
   var cfg = qbCfg(), projects = rows("Projects").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, qb: p.qb_customer || "", status: p.status }; });
   var base = { connected: !!cfg.refresh, env: cfg.env, projects: projects, admin: me.role === "admin" };
   if (!base.connected) return base;
-  var c = CacheService.getScriptCache(), ck = "qbf:" + cfg.realm, hit = !b.refresh && c.get(ck);
-  if (hit) return Object.assign(JSON.parse(hit), base, { cached: true });
+  var ck = "qbf2:" + cfg.realm, hit = !b.refresh && cacheGetBig(ck);
+  if (hit) return Object.assign(hit, base, { cached: true });
+  qbPrefetch(["/companyinfo/" + cfg.realm]);
   qbCheck(); var data = qbCompanyFinance(); data.company = qbCfg().company;
-  if (data.warnings.length < 7) try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
+  if (data.warnings.length < 7) cachePutBig(ck, data, 1800);
   return Object.assign(data, base);
 };
 /* From Finances: a QuickBooks customer/job with no project yet becomes a new portal project, already linked. */
@@ -1276,6 +1312,10 @@ function qbLinesFor(txn, cust) {
 }
 function qbLineAccount(l) { var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail || {}; return ((d.AccountRef || d.ItemRef || {}).name) || ""; }
 function qbJobMoney(cust) {
+  var since0 = Utilities.formatDate(new Date(Date.now() - 183 * 864e5), CONFIG.TZ, "yyyy-MM-dd"), t0 = today();
+  qbPrefetch([qbQ("select * from Invoice where CustomerRef = '" + cust + "' maxresults 1000"), "/reports/ProfitAndLoss?customer=" + cust + "&start_date=2010-01-01&end_date=" + t0 + "&accounting_method=Accrual",
+    qbQ("select * from Bill where Balance > '0' startposition 1 maxresults 1000"), qbQ("select * from Purchase where TxnDate >= '" + since0 + "' maxresults 1000"), qbQ("select * from Bill where TxnDate >= '" + since0 + "' maxresults 1000"),
+    qbQ("select * from TimeActivity where CustomerRef = '" + cust + "' maxresults 1000"), qbQ("select * from Payment where CustomerRef = '" + cust + "' maxresults 200"), "/customer/" + cust]);
   var t = today(), warn = [], tryIt = function (label, fn, dflt) { try { return fn(); } catch (e) { warn.push(label); return dflt; } };
   var r2 = function (n) { return Math.round(n * 100) / 100; };
   // Money in
@@ -1373,7 +1413,7 @@ function qbSend(method, path, body) {
     console.error("QuickBooks write error " + r.getResponseCode() + " " + path.split("?")[0] + " intuit_tid=" + tid + " " + String(r.getContentText()).slice(0, 300));
     throw new Error("QuickBooks said: " + (f.Detail || f.detail || f.Message || f.message || ("error " + r.getResponseCode())) + (tid ? " (ref " + tid + ")" : ""));
   }
-  CacheService.getScriptCache().remove("qbf:" + cfg.realm);           // Finances shows the change next time
+  CacheService.getScriptCache().remove("qbf2:" + cfg.realm + "#n");   // Finances shows the change next time
   return j;
 }
 function qbNeedWrite(me) {
@@ -1676,7 +1716,10 @@ function qbLogoBook() {
   return sites;
 }
 function qbSpendRows(days) {
-  var since = Utilities.formatDate(new Date(Date.now() - days * 864e5), CONFIG.TZ, "yyyy-MM-dd"), out = [], sites = qbLogoBook(), people = {};
+  var since = Utilities.formatDate(new Date(Date.now() - days * 864e5), CONFIG.TZ, "yyyy-MM-dd"), out = [];
+  qbPrefetch([qbQ("select * from Purchase where TxnDate >= '" + since + "' startposition 1 maxresults 1000"), qbQ("select * from Bill where TxnDate >= '" + since + "' startposition 1 maxresults 1000"),
+    qbQ("select * from TimeActivity where TxnDate >= '" + since + "' startposition 1 maxresults 1000"), CacheService.getScriptCache().get("qbv2:" + qbCfg().realm) ? "" : qbQ("select * from Vendor startposition 1 maxresults 1000")]);
+  var sites = qbLogoBook(), people = {};
   var push = function (type, x, who, from) {
     (x.Line || []).forEach(function (l) {
       var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail; if (!d) return;

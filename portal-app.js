@@ -1494,7 +1494,8 @@
   async function loadMoney(refresh) {
     var pid = S.pid; S.moneyBusy = S.moneyBusy || {}; if (S.moneyBusy[pid]) return; S.moneyBusy[pid] = 1; S.money = S.money || {};
     if (refresh && S.money[pid]) S.money[pid].refreshing = true;
-    try { S.money[pid] = await call("qbMoney", { projectId: pid, refresh: !!refresh }); } catch (e) { S.money[pid] = { err: e.message }; }
+    if (!S.money[pid] && !refresh) { var oldm = cacheGet("money:" + pid); if (oldm && oldm.linked) { S.money[pid] = Object.assign(oldm, { refreshing: true }); if (S.pid === pid && S.tab === "money") keepScroll(render); } }
+    try { var mr = await call("qbMoney", { projectId: pid, refresh: !!refresh }); S.money[pid] = mr; if (mr && mr.linked) cacheSet("money:" + pid, mr); } catch (e) { if (!S.money[pid] || !S.money[pid].linked) S.money[pid] = { err: e.message }; else S.money[pid].refreshing = false; }
     S.moneyBusy[pid] = 0; if (S.pid === pid && S.tab === "money") keepScroll(render);
   }
   var BUCKETS = [["labor", "Labor & payroll"], ["materials", "Materials"], ["subs", "Subs"], ["other", "Everything else"]];
@@ -1648,7 +1649,8 @@
   /* ---------------- Home → Finances (#money): the whole company, Monarch-style, from QuickBooks ---------------- */
   async function loadFin(refresh) {
     if (S.finBusy) return; S.finBusy = 1; if (refresh && S.fin) S.fin.refreshing = true;
-    try { S.fin = await call("qbFinance", { refresh: !!refresh }); } catch (e) { S.fin = { err: e.message }; }
+    if (!S.fin && !refresh) { var old = cacheGet("fin"); if (old && old.connected) { S.fin = Object.assign(old, { refreshing: true, cached: true }); } }
+    try { var fr = await call("qbFinance", { refresh: !!refresh }); S.fin = fr; if (fr && fr.connected && !fr.err) cacheSet("fin", fr); } catch (e) { if (!S.fin || !S.fin.connected) S.fin = { err: e.message }; else { S.fin.refreshing = false; toast("Couldn't refresh from QuickBooks: " + e.message); } }
     S.finBusy = 0; if (!S.pid && S.home === "finance") keepScroll(render);
   }
   async function finLink(sel) {
@@ -2182,7 +2184,7 @@
         run(b, async function () { var key = b.dataset.key; await call("qbUndo", { logId: S.spUndo[key] }); delete S.spUndo[key]; S.fin = null; if (S.spend && S.spend.fin) loadSpend("fin", S.spend.fin.params); spRefreshAll(); toast("Undone in QuickBooks"); }); return;
       case "spJump": var el = root.querySelector("#sp-nojob"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return;
       case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
-      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "" }; return keepScroll(render);
+      case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "", issue: b.dataset.issue || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
       case "close": S.modal = null; S.scDraft = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
@@ -2557,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106193744";
+  var BUILD = "20261106200120";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3131,8 +3133,9 @@
   function lsMissed(v, today) { return v.date < today && ["scheduled", "in_progress"].indexOf(v.status) > -1; }
   function lsNav(p) { var q = p.lat != null ? p.lat + "," + p.lon : [p.address, p.city].filter(Boolean).join(", "); return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(q); }
   async function lsLoad(force) {
-    if (S.lsBusy) return; S.lsBusy = 1; var f = S.lsF || {};
-    try { var r = await call("lsHome", { from: f.from, to: f.to }); S.ls = r; } catch (e) { S.ls = { err: e.message }; }
+    if (S.lsBusy) return; S.lsBusy = 1; var f = S.lsF || {}, ck = "ls:" + (f.from || "") + (f.to || "");
+    if (!S.ls) { var oldl = cacheGet(ck); if (oldl && oldl.role) { S.ls = oldl; if (!S.pid && S.home === "ls") keepScroll(render); } }
+    try { var r = await call("lsHome", { from: f.from, to: f.to }); S.ls = r; if (r && r.role) cacheSet(ck, r); } catch (e) { if (!S.ls || !S.ls.role) S.ls = { err: e.message }; else toast("Couldn't refresh: " + e.message); }
     S.lsBusy = 0; if (!S.pid && S.home === "ls") keepScroll(render);
     if (S.ls && S.ls.role && S.ls.role !== "client") lsWeather();
   }
@@ -3153,13 +3156,13 @@
     if (!S.ls.role) return '<div class="empty">Nothing here yet.</div>';
     if (S.ls.role === "crew") return lsCrewView();
     if (S.ls.role === "client") return lsClientView();
-    var t = S.lsTab || "today", tabs = [["today", "Dashboard"], ["schedule", "Schedule"], ["props", "Properties"], ["requests", "Requests"], ["crews", "Crews"]].concat(S.ls.money ? [["costs", "Costs"]] : []);
+    var t = S.lsTab || "today", tabs = [["today", "Dashboard"], ["schedule", "Schedule"], ["props", "Properties"], ["requests", "Requests"], ["est", "Estimates"], ["crews", "Crews"]].concat(S.ls.money ? [["costs", "Costs"]] : []);
     var newReq = S.ls.issues.filter(function (i) { return i.status === "new"; }).length;
-    var head = '<div class="ls-tabs">' + tabs.map(function (x) { return '<button class="chip' + (t === x[0] ? " on" : "") + '" data-a="lsTab" data-v="' + x[0] + '">' + x[1] + (x[0] === "requests" && newReq ? ' <span class="count">' + newReq + "</span>" : "") + "</button>"; }).join("") +
+    var head = '<div class="ls-tabs">' + tabs.map(function (x) { return '<button class="chip' + (t === x[0] ? " on" : "") + '" data-a="lsTab" data-v="' + x[0] + '">' + x[1] + (x[0] === "requests" && newReq ? ' <span class="count">' + newReq + "</span>" : "") + (x[0] === "est" && (S.ls.estimates || []).some(function (e) { return e.status === "revised" || e.status === "draft"; }) ? ' <span class="count">' + (S.ls.estimates || []).filter(function (e) { return e.status === "revised" || e.status === "draft"; }).length + "</span>" : "") + "</button>"; }).join("") +
       '<span class="ls-sp"></span>' + (S.me.admin && !S.ls.props.some(function (p) { return p.sample; }) && !S.ls.props.length ? '<button class="btn ghost sm" data-a="lsSeed">Load sample data</button>' : "") +
       (S.me.admin && S.ls.props.some(function (p) { return p.sample; }) ? '<button class="btn ghost sm" data-a="lsClearSample">Remove sample data</button>' : "") + "</div>" +
       (S.ls.props.some(function (p) { return p.sample; }) ? '<div class="ls-sample">Sample data is loaded (names start with SAMPLE). Remove it before going live.</div>' : "");
-    return head + (t === "schedule" ? lsSchedule() : t === "props" ? lsProps() : t === "requests" ? lsRequests() : t === "crews" ? lsCrews() : t === "costs" ? lsCosts() : lsDash());
+    return head + (t === "schedule" ? lsSchedule() : t === "props" ? lsProps() : t === "requests" ? lsRequests() : t === "est" ? lsEstimates() : t === "crews" ? lsCrews() : t === "costs" ? lsCosts() : lsDash());
   }
   /* ---- office dashboard ---- */
   function lsFilters() {
@@ -3183,7 +3186,7 @@
       '<button class="stat ls-kpi' + (attention.length ? " warn" : "") + '" data-a="lsJump" data-v="attention"><span class="eyebrow">Needs attention</span><b>' + attention.length + "</b><small>Missed, blocked or weather</small></button>" +
       '<button class="stat ls-kpi' + (urgent ? " warn" : "") + '" data-a="lsTab" data-v="requests"><span class="eyebrow">Client requests</span><b>' + newIss.length + "</b><small>" + (urgent ? urgent + " urgent" : "Waiting for the office") + "</small></button>" +
       (tot ? '<button class="stat ls-kpi" data-a="lsTab" data-v="costs"><span class="eyebrow">Profit · ' + esc(lsRangeTxt()) + '</span><b class="' + (tot.profit < 0 ? "neg" : "") + '">' + m0(tot.profit) + "</b><small>" + m0(tot.revenue) + " revenue · " + m0(tot.labor) + " labor · " + m0(tot.expenses + tot.materials + tot.shared) + " costs</small></button>"
-        : '<div class="stat ls-kpi"><span class="eyebrow">Approvals</span><b>—</b><small>Estimates & change orders come in stage 2</small></div>') + "</div>";
+        : '<button class="stat ls-kpi" data-a="lsTab" data-v="est"><span class="eyebrow">Waiting for approval</span><b>' + (S.ls.estimates || []).filter(function (e) { return e.status === "sent"; }).length + "</b><small>Estimates & change orders sent</small></button>") + "</div>";
     var crews = S.ls.crews.map(function (c) {
       var mine = tv.filter(function (v) { return v.crew_id === c.id; }).sort(function (a, b) { return (a.stop || 99) - (b.stop || 99); }), d = mine.filter(function (v) { return v.status === "completed"; }).length;
       var next = mine.filter(function (v) { return ["scheduled", "in_progress"].indexOf(v.status) > -1; })[0], load = mine.reduce(function (a, v) { return a + v.est_min; }, 0) / Math.max(1, c.members.length);
@@ -3197,6 +3200,7 @@
       '<div class="section-title"><h2>Crews today</h2><span class="muted small">' + lsDow(today) + " " + day(today) + " " + lsWxTag(today) + "</span></div>" + '<div class="card ls-list">' + (crews || '<p class="muted small">Add a crew to start.</p>') + "</div>" +
       '<div class="section-title" id="ls-attention"><h2>Needs attention</h2><span class="muted small">Missed, blocked and weather-delayed visits</span></div>' + (attn ? '<div class="card ls-list">' + attn + "</div>" : '<div class="empty">Nothing missed. 🌿</div>') +
       '<div class="section-title"><h2>New requests</h2><button class="link small" data-a="lsTab" data-v="requests">All requests →</button></div>' + (newIss.length ? '<div class="card ls-list">' + newIss.slice(0, 6).map(lsIssueRow).join("") + "</div>" : '<div class="empty">No requests waiting.</div>') +
+      ((S.ls.estimates || []).some(function (e) { return e.status === "sent" || e.status === "revised"; }) ? '<div class="section-title"><h2>Estimates waiting</h2><button class="link small" data-a="lsTab" data-v="est">All estimates →</button></div><div class="card ls-list">' + S.ls.estimates.filter(function (e) { return e.status === "sent" || e.status === "revised"; }).slice(0, 6).map(lsEstRow).join("") + "</div>" : "") +
       (over ? '<div class="section-title"><h2>Going over the labor budget</h2><span class="muted small">Actual crew time vs the time planned in the agreement</span></div>' + over : "") +
       '<div class="section-title"><h2>Seasonal opportunities</h2></div><div class="card ls-soon"><b>Coming in stage 2</b><p class="muted small">Fertilizing, mulching, pruning before the rains, gutter cleaning and irrigation checks, suggested per property from its agreement, history and crew observations, with the office deciding what goes to the client.</p></div>';
   }
@@ -3334,6 +3338,9 @@
       return '<div class="ls-client"><div class="ls-chero card"><div><div class="eyebrow">Your property</div><h2>' + esc(p.name) + '</h2><p class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + "</p>" +
         '<div class="ls-next">' + (up[0] ? "Next visit: <b>" + lsDow(up[0].date) + " " + day(up[0].date) + "</b>" + (up[0].status === "weather" ? " (moved for weather)" : "") : "No visit scheduled yet") + "</div></div>" +
         '<button class="btn" data-a="modal" data-m="lsIssue" data-id="' + esc(p.id) + '">Report an issue</button></div>' +
+        (function () { var mine = (S.ls.estimates || []).filter(function (e) { return e.property_id === p.id; }), wait = mine.filter(function (e) { return e.status === "sent"; });
+          return (wait.length ? '<div class="section-title"><h2>Waiting for your approval</h2></div>' + wait.map(function (e) { return '<div class="card ls-estwait"><div><div class="eyebrow">' + (e.kind === "change_order" ? "Change order" : "Estimate") + " · version " + e.version + "</div><b>" + esc(e.title) + '</b><small class="muted">' + esc((e.scope || "").slice(0, 140)) + '</small></div><div class="lew-r"><b>' + m0(e.total) + '</b><button class="btn" data-a="lsEstOpen" data-id="' + esc(e.id) + '">Review & approve</button></div></div>'; }).join("") : "") +
+            (mine.length > wait.length ? '<div class="section-title"><h2>Estimates</h2></div><div class="card ls-list">' + mine.filter(function (e) { return e.status !== "sent"; }).map(lsEstRow).join("") + "</div>" : ""); })() +
         '<div class="section-title"><h2>Your agreement</h2><span class="muted small">' + esc(LS_FREQ_TXT[p.freq] || "") + (p.price != null ? " · " + m0(p.price) + " " + ({ monthly: "per month", per_visit: "per visit", quarterly: "per quarter", annual: "per year" }[p.billing] || "") : "") + "</span></div>" +
         '<div class="grid g2"><div class="card"><b>Included</b><p class="muted small ls-pre">' + esc(p.included || "—") + '</p></div><div class="card"><b>Not included (priced separately)</b><p class="muted small ls-pre">' + esc(p.excluded || "—") + "</p></div></div>" +
         '<div class="section-title"><h2>Your requests</h2></div>' + (reqs.length ? '<div class="card ls-list">' + reqs.map(function (i) { return '<div class="ls-row"><span class="ls-urg u-' + esc(i.urgency) + '"></span><div class="ls-main"><b>' + esc(i.text.slice(0, 120)) + '</b><small class="muted">' + day(String(i.at).slice(0, 10)) + (i.office_note ? " · Blue Sierra: " + esc(i.office_note) : "") + "</small></div>" + lsIssPill(i.status) + "</div>"; }).join("") + "</div>" : '<div class="empty">No requests. Something wrong? Tap Report an issue.</div>') +
@@ -3407,9 +3414,11 @@
         '<label class="f">Note for the client<textarea name="office_note" placeholder="What we\'ll do and when">' + esc(i.office_note) + "</textarea></label>" +
         '<details class="ls-mk"' + (i.visit_id ? "" : " open") + "><summary>" + (i.visit_id ? "Work order already created" : "Create a work order") + '</summary><label class="check-line"><input type="checkbox" name="make_visit"' + (i.visit_id ? "" : " checked") + '> Schedule it</label><div class="row2"><label class="f">Date<input type="date" name="date" value="' + lsAddD(lsToday(), 2) + '"></label><label class="f">Crew<select name="crew_id">' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (pp.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
         (d.money ? '<label class="f">Price if billable<span class="ls-money">$<input type="number" name="price" step="0.01" min="0"></span></label>' : "") + "</details>" +
-        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+        '<div class="actions">' + (d.money ? '<button type="button" class="btn ghost" data-a="modal" data-m="lsEst" data-prop="' + esc(i.property_id) + '" data-issue="' + esc(i.id) + '" style="margin-right:auto">Write an estimate instead</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "lsPropView") return lsPropView();
+    if (m.type === "lsEst") return lsEstEditor(m);
+    if (m.type === "lsEstView") return lsEstView(m);
     return "";
   }
   function lsPropView() {
@@ -3423,6 +3432,7 @@
       (p.notes ? '<p class="small"><b>Service notes:</b> ' + esc(p.notes) + "</p>" : "") +
       '<h3>Visits</h3><div class="ls-list">' + (x.visits.length ? x.visits.slice(0, 20).map(lsVisitRow).join("") : '<p class="muted small">No visits yet.</p>') + "</div>" +
       '<h3>Requests</h3><div class="ls-list">' + (x.issues.length ? x.issues.map(lsIssueRow).join("") : '<p class="muted small">None.</p>') + "</div>" +
+      '<h3>Estimates & change orders' + (office && S.ls.money ? ' <button class="link small" data-a="modal" data-m="lsEst" data-prop="' + esc(p.id) + '">＋ New</button>' : "") + '</h3><div class="ls-list">' + (((S.ls && S.ls.estimates) || []).filter(function (e) { return e.property_id === p.id; }).map(lsEstRow).join("") || '<p class="muted small">None.</p>') + "</div>" +
       (x.log.length ? '<details class="inv-hist"><summary>History · ' + x.log.length + "</summary>" + x.log.map(function (l) { return '<div class="ih-row"><b>' + esc(l.by) + "</b> " + esc(l.text) + '<small class="muted">' + esc(l.at) + "</small></div>"; }).join("") + "</details>" : "") +
       '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div></div>';
   }
@@ -3462,7 +3472,7 @@
   }
   async function lsFiles(input, max) { var out = []; var fl = [].slice.call(input && input.files || [], 0, max || 5); for (var i = 0; i < fl.length; i++) out.push(await readFile(fl[i])); return out; }
   root.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^ls/.test(a)) return;
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^ls/.test(a) || /^lsEst/.test(a)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (a === "lsTab") { S.lsTab = b.dataset.v; S.home = "ls"; if (S.pid) return go(null); return keepScroll(render); }
     if (a === "lsReload") { S.ls = null; return keepScroll(render); }
@@ -3526,7 +3536,7 @@
     if (t.matches("form[data-form=lsLabor] input")) { var f = t.form, lab = [].map.call(f.querySelectorAll("input[type=number]"), function (x) { return { email: x.name, min: Number(x.value) || 0 }; }); call("lsVisitUpdate", { id: f.dataset.id, act: "labor", labor: lab }).then(function (r) { var v = lsV(f.dataset.id); if (v) { v.labor = r.visit.labor; v.labor_min = r.visit.labor_min; } }).catch(function (er) { toast(er.message); }); return; }
   });
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !f.matches("form[data-form^=ls]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !f.matches("form[data-form^=ls]") || f.matches("form[data-form=lsEst], form[data-form=lsDecide]")) return; e.preventDefault(); e.stopImmediatePropagation();
     var kind = f.dataset.form, fd = new FormData(f), v = function (k) { return String(fd.get(k) == null ? "" : fd.get(k)).trim(); }, btn = f.querySelector("[type=submit]");
     run(btn, async function () {
       if (kind === "lsProp") {
@@ -3562,6 +3572,100 @@
         if (v("default")) jobs.push(call("lsSetRate", { default: true, rate: v("default") }));
         await Promise.all(jobs); await lsLoad(true); toast("Rates saved"); return;
       }
+    });
+  }, true);
+  /* ---------------- Estimates & change orders ---------------- */
+  var LS_EST = { draft: ["Draft", ""], sent: ["Waiting for client", "gold"], approved: ["Approved", "ok"], scheduled: ["Approved · work order", "ok"], declined: ["Declined", "bad"], withdrawn: ["Withdrawn", ""], revised: ["Changed · needs re-approval", "bad"] };
+  function lsEstPill(st) { var x = LS_EST[st] || [st, ""]; return '<span class="pill ' + x[1] + '">' + esc(x[0]) + "</span>"; }
+  function lsE(id) { return ((S.ls && S.ls.estimates) || []).filter(function (e) { return e.id === id; })[0] || null; }
+  function lsEstRow(e) {
+    var p = lsP(e.property_id);
+    return '<div class="ls-row"><div class="ls-main" data-a="lsEstOpen" data-id="' + esc(e.id) + '"><b>' + (e.kind === "change_order" ? "Change order · " : "") + esc(e.title || "Estimate") + '</b><small class="muted">' + esc([p.name, e.version ? "v" + e.version : "not sent", e.sent_at ? "sent " + day(String(e.sent_at).slice(0, 10)) : ""].filter(Boolean).join(" · ")) + "</small></div>" +
+      (e.total != null ? "<b>" + m0(e.total) + "</b>" : "") + lsEstPill(e.status) + "</div>";
+  }
+  function lsEstimates() {
+    var f = S.lsEstF || "open", all = S.ls.estimates || [], list = all.filter(function (e) { return f === "all" || (f === "open" ? ["draft", "sent", "revised"].indexOf(e.status) > -1 : f === "won" ? ["approved", "scheduled"].indexOf(e.status) > -1 : ["declined", "withdrawn"].indexOf(e.status) > -1); });
+    var waiting = all.filter(function (e) { return e.status === "sent"; }), won = all.filter(function (e) { return ["approved", "scheduled"].indexOf(e.status) > -1; });
+    var sum = function (l) { return l.reduce(function (a, e) { return a + (e.total || 0); }, 0); };
+    return (S.ls.money ? '<div class="grid g3 ls-kpis">' + stat("Waiting for clients", m0(sum(waiting)), waiting.length + " estimate" + (waiting.length === 1 ? "" : "s")) + stat("Approved", m0(sum(won)), won.length + " → work orders") + stat("Win rate", (function () { var dec = all.filter(function (e) { return e.status === "declined"; }).length; return won.length + dec ? Math.round(won.length / (won.length + dec) * 100) + "%" : "—"; })(), "approved vs declined") + "</div>" : "") +
+      '<div class="ls-bar"><div class="chips">' + [["open", "In progress"], ["won", "Approved"], ["lost", "Declined / withdrawn"], ["all", "All"]].map(function (x) { return '<button class="chip' + (f === x[0] ? " on" : "") + '" data-a="lsEstF" data-v="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>" +
+      (S.ls.money ? '<button class="btn sm" data-a="modal" data-m="lsEst">＋ Estimate / change order</button>' : '<span class="muted small">Only Jesús and #money write estimates</span>') + "</div>" +
+      (list.length ? '<div class="card ls-list">' + list.map(lsEstRow).join("") + "</div>" : '<div class="empty">Nothing here.</div>') +
+      '<p class="muted small">Each send freezes a numbered version. The client approves exactly that version with their name; changing it afterwards needs a new approval, and its work order waits until then.</p>';
+  }
+  function lsEstEditor(m) {
+    var e = m.id ? lsE(m.id) : null, p0 = m.prop ? lsP(m.prop) : {}, iss = m.issue ? ((S.ls.issues || []).filter(function (i) { return i.id === m.issue; })[0] || {}) : {};
+    var x = e || { kind: "estimate", title: iss.text ? iss.text.slice(0, 80) : "", scope: iss.text || "", exclusions: p0.excluded || "", impact: "", proposed_date: lsAddD(lsToday(), 7), lines: [{ desc: "", qty: 1, unit: "", price: "" }], property_id: m.prop || "" };
+    var rows = (x.lines && x.lines.length ? x.lines : [{ desc: "", qty: 1, unit: "", price: "" }]).concat([{ desc: "", qty: 1, unit: "", price: "" }]);
+    var row = function (l) { return '<div class="es-line"><input name="ldesc" placeholder="Description" value="' + esc(l.desc) + '"><input name="lqty" type="number" min="0" step="0.5" value="' + esc(l.qty) + '"><input name="lunit" placeholder="unit" value="' + esc(l.unit) + '"><span class="ls-money">$<input name="lprice" type="number" min="0" step="0.01" value="' + esc(l.price) + '"></span><b class="es-amt">' + (l.price ? money((+l.qty || 0) * (+l.price || 0)) : "") + "</b></div>"; };
+    return "<h2>" + (e ? "Edit " : "New ") + (x.kind === "change_order" ? "change order" : "estimate") + "</h2>" +
+      (e && ["approved", "scheduled"].indexOf(e.status) > -1 ? '<div class="ls-note bad">The client approved version ' + e.approved_v + '. Saving a change makes a new version they must approve again, and its work order goes on hold until they do.</div>' : "") +
+      '<form class="form" data-form="lsEst" data-issue="' + esc(m.issue || (e && e.issue_id) || "") + '">' +
+      '<div class="row2"><label class="f">Property<select name="property_id" required' + (e ? " disabled" : "") + '><option value="">Pick…</option>' + S.ls.props.map(function (p) { return '<option value="' + esc(p.id) + '"' + (x.property_id === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Type<select name="kind"><option value="estimate"' + (x.kind !== "change_order" ? " selected" : "") + '>Estimate (new work)</option><option value="change_order"' + (x.kind === "change_order" ? " selected" : "") + ">Change order (changes agreed work)</option></select></label></div>" +
+      '<label class="f">Title<input type="text" name="title" required value="' + esc(x.title) + '" placeholder="e.g. Replace 3 shrubs and mulch the front beds"></label>' +
+      '<label class="f">Scope of work<textarea name="scope" required rows="4">' + esc(x.scope) + "</textarea></label>" +
+      '<div class="f"><span>Price, line by line</span><div class="es-lines"><div class="es-line es-h"><span>Description</span><span>Qty</span><span>Unit</span><span>Price</span><span>Amount</span></div>' + rows.map(row).join("") + '</div><button type="button" class="link small" data-a="lsEstRow">＋ Add a line</button><div class="es-total">Total <b data-es-total>' + money(rows.reduce(function (a, l) { return a + (+l.qty || 0) * (+l.price || 0); }, 0)) + "</b></div></div>" +
+      '<div class="row2"><label class="f">Not included<textarea name="exclusions" rows="2">' + esc(x.exclusions) + '</textarea></label><label class="f">Schedule impact<textarea name="impact" rows="2" placeholder="e.g. Adds about 3 hours to the next visit">' + esc(x.impact) + "</textarea></label></div>" +
+      '<label class="f">Proposed date<input type="date" name="proposed_date" value="' + esc(x.proposed_date) + '"></label>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn ghost" type="submit" name="go" value="save">Save draft</button><button class="btn" type="submit" name="go" value="send">Save & send to client</button></div></form>';
+  }
+  function lsEstView(m) {
+    var e = lsE(m.id); if (!e) return '<p class="muted">Not found.</p><div class="actions"><button class="btn ghost" data-a="close">Close</button></div>';
+    var p = lsP(e.property_id), client = S.ls.role === "client", log = (S.lsEstLog && S.lsEstLog.id === e.id) ? S.lsEstLog.log : [];
+    var lines = '<div class="es-view"><div class="es-line es-h"><span>Description</span><span>Qty</span><span>Unit</span>' + (e.total != null ? "<span>Price</span><span>Amount</span>" : "") + "</div>" + (e.lines || []).map(function (l) { return '<div class="es-line"><span>' + esc(l.desc) + "</span><span>" + esc(l.qty) + "</span><span>" + esc(l.unit || "") + "</span>" + (e.total != null ? "<span>" + money(l.price) + "</span><b>" + money(l.amount) + "</b>" : "") + "</div>"; }).join("") + (e.total != null ? '<div class="es-total">Total <b>' + money(e.total) + "</b></div>" : "") + "</div>";
+    var body = '<div class="es-head"><div><div class="eyebrow">' + (e.kind === "change_order" ? "Change order" : "Estimate") + " · " + esc(p.name || "") + (e.version ? " · version " + e.version : "") + "</div><h2>" + esc(e.title || "") + "</h2></div>" + lsEstPill(e.status) + "</div>" +
+      '<h3>Scope of work</h3><p class="ls-pre">' + esc(e.scope || "") + "</p>" + lines +
+      '<div class="ls-agree"><div><b>Not included</b><p class="muted small ls-pre">' + esc(e.exclusions || "—") + '</p></div><div><b>Schedule</b><p class="muted small ls-pre">' + esc(e.impact || "No change") + (e.proposed_date ? "\nProposed date: " + day(e.proposed_date) : "") + "</p></div></div>";
+    if (e.approved_v) body += '<div class="ls-note">✅ Approved by <b>' + esc(e.approved_name) + "</b> · version " + e.approved_v + (e.approved_at ? " · " + esc(e.approved_at) : "") + (e.approved_hash && !client ? ' · fingerprint <code>' + esc(e.approved_hash) + "</code>" : "") + "</div>";
+    if (e.status === "declined") body += '<div class="ls-note bad">Declined' + (e.declined_reason ? ": " + esc(e.declined_reason) : "") + "</div>";
+    if (client && e.status === "sent") {
+      body += '<form class="form es-sign" data-form="lsDecide" data-id="' + esc(e.id) + '" data-v="' + e.version + '"><h3>Approve this ' + (e.kind === "change_order" ? "change order" : "estimate") + '</h3><label class="f">Your full name<input name="name" required autocomplete="name"></label>' +
+        '<label class="check-line"><input type="checkbox" name="agree" required> I approve version ' + e.version + " (" + m0(e.total) + '), its scope and what\'s not included.</label>' +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="lsDecline" data-id="' + esc(e.id) + '" data-v="' + e.version + '">Decline</button><button class="btn" type="submit">✓ Approve</button></div></form>';
+    } else if (!client) {
+      body += '<div class="ls-woacts">' + (S.ls.money && e.status !== "withdrawn" ? '<button class="btn ghost sm" data-a="modal" data-m="lsEst" data-id="' + esc(e.id) + '">Edit</button>' : "") +
+        (S.ls.money && ["draft", "revised"].indexOf(e.status) > -1 ? '<button class="btn sm" data-a="lsEstSend" data-id="' + esc(e.id) + '">Send to client</button>' : "") +
+        (S.ls.money && e.status === "sent" ? '<button class="btn ghost sm" data-a="lsEstPhone" data-id="' + esc(e.id) + '" data-v="' + e.version + '">Record approval given by phone</button>' : "") +
+        (S.ls.money && ["draft", "sent", "revised", "declined"].indexOf(e.status) > -1 ? '<button class="btn ghost sm" data-a="lsEstWithdraw" data-id="' + esc(e.id) + '">Withdraw</button>' : "") +
+        (e.visit_id ? '<button class="btn ghost sm" data-a="lsOpenVisit" data-id="' + esc(e.visit_id) + '">Open the work order</button>' : "") + "</div>" +
+        ((e.history || []).length ? '<details class="inv-hist"><summary>Versions sent · ' + e.history.length + "</summary>" + e.history.map(function (h) { return '<div class="ih-row"><b>v' + h.v + "</b> " + esc(h.by) + (h.total != null ? " · " + money(h.total) : "") + ' · <code>' + esc(h.hash) + '</code><small class="muted">' + esc(h.at) + "</small></div>"; }).join("") + "</details>" : "") +
+        (log.length ? '<details class="inv-hist"><summary>History · ' + log.length + "</summary>" + log.map(function (l) { return '<div class="ih-row"><b>' + esc(l.by) + "</b> " + esc(l.text) + '<small class="muted">' + esc(l.at) + "</small></div>"; }).join("") + "</details>" : "");
+    }
+    return '<div class="es-doc">' + body + '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div></div>';
+  }
+  function lsEstFormData(f) {
+    var d = [].map.call(f.querySelectorAll(".es-line:not(.es-h)"), function (r) { return { desc: (r.querySelector("[name=ldesc]") || {}).value || "", qty: (r.querySelector("[name=lqty]") || {}).value || 1, unit: (r.querySelector("[name=lunit]") || {}).value || "", price: (r.querySelector("[name=lprice]") || {}).value || 0 }; });
+    return d.filter(function (l) { return l.desc.trim(); });
+  }
+  root.addEventListener("input", function (e) {
+    var f = e.target.closest && e.target.closest("form[data-form=lsEst]"); if (!f || !e.target.closest(".es-line")) return;
+    var tot = 0; f.querySelectorAll(".es-line:not(.es-h)").forEach(function (r) { var q = +(r.querySelector("[name=lqty]") || {}).value || 0, pr = +(r.querySelector("[name=lprice]") || {}).value || 0; tot += q * pr; var a = r.querySelector(".es-amt"); if (a) a.textContent = pr ? money(q * pr) : ""; });
+    var t = f.querySelector("[data-es-total]"); if (t) t.textContent = money(tot);
+  });
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a; if (!/^lsEst|^lsDecline/.test(a)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (a === "lsEstF") { S.lsEstF = b.dataset.v; return keepScroll(render); }
+    if (a === "lsEstOpen") { S.modal = { type: "lsEstView", id: b.dataset.id }; S.lsEstLog = null; keepScroll(render); if (S.ls.role === "office") call("lsEstimate", { id: b.dataset.id }).then(function (r) { S.lsEstLog = { id: b.dataset.id, log: r.log }; keepScroll(render); }).catch(function () {}); return; }
+    if (a === "lsEstRow") { var box = b.parentNode.querySelector(".es-lines"), rr = box.querySelector(".es-line:not(.es-h)"); var n = rr.cloneNode(true); n.querySelectorAll("input").forEach(function (i) { i.value = i.name === "lqty" ? "1" : ""; }); n.querySelector(".es-amt").textContent = ""; box.appendChild(n); n.querySelector("input").focus(); return; }
+    if (a === "lsEstSend") return run(b, async function () { var r = await call("lsSendEstimate", { id: b.dataset.id }); await lsLoad(true); toast("Sent as version " + r.version + ". The client got an email."); });
+    if (a === "lsEstWithdraw") { sure("Withdraw this estimate? The client won't be able to approve it.", function () { call("lsWithdraw", { id: b.dataset.id }).then(function () { S.modal = null; return lsLoad(true); }).then(function () { toast("Withdrawn"); }).catch(function (er) { toast(er.message); }); }); return; }
+    if (a === "lsEstPhone") { var nm = window.prompt("Who approved it, by phone or in person? (their full name)"); if (!nm) return; return run(b, async function () { await call("lsDecide", { id: b.dataset.id, version: Number(b.dataset.v), decision: "approve", name: nm, agree: true }); S.modal = null; await lsLoad(true); toast("Approval recorded · work order created"); }); }
+    if (a === "lsDecline") { var why = window.prompt("Tell Blue Sierra why (optional): too expensive, not now, want changes…", ""); if (why === null) return; return run(b, async function () { await call("lsDecide", { id: b.dataset.id, version: Number(b.dataset.v), decision: "decline", reason: why }); S.modal = null; await lsLoad(true); toast("Declined. Blue Sierra will follow up."); }); }
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=lsEst], form[data-form=lsDecide]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var fd = new FormData(f), v = function (k) { return String(fd.get(k) == null ? "" : fd.get(k)).trim(); }, go2 = (e.submitter && e.submitter.value) || "save", btn = e.submitter || f.querySelector("[type=submit]");
+    run(btn, async function () {
+      if (f.dataset.form === "lsDecide") {
+        await call("lsDecide", { id: f.dataset.id, version: Number(f.dataset.v), decision: "approve", name: v("name"), agree: !!fd.get("agree") });
+        S.modal = null; await lsLoad(true); toast("Approved ✓ Blue Sierra will schedule the work."); return;
+      }
+      var id = S.modal.id || undefined, est = lsE(id) || {};
+      var r = await call("lsSaveEstimate", { estimate: { id: id, property_id: v("property_id") || est.property_id, issue_id: f.dataset.issue, kind: v("kind"), title: v("title"), scope: v("scope"), exclusions: v("exclusions"), impact: v("impact"), proposed_date: v("proposed_date"), lines: lsEstFormData(f) } });
+      if (go2 === "send") { var s2 = await call("lsSendEstimate", { id: r.id }); toast("Sent as version " + s2.version + ". The client got an email."); } else toast(r.status === "revised" ? "Saved. Send it so the client approves the new version." : "Draft saved");
+      S.modal = null; await lsLoad(true);
     });
   }, true);
   liveLoop();

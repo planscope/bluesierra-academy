@@ -419,6 +419,8 @@ ACTIONS.lsSeed = function (me) {
   });
   var firstSample = rows("LsVisits").filter(function (v) { return isTrue(v.sample) && v.date < today; }).slice(-1)[0];
   if (firstSample) update("LsVisits", "id", firstSample.id, { status: "scheduled", labor: "", done_at: "" });          // one missed visit to show in "Needs attention"
+  try { var sp = rows("LsProps").filter(function (p) { return isTrue(p.sample); })[0], est = ACTIONS.lsSaveEstimate(me, { estimate: { property_id: sp.id, kind: "estimate", title: "SAMPLE · Replace 3 damaged shrubs + mulch front beds", scope: "Remove 3 damaged boxwoods by the entry, plant 3 new 5-gal boxwoods, refresh mulch in the front beds (about 3 yd).", exclusions: "Irrigation changes, plants beyond the 3 listed", impact: "Adds about 3 hours on the next visit; no change to the weekly schedule", proposed_date: lsAdd(today, 9), lines: [{ desc: "5-gal boxwood, planted", qty: 3, unit: "ea", price: 85 }, { desc: "Remove and haul damaged shrubs", qty: 1, unit: "job", price: 120 }, { desc: "Mulch, delivered and spread", qty: 3, unit: "yd", price: 78 }], sample: true } });
+    if (splitIds(sp.client_emails).length) ACTIONS.lsSendEstimate(me, { id: est.id }); } catch (e) {}
   insert("LsIssues", { id: newId("li"), property_id: rows("LsProps").filter(function (p) { return isTrue(p.sample); })[0].id, at: now(), by_email: me.email, by_name: "Sample Client", text: "Sprinkler near the front walk is spraying the house (sample)", photos: "[]", urgency: "urgent", place: "Front walk", status: "new", office_note: "", visit_id: "", source: "client", sample: "yes" });
   return { ok: true };
 };
@@ -428,6 +430,126 @@ ACTIONS.lsClearSample = function (me) {
   removeWhere("LsVisits", function (v) { return isTrue(v.sample) || props[v.property_id]; });
   removeWhere("LsIssues", function (i) { return isTrue(i.sample) || props[i.property_id]; });
   removeWhere("LsExpenses", function (e) { return props[e.property_id]; });
+  removeWhere("LsEstimates", function (e) { return isTrue(e.sample) || props[e.property_id]; });
   removeWhere("LsProps", function (p) { return isTrue(p.sample); }); removeWhere("LsCrews", function (c) { return isTrue(c.sample); });
   return { ok: true };
+};
+
+/* ======================================================================================================
+   Estimates & change orders (stage 2). The office writes the scope, line items, what's not included and the
+   schedule impact, then sends it. Every send freezes a numbered version. The client approves exactly that
+   version (typed name + "I agree"), or declines with a reason. We keep who, when, which version and a
+   fingerprint of what they saw. Changing an approved estimate makes a new version that needs a new approval,
+   and its work order waits until then. An approval becomes a linked work order the office can schedule and bill.
+   ====================================================================================================== */
+TABLES.LsEstimates = ["id", "property_id", "issue_id", "visit_id", "kind", "title", "scope", "exclusions", "impact", "proposed_date", "lines", "total", "status", "version",
+  "versions", "approved_v", "approved_at", "approved_by", "approved_name", "approved_hash", "declined_reason", "sent_at", "created_by", "created_at", "updated_at", "sample"];
+LS_TABLES.push("LsEstimates");
+["lsSaveEstimate", "lsSendEstimate", "lsDecide", "lsWithdraw", "lsEstimate"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+["lsHome", "lsSaveProperty", "lsSaveCrew", "lsSaveVisit", "lsMoveVisits", "lsRoute", "lsVisitUpdate", "lsReportIssue", "lsTriage", "lsSaveExpense", "lsReviewExpense", "lsSetRate", "lsSeed", "lsClearSample", "lsProperty"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+NO_LOCK.lsEstimate = 1;
+var LS_EST_ST = ["draft", "sent", "approved", "declined", "withdrawn", "scheduled", "revised"];
+function lsEstLines(list) {
+  return [].concat(list || []).slice(0, 40).map(function (l) { var q = Math.max(0, num(l.qty) || 1), up = cents(l.price); return { desc: clean(l.desc, 300), qty: q, unit: clean(l.unit, 20), price: up, amount: cents(q * up) }; }).filter(function (l) { return l.desc; });
+}
+function lsEstSnapshot(e) { return { scope: e.scope, exclusions: e.exclusions, impact: e.impact, proposed_date: e.proposed_date, title: e.title, lines: parseJson(e.lines, []), total: num(e.total) }; }
+function lsEstHash(snap) { return sha(JSON.stringify(snap)).slice(0, 16); }
+function lsEstOut(e, role, money) {
+  var vers = parseJson(e.versions, []), cur = vers[vers.length - 1] || null, seePrice = money || role === "client";
+  var o = { id: e.id, property_id: e.property_id, issue_id: e.issue_id, visit_id: e.visit_id, kind: e.kind, status: e.status, version: num(e.version), sent_at: e.sent_at,
+    approved_v: num(e.approved_v), approved_at: e.approved_at, approved_name: e.approved_name, declined_reason: e.declined_reason, created_at: e.created_at, sample: isTrue(e.sample) };
+  // The client only ever sees what was sent (the frozen version), never a draft in progress.
+  var show = role === "client" ? cur : lsEstSnapshot(e);
+  if (show) { o.title = show.title; o.scope = show.scope; o.exclusions = show.exclusions; o.impact = show.impact; o.proposed_date = show.proposed_date; o.lines = seePrice ? show.lines : show.lines.map(function (l) { return { desc: l.desc, qty: l.qty, unit: l.unit }; }); if (seePrice) o.total = show.total; }
+  if (role === "office") o.history = vers.map(function (v) { return { v: v.v, at: v.at, by: personName(v.by), total: seePrice ? v.total : undefined, hash: v.hash }; }), o.approved_hash = e.approved_hash, o.approved_by = e.approved_by ? personName(e.approved_by) : "";
+  return o;
+}
+function lsCanSeeEst(me, e) { var role = lsRole(me); if (role === "office") return true; if (role !== "client") return false; return e.status !== "draft" && e.status !== "withdrawn" && num(e.version) > 0 && lsCanSeeProp(me, lsProp(e.property_id)); }
+ACTIONS.lsEstimate = function (me, b) {
+  var e = findBy("LsEstimates", "id", b.id); if (!e || !lsCanSeeEst(me, e)) throw new Error("Estimate not found.");
+  return { estimate: lsEstOut(e, lsRole(me), lsMoney(me)), log: lsRole(me) === "office" ? rows("LsLog").filter(function (l) { return l.ref === e.id; }).reverse().map(function (l) { return { at: l.at, by: personName(l.by), text: l.text }; }) : [] };
+};
+/* Write or change an estimate (prices: admin + #money). Changing one the client already approved makes it a new version to approve again. */
+ACTIONS.lsSaveEstimate = function (me, b) {
+  if (!lsMoney(me)) throw new Error("Only Jesús and #money write estimates."); var f = b.estimate || {}, e = f.id ? findBy("LsEstimates", "id", f.id) : null;
+  if (f.id && !e) throw new Error("Estimate not found.");
+  var p = lsProp(e ? e.property_id : f.property_id), lines = lsEstLines(f.lines);
+  if (!lines.length) throw new Error("Add at least one line with a price.");
+  var patch = { kind: f.kind === "change_order" ? "change_order" : "estimate", title: clean(f.title, 200) || "Additional work", scope: clean(f.scope, 4000), exclusions: clean(f.exclusions, 2000), impact: clean(f.impact, 500),
+    proposed_date: dateOrEmpty(f.proposed_date), lines: JSON.stringify(lines), total: String(cents(lines.reduce(function (a, l) { return a + l.amount; }, 0))), updated_at: now() };
+  if (!patch.scope) throw new Error("Describe the scope of work.");
+  if (e) {
+    var material = lsEstHash(lsEstSnapshot(Object.assign({}, e, patch))) !== lsEstHash(lsEstSnapshot(e));
+    if (["approved", "scheduled"].indexOf(e.status) > -1 && material) {
+      patch.status = "revised";
+      if (e.visit_id) { var v = findBy("LsVisits", "id", e.visit_id); if (v && v.status !== "completed") { update("LsVisits", "id", v.id, { status: "blocked", reason: "Waiting for the client to approve the revised estimate", updated_by: me.email, updated_at: now() }); lsLog(me, "visit", v.id, "on hold: estimate revised after approval"); } }
+      lsLog(me, "estimate", e.id, "changed after approval (v" + e.approved_v + "): needs a new approval");
+    } else if (e.status === "sent" && material) { patch.status = "draft"; lsLog(me, "estimate", e.id, "edited after sending: send it again for approval"); }
+    else if (["declined", "withdrawn"].indexOf(e.status) > -1) { patch.status = "draft"; lsLog(me, "estimate", e.id, "reopened as a draft"); }
+    else lsLog(me, "estimate", e.id, "edited");
+    update("LsEstimates", "id", e.id, patch); return { id: e.id, status: patch.status || e.status };
+  }
+  var row = Object.assign({ id: newId("es"), property_id: p.id, issue_id: clean(f.issue_id, 40), visit_id: "", status: "draft", version: "0", versions: "[]", approved_v: "", approved_at: "", approved_by: "", approved_name: "", approved_hash: "",
+    declined_reason: "", sent_at: "", created_by: me.email, created_at: now(), sample: f.sample ? "yes" : "" }, patch);
+  insert("LsEstimates", row); lsLog(me, "estimate", row.id, "created " + (row.kind === "change_order" ? "a change order" : "an estimate") + " for " + p.name);
+  if (row.issue_id) { var iss = findBy("LsIssues", "id", row.issue_id); if (iss) update("LsIssues", "id", iss.id, { status: "billable" }); }
+  return { id: row.id, status: "draft" };
+};
+/* Send: freeze this version, tell the client(s). */
+ACTIONS.lsSendEstimate = function (me, b) {
+  if (!lsMoney(me)) throw new Error("Only Jesús and #money send estimates."); var e = findBy("LsEstimates", "id", b.id); if (!e) throw new Error("Estimate not found.");
+  if (["draft", "revised"].indexOf(e.status) < 0) throw new Error("Only a draft can be sent. Edit it to make a new version.");
+  var p = lsProp(e.property_id), emails = splitIds(p.client_emails); if (!emails.length) throw new Error("This property has no client email. Add one in the property first.");
+  var snap = lsEstSnapshot(e), vers = parseJson(e.versions, []), v = vers.length + 1;
+  vers.push(Object.assign({ v: v, at: now(), by: me.email, hash: lsEstHash(snap) }, snap));
+  update("LsEstimates", "id", e.id, { status: "sent", version: String(v), versions: JSON.stringify(vers), sent_at: now() });
+  lsLog(me, "estimate", e.id, "sent version " + v + " ($" + money(snap.total) + ")");
+  emails.forEach(function (to) { safeMail(function () { sendMail(to, (e.kind === "change_order" ? "Change order" : "Estimate") + " to review · " + p.name, "<p>Hi,</p><p>Blue Sierra sent you " + (e.kind === "change_order" ? "a change order" : "an estimate") + " for <b>" + esc(p.name) + "</b>: <b>" + esc(snap.title) + "</b>, $" + money(snap.total) + ".</p><p>Open your portal to see the scope, what's not included and the schedule, and approve or decline it.</p>" + button("Review it", CONFIG.PORTAL_URL) + "<p style='color:#888;font-size:13px'>Version " + v + ".</p>"); }, "Saved, but the email to the client couldn't be sent."); });
+  return { version: v };
+};
+/* The client decides on exactly the version they saw. The office can record a decision made by phone (it says so). */
+ACTIONS.lsDecide = function (me, b) {
+  var e = findBy("LsEstimates", "id", b.id); if (!e || !lsCanSeeEst(me, e)) throw new Error("Estimate not found.");
+  var role = lsRole(me); if (role !== "client" && !lsMoney(me)) throw new Error("Only the client (or Jesús on their behalf) decides.");
+  if (e.status !== "sent") throw new Error(e.status === "approved" || e.status === "scheduled" ? "It's already approved." : "This estimate isn't waiting for a decision anymore.");
+  if (Number(b.version) !== num(e.version)) throw new Error("This estimate changed since you opened it. Please look at the new version.");
+  var vers = parseJson(e.versions, []), cur = vers[vers.length - 1], p = lsProp(e.property_id);
+  if (b.decision === "decline") {
+    var why = clean(b.reason, 500); update("LsEstimates", "id", e.id, { status: "declined", declined_reason: why });
+    lsLog(me, "estimate", e.id, (role === "client" ? "client" : "office for the client") + " declined v" + cur.v + (why ? ": " + why : ""));
+    if (e.issue_id) update("LsIssues", "id", e.issue_id, { status: "review" });
+    if (role === "client") notifyJesus(me.email, "Estimate declined · " + p.name, "<p><b>" + esc(me.name) + "</b> declined <b>" + esc(cur.title) + "</b> ($" + money(cur.total) + ", v" + cur.v + ").</p>" + (why ? "<p>Reason: " + esc(why) + "</p>" : "") + button("Open the portal", CONFIG.PORTAL_URL));
+    return { status: "declined" };
+  }
+  var name = clean(b.name, 120); if (!name || !b.agree) throw new Error("Type your full name and confirm you agree.");
+  var visitId = e.visit_id, priorV = num(e.approved_v);
+  if (visitId && findBy("LsVisits", "id", visitId)) {
+    var vv = findBy("LsVisits", "id", visitId);
+    if (vv.status !== "completed") update("LsVisits", "id", visitId, { status: "scheduled", reason: "", scope: "Approved (v" + cur.v + "): " + cur.title + "\n" + cur.scope, price: String(cur.total), est_min: vv.est_min, updated_by: me.email, updated_at: now() });
+  } else {
+    visitId = newId("v"); var d0 = cur.proposed_date && cur.proposed_date >= lsDay(new Date()) ? cur.proposed_date : lsAdd(lsDay(new Date()), 7);
+    insert("LsVisits", { id: visitId, property_id: p.id, date: d0, plan_date: d0, series: "one", kind: "extra", crew_id: p.crew_id || "", status: "scheduled", reason: "", stop: "", est_min: "120",
+      scope: "Approved (v" + cur.v + "): " + cur.title + "\n" + cur.scope, checklist: JSON.stringify(cur.lines.map(function (l) { return { t: l.desc, done: false }; })), notes: "", problems: "", photos_before: "", photos_after: "", materials: "", labor: "", travel_min: "",
+      started_at: "", done_at: "", done_by: "", priority: "normal", issue_id: e.issue_id || "", price: String(cur.total), sample: e.sample || "", updated_by: me.email, updated_at: now() });
+  }
+  update("LsEstimates", "id", e.id, { status: "scheduled", approved_v: String(cur.v), approved_at: now(), approved_by: me.email, approved_name: name + (role === "client" ? "" : " (recorded by " + me.name + ")"), approved_hash: cur.hash, visit_id: visitId });
+  if (e.issue_id) update("LsIssues", "id", e.issue_id, { status: "scheduled", visit_id: visitId });
+  lsLog(me, "estimate", e.id, (role === "client" ? name + " approved" : me.name + " recorded approval by " + name + " for") + " v" + cur.v + " ($" + money(cur.total) + ", fingerprint " + cur.hash + ")" + (priorV ? " · replaces approval of v" + priorV : ""));
+  lsLog(me, "visit", visitId, "work order from approved estimate v" + cur.v);
+  if (role === "client") notifyJesus(me.email, "✅ Estimate approved · " + p.name, "<p><b>" + esc(name) + "</b> approved <b>" + esc(cur.title) + "</b> ($" + money(cur.total) + ", v" + cur.v + "). A work order was created; schedule it in the portal.</p>" + button("Open the portal", CONFIG.PORTAL_URL));
+  return { status: "scheduled", visit_id: visitId };
+};
+ACTIONS.lsWithdraw = function (me, b) {
+  if (!lsMoney(me)) throw new Error("Only Jesús and #money withdraw estimates."); var e = findBy("LsEstimates", "id", b.id); if (!e) throw new Error("Estimate not found.");
+  if (["approved", "scheduled"].indexOf(e.status) > -1) throw new Error("It's approved. Edit it to send a new version instead.");
+  update("LsEstimates", "id", e.id, { status: "withdrawn" }); lsLog(me, "estimate", e.id, "withdrawn"); return {};
+};
+/* Add estimates to what each screen loads. */
+var _lsHomeBase = ACTIONS.lsHome;
+ACTIONS.lsHome = function (me, b) {
+  var out = _lsHomeBase(me, b); if (!out.role || out.role === "crew") return out;
+  var pids = {}; (out.props || []).forEach(function (p) { pids[p.id] = 1; });
+  out.estimates = rows("LsEstimates").filter(function (e) { return pids[e.property_id] && lsCanSeeEst(me, e) && (out.role !== "office" || e.status !== "withdrawn" || b.all); })
+    .map(function (e) { return lsEstOut(e, out.role, out.money); }).sort(function (a, c) { return (a.sent_at || a.created_at) < (c.sent_at || c.created_at) ? 1 : -1; });
+  return out;
 };
