@@ -55,17 +55,19 @@ var TABLES = {
   Plans: ["id", "project_id", "set", "rev", "date", "notes", "visible", "pdf_file_id", "pdf_name", "pages", "sheets", "status", "by", "at", "text_file_id"],      // when each person last looked at each channel (unread counts)
   ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"],
   // Every change the portal made to a QuickBooks charge, with what it was before (for Undo).
-  QbLog: ["id", "at", "by", "kind", "txn_type", "txn_id", "before", "after", "undone"]
+  QbLog: ["id", "at", "by", "kind", "txn_type", "txn_id", "before", "after", "undone"],
+  // Beta feedback from the support widget: a screenshot (in Drive), a short note and where it happened.
+  Feedback: ["id", "at", "email", "name", "role", "project_id", "tab", "text", "file_id", "meta", "status"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
 /* Speed: everything a request needs is read from the sheet in one Sheets API call, then kept for the rest of the request. */
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "QbLog"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
-var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
-var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
+var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
 /* Permission tags. Everything that can be limited (chat, updates, checklist items, contract & billing) carries #tags:
@@ -102,8 +104,8 @@ function doPost(e) {
     MAIL_NOTICES = notices;
     if (pub) res = withLock(function () { return pub(b); });
     else {
-      prefetch(["People"].concat(PREFETCH[b.action] || []));
-      var me = auth(b.token);
+      var me = FAST[b.action] ? authFast(b.token) : null;
+      if (!me) { prefetch(["People"].concat(PREFETCH[b.action] || [])); me = auth(b.token); }
       if (b.viewAs) {
         if (me.role !== "admin") throw new Error("Only Jesús can preview the portal.");
         if (!READ_ONLY[b.action]) throw new Error("You're in preview. Exit the preview to change things.");
@@ -201,6 +203,13 @@ function newSession(email) {
   return token;
 }
 
+/* Live chat checks every couple of seconds; those checks never touch the spreadsheet. */
+var FAST = { tick: 1, typing: 1 };
+function authFast(token) {
+  if (!token || String(token).length < 40) return null;
+  try { var h = sha(token), c = CacheService.getScriptCache(), email = c.get("sess:" + h); if (!email) return null;
+    var raw = c.get("who:" + email); if (!raw) return null; var p = JSON.parse(raw); p.projects = splitIds(p.project_ids); p.tokenHash = h; return p; } catch (e) { return null; }
+}
 function auth(token) {
   if (!token || String(token).length < 40) throw new Error("Please log in again.");
   var h = sha(token), cache = CacheService.getScriptCache(), email = cache.get("sess:" + h);
@@ -212,6 +221,7 @@ function auth(token) {
   var p = findPerson(email);
   if (!p || !isTrue(p.active)) throw new Error("This email doesn't have access anymore.");
   p.projects = splitIds(p.project_ids); p.tokenHash = h;
+  try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
 function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "" }; }
@@ -473,20 +483,21 @@ var ACTIONS = {
       via: "portal", channel: channel, thread_id: root, files: files.length ? JSON.stringify(files) : "", reactions: "" });
     var emailed = {};
     var body = "<p>" + nl2br(esc(text)) + "</p>" + (files.length ? "<p style='color:#666'>" + files.length + " attachment" + (files.length > 1 ? "s" : "") + " in the portal.</p>" : "") + "<p style='color:#666'>— " + esc(me.name) + ", " + CONFIG.COMPANY + "</p>";
+    var important = !!b.important || kind === "question";
     if (dmTo) {
       emailed[dmTo.email] = 1;
-      try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, ""); } catch (e) {}
+      if (shouldEmail(dmTo.email, p.id, important)) try { if (MailApp.getRemainingDailyQuota() >= CONFIG.MAIL_RESERVE) safeMail(function () { sendMail(dmTo.email, me.name + " sent you a private message · " + p.name, "<p>Hi " + esc(first(dmTo.name)) + ",</p><p><b>" + esc(me.name) + "</b> sent you a private message on " + esc(p.name) + ". Only the two of you can see it.</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, ""); } catch (e) {}
     } else if (isStaff(me) && (channel === "client" || channel === "architect")) {
       // Client channel: the client and the architect. Architect channel: only the architect. Replies by email come back into the same place.
-      var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect"); });
+      var who = membersOf(p).filter(function (x) { return isOutside(x) && (channel === "client" || x.role === "architect") && shouldEmail(x.email, p.id, important); });
       var subj = (kind === "question" ? "Question about " : "Message about ") + p.name + " " + tag(p.id, id);
       safeMail(function () { who.forEach(function (x) { emailed[x.email] = 1; sendMail(x.email, subj, "<p>Hi " + esc(first(x.name)) + ",</p>" + body +
-        (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>") + button("Open the portal", deep(p.id, "messages", channel))); }); },
+        (kind === "question" ? "<p><b>You can answer by replying to this email</b>, or in the portal.</p>" : "<p>You can reply to this email or in the portal.</p>" + (important ? "" : "<p style='color:#888;font-size:13px'>Chat is live in the portal, so we only email when you're away (at most once every few hours per project).</p>")) + button("Open the portal", deep(p.id, "messages", channel))); }); },
         "Saved, but the email couldn't be sent.");
-    } else if (!isTeam(me)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal", deep(p.id, "messages", channel)));
-    if (!dmTo) notifyMentions(p, me, text, channel, emailed);
+    } else if (!isTeam(me) && shouldEmail(CONFIG.NOTIFY_EMAIL, p.id, important)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal", deep(p.id, "messages", channel)));
+    if (!dmTo) notifyMentions(p, me, text, channel, emailed, important);
     markReadNow(me, p.id, channel);
-    return { id: id };
+    return { id: id, emailed: Object.keys(emailed).length };
   },
 
   /* Reactions: one tap adds or removes yours. */
@@ -639,11 +650,11 @@ var ACTIONS = {
     // Google sometimes needs a moment to make the Meet room: wait for it instead of failing.
     for (var tries = 0; !url && tries < 6; tries++) { Utilities.sleep(600 + tries * 300); ev = Calendar.Events.get("primary", ev.id); url = linkOf(ev); }
     if (!/^https:\/\/meet\.google\.com\//.test(url || "")) throw new Error("Google didn't return a Meet link. Try again.");
-    var code = url.split("/").pop();
+    var code = url.split("/").pop(), as = function (email) { return url + "?authuser=" + encodeURIComponent(email); };
     who.forEach(function (x) {
       try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
       safeMail(function () { sendMail(x.email, "📹 " + me.name + " is calling you · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> started a video call about <b>" + esc(p.name) + "</b> and is waiting for you.</p>" +
-        "<p><a href='" + url + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p>" +
+        "<p><a href='" + as(x.email) + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p>" +
         "<p style='color:#555'>Or open <b>meet.google.com</b> and enter the code <b>" + esc(code) + "</b>.</p>"); }, "");
     });
     try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
@@ -653,7 +664,7 @@ var ACTIONS = {
         "Tap Join (it opens the Google Meet app on phones), or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
     });
     bumpVersion(p.id);
-    return { url: url, code: code };
+    return { url: as(me.email), code: code };
   },
 
   /* ---------- Plans: revisions of the drawing set, with what changed sheet by sheet ---------- */
@@ -1151,16 +1162,17 @@ function qbCompanyFinance() {
   var acc = tryIt("accounts", function () { return qbQuery("select * from Account where Active = true maxresults 1000").Account || []; }, []);
   var cash = { total: 0, accounts: [] }, cards = { total: 0, accounts: [] };
   acc.forEach(function (a) {
-    if (a.AccountType === "Bank") { cash.total += num(a.CurrentBalance); cash.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
-    if (a.AccountType === "Credit Card") { var owed = -num(a.CurrentBalance); if (!owed) return; cards.total += owed; cards.accounts.push({ name: a.Name, balance: r2(owed) }); }   // the API sends what we owe as negative (QuickBooks shows $55,728 owed as -55728); a positive one is a credit
+    if (a.AccountType === "Bank") { cash.total += num(a.CurrentBalance); cash.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)), logo: qbLogo(a.Name, {}) }); }
+    if (a.AccountType === "Credit Card") { var owed = -num(a.CurrentBalance); if (!owed) return; cards.total += owed; cards.accounts.push({ name: a.Name, balance: r2(owed), logo: qbLogo(a.Name, {}) }); }   // the API sends what we owe as negative (QuickBooks shows $55,728 owed as -55728); a positive one is a credit
   });
   var ar = { open: 0, overdue: 0, count: 0 };
   tryIt("open invoices", function () { qbQueryAll("select * from Invoice where Balance > '0'", "Invoice").forEach(function (i) { var b = num(i.Balance); ar.open += b; ar.count++; if (i.DueDate && i.DueDate < t) ar.overdue += b; }); });
+  var logoBook = { site: {}, guessed: {} }; try { logoBook = qbLogoBook(); } catch (e) {}
   var staleLim = Utilities.formatDate(new Date(Date.now() - 60 * 864e5), CONFIG.TZ, "yyyy-MM-dd"), ap = { open: 0, overdue: 0, count: 0, soon: [], stale: { count: 0, amount: 0 } }, soonLim = Utilities.formatDate(new Date(Date.now() + 14 * 864e5), CONFIG.TZ, "yyyy-MM-dd");
   tryIt("bills", function () { qbQueryAll("select * from Bill where Balance > '0'", "Bill").forEach(function (b) {
     var bal = num(b.Balance), late = !!(b.DueDate && b.DueDate < t); ap.open += bal; ap.count++; if (late) ap.overdue += bal;
     if (late && b.DueDate < staleLim) { ap.stale.count++; ap.stale.amount += bal; return; }
-    if (late || (b.DueDate && b.DueDate <= soonLim)) ap.soon.push({ vendor: (b.VendorRef || {}).name || "Vendor", due: b.DueDate || "", amount: r2(bal), late: late });
+    if (late || (b.DueDate && b.DueDate <= soonLim)) ap.soon.push({ vendor: (b.VendorRef || {}).name || "Vendor", logo: qbLogo((b.VendorRef || {}).name, logoBook), due: b.DueDate || "", amount: r2(bal), late: late });
   }); });
   ap.soon.sort(function (a, b) { return (a.due || "9") < (b.due || "9") ? -1 : 1; });
   // 12 months of money in and out
@@ -1284,6 +1296,7 @@ function qbJobMoney(cust) {
     if (["COGS", "Expenses", "OtherExpenses"].indexOf(a.group) < 0) return;
     a.bucket = qbBucket(a.name); out[a.bucket] += a.amount; out.total += a.amount;
   });
+  var mlogos = { site: {}, guessed: {} }; try { mlogos = qbLogoBook(); } catch (e) {}
   // What we owe: open bills with lines on this job (only this job's share)
   var bills = [], owe = { open: 0, overdue: 0 };
   tryIt("bills", function () {
@@ -1291,7 +1304,7 @@ function qbJobMoney(cust) {
       var job = qbLinesFor(b, cust).reduce(function (a, l) { return a + num(l.Amount); }, 0); if (!job) return;
       var share = num(b.TotalAmt) ? job / num(b.TotalAmt) : 1, due = r2(num(b.Balance) * share), late = !!(b.DueDate && b.DueDate < t);
       owe.open += due; if (late) owe.overdue += due;
-      bills.push({ vendor: (b.VendorRef || {}).name || "Vendor", number: b.DocNumber || "", due: b.DueDate || "", amount: due, late: late, what: qbLineAccount(qbLinesFor(b, cust)[0] || {}) });
+      bills.push({ logo: qbLogo((b.VendorRef || {}).name, mlogos), vendor: (b.VendorRef || {}).name || "Vendor", number: b.DocNumber || "", due: b.DueDate || "", amount: due, late: late, what: qbLineAccount(qbLinesFor(b, cust)[0] || {}) });
     });
   });
   bills.sort(function (a, b) { return (a.due || "9") < (b.due || "9") ? -1 : 1; });
@@ -1300,7 +1313,7 @@ function qbJobMoney(cust) {
   [["Purchase", "EntityRef"], ["Bill", "VendorRef"]].forEach(function (k) {
     tryIt("recent " + k[0].toLowerCase() + "s", function () {
       (qbQuery("select * from " + k[0] + " where TxnDate >= '" + since + "' maxresults 1000")[k[0]] || []).forEach(function (x) {
-        qbLinesFor(x, cust).forEach(function (l) { var acc = qbLineAccount(l); recent.push({ date: x.TxnDate || "", who: (x[k[1]] || {}).name || "", what: l.Description || acc, account: acc, amount: r2(num(l.Amount)), bucket: qbBucket(acc) }); });
+        qbLinesFor(x, cust).forEach(function (l) { var acc = qbLineAccount(l); recent.push({ logo: qbLogo((x[k[1]] || {}).name, mlogos), date: x.TxnDate || "", who: (x[k[1]] || {}).name || "", what: l.Description || acc, account: acc, amount: r2(num(l.Amount)), bucket: qbBucket(acc) }); });
       });
     });
   });
@@ -1550,40 +1563,111 @@ ACTIONS.qbSendInvoice = function (me, b) {
 };
 
 /* ---- Spending: every card charge, check, bill and timesheet, with the store's logo, ready to put on a job ---- */
-var QB_BRANDS = [[/home ?depot/i, "homedepot.com"], [/lowe'?s/i, "lowes.com"], [/vulcan/i, "vulcanmaterials.com"], [/amazon|amzn/i, "amazon.com"], [/costco/i, "costco.com"],
-  [/chevron/i, "chevron.com"], [/^shell\b/i, "shell.com"], [/^76\b|\b76 (gas|station)/i, "76.com"], [/^arco\b/i, "arco.com"], [/valero/i, "valero.com"], [/ferguson/i, "ferguson.com"], [/white ?cap/i, "whitecap.com"],
-  [/ace hardware/i, "acehardware.com"], [/harbor freight/i, "harborfreight.com"], [/sherwin/i, "sherwin-williams.com"], [/kelly.?moore/i, "kellymoore.com"], [/dunn.?edwards/i, "dunnedwards.com"],
-  [/uline/i, "uline.com"], [/grainger/i, "grainger.com"], [/united rentals/i, "unitedrentals.com"], [/sunbelt/i, "sunbeltrentals.com"], [/floor ?(&|and) ?decor/i, "flooranddecor.com"],
-  [/ewing/i, "ewingirrigation.com"], [/pg ?& ?e|pacific gas/i, "pge.com"], [/verizon/i, "verizon.com"], [/^at ?& ?t/i, "att.com"], [/comcast|xfinity/i, "xfinity.com"], [/^google/i, "google.com"],
-  [/^apple\b/i, "apple.com"], [/adobe/i, "adobe.com"], [/microsoft/i, "microsoft.com"], [/intuit|quickbooks/i, "intuit.com"], [/^uber\b/i, "uber.com"], [/^lyft/i, "lyft.com"],
-  [/starbucks/i, "starbucks.com"], [/^target\b/i, "target.com"], [/walmart/i, "walmart.com"], [/best buy/i, "bestbuy.com"], [/capital one/i, "capitalone.com"], [/american express|^amex/i, "americanexpress.com"],
-  [/^chase\b/i, "chase.com"], [/wells fargo/i, "wellsfargo.com"], [/bank of america|^boa\b/i, "bankofamerica.com"], [/geico/i, "geico.com"], [/state farm/i, "statefarm.com"],
-  [/bedrosians/i, "bedrosians.com"], [/daltile/i, "daltile.com"], [/^build\.?com/i, "build.com"], [/wayfair/i, "wayfair.com"], [/ikea/i, "ikea.com"], [/o'?reilly/i, "oreillyauto.com"],
-  [/autozone/i, "autozone.com"], [/u-?haul/i, "uhaul.com"], [/^hertz/i, "hertz.com"], [/southwest air/i, "southwest.com"], [/airbnb/i, "airbnb.com"], [/doordash/i, "doordash.com"],
-  [/safeway/i, "safeway.com"], [/in-n-out/i, "in-n-out.com"], [/chipotle/i, "chipotle.com"], [/^shopify/i, "shopify.com"], [/^paypal/i, "paypal.com"], [/^square\b/i, "squareup.com"],
-  [/^gusto/i, "gusto.com"], [/^adp\b/i, "adp.com"], [/franchise tax|^ftb\b/i, "ftb.ca.gov"], [/^irs\b|internal revenue/i, "irs.gov"], [/^edd\b|employment development/i, "edd.ca.gov"], [/^dmv\b/i, "dmv.ca.gov"]];
+var QB_BRANDS = [
+  // stores & materials
+  [/home ?depot|^thd\b/i, "homedepot.com"], [/lowe'?s/i, "lowes.com"], [/menards/i, "menards.com"], [/ace hardware/i, "acehardware.com"], [/true value/i, "truevalue.com"], [/orchard supply/i, "osh.com"],
+  [/harbor freight/i, "harborfreight.com"], [/northern tool/i, "northerntool.com"], [/tractor supply/i, "tractorsupply.com"], [/vulcan/i, "vulcanmaterials.com"], [/ferguson/i, "ferguson.com"],
+  [/white ?cap/i, "whitecap.com"], [/hd supply/i, "hdsupply.com"], [/grainger/i, "grainger.com"], [/fastenal/i, "fastenal.com"], [/uline/i, "uline.com"], [/mcmaster/i, "mcmaster.com"],
+  [/sherwin/i, "sherwin-williams.com"], [/kelly.?moore/i, "kellymoore.com"], [/dunn.?edwards/i, "dunnedwards.com"], [/benjamin moore/i, "benjaminmoore.com"], [/\bppg\b/i, "ppg.com"], [/\bbehr\b/i, "behr.com"],
+  [/floor ?(&|and) ?decor/i, "flooranddecor.com"], [/tile shop/i, "tileshop.com"], [/bedrosians/i, "bedrosians.com"], [/daltile/i, "daltile.com"], [/emser/i, "emser.com"], [/\bmsi\b.*(surfaces|stone|tile)|msisurfaces/i, "msisurfaces.com"],
+  [/ewing/i, "ewingirrigation.com"], [/site ?one/i, "siteone.com"], [/horizon (distribution|irrigation)/i, "horizononline.com"], [/united rentals/i, "unitedrentals.com"], [/sunbelt/i, "sunbeltrentals.com"],
+  [/herc rentals/i, "hercrentals.com"], [/h ?& ?e equipment/i, "he-equipment.com"], [/costco/i, "costco.com"], [/sam'?s club/i, "samsclub.com"], [/smart ?& ?final/i, "smartandfinal.com"],
+  [/amazon|amzn/i, "amazon.com"], [/walmart|wal-mart/i, "walmart.com"], [/^target\b/i, "target.com"], [/best buy/i, "bestbuy.com"], [/staples/i, "staples.com"], [/office ?depot|officemax/i, "officedepot.com"],
+  [/ikea/i, "ikea.com"], [/wayfair/i, "wayfair.com"], [/^build\.?com/i, "build.com"], [/^ebay/i, "ebay.com"], [/^etsy/i, "etsy.com"], [/^apple\b|apple\.com|itunes/i, "apple.com"],
+  // fuel & car
+  [/chevron/i, "chevron.com"], [/^shell\b|shell oil|shell service/i, "shell.com"], [/^76\b|\b76 (gas|station|fuel)|union 76/i, "76.com"], [/^arco\b|ampm/i, "arco.com"], [/valero/i, "valero.com"],
+  [/exxon/i, "exxon.com"], [/mobil\b/i, "mobil.com"], [/\bbp\b|bp#|british petroleum/i, "bp.com"], [/speedway/i, "speedway.com"], [/circle ?k/i, "circlek.com"], [/7-?eleven/i, "7-eleven.com"],
+  [/costco gas/i, "costco.com"], [/o'?reilly/i, "oreillyauto.com"], [/autozone/i, "autozone.com"], [/napa auto/i, "napaonline.com"], [/pep boys/i, "pepboys.com"], [/discount tire/i, "discounttire.com"],
+  [/jiffy lube/i, "jiffylube.com"], [/^tesla|tesla (inc|motors|supercharg)/i, "tesla.com"], [/\bford\b/i, "ford.com"], [/chevrolet|^gm\b/i, "chevrolet.com"], [/toyota/i, "toyota.com"],
+  [/u-?haul/i, "uhaul.com"], [/^hertz/i, "hertz.com"], [/enterprise rent/i, "enterprise.com"], [/^avis\b/i, "avis.com"], [/^budget rent/i, "budget.com"], [/fastrak/i, "bayareafastrak.org"],
+  [/^dmv\b|dept of motor/i, "dmv.ca.gov"], [/caltrans/i, "dot.ca.gov"], [/park ?mobile/i, "parkmobile.io"],
+  // phone, internet, utilities
+  [/^at ?& ?t|\batt\b|att\*|at&t/i, "att.com"], [/t-?mobile/i, "t-mobile.com"], [/verizon|vzw/i, "verizon.com"], [/sprint/i, "sprint.com"], [/comcast|xfinity/i, "xfinity.com"], [/spectrum|charter comm/i, "spectrum.com"],
+  [/sonic\.net|^sonic\b/i, "sonic.com"], [/pg ?& ?e|pacific gas/i, "pge.com"], [/recology/i, "recology.com"], [/republic services/i, "republicservices.com"], [/waste management|^wm\b/i, "wm.com"],
+  [/san jose water|sjw/i, "sjwater.com"], [/cal ?water/i, "calwater.com"], [/east bay mud|ebmud/i, "ebmud.com"],
+  // software & services
+  [/^google|g suite|gsuite|workspace/i, "google.com"], [/microsoft|msft|office 365/i, "microsoft.com"], [/adobe/i, "adobe.com"], [/intuit|quickbooks|qbooks/i, "intuit.com"], [/^zoom/i, "zoom.us"],
+  [/slack/i, "slack.com"], [/dropbox/i, "dropbox.com"], [/canva/i, "canva.com"], [/godaddy/i, "godaddy.com"], [/squarespace/i, "squarespace.com"], [/^wix/i, "wix.com"], [/webflow/i, "webflow.com"],
+  [/mailchimp/i, "mailchimp.com"], [/hubspot/i, "hubspot.com"], [/docusign/i, "docusign.com"], [/openai|chatgpt/i, "openai.com"], [/anthropic|claude\.ai/i, "anthropic.com"], [/notion/i, "notion.so"],
+  [/^angi\b|angie'?s list|homeadvisor/i, "angi.com"], [/thumbtack/i, "thumbtack.com"], [/^yelp/i, "yelp.com"], [/nextdoor/i, "nextdoor.com"], [/facebook|^meta\b|fb ?ads|facebk/i, "facebook.com"],
+  [/instagram/i, "instagram.com"], [/linkedin/i, "linkedin.com"], [/tiktok/i, "tiktok.com"], [/houzz/i, "houzz.com"], [/buildertrend/i, "buildertrend.com"], [/procore/i, "procore.com"],
+  [/^usps|postal service/i, "usps.com"], [/^ups\b|ups store/i, "ups.com"], [/fedex/i, "fedex.com"], [/^dhl/i, "dhl.com"],
+  // food
+  [/starbucks/i, "starbucks.com"], [/mcdonald/i, "mcdonalds.com"], [/jack in the box/i, "jackinthebox.com"], [/taco bell/i, "tacobell.com"], [/wendy'?s/i, "wendys.com"], [/burger king/i, "bk.com"],
+  [/chick-?fil-?a/i, "chick-fil-a.com"], [/panda express/i, "pandaexpress.com"], [/^subway\b/i, "subway.com"], [/domino'?s/i, "dominos.com"], [/pizza hut/i, "pizzahut.com"], [/in-?n-?out/i, "in-n-out.com"],
+  [/chipotle/i, "chipotle.com"], [/dunkin/i, "dunkindonuts.com"], [/peet'?s/i, "peets.com"], [/uber ?eats/i, "ubereats.com"], [/doordash/i, "doordash.com"], [/grubhub/i, "grubhub.com"],
+  [/safeway/i, "safeway.com"], [/whole ?foods/i, "wholefoodsmarket.com"], [/trader joe/i, "traderjoes.com"], [/lucky (supermarket|store)/i, "luckysupermarkets.com"], [/^uber\b/i, "uber.com"], [/^lyft/i, "lyft.com"],
+  [/airbnb/i, "airbnb.com"], [/marriott/i, "marriott.com"], [/hilton/i, "hilton.com"], [/southwest air/i, "southwest.com"], [/united air/i, "united.com"], [/delta air/i, "delta.com"], [/alaska air/i, "alaskaair.com"],
+  // money
+  [/capital one/i, "capitalone.com"], [/american express|^amex/i, "americanexpress.com"], [/^chase\b|jpmorgan|chase (ink|checking|card|bank)/i, "chase.com"], [/wells ?fargo/i, "wellsfargo.com"],
+  [/bank of america|^boa\b|^bofa/i, "bankofamerica.com"], [/^citi\b|citibank|citicard/i, "citi.com"], [/discover/i, "discover.com"], [/^paypal/i, "paypal.com"], [/venmo/i, "venmo.com"], [/zelle/i, "zellepay.com"],
+  [/^square\b|sq \*/i, "squareup.com"], [/stripe/i, "stripe.com"], [/^shopify/i, "shopify.com"], [/^gusto/i, "gusto.com"], [/^adp\b/i, "adp.com"], [/paychex/i, "paychex.com"],
+  [/state farm/i, "statefarm.com"], [/geico/i, "geico.com"], [/progressive ins/i, "progressive.com"], [/allstate/i, "allstate.com"], [/farmers ins/i, "farmers.com"], [/nationwide/i, "nationwide.com"],
+  [/the hartford|hartford ins/i, "thehartford.com"], [/travelers/i, "travelers.com"], [/liberty mutual/i, "libertymutual.com"], [/next insurance/i, "nextinsurance.com"], [/state fund|scif/i, "statefundca.com"],
+  [/franchise tax|^ftb\b/i, "ftb.ca.gov"], [/^irs\b|internal revenue|us treasury|treasury dept/i, "irs.gov"], [/^edd\b|employment development/i, "edd.ca.gov"], [/^cslb\b|contractors state/i, "cslb.ca.gov"]];
+var QB_BIZ = /\b(inc|llc|l\.l\.c|co|corp|corporation|company|supply|supplies|lumber|rental|rentals|depot|store|market|services?|electric|plumbing|construction|materials?|nursery|tile|stone|glass|concrete|landscap\w*|irrigation|equipment|tools?|hardware|insurance|bank|systems|solutions|group|center|wholesale|motors?|auto|tire|gas|fuel|energy|water|waste|recycling|studio|design|media|graphics?|print\w*|signs?|software|online|distribution|industries|enterprises|partners|associates|builders|farms?|garden|pool|roofing|steel|iron\w*|metal|welding|trucking|transport|freight|lab|labs)\b|\.com\b/i;
 function qbVendorSites() {
-  var c = CacheService.getScriptCache(), k = "qbv:" + qbCfg().realm, hit = c.get(k); if (hit) return JSON.parse(hit);
-  var m = {}; try { qbQueryAll("select * from Vendor", "Vendor").forEach(function (v) { var u = v.WebAddr && v.WebAddr.URI; if (u) { var d = String(u).replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[\/?#]/)[0].toLowerCase(); if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) m[v.DisplayName] = d; } }); } catch (e) {}
+  var c = CacheService.getScriptCache(), k = "qbv2:" + qbCfg().realm, hit = c.get(k); if (hit) return JSON.parse(hit);
+  var m = { site: {}, biz: {}, person: {} };
+  try { qbQueryAll("select * from Vendor", "Vendor").forEach(function (v) {
+    var n = v.DisplayName, u = v.WebAddr && v.WebAddr.URI;
+    if (u) { var d = String(u).replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[\/?#]/)[0].toLowerCase(); if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) m.site[n] = d; }
+    if (v.CompanyName) m.biz[n] = 1; else if (v.GivenName || v.FamilyName || v.Vendor1099) m.person[n] = 1;
+  }); } catch (e) {}
   try { c.put(k, JSON.stringify(m), 21600); } catch (e) {} return m;
 }
-function qbLogo(name, sites) {
-  if (!name) return ""; if (sites[name]) return sites[name];
+/* A store's web address from its name: known brands first, then a guess (name.com) that Google's logo service confirms exists. */
+function qbLogoKey(name) { return "LG|" + String(name).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 60); }
+function qbLogo(name, sites, isPerson) {
+  if (!name) return ""; if (sites.site && sites.site[name]) return sites.site[name];
   for (var i = 0; i < QB_BRANDS.length; i++) if (QB_BRANDS[i][0].test(name)) return QB_BRANDS[i][1];
-  return "";
+  var known = (sites.guessed || {})[qbLogoKey(name)]; return known && known !== "-" ? known : "";
+}
+function qbGuessCandidates(name, sites, isPerson) {
+  if (isPerson || (sites.person && sites.person[name])) return [];
+  var raw = String(name).replace(/#\s*\d+.*$/, "").replace(/\(.*?\)/g, " ").replace(/\b\d{2,}\b/g, " ");
+  var words = raw.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(function (w) { return w && ["the", "inc", "llc", "co", "corp", "corporation", "company", "of", "ltd", "dba"].indexOf(w) < 0; });
+  if (!words.length || words.join("").length < 4) return [];
+  var looksBiz = (sites.biz && sites.biz[name]) || QB_BIZ.test(name) || words.length === 1;
+  if (!looksBiz) return [];                                                          // "Jorge Rendon" is a person, not a store
+  var out = [words.join("") + ".com"]; if (words.length > 1) out.push(words.join("-") + ".com"); if (words.length > 2) out.push(words.slice(0, 2).join("") + ".com");
+  return out.filter(function (d, i, a) { return a.indexOf(d) === i && d.length <= 40; });
+}
+/* Check up to `max` new names in one go (in parallel) and remember the answer, so each store is looked up once. */
+function qbLearnLogos(names, sites, max) {
+  var pr = PropertiesService.getScriptProperties(), todo = [];
+  names.forEach(function (n) {
+    if (todo.length >= max || qbLogo(n, sites) || (sites.guessed || {})[qbLogoKey(n)]) return;
+    var cands = qbGuessCandidates(n, sites); if (!cands.length) { sites.guessed[qbLogoKey(n)] = "-"; pr.setProperty(qbLogoKey(n), "-"); return; }
+    todo.push({ n: n, cands: cands });
+  });
+  if (!todo.length) return;
+  var reqs = [], idx = []; todo.forEach(function (t, i) { t.cands.forEach(function (d) { reqs.push({ url: "https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://" + d + "&size=64", muteHttpExceptions: true, followRedirects: true }); idx.push([i, d]); }); });
+  var res = []; try { res = UrlFetchApp.fetchAll(reqs); } catch (e) { return; }
+  var found = {}; res.forEach(function (r, j) { var i = idx[j][0]; if (found[i] == null && r.getResponseCode() === 200) found[i] = idx[j][1]; });
+  todo.forEach(function (t, i) { var v = found[i] || "-"; sites.guessed[qbLogoKey(t.n)] = v; try { pr.setProperty(qbLogoKey(t.n), v); } catch (e) {} });
+}
+function qbLogoBook() {
+  var sites = qbVendorSites(), all = PropertiesService.getScriptProperties().getProperties(); sites.guessed = {};
+  Object.keys(all).forEach(function (k) { if (k.indexOf("LG|") === 0) sites.guessed[k] = all[k]; });
+  return sites;
 }
 function qbSpendRows(days) {
-  var since = Utilities.formatDate(new Date(Date.now() - days * 864e5), CONFIG.TZ, "yyyy-MM-dd"), out = [], sites = qbVendorSites();
+  var since = Utilities.formatDate(new Date(Date.now() - days * 864e5), CONFIG.TZ, "yyyy-MM-dd"), out = [], sites = qbLogoBook(), people = {};
   var push = function (type, x, who, from) {
     (x.Line || []).forEach(function (l) {
       var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail; if (!d) return;
       var acc = d.AccountRef || d.ItemRef || {}, sign = x.Credit === true ? -1 : 1;
-      out.push({ type: type, id: String(x.Id), line: String(l.Id || ""), date: x.TxnDate || "", who: who || "", logo: qbLogo(who, sites), amount: cents(num(l.Amount) * sign),
+      out.push({ type: type, id: String(x.Id), line: String(l.Id || ""), date: x.TxnDate || "", who: who || "", logo: people[who] ? "" : qbLogo(who, sites), amount: cents(num(l.Amount) * sign),
         what: l.Description || x.PrivateNote || "", account: acc.name || "", accountId: d.AccountRef ? String(d.AccountRef.value) : "", item: !!l.ItemBasedExpenseLineDetail,
         cust: d.CustomerRef ? String(d.CustomerRef.value) : "", custName: d.CustomerRef ? d.CustomerRef.name || "" : "", from: from || "", bucket: qbBucket(acc.name) });
     });
   };
-  qbQueryAll("select * from Purchase where TxnDate >= '" + since + "'", "Purchase").forEach(function (x) { push("Purchase", x, (x.EntityRef || {}).name, (x.AccountRef || {}).name); });
+  var purchases = qbQueryAll("select * from Purchase where TxnDate >= '" + since + "'", "Purchase");
+  purchases.forEach(function (x) { if (x.EntityRef && /employee|customer/i.test(x.EntityRef.type || "")) people[x.EntityRef.name] = 1; });
+  var learn = {}; purchases.forEach(function (x) { var n = (x.EntityRef || {}).name; if (n && !people[n]) learn[n] = (learn[n] || 0) + 1; });
+  qbLearnLogos(Object.keys(learn).sort(function (a, b) { return learn[b] - learn[a]; }).filter(function (n) { return !sites.person[n]; }), sites, 25);
+  purchases.forEach(function (x) { push("Purchase", x, (x.EntityRef || {}).name, (x.AccountRef || {}).name); });
   qbQueryAll("select * from Bill where TxnDate >= '" + since + "'", "Bill").forEach(function (x) { push("Bill", x, (x.VendorRef || {}).name, "Bill" + (num(x.Balance) > 0 ? " · open" : " · paid")); });
   try {
     qbQueryAll("select * from TimeActivity where TxnDate >= '" + since + "'", "TimeActivity").forEach(function (a) {
@@ -1662,6 +1746,77 @@ ACTIONS.qbUndo = function (me, b) {
   update("QbLog", "id", l.id, { undone: now() });
   rows("Projects").forEach(function (p) { if (p.qb_customer) qbBustProject(p); });
   return {};
+};
+
+/* ============ Live: the chat checks every couple of seconds without touching the spreadsheet ============ */
+function typingKey(pid, ch) { return "typ:" + pid + ":" + ch; }
+ACTIONS.tick = function (me, b) {
+  var pids = [].concat(b.pids || []).map(String).filter(function (id, i, a) { return id && a.indexOf(id) === i && canSee(me, id); }).slice(0, 4), vers = {};
+  pids.forEach(function (id) { vers[id] = versionOf(id); });
+  var typing = [];
+  if (b.pid && b.ch && canSee(me, b.pid) && canRead(me, String(b.ch))) try {
+    var t = JSON.parse(CacheService.getScriptCache().get(typingKey(b.pid, b.ch)) || "{}"), nowT = Date.now();
+    Object.keys(t).forEach(function (k) { if (k !== pkey(me.email) && nowT - t[k].t < 6000) typing.push(t[k].n); });
+  } catch (e) {}
+  return { vers: vers, typing: typing, t: Date.now() };
+};
+ACTIONS.typing = function (me, b) {
+  var pid = String(b.pid || ""), ch = String(b.ch || ""); if (!canSee(me, pid) || !canRead(me, ch)) return {};
+  var c = CacheService.getScriptCache(), k = typingKey(pid, ch), t = {}; try { t = JSON.parse(c.get(k) || "{}"); } catch (e) {}
+  var nowT = Date.now(); Object.keys(t).forEach(function (x) { if (nowT - t[x].t > 8000) delete t[x]; });
+  if (b.stop) delete t[pkey(me.email)]; else t[pkey(me.email)] = { n: first(me.name), t: nowT };
+  c.put(k, JSON.stringify(t), 30); return {};
+};
+/* Just the chat of one project: much lighter than reloading the whole project. */
+ACTIONS.chatFeed = function (me, b) {
+  var p = needProject(me, b.projectId);
+  return { pid: p.id, name: p.name, messages: messagesOut(rows("Messages").filter(function (m) { return m.project_id === p.id; }), me), reads: readsFor(me, p.id), channels: channelsFor(me),
+    members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }), ver: versionOf(p.id) };
+};
+/* Chat email rule: no email for every message. People who are in the portal right now get it live; someone who isn't
+   gets one short "new messages" email at most every 3 hours per project. "Important" and questions always email. */
+function isLive(email) { try { var raw = CacheService.getScriptCache().get("pres:" + pkey(email)); if (!raw) return false; var pr = JSON.parse(raw); return Date.now() - pr.at < 150000 && !pr.hidden; } catch (e) { return false; } }
+function nudgeOk(email, pid) { var c = CacheService.getScriptCache(), k = "nudge:" + pkey(email) + ":" + pid; if (c.get(k)) return false; c.put(k, "1", 3 * 3600); return true; }
+function shouldEmail(email, pid, important) { if (important) return true; if (isLive(email)) return false; return nudgeOk(email, pid); }
+
+/* ============ Beta feedback: a screenshot + a short note, straight to Jesús ============ */
+function feedbackFolder() {
+  var pr = PropertiesService.getScriptProperties(), id = pr.getProperty("FEEDBACK_FOLDER_ID");
+  try { if (id) { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } } catch (e) {}
+  var nf = rootFolder().createFolder("Portal feedback (beta)"); pr.setProperty("FEEDBACK_FOLDER_ID", nf.getId()); return nf;
+}
+ACTIONS.feedback = function (me, b) {
+  var c = CacheService.getScriptCache(), k = "fb:" + pkey(me.email), n = Number(c.get(k) || 0);
+  if (n >= 15) throw new Error("Thanks! That's a lot of reports in an hour. Try again a bit later.");
+  var text = clean(b.text, 3000); if (!text && !b.image) throw new Error("Tell us what happened, or add a screenshot.");
+  var fileId = "";
+  if (b.image) {
+    var m = String(b.image).match(/^data:(image\/(png|jpeg|webp));base64,(.+)$/); if (!m) throw new Error("The screenshot must be an image.");
+    var bytes = Utilities.base64Decode(m[3]); if (bytes.length > 8 * 1024 * 1024) throw new Error("That screenshot is too big.");
+    var file = feedbackFolder().createFile(Utilities.newBlob(bytes, m[1], "Feedback " + now().replace(/[: ]/g, "-") + " " + me.name + "." + (m[2] === "jpeg" ? "jpg" : m[2])));
+    fileId = file.getId();
+  }
+  var meta = b.meta && typeof b.meta === "object" ? b.meta : {}, pid = meta.pid && canSee(me, meta.pid) ? String(meta.pid) : "";
+  var row = { id: newId("f"), at: now(), email: me.email, name: me.name, role: me.role, project_id: pid, tab: clean(meta.tab, 30), text: text, file_id: fileId, meta: JSON.stringify(meta).slice(0, 8000), status: "open" };
+  withLock(function () { _ROWS = {}; prefetch(["People", "Projects", "Feedback"]); insert("Feedback", row); });
+  c.put(k, String(n + 1), 3600);
+  var proj = pid ? (findBy("Projects", "id", pid) || {}).name || "" : "";
+  safeMail(function () { sendMail(CONFIG.NOTIFY_EMAIL, "🐞 Portal feedback from " + me.name + (proj ? " · " + proj : ""),
+    "<p><b>" + esc(me.name) + "</b> (" + esc(me.role) + ") reported:</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text || "(no note)")) + "</blockquote>" +
+    "<p style='color:#666'>Where: " + esc([proj, meta.tab, meta.view].filter(Boolean).join(" · ") || "Home") + " · " + esc(String(meta.screen || "")) + " · " + esc(String(meta.ua || "").slice(0, 120)) + "</p>" +
+    (meta.errors && meta.errors.length ? "<p style='color:#a33'>Recent errors: " + esc(meta.errors.slice(-3).join(" | ").slice(0, 600)) + "</p>" : "") +
+    (fileId ? "<p><a href='https://drive.google.com/file/d/" + fileId + "/view'>See the screenshot</a></p><img src='" + img(fileId, 900) + "' style='max-width:100%;border:1px solid #ddd;border-radius:8px'>" : "")); }, "");
+  return { id: row.id };
+};
+ACTIONS.listFeedback = function (me) {
+  if (me.role !== "admin") throw new Error("Only Jesús sees the feedback.");
+  var names = {}; rows("Projects").forEach(function (p) { names[p.id] = p.name; });
+  return { items: rows("Feedback").slice(-60).reverse().map(function (f) { return { id: f.id, at: f.at, name: f.name, role: f.role, project: names[f.project_id] || "", tab: f.tab, text: f.text, status: f.status,
+    shot: f.file_id ? img(f.file_id, 700) : "", link: f.file_id ? "https://drive.google.com/file/d/" + f.file_id + "/view" : "" }; }) };
+};
+ACTIONS.setFeedback = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús can do that."); var f = findBy("Feedback", "id", b.id); if (!f) throw new Error("Not found.");
+  update("Feedback", "id", f.id, { status: b.status === "done" ? "done" : "open" }); return {};
 };
 
 var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];
@@ -1949,10 +2104,11 @@ function purgeOrphans() {
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
 /* "@Full Name" emails that person if they can see the channel (and didn't already get the message by email). */
-function notifyMentions(p, me, text, channel, emailed) {
+function notifyMentions(p, me, text, channel, emailed, important) {
   if (String(text).indexOf("@") < 0) return;
   membersOf(p).forEach(function (x) {
     if (x.email === me.email || emailed[x.email] || !mentions(text, x.name) || channelsFor(x).indexOf(channel) < 0) return;
+    if (!important && isLive(x.email)) return;                                   // they're in the portal: they see it live
     try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
     safeMail(function () { sendMail(x.email, me.name + " mentioned you · " + p.name + " #" + channel, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> mentioned you in <b>#" + channel + "</b> on " + esc(p.name) + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the portal", deep(p.id, "messages", channel))); }, "");
   });

@@ -617,6 +617,14 @@
     db.qbLog = db.qbLog || []; var lid = "q" + db.qbLog.length; db.qbLog.push({ id: lid, type: b.type, txn: b.id, before: before }); return { logId: lid, project: p ? p.id : "" }; };
   ACTIONS.qbUndo = function (db, me, b) { qbW(db, me); var l = (db.qbLog || []).filter(function (x) { return x.id === b.logId; })[0]; if (!l || l.undone) throw new Error("Nothing to undo.");
     var r = spSeed(db).filter(function (x) { return x.type === l.type && x.id === l.txn; })[0]; Object.assign(r, l.before); l.undone = 1; return {}; };
+  // Live chat in the preview: a version per project (bumped by every save), typing, the chat feed and beta feedback.
+  ACTIONS.tick = function (db, me, b) { var v = {}; (b.pids || []).forEach(function (id) { v[id] = (db.vers || {})[id] || 1; }); var t = (db.typing || {})[b.pid + ":" + b.ch] || {}, out = [];
+    Object.keys(t).forEach(function (k) { if (k !== me.email && Date.now() - t[k].t < 6000) out.push(t[k].n); }); return { vers: v, typing: out }; };
+  ACTIONS.typing = function (db, me, b) { db.typing = db.typing || {}; var k = b.pid + ":" + b.ch; db.typing[k] = db.typing[k] || {}; db.typing[k][me.email] = { n: String(me.name).split(" ")[0], t: Date.now() }; return {}; };
+  ACTIONS.chatFeed = function (db, me, b) { var d = ACTIONS.getProject(db, me, { projectId: b.projectId }); return { pid: b.projectId, messages: d.messages, reads: d.reads, channels: d.channels, members: d.members, ver: (db.vers || {})[b.projectId] || 1 }; };
+  ACTIONS.feedback = function (db, me, b) { (db.feedback = db.feedback || []).unshift({ id: "f" + Date.now(), at: now(), name: me.name, role: me.role, project: "", tab: (b.meta || {}).tab || "", text: b.text, status: "open", shot: b.image || "", link: b.image || "" }); db.feedback = db.feedback.slice(0, 20); return { id: db.feedback[0].id }; };
+  ACTIONS.listFeedback = function (db) { return { items: db.feedback || [] }; };
+  ACTIONS.setFeedback = function (db, me, b) { (db.feedback || []).forEach(function (f) { if (f.id === b.id) f.status = b.status; }); return {}; };
   var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   function previewMe(db, role) {
     if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");
@@ -634,6 +642,7 @@
           else { var me = auth(db, b.token);
             if (b.viewAs) { if (me.role !== "admin") throw new Error("Only Jesús can preview the portal."); if (!VIEWABLE[b.action]) throw new Error("You're in preview. Exit the preview to change things."); me = previewMe(db, b.viewAs); }
             fn = ACTIONS[b.action]; if (!fn) throw new Error("Unknown action."); res = fn(db, me, b); }
+          if (b.projectId && !/^(tick|typing|chatFeed|getProject|listProjects|activity|presence|markRead|qb[A-Z]\w*)$/.test(b.action)) { db.vers = db.vers || {}; db.vers[b.projectId] = Date.now(); res = res || {}; res.ver = db.vers[b.projectId]; }
           save(db); res = res || {}; res.ok = true;
         } catch (e) { res = { ok: false, error: e.message }; }
         resolve(JSON.parse(JSON.stringify(res)));

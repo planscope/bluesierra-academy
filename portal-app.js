@@ -313,8 +313,8 @@
     OVER.forEach(function (q) { var el = root.querySelector(q); if (el) kept[q] = el.scrollTop; });
     var floaters = [].slice.call(root.querySelectorAll("#bsp-pop, .toast, #bsp-sure"));   // live cards survive the redraw
     root.innerHTML =
-      previewBar() + '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + "<span>Client portal</span></div>" +
-      '<div class="who">' + ((S.me.admin || S.viewAs) && !S.viewAs ? '<button class="icon-btn eye-btn" data-a="modal" data-m="viewAs" aria-label="Preview as client, architect or crew" title="Preview as #client, #architect or #crew">' + ICON.eye + "</button>" : "") + peopleButton() + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
+      previewBar() + '<header class="topbar"><div class="brand">' + (hasSide() ? '<button class="side-tog' + ((matchMedia("(max-width:1080px)").matches ? S.drawer : !S.sideOff) ? " open" : "") + '" data-a="sideTog" aria-label="Show or hide the sidebar" title="Sidebar"><i></i><i></i><i></i></button>' : "") + LOGO + '<span>Client portal <em class="beta" title="We\'re testing it: tell us anything with the Feedback button">Beta v1.1</em></span></div>' +
+      '<div class="who">' + ((S.me.admin || S.viewAs) && !S.viewAs ? '<button class="icon-btn eye-btn" data-a="modal" data-m="viewAs" aria-label="Preview as client, architect or crew" title="Preview as #client, #architect or #crew">' + ICON.eye + "</button>" : "") + peopleButton() + '<button class="icon-btn chat-btn" data-a="chatDock" aria-label="Open chat" title="Chat (it opens in a corner, so you can keep working)">' + ICON.chat + "</button>" + bellButton() + '<button class="icon-btn help" data-a="tour" aria-label="Take the tour" title="Take the tour">?</button><button class="me-btn" data-a="modal" data-m="profile" title="Your profile"><span class="name">' + esc(S.me.name) + (team() ? ' <span class="pill">' + (crew() ? "Crew" : "Team") + "</span>" : "") + "</span>" + av(S.me.name, S.me.avatar, S.me.role, "", S.me.key) + '</button><button class="btn ghost sm" data-a="logout">Log out</button></div></header>' +
       '<div class="wrap' + (hasSide() ? " has-side" + (S.sideOff ? " side-off" : "") + (S.drawer ? " drawer-on" : "") : "") + '">' + (hasSide() ? '<div class="side-bg" data-a="sideTog"></div>' + sidebar() : "") + '<main class="main">' + (S.err ? '<p class="error" style="margin-bottom:12px">' + esc(S.err) + "</p>" : "") + body + "</main></div>" +
       (S.peopleOpen ? peoplePanel() : "") + (S.bell ? bellPanel() : "") + (S.modal ? renderModal() : "") + (S.lb ? renderLightbox() : "");
     restore(snap);
@@ -377,7 +377,7 @@
   function renderLogin() {
     var demo = !API && window.BSP_MOCK, lp = loginPhoto();
     root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
-      '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal</div>' +
+      '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal · Beta v1.1</div>' +
       (S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
           '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>' +
           (S.lastCode ? '<button class="link" data-a="keepCode">Keep ' + esc(S.lastCode) + " as my PIN</button>" : "")
@@ -504,7 +504,7 @@
     if (!S.team) { loadHome("team"); return '<div class="loading" style="min-height:30vh">Loading the team…</div>'; }
     var admin = S.me && S.me.admin;
     return (admin ? '<div class="card va-card"><div><b>See what everyone else sees</b><div class="muted small">Preview the portal as #client, #architect or #crew to check nothing private is leaking.</div></div><button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview</button></div>" : "") +
-      qbSettings() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
+      qbSettings() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
       return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="team">Change</button>' : "") +
@@ -698,14 +698,14 @@
       '<span class="m-tools">' + (!opts.inThread ? '<button class="link small" data-a="thread" data-id="' + esc(m.id) + '">Ask about this</button>' : "") + (canDel ? '<button class="link small" data-a="delMsg" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</span></div>" +
       '<div class="ev-line"><b>' + esc(m.author) + "</b> " + esc(lines[0]) + "</div>" + (lines[1] ? '<div class="ev-detail">' + esc(lines.slice(1).join(" ")).replace(/\d{4}-\d{2}-\d{2}/g, function (d) { return day(d); }) + "</div>" : "") +
       (m.status === "call" && m.ref ? '<div class="meet-row"><span class="meet-code" title="Meeting code">' + esc(meetCode(m.ref)) + '</span><button class="link small" data-a="copyCode" data-c="' + esc(meetCode(m.ref)) + '">Copy code</button></div>' + (!API ? '<div class="muted small">Preview: this is a sample code, not a real meeting.</div>' : "") : "") +
-      (m.ref && /^meet:https:\/\/meet\.google\.com\//.test(m.ref) ? '<a class="ev-btn" href="' + esc(m.ref.slice(5)) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + " Join the call →</a>" :
+      (m.ref && /^meet:https:\/\/meet\.google\.com\//.test(m.ref) ? '<a class="ev-btn" href="' + esc(meetUrl(m.ref)) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + " Join the call →</a>" :
        m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule", meet: "Join the call 📹", plan: "See what changed" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
       reactHtml(m) + (!opts.inThread && opts.replies && opts.replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '">' + opts.replies.length + " repl" + (opts.replies.length > 1 ? "ies" : "y") + "</button>" : "") +
       "</div></div>";
   }
   /* Jump to the thing an event or notification points at, and make it glow for a moment. */
   function openRef(ref, pid) {
-    if (/^meet:/.test(ref)) { if (PHONE) { location.href = ref.slice(5); } else window.open(ref.slice(5), "bsp-meet", "width=1180,height=780"); return; }
+    if (/^meet:/.test(ref)) { if (PHONE) { location.href = meetUrl(ref); } else window.open(meetUrl(ref), "bsp-meet", "width=1180,height=780"); return; }
     if (/^plan:/.test(ref)) { S.bell = false; S.planOpen = ref.slice(5); return go(pid || S.pid, "plans"); }
     var t = String(ref).split(":"), tab = { invoice: "invoices", co: "invoices", update: "updates", check: "checklist", sched: "schedule" }[t[0]] || "overview";
     var target = { invoice: "inv-", update: "up-", check: "ck-" }[t[0]];
@@ -738,7 +738,8 @@
     return '<form class="card composer" data-form="chat" data-ch="' + ch + '"' + (root ? ' data-root="' + esc(root) + '"' : "") + '><div class="mention-wrap"><textarea name="text" data-chat placeholder="' + esc(ph) + '"></textarea></div>' +
       (pend.length ? '<div class="att-list">' + pend.map(function (f, i) { return '<span class="att">' + (f.mime === "application/pdf" ? "PDF · " : "") + esc(f.name) + '<button type="button" data-a="unatt" data-k="' + key + '" data-i="' + i + '" aria-label="Remove">×</button></span>'; }).join("") + "</div>" : "") +
       '<div class="actions" style="justify-content:space-between;align-items:center"><div class="c-left"><label class="btn ghost sm attach">Attach<input type="file" data-att="' + key + '" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label>' +
-      (staff() && ch === "client" && !root && !isDm(ch) ? '<label class="check-line small"><input type="checkbox" name="question"> Ask as a question</label>' : "") + '<span class="muted small hint">Enter to send · Shift+Enter for a new line · @ to mention</span></div>' +
+      (staff() && ch === "client" && !root && !isDm(ch) ? '<label class="check-line small"><input type="checkbox" name="question"> Ask as a question</label>' : "") +
+      '<label class="check-line small imp" title="Chat is live. Important also sends an email."><input type="checkbox" name="important"> ⚑ Important (email too)</label><span class="muted small hint">Enter to send · Shift+Enter for a new line · @ to mention</span></div>' +
       '<button class="btn" type="submit">Send</button></div></form>';
   }
   function tabMessages() {
@@ -755,11 +756,11 @@
     var bar = '<div class="chans">' + all.map(function (c) { var n = c === ch ? 0 : unreadIn(c); return '<button class="chan' + (c === ch ? " on" : "") + (isDm(c) ? " dm" : "") + '" data-a="chan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") +
       '<button class="chan add" data-a="modal" data-m="dm" title="Message one person privately">＋ Private message</button></div>';
     var head = isDm(ch) ? '<h2>@ ' + esc(dmWith(ch).name) + '</h2><span class="muted small">🔒 Private: only you and ' + esc(first(dmWith(ch).name)) + " can see this.</span>"
-      : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Messages are emailed to the client; their email replies show up here." : " Replies by email also show up here.") : "") + "</span>";
+      : "<h2># " + CH_INFO[ch][0] + '</h2><span class="muted small">' + CH_INFO[ch][1] + (ch === "client" ? (staff() ? " Live chat. People who are away get one email at most every few hours; ⚑ Important always emails. Email replies show up here." : " Live chat. Replies by email also show up here.") : "") + "</span>";
     var pinsHere = list.filter(function (m) { return isPinned(m) && !m.thread_id; });
     return bar + '<div class="chan-head"><div>' + head + '</div><button class="btn ghost sm call-btn" data-a="call" title="Start a Google Meet video call here">📹 Video call</button></div>' +
       pinnedHtml(pinsHere, "msg") + (html ? '<div class="thread chat">' + html + "</div>" : '<div class="empty">' + (isDm(ch) ? "Start a private conversation with " + esc(first(dmWith(ch).name)) + "." : "No messages in #" + CH_INFO[ch][0] + " yet. Say hi.") + "</div>") +
-      '<div class="reply-bar">' + composer(ch) + "</div>";
+      '<div class="typing-line" aria-live="polite"></div><div class="reply-bar">' + composer(ch) + "</div>";
   }
   /* Opening a channel marks it read on the server; the "New" line stays until you leave it. */
   function markChannelRead() {
@@ -1527,7 +1528,7 @@
     var mx = Math.max(billed, inn.collected || 0, spent, 1);
     var vs = '<div class="section-title"><h2>In vs out</h2></div><div class="card vs">' + [["Billed", billed, "in"], ["Collected", inn.collected || 0, "got"], ["Spent", spent, "out"]].map(function (r) { return '<div class="vs-row"><span>' + r[0] + '</span><div class="vs-track"><i class="vs-' + r[2] + '" style="width:' + pctOf(r[1], mx) + '%"></i></div><b>' + money(r[1]) + "</b></div>"; }).join("") + "</div>";
     var bills = (m.bills || []).length ? '<div class="section-title"><h2>Bills knocking on the door</h2><span class="muted small">' + money(owe.open || 0) + " for this job</span></div><div class=\"card m-list\">" + m.bills.map(function (b) {
-      return '<div class="m-row' + (b.late ? " late" : "") + '"><div><b>' + esc(b.vendor) + '</b><small class="muted">' + esc([b.what, b.number ? "#" + b.number : ""].filter(Boolean).join(" · ")) + '</small></div><span class="m-due">' + (b.due ? (b.late ? '<span class="pill bad">Late! was due ' + day(b.due) + "</span>" : "Due " + day(b.due)) : "") + "</span><b>" + money(b.amount) + "</b></div>"; }).join("") + "</div>" : "";
+      return '<div class="m-row has-logo' + (b.late ? " late" : "") + '">' + spLogo({ who: b.vendor, logo: b.logo }) + '<div><b>' + esc(b.vendor) + '</b><small class="muted">' + esc([b.what, b.number ? "#" + b.number : ""].filter(Boolean).join(" · ")) + '</small></div><span class="m-due">' + (b.due ? (b.late ? '<span class="pill bad">Late! was due ' + day(b.due) + "</span>" : "Due " + day(b.due)) : "") + "</span><b>" + money(b.amount) + "</b></div>"; }).join("") + "</div>" : "";
     var hrs = m.hours && m.hours.total ? '<div class="section-title"><h2>Crew hours</h2><span class="muted small">' + m.hours.total + " hours logged to this job</span></div><div class=\"card vs\">" + m.hours.people.map(function (h) { return '<div class="vs-row"><span>' + esc(h.name) + '</span><div class="vs-track"><i class="vs-hrs" style="width:' + pctOf(h.hours, m.hours.people[0].hours) + '%"></i></div><b>' + h.hours + " h</b></div>"; }).join("") + "</div>" : "";
     var recent = (m.recent || []).length ? '<div class="section-title"><h2>Latest spending</h2><span class="muted small">Last 6 months</span></div><div class="card m-list">' + m.recent.map(function (r) {
       return '<div class="m-row"><div><b>' + esc(r.who || r.what) + '</b><small class="muted">' + esc(r.what) + "</small></div><span class=\"m-due\"><i class=\"mdot mb-" + r.bucket + '"></i>' + day(r.date) + "</span><b>" + money(r.amount) + "</b></div>"; }).join("") + "</div>" : "";
@@ -1692,10 +1693,10 @@
         : '<p class="muted small">No spending recorded in QuickBooks this year yet.</p>') + "</div>";
     var flow = '<div class="card fin-flow"><div class="section-mini"><h3>Money in vs out</h3><span class="muted small">Last 12 months</span></div>' + finChart(f.months || []) + "</div>";
     var accts = '<div class="card fin-acc"><div class="section-mini"><h3>Accounts</h3><span class="muted small">' + m0(cash.total - cards.total) + " net</span></div>" +
-      (cash.accounts.length + cards.accounts.length ? cash.accounts.map(function (a) { return '<div class="fa-row"><span class="fa-ico bank">' + ICON.paid + "</span><span>" + esc(a.name) + "</span><b>" + m0(a.balance) + "</b></div>"; }).join("") +
-        cards.accounts.map(function (a) { return '<div class="fa-row"><span class="fa-ico cc">' + ICON.dollar + "</span><span>" + esc(a.name) + "<small>" + (a.balance < 0 ? "credit" : "owed") + "</small></span>" + (a.balance < 0 ? '<b class="pos">+' + m0(-a.balance) + "</b>" : '<b class="neg">−' + m0(a.balance) + "</b>") + "</div>"; }).join("") : '<p class="muted small">No bank or card accounts in QuickBooks.</p>') + "</div>";
+      (cash.accounts.length + cards.accounts.length ? cash.accounts.map(function (a) { return '<div class="fa-row">' + (a.logo ? spLogo({ who: a.name, logo: a.logo }) : '<span class="fa-ico bank">' + ICON.paid + "</span>") + "<span>" + esc(a.name) + "</span><b>" + m0(a.balance) + "</b></div>"; }).join("") +
+        cards.accounts.map(function (a) { return '<div class="fa-row">' + (a.logo ? spLogo({ who: a.name, logo: a.logo }) : '<span class="fa-ico cc">' + ICON.dollar + "</span>") + "<span>" + esc(a.name) + "<small>" + (a.balance < 0 ? "credit" : "owed") + "</small></span>" + (a.balance < 0 ? '<b class="pos">+' + m0(-a.balance) + "</b>" : '<b class="neg">−' + m0(a.balance) + "</b>") + "</div>"; }).join("") : '<p class="muted small">No bank or card accounts in QuickBooks.</p>') + "</div>";
     var bills = '<div class="card fin-bills"><div class="section-mini"><h3>Bills knocking on the door</h3><span class="muted small">' + (ap.count || 0) + " open</span></div>" +
-      ((ap.soon || []).length ? ap.soon.map(function (b) { return '<div class="fa-row' + (b.late ? " late" : "") + '"><span class="fa-ico ' + (b.late ? "late" : "soon") + '">' + ICON.calendar + "</span><span>" + esc(b.vendor) + "<small>" + (b.late ? "Late! was due " : "Due ") + day(b.due) + "</small></span><b>" + m0(b.amount) + "</b></div>"; }).join("") : '<p class="muted small">Nothing due in the next two weeks. Nice.</p>') + (ap.stale && ap.stale.count ? '<p class="muted small fin-stale">+ ' + ap.stale.count + " bills more than 60 days late (" + m0(ap.stale.amount) + "). If they were already paid, mark them paid in QuickBooks so this number is real.</p>" : "") + "</div>";
+      ((ap.soon || []).length ? ap.soon.map(function (b) { return '<div class="fa-row' + (b.late ? " late" : "") + '">' + spLogo({ who: b.vendor, logo: b.logo }) + "<span>" + esc(b.vendor) + "<small>" + (b.late ? "Late! was due " : "Due ") + day(b.due) + "</small></span><b>" + m0(b.amount) + "</b></div>"; }).join("") : '<p class="muted small">Nothing due in the next two weeks. Nice.</p>') + (ap.stale && ap.stale.count ? '<p class="muted small fin-stale">+ ' + ap.stale.count + " bills more than 60 days late (" + m0(ap.stale.amount) + "). If they were already paid, mark them paid in QuickBooks so this number is real.</p>" : "") + "</div>";
     // Jobs ↔ projects
     var projects = f.projects || [], byQb = {}; projects.forEach(function (p) { if (p.qb) byQb[p.qb] = p; });
     var free = projects.filter(function (p) { return !p.qb && p.status !== "archived"; });
@@ -2463,12 +2464,13 @@
         S.data.messages.push({ id: tmpId, pending: true, at: nd.getFullYear() + "-" + pad2(nd.getMonth() + 1) + "-" + pad2(nd.getDate()) + " " + pad2(nd.getHours()) + ":" + pad2(nd.getMinutes()), author: S.me.name, role: S.me.role, kind: q ? "question" : "message", status: q ? "open" : "",
           text: sentText, channel: ch, thread_id: f.dataset.root || "", mine: true, avatar: S.me.avatar, akey: S.me.key, reactions: [], files: att.map(function (x) { return { name: x.name, mime: x.mime, thumb: x.mime === "application/pdf" ? "" : x.data, full: x.data, url: "#" }; }) });
         f.reset(); if (S.att) S.att[ck] = []; keepScroll(render); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
-        try { await call("sendMessage", { projectId: S.pid, channel: ch, threadId: f.dataset.root || undefined, text: sentText, kind: q ? "question" : "message", files: att }); }
+        var imp = !!fd.get("important");
+        try { await call("sendMessage", { projectId: S.pid, channel: ch, threadId: f.dataset.root || undefined, text: sentText, kind: q ? "question" : "message", files: att, important: imp }); }
         catch (e) { S.data.messages = S.data.messages.filter(function (x) { return x.id !== tmpId; }); keepScroll(render); var tb = root.querySelector((f.dataset.root ? ".modal " : ".reply-bar ") + "[data-chat]"); if (tb) tb.value = sentText; throw e; }
         S.readMark = S.readMark || {}; S.readMark[ch] = "9999";                // your own message clears the "New" line
-        await refresh(); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
+        await loadFeed(S.pid); if (!f.dataset.root) window.scrollTo(0, document.body.scrollHeight);
         else { var mb = root.querySelector(".modal"); if (mb) mb.scrollTop = mb.scrollHeight; var t2 = root.querySelector(".modal [data-chat]"); if (t2) t2.focus(); }
-        if (ch !== "team" && staff() && !f.dataset.root) toast(q ? "Question emailed" : ch === "architect" ? "Sent and emailed to the architect" : "Sent and emailed to the client and architect");
+        if (q || imp) toast(q ? "Question sent · emailed too" : "Sent · emailed too");
         return;
       }
       if (kind === "answer") {
@@ -2537,5 +2539,255 @@
     catch (e) { if (action === "requestCode" || action === "verifyCode") { S.err = e.message; renderLogin(); } throw e; }
   };
 
+  /* ================= Beta v1.1: live chat, chat dock, support widget, smoother redraws ================= */
+  var ERRLOG = [];
+  window.addEventListener("error", function (e) { ERRLOG.push(String(e.message || e.error || "error").slice(0, 200)); if (ERRLOG.length > 10) ERRLOG.shift(); });
+  var _call2 = call;
+  call = async function (action, body) {
+    try { return await _call2(action, body); }
+    catch (e) { if (action !== "tick" && action !== "typing") { ERRLOG.push(action + ": " + String(e.message).slice(0, 160)); if (ERRLOG.length > 10) ERRLOG.shift(); } throw e; }
+  };
+
+  /* Redraws never eat what you're typing: chat boxes keep their text, focus and cursor. Then the dock and support widget go back in. */
+  function draftKey(t) { var f = t.closest("form") || {}, d = f.dataset || {}; return [d.form || "", d.ch || "", d.root || "", t.name || "", t.closest(".modal") ? "m" : ""].join("|"); }
+  var _render0 = render;
+  render = function () {
+    var keep = [], act = document.activeElement, actKey = null, sel = null;
+    root.querySelectorAll("textarea[data-chat], input[data-sp-q]").forEach(function (t) { if (t.closest("#bsp-dock")) return; var k = draftKey(t); keep.push([k, t.value]); if (t === act) { actKey = k; sel = [t.selectionStart, t.selectionEnd]; } });
+    var r = _render0.apply(this, arguments);
+    var find = function (k) { var hit = null; root.querySelectorAll("textarea[data-chat], input[data-sp-q]").forEach(function (t) { if (!hit && !t.closest("#bsp-dock") && draftKey(t) === k) hit = t; }); return hit; };
+    keep.forEach(function (kv) { var t = find(kv[0]); if (t && !t.value && kv[1]) t.value = kv[1]; });
+    if (actKey) { var t = find(actKey); if (t) { t.focus({ preventScroll: true }); try { t.setSelectionRange(sel[0], sel[1]); } catch (e) {} } }
+    mountFloat(); showTyping();
+    return r;
+  };
+
+  /* ---------- Live: a tiny check every ~2.5 s while a chat is open (8 s otherwise), from the server's cache only ---------- */
+  S.vers = {};
+  function liveTarget() {
+    if (S.pid && S.tab === "messages" && S.data) return [S.pid, S.chan];
+    if (S.dock && S.dock.open && !S.dock.min && S.dock.pid) return [S.dock.pid, S.dock.ch];
+    return null;
+  }
+  var liveT = null;
+  function liveLoop(soon) {
+    clearTimeout(liveT);
+    var vis = document.visibilityState === "visible", fast = vis && !!liveTarget();
+    liveT = setTimeout(async function () {
+      if (S.token && S.me && !S.viewAs) {
+        var tg = liveTarget(), pids = [S.pid, S.dock && S.dock.pid].filter(Boolean);
+        if (pids.length) try {
+          var r = await call("tick", { pids: pids, pid: tg ? tg[0] : "", ch: tg ? tg[1] : "" });
+          S.typing = r.typing || []; showTyping();
+          Object.keys(r.vers || {}).forEach(function (pid) { onVer(pid, r.vers[pid]); });
+        } catch (e) {}
+      }
+      liveLoop();
+    }, soon ? 300 : !vis ? 30000 : fast ? 2500 : 8000);
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") liveLoop(true); });
+  function onVer(pid, v) {
+    if (!v) return; var was = S.vers[pid]; S.vers[pid] = v; if (!was || v <= was) return;
+    if (pid === S.pid && S.data && S.tab !== "messages") { S.verPid = pid; if (v !== S.ver) { S.ver = v; if (S.busy || S.modal) S.verLater = true; else liveReload(); } return; }
+    loadFeed(pid);
+  }
+  /* Just the chat (much lighter than the whole project), merged in without a jump. */
+  async function loadFeed(pid) {
+    S.feedBusy = S.feedBusy || {}; if (S.feedBusy[pid]) { S.feedAgain = pid; return; } S.feedBusy[pid] = 1;
+    try {
+      var r = await call("chatFeed", { projectId: pid });
+      S.dockData = S.dockData || {}; S.dockData[pid] = r; S.vers[pid] = Math.max(S.vers[pid] || 0, r.ver || 0);
+      if (S.data && S.pid === pid) {
+        var pend = (S.data.messages || []).filter(function (m) { return m.pending && !r.messages.some(function (x) { return x.mine && x.text === m.text && x.channel === m.channel; }); });
+        var atBottom = window.innerHeight + window.scrollY > document.body.scrollHeight - 220;
+        S.data.messages = r.messages.concat(pend); S.ver = Math.max(S.ver || 0, r.ver || 0); S.verPid = pid;
+        if (S.tab === "messages" && !S.modal) { keepScroll(render); if (atBottom) window.scrollTo(0, document.body.scrollHeight); markChannelRead(); }
+      }
+      dockPaint(true);
+    } catch (e) {}
+    S.feedBusy[pid] = 0; if (S.feedAgain === pid) { S.feedAgain = null; loadFeed(pid); }
+  }
+  /* "Nayeli is typing…" */
+  var typedAt = 0;
+  function typedIn(pid, ch) { var t = Date.now(); if (t - typedAt < 2500 || !pid || !ch) return; typedAt = t; call("typing", { pid: pid, ch: ch }).catch(function () {}); }
+  root.addEventListener("input", function (e) {
+    if (e.target.matches("#bsp-dock textarea")) { typedIn(S.dock.pid, S.dock.ch); return; }
+    if (e.target.matches("textarea[data-chat]") && S.pid) { var f = e.target.closest("form"); typedIn(S.pid, f && f.dataset.ch); }
+  });
+  function typingText() { var n = S.typing || []; return !n.length ? "" : n.length === 1 ? n[0] + " is typing" : n.length === 2 ? n[0] + " and " + n[1] + " are typing" : n.length + " people are typing"; }
+  function showTyping() {
+    var txt = typingText(), html = txt ? '<span class="dots"><i></i><i></i><i></i></span>' + esc(txt) : "";
+    root.querySelectorAll(".typing-line").forEach(function (el) { if (el.dataset.t !== txt) { el.dataset.t = txt; el.innerHTML = html; } });
+  }
+
+  /* ---------- The chat dock: bottom-right on every page. Read and reply without leaving what you're looking at. ---------- */
+  var DOCK = null, HELP = null;
+  S.dock = (function () { try { return JSON.parse(localStorage.getItem("bsp-dock") || "null") || {}; } catch (e) { return {}; } })();
+  if (PHONE || window.innerWidth < 700) { S.dock.open = false; S.dock.min = true; }        // on a phone the dock is full screen: never open it by itself
+  function dockSave() { try { localStorage.setItem("bsp-dock", JSON.stringify({ open: S.dock.open, min: S.dock.min, pid: S.dock.pid, ch: S.dock.ch, closed: S.dock.closed })); } catch (e) {} }
+  function dockUnread() { return (S.projects || []).reduce(function (a, p) { return a + (p.unread || 0); }, 0); }
+  function dockChans(d) {
+    var ch = (d && d.channels) || ["client"], seen = {};
+    ((d && d.messages) || []).forEach(function (m) { if (isDm(m.channel)) seen[m.channel] = 1; });
+    return ch.concat(Object.keys(seen));
+  }
+  function dockLabel(d, c) {
+    if (!isDm(c)) return "# " + ((CH_INFO[c] || [c])[0]);
+    var ks = String(c).slice(3).split("-"), other = ks[0] === S.me.key ? ks[1] : ks[0], who = ((d && d.members) || []).filter(function (m) { return m.key === other; })[0];
+    return "@ " + (who ? first(who.name) : "private");
+  }
+  function dockMsg(m) {
+    if (m.kind === "event") {
+      var isCall = m.status === "call" && /^meet:/.test(m.ref || "");
+      return '<div class="dk-ev">' + esc(m.author) + " " + esc(String(m.text || "").split("\n")[0]) + (isCall ? ' <a class="dk-join" href="' + esc(meetUrl(m.ref)) + '" target="_blank" rel="noopener">Join</a>' : "") + '<small>' + day(m.at) + "</small></div>";
+    }
+    return '<div class="dk-m' + (m.mine ? " mine" : "") + (m.pending ? " pending" : "") + '">' + (m.mine ? "" : av(m.author, m.avatar, m.role, "xs", m.akey)) +
+      '<div class="dk-b">' + (m.mine ? "" : "<b>" + esc(first(m.author)) + "</b>") + (m.text ? '<div class="text">' + richText(m.text) + "</div>" : "") +
+      ((m.files || []).length ? '<div class="dk-files">📎 ' + m.files.length + " file" + (m.files.length > 1 ? "s" : "") + "</div>" : "") + "<small>" + day(m.at) + "</small></div></div>";
+  }
+  function mountFloat() {
+    if (!S.token || !S.me || S.viewAs || !root.querySelector(".topbar")) { if (DOCK) DOCK.remove(); if (HELP) HELP.remove(); return; }
+    if (!DOCK) {
+      DOCK = document.createElement("div"); DOCK.id = "bsp-dock";
+      DOCK.innerHTML = '<button class="dk-bubble" data-a="dkOpen" aria-label="Open chat">' + ICON.chat + '<span class="dk-count"></span></button>' +
+        '<section class="dk-panel" aria-label="Chat"><header class="dk-head"></header><div class="dk-chans"></div><div class="dk-body" data-lenis-prevent></div><div class="dk-typing typing-line" aria-live="polite"></div>' +
+        '<form class="dk-form"><textarea rows="1" placeholder="Write a message…" aria-label="Message"></textarea><label class="dk-imp" title="Important: also email them"><input type="checkbox" name="important"> ⚑</label><button class="btn sm" type="submit">Send</button></form></section>';
+      var form = DOCK.querySelector(".dk-form"), ta = form.querySelector("textarea");
+      form.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); dockSend(); });
+      ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); dockSend(); } });
+      ta.addEventListener("input", function () { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; });
+    }
+    if (!HELP) {
+      HELP = document.createElement("div"); HELP.id = "bsp-help";
+      HELP.innerHTML = '<button class="hp-btn" data-a="helpOpen" title="Something wrong or an idea? Tell us (with a screenshot)">' + ICON.question + "<span>Feedback</span></button>";
+    }
+    if (DOCK.parentNode !== root) root.appendChild(DOCK);
+    if (HELP.parentNode !== root) root.appendChild(HELP);
+    dockPaint();
+  }
+  function dockPaint(fromFeed) {
+    if (!DOCK) return;
+    var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid);
+    if (!d.pid && S.pid) d.pid = S.pid;
+    if (!d.pid && (S.projects || []).length) d.pid = S.projects[0].id;
+    DOCK.className = (d.open && !d.min ? "open" : "") + (d.closed || onFull ? " gone" : "");
+    var n = dockUnread(), cnt = DOCK.querySelector(".dk-count"); cnt.textContent = n ? (n > 99 ? "99+" : n) : ""; cnt.style.display = n ? "" : "none";
+    if (!(d.open && !d.min)) return;
+    var data = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? { messages: S.data.messages, channels: S.data.channels, members: S.data.members, reads: S.data.reads } : null);
+    if (!data && !(S.feedBusy || {})[d.pid]) loadFeed(d.pid);
+    var chans = dockChans(data); if (chans.indexOf(d.ch) < 0) d.ch = chans[0];
+    var projs = S.projects || [], pname = (projs.filter(function (p) { return p.id === d.pid; })[0] || {}).name || "Chat";
+    DOCK.querySelector(".dk-head").innerHTML = (projs.length > 1 ? '<select class="dk-proj" aria-label="Project">' + projs.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === d.pid ? " selected" : "") + ">" + esc(p.name) + (p.unread ? " (" + p.unread + ")" : "") + "</option>"; }).join("") + "</select>" : "<b>" + esc(pname) + "</b>") +
+      '<button class="dk-x" data-a="dkFull" title="Open the full chat">⤢</button><button class="dk-x" data-a="dkMin" title="Minimize">–</button><button class="dk-x" data-a="dkClose" title="Close">×</button>';
+    DOCK.querySelector(".dk-chans").innerHTML = chans.map(function (c) { return '<button class="dk-chan' + (c === d.ch ? " on" : "") + '" data-a="dkChan" data-c="' + esc(c) + '">' + esc(dockLabel(data, c)) + "</button>"; }).join("");
+    var body = DOCK.querySelector(".dk-body"), atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+    var list = data ? (data.messages || []).filter(function (m) { return (m.channel || "client") === d.ch && !m.thread_id && m.kind !== "answer"; }).slice(-60) : null;
+    var html = !data ? '<p class="muted small dk-empty">Loading…</p>' : list.length ? list.map(dockMsg).join("") : '<p class="muted small dk-empty">No messages here yet. Say hi 👋</p>';
+    if (body.dataset.h !== String(scHash(html))) { body.innerHTML = html; body.dataset.h = scHash(html); if (atBottom || !fromFeed) body.scrollTop = body.scrollHeight; }
+    if (data && list && list.length && document.visibilityState === "visible") {
+      var last = list[list.length - 1], r = ((data.reads || {})[d.ch] || "");
+      if (!last.mine && last.at > r) { (data.reads = data.reads || {})[d.ch] = last.at; call("markRead", { projectId: d.pid, channel: d.ch }).then(function () { var pr = (S.projects || []).filter(function (p) { return p.id === d.pid; })[0]; if (pr) { pr.unread = 0; dockPaint(); } }).catch(function () {}); }
+    }
+  }
+  async function dockSend() {
+    var d = S.dock, ta = DOCK.querySelector(".dk-form textarea"), imp = DOCK.querySelector("[name=important]"), text = ta.value.trim(); if (!text || !d.pid) return;
+    var data = (S.dockData || {})[d.pid], nd = new Date(), p2 = function (x) { return String(x).padStart(2, "0"); };
+    var tmp = { id: "tmp" + nd.getTime(), pending: true, mine: true, author: S.me.name, role: S.me.role, akey: S.me.key, avatar: S.me.avatar, kind: "message", text: text, channel: d.ch, thread_id: "", files: [], reactions: [],
+      at: nd.getFullYear() + "-" + p2(nd.getMonth() + 1) + "-" + p2(nd.getDate()) + " " + p2(nd.getHours()) + ":" + p2(nd.getMinutes()) };
+    if (data) data.messages = (data.messages || []).concat([tmp]);
+    if (S.data && S.pid === d.pid && S.data.messages !== (data || {}).messages) S.data.messages.push(tmp);
+    ta.value = ""; ta.style.height = "auto"; var important = imp.checked; imp.checked = false; dockPaint();
+    try { await call("sendMessage", { projectId: d.pid, channel: d.ch, text: text, important: important }); if (important) toast("Sent · emailed too"); }
+    catch (e) { ta.value = text; if (data) data.messages = data.messages.filter(function (m) { return m !== tmp; }); toast(e.message); dockPaint(); return; }
+    loadFeed(d.pid);
+  }
+  root.addEventListener("change", function (e) { if (e.target.matches("#bsp-dock .dk-proj")) { S.dock.pid = e.target.value; S.dock.ch = ""; dockSave(); dockPaint(); loadFeed(S.dock.pid); liveLoop(true); } });
+  function dockAction(a, b) {
+    var d = S.dock;
+    if (a === "dkOpen") { d.open = true; d.min = false; d.closed = false; if (S.pid) d.pid = d.pid || S.pid; dockSave(); dockPaint(); loadFeed(d.pid); liveLoop(true); setTimeout(function () { var t = DOCK.querySelector("textarea"); if (t && !PHONE) t.focus(); }, 50); return true; }
+    if (a === "dkMin") { d.min = true; d.open = false; dockSave(); dockPaint(); return true; }
+    if (a === "dkClose") { d.closed = true; d.open = false; dockSave(); dockPaint(); toast("Chat closed. It comes back when someone writes, or from the 💬 in the top bar."); return true; }
+    if (a === "dkChan") { d.ch = b.dataset.c; dockSave(); var body = DOCK.querySelector(".dk-body"); body.dataset.h = ""; dockPaint(); liveLoop(true); return true; }
+    if (a === "dkFull") { d.open = false; d.min = true; dockSave(); S.wantChan = d.ch; go(d.pid, "messages"); return true; }
+    return false;
+  }
+  /* A new message brings a closed dock back as a bubble. */
+  var _onPulse = onPulse;
+  onPulse = function (p) { if (p && p.id && S.pulseId != null && p.id !== S.pulseId && S.dock.closed) { S.dock.closed = false; dockSave(); } _onPulse(p); dockPaint(); };
+
+  /* ---------- Support widget: a screenshot of what's wrong (mark it up) + a short note, straight to Jesús ---------- */
+  var H2C = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+  function loadScript(src) { return new Promise(function (res, rej) { if (window.html2canvas) return res(); var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = function () { rej(new Error("Couldn't load the screenshot tool.")); }; document.head.appendChild(s); }); }
+  async function snapPage() {
+    await loadScript(H2C);
+    var c = await window.html2canvas(document.body, { useCORS: true, logging: false, backgroundColor: "#f6f2eb", scale: Math.min(1.5, window.devicePixelRatio || 1),
+      x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight, windowWidth: document.documentElement.clientWidth,
+      ignoreElements: function (el) { return el.id === "bsp-help" || el.classList && el.classList.contains("hp-panel"); } });
+    return c;
+  }
+  async function helpOpen() {
+    if (document.querySelector(".hp-panel")) return;
+    var w = document.createElement("div"); w.className = "hp-panel"; w.setAttribute("role", "dialog"); w.setAttribute("aria-label", "Report a problem");
+    w.innerHTML = '<div class="hp-card"><div class="hp-top"><b>Help us fix it</b><span class="muted small">Beta v1.1 · goes straight to Jesús</span><button class="hp-x" aria-label="Close">×</button></div>' +
+      '<div class="hp-shot"><p class="muted small hp-wait">Taking a screenshot of this page…</p></div>' +
+      '<div class="hp-tools"><span class="muted small">Draw on it to point at the problem</span><button type="button" class="link small hp-undo">Undo</button><button type="button" class="link small hp-clear">Clear</button><label class="link small">Use another image<input type="file" accept="image/*" hidden class="hp-file"></label></div>' +
+      '<div class="hp-chips">' + ["Something's broken", "Too slow", "Looks wrong", "Idea"].map(function (t) { return '<button type="button" class="chip" data-t="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") + "</div>" +
+      '<textarea class="hp-text" rows="3" placeholder="What happened? What did you expect? (one or two lines is perfect)"></textarea>' +
+      '<p class="muted small hp-ctx">We also send: the page you\'re on, your browser and screen size, and any recent errors. Nothing else.</p>' +
+      '<div class="actions"><button type="button" class="btn ghost hp-cancel">Cancel</button><button type="button" class="btn hp-send">Send</button></div></div>';
+    document.body.appendChild(w);
+    var close = function () { w.remove(); }, kind = "";
+    w.querySelector(".hp-x").onclick = close; w.querySelector(".hp-cancel").onclick = close; w.addEventListener("click", function (e) { if (e.target === w) close(); });
+    w.querySelectorAll(".hp-chips .chip").forEach(function (c) { c.onclick = function () { w.querySelectorAll(".hp-chips .chip").forEach(function (x) { x.classList.remove("on"); }); c.classList.add("on"); kind = c.dataset.t; }; });
+    var shot = w.querySelector(".hp-shot"), base = null, cv = null, ctx = null, strokes = [], cur = null;
+    function draw() { if (!cv) return; ctx.drawImage(base, 0, 0, cv.width, cv.height); ctx.lineWidth = Math.max(3, cv.width / 260); ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#e5322d";
+      strokes.forEach(function (s) { ctx.beginPath(); s.forEach(function (pt, i) { if (i) ctx.lineTo(pt[0], pt[1]); else ctx.moveTo(pt[0], pt[1]); }); ctx.stroke(); }); }
+    function useImage(src) {
+      base = src; cv = document.createElement("canvas"); var sc = Math.min(1, 1600 / (src.width || 1)); cv.width = Math.round(src.width * sc); cv.height = Math.round(src.height * sc); ctx = cv.getContext("2d");
+      shot.innerHTML = ""; shot.appendChild(cv); strokes = []; draw();
+      var pos = function (e) { var r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+      cv.onpointerdown = function (e) { cv.setPointerCapture(e.pointerId); cur = [pos(e)]; strokes.push(cur); draw(); };
+      cv.onpointermove = function (e) { if (!cur) return; cur.push(pos(e)); draw(); };
+      cv.onpointerup = cv.onpointercancel = function () { cur = null; };
+    }
+    w.querySelector(".hp-undo").onclick = function () { strokes.pop(); draw(); };
+    w.querySelector(".hp-clear").onclick = function () { strokes = []; draw(); };
+    w.querySelector(".hp-file").onchange = function (e) { var f = e.target.files[0]; if (!f) return; var im = new Image(); im.onload = function () { useImage(im); }; im.src = URL.createObjectURL(f); };
+    w.style.visibility = "hidden";
+    try { var c = await snapPage(); useImage(c); } catch (e) { shot.innerHTML = '<p class="muted small">Couldn\'t take the screenshot here. Use "Use another image" to add one, or just write what happened.</p>'; }
+    w.style.visibility = "";
+    w.querySelector(".hp-text").focus();
+    w.querySelector(".hp-send").onclick = function () {
+      var btn = this, note = w.querySelector(".hp-text").value.trim(); if (!note && !cv) return toast("Write what happened, or add a screenshot.");
+      btn.disabled = true; btn.textContent = "Sending…";
+      var meta = { pid: S.pid || "", tab: S.pid ? S.tab : "", view: S.pid ? "" : S.home || "home", hash: location.hash, ua: navigator.userAgent, screen: window.innerWidth + "×" + window.innerHeight, errors: ERRLOG.slice(-5), version: "beta 1.1", kind: kind };
+      call("feedback", { text: (kind ? "[" + kind + "] " : "") + note, image: cv ? cv.toDataURL("image/jpeg", 0.82) : "", meta: meta })
+        .then(function () { w.querySelector(".hp-card").innerHTML = '<div class="hp-done"><b>Thank you! 🙌</b><p class="muted">Jesús got it with the screenshot. We\'ll fix it fast.</p><button class="btn" type="button">Close</button></div>'; w.querySelector(".hp-done .btn").onclick = close; })
+        .catch(function (e) { btn.disabled = false; btn.textContent = "Send"; toast(e.message); });
+    };
+  }
+  function meetUrl(ref) { var u = String(ref || "").replace(/^meet:/, ""); if (!S.me || /authuser=/.test(u)) return u; return u.split("?")[0] + "?authuser=" + encodeURIComponent(S.me.email); }
+
+  /* Admin: the beta feedback, newest first (Home → Team). */
+  function feedbackCard() {
+    if (!S.me || !S.me.admin) return "";
+    if (!S.fb) { S.fb = "loading"; call("listFeedback").then(function (r) { S.fb = r.items; }).catch(function () { S.fb = []; }).then(function () { if (!S.pid && S.home === "team") keepScroll(render); }); }
+    var list = S.fb === "loading" ? null : S.fb, open = (list || []).filter(function (f) { return f.status !== "done"; });
+    return '<div class="section-title"><div><h2>Beta feedback</h2><span class="muted small">What people reported with the Feedback tab (left edge of the screen). It also lands in your email.</span></div></div>' +
+      '<div class="card fb-list">' + (!list ? '<p class="muted small">Loading…</p>' : !list.length ? '<p class="muted small">Nothing yet. 🎉</p>' : list.slice(0, 20).map(function (f) {
+        return '<div class="fb-row' + (f.status === "done" ? " done" : "") + '">' + (f.shot ? '<a href="' + esc(f.link) + '" target="_blank" rel="noopener"><img src="' + esc(f.shot) + '" alt="Screenshot" loading="lazy"></a>' : '<span class="fb-noimg">✎</span>') +
+          '<div><b>' + esc(f.name) + '</b> <small class="muted">' + esc([f.project, f.tab].filter(Boolean).join(" · ")) + " · " + day(String(f.at).slice(0, 10)) + "</small><p>" + esc(f.text || "(screenshot only)") + "</p></div>" +
+          '<button class="btn ghost sm" data-a="fbDone" data-id="' + esc(f.id) + '" data-s="' + (f.status === "done" ? "open" : "done") + '">' + (f.status === "done" ? "Reopen" : "Fixed") + "</button></div>";
+      }).join("")) + (open.length ? '<p class="muted small">' + open.length + " open</p>" : "") + "</div>";
+  }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return;
+    var a = b.dataset.a;
+    if (/^dk/.test(a)) { e.preventDefault(); e.stopImmediatePropagation(); dockAction(a, b); return; }
+    if (a === "helpOpen") { e.preventDefault(); e.stopImmediatePropagation(); helpOpen(); return; }
+    if (a === "fbDone") { e.preventDefault(); e.stopImmediatePropagation(); call("setFeedback", { id: b.dataset.id, status: b.dataset.s }).then(function () { (S.fb || []).forEach(function (f) { if (f.id === b.dataset.id) f.status = b.dataset.s; }); keepScroll(render); }).catch(function (er) { toast(er.message); }); return; }
+    if (a === "chatDock") { e.preventDefault(); e.stopImmediatePropagation(); S.dock.closed = false; dockAction("dkOpen", b); return; }
+  }, true);
+  liveLoop();
   if (S.token) { render(); route(); } else render();
 })();
