@@ -1629,3 +1629,21 @@
 #bs-portal table.ls-price th,#bs-portal table.ls-price td.num{white-space:nowrap}
 #bs-portal table.ls-price td:first-child{min-width:180px}
 #bs-portal table.ls-price td:nth-child(2) b{font-size:16px}
+/* batch 1: dispatch readiness, preview picker, incomplete schedule */
+#bs-portal .ls-ready{padding:4px 0}
+#bs-portal .ls-rdy{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-top:1px solid rgba(0,0,0,.06)}
+#bs-portal .ls-rdy:first-child{border-top:0}
+#bs-portal .ls-rdy .ls-main{flex:1;min-width:0}
+#bs-portal .ls-rdy .ls-main small{display:block;margin-top:2px;line-height:1.45}
+#bs-portal .ls-rdy .link.small{padding:0;font-size:inherit}
+#bs-portal .ls-rdy.bad b{color:#a42c22}
+#bs-portal .ls-rdyi{flex:none;width:22px;text-align:center}
+#bs-portal .ls-incomplete{background:#fdecea;border:1px solid #f1b8b2;color:#6b1d16;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+#bs-portal .ls-pvpick{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;margin-bottom:14px;background:#eef4fb;border:1px solid #c9dbef}
+#bs-portal .ls-pvpick select{max-width:280px}
+#bs-portal .ls-pvpick small{flex-basis:100%}
+#bs-portal .ls-chk{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;margin-top:6px}
+#bs-portal .ls-chk input{width:auto}
+#bs-portal .ls-rdy .ls-main small{white-space:normal;overflow:visible;text-overflow:clip}
+#bs-portal .ls-pin.approx span{background:#fff;color:#a42c22;border:2px dashed #a42c22;font-weight:700}
+#bs-portal .ls-rstop .ls-main small{white-space:normal;overflow:visible;text-overflow:clip}

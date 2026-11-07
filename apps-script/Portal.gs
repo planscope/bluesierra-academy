@@ -67,7 +67,7 @@ var PREFETCH = {
   activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People", "LsCrews", "LsProps"], markRead: ["People", "Projects", "Reads"]
 };
 var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
-var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
+var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
 /* Permission tags. Everything that can be limited (chat, updates, checklist items, contract & billing) carries #tags:
@@ -109,7 +109,7 @@ function doPost(e) {
       if (b.viewAs) {
         if (me.role !== "admin") throw new Error("Only Jesús can preview the portal.");
         if (!READ_ONLY[b.action]) throw new Error("You're in preview. Exit the preview to change things.");
-        me = previewMe(b.viewAs);
+        me = previewMe(b.viewAs); if (b.viewAsLs) me.preview_ls = String(b.viewAsLs).slice(0, 40);      // maintenance: which property (client) or crew to see it as
       }
       fn = ACTIONS[b.action];
       if (!fn) throw new Error("Unknown action.");

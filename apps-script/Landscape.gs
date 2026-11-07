@@ -28,8 +28,8 @@ var LS_DEFAULT_CHECK = ["Mow and edge lawn areas", "Blow walks, drive and patios
 NO_LOCK.lsHome = 1; NO_LOCK.lsProperty = 1; NO_LOCK.lsReportIssue = 1; NO_LOCK.lsSaveExpense = 1;
 
 /* ---- who is who ---- */
-function lsCrewsOf(me) { var e = normEmail(me.email); return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(e) > -1 || normEmail(c.lead) === e; }); }
-function lsClientProps(me) { var e = normEmail(me.email); return rows("LsProps").filter(function (p) { return p.status !== "deleted" && splitIds(p.client_emails).map(normEmail).indexOf(e) > -1; }); }
+function lsCrewsOf(me) { if (me.preview) return me.preview === "crew" && me.preview_ls ? rows("LsCrews").filter(function (c) { return c.id === me.preview_ls; }) : []; var e = normEmail(me.email); return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(e) > -1 || normEmail(c.lead) === e; }); }
+function lsClientProps(me) { if (me.preview) return me.preview === "client" && me.preview_ls ? rows("LsProps").filter(function (p) { return p.id === me.preview_ls && p.status !== "deleted"; }) : []; var e = normEmail(me.email); return rows("LsProps").filter(function (p) { return p.status !== "deleted" && splitIds(p.client_emails).map(normEmail).indexOf(e) > -1; }); }
 function lsRole(me) {
   if (me.preview) return me.preview === "client" ? "client" : me.preview === "crew" ? "crew" : "";
   if (isStaff(me)) return "office";
@@ -43,7 +43,7 @@ function lsLog(me, kind, ref, text) { insert("LsLog", { id: newId("l"), at: now(
 function lsProp(id) { var p = findBy("LsProps", "id", String(id || "")); if (!p || p.status === "deleted") throw new Error("Property not found."); return p; }
 function lsCanSeeProp(me, p) {
   var role = lsRole(me); if (role === "office") return true;
-  if (role === "client") return splitIds(p.client_emails).map(normEmail).indexOf(normEmail(me.email)) > -1;
+  if (role === "client") return me.preview ? !!me.preview_ls && p.id === me.preview_ls : splitIds(p.client_emails).map(normEmail).indexOf(normEmail(me.email)) > -1;
   if (role === "crew") { var mine = lsCrewsOf(me).map(function (c) { return c.id; }); return mine.indexOf(p.crew_id) > -1 || rows("LsVisits").some(function (v) { return v.property_id === p.id && mine.indexOf(v.crew_id) > -1; }); }
   return false;
 }
@@ -161,7 +161,7 @@ function lsIssueOut(i, role) {
 ACTIONS.lsHome = function (me, b) {
   var role = lsRole(me); if (!role) return { role: "" };
   var today = lsDay(new Date()), from = /^\d{4}-\d\d-\d\d$/.test(b.from || "") ? b.from : lsAdd(today, -7), to = /^\d{4}-\d\d-\d\d$/.test(b.to || "") ? b.to : lsAdd(today, 21);
-  if (role !== "client") {
+  if (role !== "client" && !me.preview) {
     var horizon = lsAdd(today, 35), latest = rows("LsVisits").filter(function (v) { return v.series === "rec"; }).reduce(function (a, v) { return v.plan_date > a ? v.plan_date : a; }, "");
     if (latest < lsAdd(today, 21) && rows("LsProps").some(function (p) { return p.status === "active" && p.freq && p.freq !== "none"; })) withLock(function () { _ROWS = {}; prefetch(["People", "Projects"].concat(LS_TABLES)); lsEnsureVisits(horizon); });
   }
@@ -635,13 +635,13 @@ function lsBestOrder(pts, yard) {
 }
 /* One crew's day: order (kept if the office set one, else optimized), each leg's real drive time, the road line. */
 function lsRouteFor(stops, yard, keepOrder) {
-  var n = stops.length, out = { order: [], legs: [], back_min: 0, drive_min: 0, km: 0, real: false, poly: "" };
+  var n = stops.length, out = { order: [], legs: [], back_min: 0, back_km: 0, drive_min: 0, km: 0, real: false, poly: "" };
   if (!n) return out;
   var ord = keepOrder ? stops.map(function (x, i) { return i; }) : lsBestOrder(stops, yard);
   var seq = ord.map(function (i) { return stops[i]; });
   var straight = function () {
     out.legs = seq.map(function (s, i) { var from = i ? seq[i - 1] : yard; return from ? { min: Math.round(lsEstMin(from, s)), km: Math.round(lsKm(from, s) * 13.5) / 10 } : { min: 0, km: 0 }; });
-    out.back_min = yard ? Math.round(lsEstMin(seq[n - 1], yard)) : 0;
+    out.back_min = yard ? Math.round(lsEstMin(seq[n - 1], yard)) : 0; out.back_km = yard ? Math.round(lsKm(seq[n - 1], yard) * 13.5) / 10 : 0;
   };
   try {
     if (n === 1 && !yard) straight();
@@ -656,7 +656,7 @@ function lsRouteFor(stops, yard, keepOrder) {
       });
       if (!g) straight();
       else { out.real = true; out.poly = g.poly;
-        if (yard) { out.legs = g.legs.slice(0, n); out.back_min = g.legs[n] ? g.legs[n].min : 0; }
+        if (yard) { out.legs = g.legs.slice(0, n); out.back_min = g.legs[n] ? g.legs[n].min : 0; out.back_km = g.legs[n] ? g.legs[n].km : 0; }
         else out.legs = [{ min: 0, km: 0 }].concat(g.legs); }
     }
   } catch (e) { console.warn("lsRouteFor: " + e.message); straight(); }
@@ -673,17 +673,19 @@ function lsMapsLink(seq, yard) {
 /* The day on the map: one route per crew with real drive times, time on site, the total against an 8-hour day, and revenue. */
 ACTIONS.lsDayRoutes = function (me, b) {
   lsNeedOffice(me); var date = dateOrEmpty(b.date) || lsDay(new Date()), cfg = lsCfg(), money = lsMoney(me), groups = {};
-  rows("LsVisits").filter(function (v) { return v.date === date && v.status !== "canceled"; }).forEach(function (v) { (groups[v.crew_id || ""] = groups[v.crew_id || ""] || []).push(v); });
+  var only = b.ids ? [].concat(b.ids).map(String) : null;
+  rows("LsVisits").filter(function (v) { return v.date === date && v.status !== "canceled" && (!only || only.indexOf(v.id) > -1); }).forEach(function (v) { (groups[v.crew_id || ""] = groups[v.crew_id || ""] || []).push(v); });
   var props = {}; rows("LsProps").forEach(function (p) { props[p.id] = p; });
   var crews = Object.keys(groups).map(function (cid) {
-    var vs = groups[cid].sort(function (a, c) { return (num(a.stop) || 99) - (num(c.stop) || 99); }), cw = cid ? findBy("LsCrews", "id", cid) : null, size = Math.max(1, splitIds(cw && cw.members).length || 2);
-    var keep = vs.every(function (v) { return num(v.stop) > 0; }) && !b.optimize;
-    var withLoc = vs.filter(function (v) { var p = props[v.property_id]; return p && p.lat && p.lon; }), noLoc = vs.filter(function (v) { return withLoc.indexOf(v) < 0; });
+    var vs = groups[cid].sort(lsStopCmp(props)), cw = cid ? findBy("LsCrews", "id", cid) : null, size = Math.max(1, splitIds(cw && cw.members).length || 1);
+    var keep = !b.optimize, saved = vs.every(function (v) { return num(v.stop) > 0; });               // the map shows the same order as the list; optimizing is a suggestion
+    var withLoc = vs.filter(function (v) { return lsRoutable(props[v.property_id]); }), noLoc = vs.filter(function (v) { return withLoc.indexOf(v) < 0; });
     var stops = withLoc.map(function (v) { var p = props[v.property_id]; return { lat: num(p.lat), lon: num(p.lon), v: v }; });
     var r = lsRouteFor(stops, cfg.yard, keep), seq = r.order.map(function (i) { return stops[i]; });
-    var site = vs.reduce(function (a, v) { return a + num(v.est_min); }, 0) / size;
-    var o = { crew_id: cid, size: size, stops: seq.map(function (s, i) { return { visit_id: s.v.id, drive_min: r.legs[i] ? r.legs[i].min : 0, km: r.legs[i] ? r.legs[i].km : 0 }; }).concat(noLoc.map(function (v) { return { visit_id: v.id, drive_min: null, km: null }; })),
-      back_min: r.back_min, drive_min: r.drive_min, km: r.km, site_min: Math.round(site), day_min: Math.round(site + r.drive_min), real: r.real, poly: r.poly, missing: noLoc.length, kept: keep,
+    var siteOf = function (v) { return lsOnSite(v, props[v.property_id], size); }, site = vs.reduce(function (a, v) { return a + siteOf(v).min; }, 0), hrs = lsCrewHours(cw);
+    var o = { crew_id: cid, size: size, no_crew: !cw, hours: hrs, stops: seq.map(function (s, i) { var os = siteOf(s.v); return { visit_id: s.v.id, drive_min: r.legs[i] ? r.legs[i].min : 0, km: r.legs[i] ? r.legs[i].km : 0, site_min: os.min, site_src: os.src, person_min: num(s.v.est_min) }; })
+        .concat(noLoc.map(function (v) { var os = siteOf(v); return { visit_id: v.id, drive_min: null, km: null, site_min: os.min, site_src: os.src, person_min: num(v.est_min), why: lsWhyNotRoutable(props[v.property_id]) }; })),
+      back_min: r.back_min, back_km: r.back_km, drive_min: r.drive_min, km: r.km, site_min: Math.round(site), day_min: Math.round(site + r.drive_min), over: Math.round(site + r.drive_min) > hrs.end - hrs.start, real: r.real, poly: r.poly, missing: noLoc.length, kept: keep, saved: saved,
       maps: seq.length ? lsMapsLink(seq, cfg.yard) : "" };
     if (money) o.revenue = Math.round(vs.reduce(function (a, v) { return a + lsVisitRevenue(v, props[v.property_id]); }, 0));
     return o;
@@ -707,7 +709,7 @@ ACTIONS.lsFixPins = function (me, b) {
   rows("LsProps").filter(function (p) { return p.status !== "ended" && (!p.lat || !p.lon || b.all); }).slice(0, 60).forEach(function (p) {
     var q = lsAddrOf(p), g = null; try { g = lsGeocode(q); } catch (e) { console.warn("geocode: " + e.message); }
     if (!g) { none.push(p.name); return; }
-    update("LsProps", "id", p.id, { lat: String(g.lat), lon: String(g.lon) });
+    update("LsProps", "id", p.id, { lat: String(g.lat), lon: String(g.lon), pin_q: g.sure ? "" : "approx" });
     (g.sure ? found : check).push({ id: p.id, name: p.name, address: g.address });
   });
   if (found.length + check.length) lsLog(me, "property", "", "found map pins for " + (found.length + check.length) + " properties");
@@ -727,7 +729,7 @@ ACTIONS.lsSettings = function (me, b) {
 };
 /* A typical week: which properties each crew does on each workday (biweekly ones count half). */
 function lsWeek() {
-  var week = {}, props = rows("LsProps").filter(function (p) { return p.status === "active" && (p.freq === "weekly" || p.freq === "biweekly") && p.lat && p.lon; });
+  var week = {}, props = rows("LsProps").filter(function (p) { return p.status === "active" && (p.freq === "weekly" || p.freq === "biweekly") && lsRoutable(p); });
   props.forEach(function (p) { lsWds(p).forEach(function (d) { var k = (p.crew_id || "") + "|" + d; (week[k] = week[k] || []).push(p); }); });
   return { week: week, props: props };
 }
@@ -737,12 +739,24 @@ function lsTourMin(list, yard) {
   if (yard) s += lsEstMin(yard, pts[o[0]]) + lsEstMin(pts[o[o.length - 1]], yard);
   return s;
 }
-function lsCrewSize(cid) { var c = cid ? findBy("LsCrews", "id", cid) : null; return Math.max(1, splitIds(c && c.members).length || 2); }
+function lsCrewSize(cid) { var c = cid ? findBy("LsCrews", "id", cid) : null; return Math.max(1, splitIds(c && c.members).length || 1); }     // no crew yet = 1 person (and the screens say so)
+/* Time on site (elapsed) vs labor (person-minutes): an elapsed override on the property wins; otherwise the work is split
+   evenly between the people in the crew (90 person-min with 2 people ≈ 45 min on site). */
+function lsOnSite(v, p, size) {
+  var o = num(p && p.visit_dur); if (o > 0 && (!v || v.kind === "maintenance")) return { min: Math.round(o), src: "set" };
+  var pm = num((v && v.est_min) || (p && p.visit_min) || 60); size = Math.max(1, size || 1);
+  return { min: Math.max(5, Math.ceil(pm / size)), src: size > 1 ? "split" : "one" };
+}
+/* A property goes into drive times only with an exact pin: a street number in the address and not an "approximate" match. */
+function lsRoutable(p) { return !!(p && p.lat && p.lon && /^\s*\d+[a-z]?\s+\S/i.test(String(p.address || "")) && p.pin_q !== "approx"); }
+function lsWhyNotRoutable(p) { return !(p && p.lat && p.lon) ? "no map pin" : !/^\s*\d+[a-z]?\s+\S/i.test(String(p.address || "")) ? "address has no street number" : "approximate pin"; }
+/* One stop order everywhere (list, map, crew phone, navigation): saved stop number, then property name, then id. */
+function lsStopCmp(props) { return function (a, c) { var d = (num(a.stop) || 99) - (num(c.stop) || 99); if (d) return d; var na = String((props[a.property_id] || {}).name || ""), nc = String((props[c.property_id] || {}).name || ""); return na < nc ? -1 : na > nc ? 1 : a.id < c.id ? -1 : 1; }; }
 /* Better days: move a property to the day its crew is already nearby. Greedy, up to 6 moves, each saving ≥ 10 min a week,
    never past a 9-hour day. Uses straight-line estimates for a typical week. */
 ACTIONS.lsSuggestDays = function (me, b) {
   lsNeedOffice(me); var cfg = lsCfg(), W = lsWeek(), week = W.week, moves = [], moved = {};
-  var dayLoad = function (k, list) { return lsTourMin(list, cfg.yard) + list.reduce(function (a, p) { return a + num(p.visit_min || 60); }, 0) / lsCrewSize(k.split("|")[0]); };
+  var dayLoad = function (k, list) { var sz = lsCrewSize(k.split("|")[0]); return lsTourMin(list, cfg.yard) + list.reduce(function (a, p) { return a + lsOnSite(null, p, sz).min; }, 0); };
   for (var round = 0; round < 6; round++) {
     var best = null;
     W.props.forEach(function (p) {
@@ -750,7 +764,7 @@ ACTIONS.lsSuggestDays = function (me, b) {
       var cid = p.crew_id || "", from = lsWds(p)[0], fk = cid + "|" + from, fl = week[fk] || [], wt = p.freq === "biweekly" ? 0.5 : 1;
       var without = fl.filter(function (x) { return x !== p; }), saveFrom = lsTourMin(fl, cfg.yard) - lsTourMin(without, cfg.yard);
       LS_WORKDAYS.forEach(function (d) {
-        if (d === from) return; var tk = cid + "|" + d, tl = week[tk] || []; if (!tl.length) return;      // only to a day the crew already works
+        if (d === from || !lsDayOk(p, d)) return; var tk = cid + "|" + d, tl = week[tk] || []; if (!tl.length) return;      // only to a day the crew already works and the client allows
         var withP = tl.concat([p]), add = lsTourMin(withP, cfg.yard) - lsTourMin(tl, cfg.yard), save = (saveFrom - add) * wt;
         if (dayLoad(tk, withP) > 9 * 60) return;
         if (save >= 10 && (!best || save > best.save)) best = { p: p, from: from, to: d, save: save, fk: fk, tk: tk, near: tl.slice().sort(function (a, c) { return lsKm(p, a) - lsKm(p, c); })[0] };
@@ -758,7 +772,10 @@ ACTIONS.lsSuggestDays = function (me, b) {
     });
     if (!best) break;
     week[best.fk] = week[best.fk].filter(function (x) { return x !== best.p; }); week[best.tk] = week[best.tk].concat([best.p]); moved[best.p.id] = 1;
-    moves.push({ id: best.p.id, name: best.p.name, crew_id: best.p.crew_id || "", from: best.from, to: best.to, save_min: Math.round(best.save), near: best.near ? best.near.name : "", biweekly: best.p.freq === "biweekly" });
+    var nearBy = week[best.tk].filter(function (x) { return x !== best.p; }).map(function (x) { return { name: x.name, mi: Math.round(lsKm(best.p, x) * 0.621 * 10) / 10 }; }).sort(function (a, c) { return a.mi - c.mi; }).slice(0, 4);
+    var leftBehind = week[best.fk].map(function (x) { return x.name; }).slice(0, 4);
+    moves.push({ id: best.p.id, name: best.p.name, city: best.p.city || "", crew_id: best.p.crew_id || "", from: best.from, to: best.to, save_min: Math.round(best.save), near: best.near ? best.near.name : "", near_mi: nearBy.length ? nearBy[0].mi : null,
+      with: nearBy, was_with: leftBehind, biweekly: best.p.freq === "biweekly", freq: best.p.freq, days_ok: best.p.days_ok || "" });
   }
   var total = moves.reduce(function (a, m) { return a + m.save_min; }, 0);
   return { moves: moves, save_min_week: total, yard: !!cfg.yard };
@@ -787,12 +804,12 @@ ACTIONS.lsPricing = function (me, b) {
   var out = rows("LsProps").filter(function (p) { return p.status === "active" && p.freq && p.freq !== "none" && !isTrue(p.sample); }).map(function (p) {
     var days = lsWds(p).length, perMonthVisits = lsVisitsPerMonth(p.freq) * (p.freq === "weekly" || p.freq === "biweekly" ? days : 1);
     var price = num(p.price), b2 = p.billing || "monthly", rev = !price ? 0 : b2 === "per_visit" ? price * perMonthVisits : b2 === "quarterly" ? price / 3 : b2 === "annual" ? price / 12 : price;
-    var lg = logged[p.id], siteMin = lg ? lg.min / lg.n : num(p.visit_min || 60), size = lsCrewSize(p.crew_id);
+    var lg = logged[p.id], size = lsCrewSize(p.crew_id), siteMin = lg ? lg.min / lg.n : num(p.visit_dur) > 0 ? num(p.visit_dur) * size : num(p.visit_min || 60);   // person-minutes of labor
     var cw = p.crew_id ? findBy("LsCrews", "id", p.crew_id) : null, ems = splitIds(cw && cw.members), rate = ems.length ? ems.reduce(function (a, e) { return a + lsRateOf(e); }, 0) / ems.length : cfg.rate;
     var driveMin = (drive[p.id] || 0) / days;                              // per visit, truck minutes
     var personHours = (siteMin + driveMin * size) * perMonthVisits / 60, cost = personHours * rate;
     return { id: p.id, name: p.name, revenue: Math.round(rev), visits: Math.round(perMonthVisits * 10) / 10, site_min: Math.round(siteMin), drive_min: Math.round(driveMin), crew: size, hours: Math.round(personHours * 10) / 10,
-      cost: Math.round(cost), profit: Math.round(rev - cost), per_hour: personHours ? Math.round(rev / personHours) : null, logged: !!lg, no_price: !price, no_pin: !(p.lat && p.lon) };
+      cost: Math.round(cost), profit: Math.round(rev - cost), per_hour: personHours ? Math.round(rev / personHours) : null, logged: !!lg, no_price: !price, no_pin: !lsRoutable(p), no_crew: !p.crew_id, est_ok: !!lg || isTrue(p.labor_ok) };
   }).sort(function (a, c) { return (a.per_hour == null ? -1 : a.per_hour) - (c.per_hour == null ? -1 : c.per_hour); });
   return { rows: out, target: cfg.target, rate: cfg.rate, yard: !!cfg.yard };
 };
@@ -801,3 +818,304 @@ NO_LOCK.lsPricing = 1;
 /* The office sees the yard and the $/hour goal with everything else. */
 var _lsHomeEst = ACTIONS.lsHome;
 ACTIONS.lsHome = function (me, b) { var out = _lsHomeEst(me, b); if (out.role === "office") { var c = lsCfg(); out.yard = c.yard; if (out.money) out.target = c.target; } return out; };
+
+/* ======================================================================================================
+   Route planner: every property's drive from the office, a crew's day with arrival and departure times,
+   locked appointment times, client access windows and allowed days, crew hours and equipment, the current
+   order against the suggested one, and fuel stops (stations from OpenStreetMap, detours from Google).
+   Times are minutes after midnight. Service time on site = planned person-minutes ÷ people in the crew.
+   ====================================================================================================== */
+["window_from", "window_to", "days_ok", "equipment", "visit_dur", "labor_ok", "pin_q"].forEach(function (k) { if (TABLES.LsProps.indexOf(k) < 0) TABLES.LsProps.push(k); });
+if (TABLES.LsVisits.indexOf("fixed_time") < 0) TABLES.LsVisits.push("fixed_time");
+function lsHHMM(x) {
+  var m = String(x == null ? "" : x).trim().toLowerCase().replace(/\./g, "").match(/^(\d{1,2})(?::(\d\d))?\s*(am|pm|a|p)?$/); if (!m) return "";
+  var h = +m[1], mi = +(m[2] || 0); if (m[3]) { if (h > 12 || h === 0) return ""; if (m[3][0] === "p" && h < 12) h += 12; if (m[3][0] === "a" && h === 12) h = 0; }
+  if (h > 23 || mi > 59) return ""; return (h < 10 ? "0" : "") + h + ":" + (mi < 10 ? "0" : "") + mi;
+}
+function lsMinOf(hhmm) { var m = String(hhmm || "").match(/^(\d\d):(\d\d)$/); return m ? +m[1] * 60 + +m[2] : null; }
+/* Crew hours from the free text on the crew ("7:00–3:30", "7am-4pm"). Default 7:00 AM – 3:30 PM. */
+function lsCrewHours(c) {
+  var t = String((c && c.hours) || "").toLowerCase().match(/\d{1,2}(?::\d\d)?\s*(?:am|pm|a|p)?/g) || [];
+  var a = t[0] ? lsMinOf(lsHHMM(t[0])) : null, b = t[1] ? lsMinOf(lsHHMM(t[1])) : null;
+  if (a == null) a = 420; if (b == null) b = a + 510; if (b <= a && !/[ap]/.test(t[1] || "")) b += 720; if (b <= a) b = a + 510;
+  return { start: a, end: b, set: t.length >= 2 };
+}
+function lsDayList(x) { var l = String(x == null ? "" : x).split(",").map(function (d) { return String(d).trim(); }).filter(function (d) { return /^[0-6]$/.test(d); }); return l.filter(function (d, i) { return l.indexOf(d) === i; }).sort(); }
+function lsDayOk(p, d) { var l = lsDayList(p.days_ok); return !l.length || l.indexOf(String(d)) > -1; }
+var _lsPropOutPlan = lsPropOut;
+lsPropOut = function (p, role, money) {
+  var o = _lsPropOutPlan(p, role, money);
+  if (role !== "client") { o.window_from = p.window_from || ""; o.window_to = p.window_to || ""; o.days_ok = lsDayList(p.days_ok).join(","); o.equipment = p.equipment || ""; o.visit_dur = num(p.visit_dur) || null; o.labor_ok = isTrue(p.labor_ok); o.pin_q = p.pin_q || ""; o.routable = lsRoutable(p); o.route_why = o.routable ? "" : lsWhyNotRoutable(p); }
+  return o;
+};
+var _lsVisitOutPlan = lsVisitOut;
+lsVisitOut = function (v, role, money) { var o = _lsVisitOutPlan(v, role, money); if (role !== "client") o.fixed_time = v.fixed_time || ""; return o; };
+var _lsSavePropPlan = ACTIONS.lsSaveProperty;
+ACTIONS.lsSaveProperty = function (me, b) {
+  var f = b.prop || {}, patch = {};
+  ["window_from", "window_to"].forEach(function (k) { if (f[k] == null) return; patch[k] = lsHHMM(f[k]); if (String(f[k]).trim() && !patch[k]) throw new Error("Write the access window like 8:00 or 2:30 PM."); });
+  if (patch.window_from && patch.window_to && lsMinOf(patch.window_from) >= lsMinOf(patch.window_to)) throw new Error("The access window has to end after it starts.");
+  if (f.days_ok != null) patch.days_ok = lsDayList([].concat(f.days_ok).join(",")).join(",");
+  if (f.visit_dur != null) patch.visit_dur = String(f.visit_dur).trim() === "" ? "" : String(Math.max(5, Math.min(720, Math.round(num(f.visit_dur)) || 0)));
+  if (f.labor_ok != null) patch.labor_ok = f.labor_ok ? "yes" : "";                        // the office confirmed the planned labor (the import's 90 is only a default)
+  if (f.equipment != null) patch.equipment = String(f.equipment).split(",").map(function (x) { return clean(x, 40); }).filter(Boolean).slice(0, 10).join(", ");
+  if (f.weekday != null && f.days_ok == null && f.id) { var cur = findBy("LsProps", "id", String(f.id)); if (cur && lsDayList(cur.days_ok).length) { var bad = lsDayList([].concat(f.weekday).join(",")).filter(function (d) { return !lsDayOk(cur, d); }); if (bad.length) throw new Error("The client doesn't allow " + bad.map(function (d) { return ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][d]; }).join(" or ") + ". Change the allowed days first."); } }
+  var before = f.id ? findBy("LsProps", "id", String(f.id)) : null, addrWas = before ? before.address + "|" + before.city : null;
+  var r = _lsSavePropPlan(me, b), after = findBy("LsProps", "id", r.id);
+  if (after && addrWas != null && after.address + "|" + after.city !== addrWas && after.pin_q) patch.pin_q = "";       // a new address = a new pin
+  if (Object.keys(patch).length) update("LsProps", "id", r.id, patch);
+  return r;
+};
+/* Google directions through a list of points (cached 6 h, same cache as the day routes). */
+function lsDirections(pts) {
+  var key = "dir2:" + pts.map(function (p) { return num(p.lat).toFixed(5) + "," + num(p.lon).toFixed(5); }).join("|");
+  return lsCacheJson(key, 21600, function () {
+    var f = Maps.newDirectionFinder().setMode(Maps.DirectionFinder.Mode.DRIVING).setOrigin(num(pts[0].lat), num(pts[0].lon)).setDestination(num(pts[pts.length - 1].lat), num(pts[pts.length - 1].lon));
+    pts.slice(1, -1).forEach(function (p) { f.addWaypoint(num(p.lat), num(p.lon)); });
+    var r = f.getDirections(); if (!r || r.status !== "OK" || !r.routes || !r.routes.length) return null;
+    var rt = r.routes[0]; return { legs: rt.legs.map(function (l) { return { min: Math.round(l.duration.value / 60), km: Math.round(l.distance.value / 100) / 10 }; }), poly: rt.overview_polyline ? rt.overview_polyline.points : "" };
+  });
+}
+function lsEstLeg(a, b, k) { return { min: Math.round(lsEstMin(a, b) * (k || 1)), km: Math.round(lsKm(a, b) * 13.5) / 10 }; }
+/* Drive from the office to each property and back: Google once, then remembered (until the office moves). */
+function lsOfficeStore() { return parseJson(PropertiesService.getScriptProperties().getProperty("LS_OD"), {}); }
+function lsOfficeOf(store, y, p) {
+  if (!y || !lsRoutable(p)) return null; var pt = { lat: num(p.lat), lon: num(p.lon) }, hit = store.y === y.lat.toFixed(4) + "," + y.lon.toFixed(4) && store.d ? store.d[pt.lat.toFixed(5) + "," + pt.lon.toFixed(5)] : null;
+  return hit ? { min: hit[0], km: hit[1], back_min: hit[2], real: true } : { min: Math.round(lsEstMin(y, pt)), km: Math.round(lsKm(y, pt) * 13.5) / 10, real: false };
+}
+ACTIONS.lsOfficeDist = function (me, b) {
+  lsNeedOffice(me); var y = lsCfg().yard; if (!y) return { yard: null, props: {} };
+  var pr = PropertiesService.getScriptProperties(), yk = y.lat.toFixed(4) + "," + y.lon.toFixed(4), store = lsOfficeStore(), t0 = Date.now(), dirty = false, out = {};
+  if (store.y !== yk || !store.d) store = { y: yk, d: {} };
+  rows("LsProps").filter(function (p) { return p.status !== "ended" && p.status !== "deleted" && lsRoutable(p); }).forEach(function (p) {
+    var pt = { lat: num(p.lat), lon: num(p.lon) }, k = pt.lat.toFixed(5) + "," + pt.lon.toFixed(5);
+    if (!store.d[k] && Date.now() - t0 < 20000) { try { var g = lsDirections([y, pt, y]); if (g && g.legs.length === 2) { store.d[k] = [g.legs[0].min, g.legs[0].km, g.legs[1].min]; dirty = true; } } catch (e) { console.warn("office distance: " + e.message); } }
+    out[p.id] = lsOfficeOf(store, y, p);
+  });
+  if (dirty) try { pr.setProperty("LS_OD", JSON.stringify(store)); } catch (e) { console.warn("LS_OD too big: " + e.message); }
+  return { yard: y, props: out };
+};
+NO_LOCK.lsOfficeDist = 1;
+/* The road from the office to one property (for the map when a property is picked). */
+ACTIONS.lsPropLine = function (me, b) {
+  lsNeedOffice(me); var y = lsCfg().yard, p = lsProp(b.id); if (!y || !(p.lat && p.lon)) return { poly: "" };
+  var pt = { lat: num(p.lat), lon: num(p.lon) }, g = null; try { g = lsDirections([y, pt]); } catch (e) { console.warn("prop line: " + e.message); }
+  return g ? { poly: g.poly, min: g.legs[0].min, km: g.legs[0].km, real: true } : { poly: "", min: Math.round(lsEstMin(y, pt)), km: Math.round(lsKm(y, pt) * 13.5) / 10, real: false };
+};
+NO_LOCK.lsPropLine = 1;
+/* One fuel stop per crew and day, kept with the day's plan. pos = how many stops come before it (n = on the way back). */
+function lsFuelKey(date, crew) { return "LSF:" + date + "|" + (crew || "-"); }
+function lsWithFuel(seq, fuel) {
+  var nodes = seq.slice(); if (!fuel || fuel.lat == null) return nodes;
+  var f = { fuel: true, lat: num(fuel.lat), lon: num(fuel.lon), name: fuel.name || "Fuel", address: fuel.addr || "", id: fuel.id || "", svc: Math.max(5, Math.min(60, num(fuel.min) || 15)) };
+  nodes.splice(Math.max(0, Math.min(seq.length, Math.round(num(fuel.pos)))), 0, f); return nodes;
+}
+/* Walk the day: arrive, wait for a locked time or the access window, work, leave. legs[i] = drive into node i. */
+function lsTimeline(nodes, startMin, hrs, legs, back) {
+  var t = startMin, rowsOut = [], late = 0, wait = 0, drive = 0, km = 0, svc = 0, fuelMin = 0;
+  nodes.forEach(function (s, i) {
+    var lg = legs[i] || { min: 0, km: 0 }; t += lg.min; drive += lg.min; km += lg.km;
+    var arrive = t, w = 0, lt = 0, why = [];
+    if (s.fixed != null) { if (t < s.fixed) w = s.fixed - t; else if (t > s.fixed + 10) { lt = t - s.fixed; why.push("late for the locked time"); } }
+    if (s.wf != null && t + w < s.wf) w = s.wf - t;
+    if (s.wt != null && t + w > s.wt) { lt = Math.max(lt, t + w - s.wt); why.push("after the access window"); }
+    t += w; var st = t; t += s.svc; if (s.fuel) fuelMin += s.svc; else svc += s.svc; wait += w; late += lt;
+    rowsOut.push({ node: s, drive_min: lg.min, km: lg.km, arrive: arrive, start: st, depart: t, wait: w, late: lt, why: why });
+  });
+  if (back) { t += back.min; drive += back.min; km += back.km; }
+  return { rows: rowsOut, drive_min: drive, km: Math.round(km * 10) / 10, svc_min: svc, fuel_min: fuelMin, wait_min: wait, late_min: late, start: startMin, finish: t, end: hrs.end,
+    over_min: Math.max(0, t - hrs.end), back_min: back ? back.min : 0, back_km: back ? back.km : 0, cost: drive + wait * 0.3 + late * 30 + Math.max(0, t - hrs.end) * 3 };
+}
+/* Legs for a sequence: Google when it answers (one call), otherwise straight-line estimates scaled by k. */
+function lsLegsFor(nodes, origin, k) {
+  var est = function () { return { real: false, poly: "", legs: nodes.map(function (s, i) { var f = i ? nodes[i - 1] : origin; return f ? lsEstLeg(f, s, k) : { min: 0, km: 0 }; }), back: origin && nodes.length ? lsEstLeg(nodes[nodes.length - 1], origin, k) : null }; };
+  if (!nodes.length) return { real: false, poly: "", legs: [], back: null };
+  var pts = (origin ? [origin] : []).concat(nodes, origin ? [origin] : []); if (pts.length < 2) return est();
+  var g = null; try { g = lsDirections(pts); } catch (e) { console.warn("directions: " + e.message); }
+  if (!g || g.legs.length !== pts.length - 1) return est();
+  return origin ? { real: true, poly: g.poly, legs: g.legs.slice(0, nodes.length), back: g.legs[nodes.length] } : { real: true, poly: g.poly, legs: [{ min: 0, km: 0 }].concat(g.legs), back: null };
+}
+/* Best stop orders by estimated time (every order up to 8 stops, else nearest-neighbour + local moves). Top 3. */
+function lsSolve(stops, origin, fuel, startMin, hrs, k) {
+  var n = stops.length; if (n < 2) return [stops.map(function (x, i) { return i; })];
+  var fz = fuel && fuel.lat != null ? lsWithFuel([], fuel)[0] : null, all = stops.concat(fz ? [fz] : [], origin ? [origin] : []), F = fz ? n : -1, O = origin ? all.length - 1 : -1;
+  var M = all.map(function (a) { return all.map(function (c) { return a === c ? 0 : lsEstMin(a, c) * k; }); }), fpos = fz ? Math.max(0, Math.min(n, Math.round(num(fuel.pos)))) : -1;
+  var cost = function (ord) {
+    var seq = ord.slice(); if (F >= 0) seq.splice(fpos, 0, F);
+    var t = startMin, prev = O, drive = 0, wait = 0, late = 0;
+    for (var i = 0; i < seq.length; i++) {
+      var j = seq[i], s = all[j], d = prev < 0 ? 0 : M[prev][j], w = 0; t += d; drive += d;
+      if (s.fixed != null) { if (t < s.fixed) w = s.fixed - t; else if (t > s.fixed + 10) late += t - s.fixed; }
+      if (s.wf != null && t + w < s.wf) w = s.wf - t; if (s.wt != null && t + w > s.wt) late += t + w - s.wt;
+      t += w + s.svc; wait += w; prev = j;
+    }
+    if (O >= 0 && prev >= 0) { t += M[prev][O]; drive += M[prev][O]; }
+    return drive + wait * 0.3 + late * 30 + Math.max(0, t - hrs.end) * 3;
+  };
+  var top = [], keep = function (o) { var c = cost(o); if (top.length < 3 || c < top[top.length - 1].c) { top.push({ o: o.slice(), c: c }); top.sort(function (a, b) { return a.c - b.c; }); if (top.length > 3) top.pop(); } };
+  if (n <= 8) {
+    var a = stops.map(function (x, i) { return i; }), cc = a.map(function () { return 0; }), i = 0; keep(a);
+    while (i < n) { if (cc[i] < i) { var sw = i % 2 ? cc[i] : 0, tmp = a[sw]; a[sw] = a[i]; a[i] = tmp; keep(a); cc[i]++; i = 0; } else { cc[i] = 0; i++; } }
+  } else {
+    var o = lsBestOrder(stops, origin), better = true, guard = 0;
+    while (better && guard++ < 50) { better = false;
+      for (var x = 0; x < n; x++) for (var y = 0; y < n; y++) { if (x === y) continue; var t2 = o.slice(), it = t2.splice(x, 1)[0]; t2.splice(y, 0, it); if (cost(t2) < cost(o) - 0.01) { o = t2; better = true; } } }
+    keep(o);
+  }
+  return top.map(function (t) { return t.o; });
+}
+function lsPlanRows(tl, store, y) {
+  return tl.rows.map(function (r) {
+    var s = r.node;
+    if (s.fuel) return { fuel: true, id: s.id, name: s.name, address: s.address, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, depart: r.depart, svc: s.svc };
+    var od = lsOfficeOf(store, y, s.p);
+    return { visit_id: s.v.id, property_id: s.p.id, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, start: r.start, depart: r.depart, wait: r.wait, late: r.late, why: r.why, svc: s.svc, svc_src: s.src, person_min: num(s.v.est_min),
+      fixed: s.v.fixed_time || "", window: (s.wf != null || s.wt != null) ? [s.p.window_from || "", s.p.window_to || ""] : null, need: s.need, lack: s.lack,
+      office_min: od ? od.min : null, office_km: od ? od.km : null, office_real: od ? od.real : false };
+  });
+}
+function lsPlanOut(nodes, tl, lg, origin, store, y) {
+  return { rows: lsPlanRows(tl, store, y), drive_min: tl.drive_min, km: tl.km, svc_min: tl.svc_min, fuel_min: tl.fuel_min, wait_min: tl.wait_min, late_min: tl.late_min, start: tl.start, finish: tl.finish, end: tl.end, over_min: tl.over_min,
+    back_min: tl.back_min, back_km: tl.back_km, real: lg.real, poly: lg.poly, order: nodes.filter(function (s) { return !s.fuel; }).map(function (s) { return s.v.id; }), maps: nodes.length ? lsMapsLink(nodes, origin) : "" };
+}
+/* A crew's day, planned: the current order (saved, or the one dragged on screen) and the best one, with times. */
+ACTIONS.lsPlanDay = function (me, b) {
+  lsNeedOffice(me);
+  var date = dateOrEmpty(b.date) || lsDay(new Date()), crew = String(b.crew_id || ""), cfg = lsCfg(), pr = PropertiesService.getScriptProperties(), store = lsOfficeStore();
+  var cw = crew ? findBy("LsCrews", "id", crew) : null, size = Math.max(1, splitIds(cw && cw.members).length || 1), hrs = lsCrewHours(cw), ids = b.ids ? [].concat(b.ids).map(String) : null;
+  var vs = rows("LsVisits").filter(function (v) { return v.date === date && (v.crew_id || "") === crew && v.status !== "canceled" && (!ids || ids.indexOf(v.id) > -1); });
+  var props = {}; rows("LsProps").forEach(function (p) { props[p.id] = p; });
+  var origin = cfg.yard ? { address: cfg.yard.address, lat: cfg.yard.lat, lon: cfg.yard.lon, kind: "office" } : null;
+  if (b.start) { var g0 = lsGeocode(clean(b.start, 300)); if (!g0) throw new Error("Google couldn't find that start address. Add the street number and city."); origin = { address: g0.address, lat: g0.lat, lon: g0.lon, kind: "custom" }; }
+  var startMin = lsMinOf(lsHHMM(b.start_time)); if (startMin == null) startMin = hrs.start;
+  var have = String((cw && cw.skills) || "").toLowerCase(), stops = [], missing = [];
+  vs.forEach(function (v) {
+    var p = props[v.property_id] || {};
+    if (!lsRoutable(p)) { missing.push({ visit_id: v.id, property_id: p.id || "", name: p.name || "Visit", why: lsWhyNotRoutable(p) }); return; }
+    var need = String(p.equipment || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean), lack = cw ? need.filter(function (e) { return have.indexOf(e.toLowerCase()) < 0; }) : [];
+    var os = lsOnSite(v, p, size);
+    stops.push({ v: v, p: p, lat: num(p.lat), lon: num(p.lon), svc: os.min, src: os.src, wf: lsMinOf(p.window_from), wt: lsMinOf(p.window_to), fixed: lsMinOf(v.fixed_time), need: need, lack: lack });
+  });
+  var fuel = b.nofuel ? null : parseJson(pr.getProperty(lsFuelKey(date, crew)), null); if (fuel) fuel.pos = Math.min(num(fuel.pos), stops.length);
+  var ord = b.order ? [].concat(b.order).map(String) : null, cmp = lsStopCmp(props);
+  var cur = stops.slice().sort(function (a, c) { if (ord) { var ia = ord.indexOf(a.v.id), ic = ord.indexOf(c.v.id); return (ia < 0 ? 999 : ia) - (ic < 0 ? 999 : ic) || cmp(a.v, c.v); } return cmp(a.v, c.v); }), saved = stops.length > 0 && stops.every(function (s) { return num(s.v.stop) > 0; });
+  var curNodes = lsWithFuel(cur, fuel), curLg = lsLegsFor(curNodes, origin, 1), curTl = lsTimeline(curNodes, startMin, hrs, curLg.legs, curLg.back), current = lsPlanOut(curNodes, curTl, curLg, origin, store, cfg.yard);
+  var suggested = null;
+  if (stops.length > 1 && !b.nosuggest) {
+    var est = { legs: curNodes.map(function (s, i) { var f = i ? curNodes[i - 1] : origin; return f ? lsEstLeg(f, s, 1) : { min: 0, km: 0 }; }) };
+    var estDrive = est.legs.reduce(function (a, l) { return a + l.min; }, 0) + (origin ? lsEstLeg(curNodes[curNodes.length - 1], origin, 1).min : 0);
+    var k = curLg.real && estDrive > 0 ? Math.max(0.6, Math.min(2.2, curTl.drive_min / estDrive)) : 1, best = null, t0 = Date.now();
+    lsSolve(cur, origin, fuel, startMin, hrs, k).forEach(function (o, i) {
+      var seq = o.map(function (j) { return cur[j]; }), nodes = lsWithFuel(seq, fuel);
+      var lg = i === 0 || Date.now() - t0 < 15000 ? lsLegsFor(nodes, origin, k) : { real: false, poly: "", legs: nodes.map(function (s, x) { var f = x ? nodes[x - 1] : origin; return f ? lsEstLeg(f, s, k) : { min: 0, km: 0 }; }), back: origin ? lsEstLeg(nodes[nodes.length - 1], origin, k) : null };
+      var tl = lsTimeline(nodes, startMin, hrs, lg.legs, lg.back); if (!best || tl.cost < best.tl.cost) best = { nodes: nodes, tl: tl, lg: lg };
+    });
+    var same = best && best.nodes.map(function (s) { return s.fuel ? "f" : s.v.id; }).join() === curNodes.map(function (s) { return s.fuel ? "f" : s.v.id; }).join();
+    if (best && !same && best.tl.cost < curTl.cost - 0.5) suggested = lsPlanOut(best.nodes, best.tl, best.lg, origin, store, cfg.yard);
+  }
+  return { date: date, crew_id: crew, size: size, no_crew: !cw, origin: origin, office: cfg.yard, start_time: startMin, hours: hrs, saved: saved, custom_order: !!ord, current: current, suggested: suggested,
+    save_min: suggested ? current.drive_min - suggested.drive_min : 0, save_km: suggested ? Math.round((current.km - suggested.km) * 10) / 10 : 0, save_finish: suggested ? current.finish - suggested.finish : 0,
+    missing: missing, fuel: fuel, fuel_pref: parseJson(pr.getProperty("LS_FUELPREF"), { fuel: "gas", trailer: false }) };
+};
+NO_LOCK.lsPlanDay = 1;
+/* Save an order as the crew's stop numbers (with each drive time). */
+ACTIONS.lsSaveOrder = function (me, b) {
+  lsNeedOffice(me); var r = ACTIONS.lsPlanDay(me, { date: b.date, crew_id: b.crew_id, order: b.order, start: b.start, start_time: b.start_time, nosuggest: true }), n = 0;
+  r.current.rows.forEach(function (x) { if (x.fuel) return; n++; update("LsVisits", "id", x.visit_id, { stop: String(n), travel_min: String(x.drive_min) }); });
+  r.missing.forEach(function (m) { n++; update("LsVisits", "id", m.visit_id, { stop: String(n), travel_min: "" }); });
+  lsLog(me, "route", (r.crew_id || "-") + "|" + r.date, "saved the stop order (" + (r.current.real ? "Google drive times" : "estimated") + ", " + r.current.drive_min + " min driving)");
+  return { stops: n, drive_min: r.current.drive_min, km: r.current.km, real: r.current.real, finish: r.current.finish };
+};
+/* Lock a visit to a fixed time (an appointment with the client). Empty time unlocks it. */
+ACTIONS.lsFixTime = function (me, b) {
+  lsNeedOffice(me); var v = findBy("LsVisits", "id", String(b.id || "")); if (!v) throw new Error("Visit not found.");
+  var t = lsHHMM(b.time); if (String(b.time || "").trim() && !t) throw new Error("Write the time like 9:30 or 1:15 PM.");
+  update("LsVisits", "id", v.id, { fixed_time: t, updated_by: me.email, updated_at: now() }); lsLog(me, "visit", v.id, t ? "locked the visit at " + t : "unlocked the visit time");
+  return { id: v.id, fixed_time: t };
+};
+/* ---- fuel ---- */
+function lsFuelRecs() { return parseJson(PropertiesService.getScriptProperties().getProperty("LS_FUEL"), {}); }
+function lsOsmFuel(s, w, n, e) {
+  var key = "osmfuel:" + [s, w, n, e].map(function (x) { return x.toFixed(2); }).join(",");
+  return lsCacheJson(key, 21600, function () {
+    var q = "[out:json][timeout:25];nwr[\"amenity\"=\"fuel\"](" + [s, w, n, e].map(function (x) { return x.toFixed(4); }).join(",") + ");out center tags 200;";
+    var r = UrlFetchApp.fetch("https://overpass-api.de/api/interpreter", { method: "post", payload: { data: q }, muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return null;
+    return (JSON.parse(r.getContentText()).elements || []).map(function (el) {
+      var t = el.tags || {}, c = el.center || el; if (c.lat == null) return null;
+      return { id: el.type.charAt(0) + el.id, lat: Math.round(c.lat * 1e6) / 1e6, lon: Math.round(c.lon * 1e6) / 1e6, name: t.name || t.brand || "Gas station", brand: t.brand || "",
+        addr: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"]].filter(Boolean).join(", "), hours: t.opening_hours || "",
+        diesel: t["fuel:diesel"] || "", gas: t["fuel:octane_87"] || t["fuel:octane_89"] || t["fuel:octane_91"] || t["fuel:octane_93"] || "", hgv: t.hgv || "" };
+    }).filter(Boolean);
+  });
+}
+function lsDecodePoly(str) {
+  var i = 0, lat = 0, lng = 0, out = []; str = String(str || "");
+  while (i < str.length) { var b, sh = 0, res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); lat += res & 1 ? ~(res >> 1) : res >> 1;
+    sh = 0; res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); lng += res & 1 ? ~(res >> 1) : res >> 1; out.push({ lat: lat / 1e5, lon: lng / 1e5 }); }
+  return out;
+}
+/* Stations near the office or along the planned route, best detour first. */
+ACTIONS.lsFuelFind = function (me, b) {
+  lsNeedOffice(me); var pr = PropertiesService.getScriptProperties(), prefs = { fuel: b.fuel === "diesel" ? "diesel" : "gas", trailer: !!b.trailer };
+  pr.setProperty("LS_FUELPREF", JSON.stringify(prefs));
+  var plan = ACTIONS.lsPlanDay(me, { date: b.date, crew_id: b.crew_id, ids: b.ids, order: b.order, start: b.start, start_time: b.start_time, nosuggest: true, nofuel: true });
+  var origin = plan.origin, stops = plan.current.rows.map(function (r) { return { lat: r.lat, lon: r.lon }; }), near = b.near === "office" || !stops.length ? "office" : "route";
+  if (near === "office" && !origin) throw new Error("Set the office address first, or plan stops for this day.");
+  var line = near === "office" ? [origin] : (origin ? [origin] : []).concat(stops).concat(plan.current.poly ? lsDecodePoly(plan.current.poly).filter(function (x, i) { return i % 4 === 0; }) : []);
+  var pad = near === "office" ? 0.045 : 0.02, s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
+  line.forEach(function (p) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lon); e = Math.max(e, p.lon); }); s -= pad; n += pad; w -= pad; e += pad;
+  if (n - s > 1.2 || e - w > 1.2) { var cy = (n + s) / 2, cx = (e + w) / 2; s = cy - 0.6; n = cy + 0.6; w = cx - 0.6; e = cx + 0.6; }
+  var raw = null; try { raw = lsOsmFuel(s, w, n, e); } catch (er) { console.warn("overpass: " + er.message); }
+  if (!raw) return { prefs: prefs, near: near, stations: [], err: "The station map (OpenStreetMap) didn't answer. Try again in a minute." };
+  var recs = lsFuelRecs(), seqPts = (origin ? [origin] : []).concat(stops), nS = stops.length;
+  var pairs = [];                                                                       // [pos, from, to]; pos = stops before the station
+  if (near === "office") pairs.push([0, origin, stops.length ? stops[0] : origin]);
+  else { for (var i = 0; i < seqPts.length - 1; i++) pairs.push([origin ? i : i + 1, seqPts[i], seqPts[i + 1]]); if (origin) pairs.push([nS, stops[nS - 1], origin]); else pairs.push([nS, stops[nS - 1], null]); }
+  var list = raw.filter(function (st) { var r = recs[st.id] || {}; return !(prefs.fuel === "diesel" && (st.diesel === "no" || r.diesel === "no")) && !(prefs.trailer && r.trailer === "no"); }).map(function (st) {
+    var bestP = null; pairs.forEach(function (pp) { var d = pp[2] ? lsEstMin(pp[1], st) + lsEstMin(st, pp[2]) - lsEstMin(pp[1], pp[2]) : lsEstMin(pp[1], st); if (!bestP || d < bestP.d) bestP = { d: d, p: pp }; });
+    return { st: st, d: bestP.d, pair: bestP.p };
+  }).sort(function (a, c) { return a.d - c.d; }).slice(0, 8);
+  var t0 = Date.now(), base = {};
+  list.forEach(function (x, i) {
+    x.real = false; x.min = Math.max(0, Math.round(x.d));
+    if (i >= 5 || Date.now() - t0 > 12000) return;
+    try { var A = x.pair[1], B = x.pair[2], via = B ? lsDirections([A, x.st, B]) : lsDirections([A, x.st]); if (!via) return;
+      var bk = B ? A.lat + "," + A.lon + ">" + B.lat + "," + B.lon : "", ab = !B ? { legs: [{ min: 0 }] } : base[bk] || (base[bk] = lsDirections([A, B])); if (!ab) return;
+      x.min = Math.max(0, via.legs.reduce(function (a, l) { return a + l.min; }, 0) - ab.legs[0].min); x.real = true; } catch (er) { console.warn("fuel detour: " + er.message); }
+  });
+  list.sort(function (a, c) { return a.min - c.min; });
+  return { prefs: prefs, near: near, n_stops: nS, has_origin: !!origin, source: "OpenStreetMap", stations: list.map(function (x) {
+    var r = recs[x.st.id] || null; return Object.assign({}, x.st, { detour_min: x.min, detour_real: x.real, pos: x.pair[0], rec: r });
+  }) };
+};
+NO_LOCK.lsFuelFind = 1;
+/* What the office knows about a station (truck/trailer access, diesel, hours), marked as checked by them. */
+ACTIONS.lsFuelNote = function (me, b) {
+  lsNeedOffice(me); var id = clean(b.id, 40); if (!/^[nwr]\d+$/.test(id)) throw new Error("Unknown station.");
+  var recs = lsFuelRecs(), r = { name: clean(b.name, 80), trailer: ["ok", "tight", "no"].indexOf(b.trailer) > -1 ? b.trailer : "", diesel: ["yes", "no"].indexOf(b.diesel) > -1 ? b.diesel : "", note: clean(b.note, 200), by: personName(me.email) || me.email, at: lsDay(new Date()) };
+  recs[id] = r; var keys = Object.keys(recs); if (keys.length > 120) delete recs[keys[0]];
+  PropertiesService.getScriptProperties().setProperty("LS_FUEL", JSON.stringify(recs)); return { id: id, rec: r };
+};
+/* Put a station in the day (or take it out). */
+ACTIONS.lsFuelSet = function (me, b) {
+  lsNeedOffice(me); var date = dateOrEmpty(b.date); if (!date) throw new Error("Pick a day."); var pr = PropertiesService.getScriptProperties(), key = lsFuelKey(date, String(b.crew_id || ""));
+  var old = lsAdd(lsDay(new Date()), -14); Object.keys(pr.getProperties()).forEach(function (k) { if (k.indexOf("LSF:") === 0 && k.slice(4, 14) < old) pr.deleteProperty(k); });
+  if (b.clear) { pr.deleteProperty(key); return { ok: true }; }
+  var st = b.station || {}; if (st.lat == null || st.lon == null) throw new Error("Pick a station.");
+  var f = { id: clean(st.id, 40), name: clean(st.name, 80) || "Fuel", addr: clean(st.addr, 160), lat: Math.round(num(st.lat) * 1e6) / 1e6, lon: Math.round(num(st.lon) * 1e6) / 1e6, pos: Math.max(0, Math.round(num(b.pos))), min: Math.max(5, Math.min(60, Math.round(num(b.min)) || 15)) };
+  pr.setProperty(key, JSON.stringify(f)); lsLog(me, "route", (b.crew_id || "-") + "|" + date, "added a fuel stop: " + f.name);
+  return { fuel: f };
+};
+var _lsMoveDayPlan = ACTIONS.lsMoveDay;
+ACTIONS.lsMoveDay = function (me, b) { var p = lsProp(b.id); if (!lsDayOk(p, b.weekday)) throw new Error("The client doesn't allow that day."); return _lsMoveDayPlan(me, b); };
+["lsOfficeDist", "lsPropLine", "lsPlanDay", "lsSaveOrder", "lsFixTime", "lsFuelFind", "lsFuelNote", "lsFuelSet"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+
+/* Preview (Jesús only): the list to pick which property's client, or which crew, to see the portal as. Names only. */
+var _lsHomePlan = ACTIONS.lsHome;
+ACTIONS.lsHome = function (me, b) {
+  var out = _lsHomePlan(me, b);
+  if (me.preview) out.pick = me.preview === "client" ? rows("LsProps").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, has_client: !!splitIds(p.client_emails).length }; })
+    : me.preview === "crew" ? rows("LsCrews").map(function (c) { return { id: c.id, name: c.name }; }) : [];
+  return out;
+};
