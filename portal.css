@@ -1276,3 +1276,19 @@
   #bs-portal .sp-sel{max-width:100%}
   #bs-portal .mflow{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px}#bs-portal .mf-arrow{display:none}#bs-portal .mf-step{min-width:0;padding:10px 12px}#bs-portal .mf-step b{font-size:17px}#bs-portal .mf-step.pro,#bs-portal .mf-step.neg{grid-column:1/-1}
 }
+#bs-portal .bill-vis{display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:16px;border-left:4px solid var(--muted)}
+#bs-portal .bill-vis.on{border-left-color:var(--ok)}
+#bs-portal .bill-vis>div{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+#bs-portal .bill-vis .ico{width:22px;height:22px;flex:none;color:var(--ink-2)}
+#bs-portal .radio-card{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;cursor:pointer;background:var(--card)}
+#bs-portal .radio-card:has(input:checked){border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+#bs-portal .radio-card:has(input:disabled){opacity:.55;cursor:not-allowed}
+#bs-portal .radio-card span{display:flex;flex-direction:column;gap:2px}
+#bs-portal .radio-card input{margin-top:3px}
+#bs-portal .qb-hint{display:flex;gap:8px;align-items:flex-start;background:var(--paper);border-radius:12px;padding:10px 12px}
+#bs-portal .inv-hist{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:4px 0 8px}
+#bs-portal .inv-hist summary{cursor:pointer;font-weight:500}
+#bs-portal .ih-row{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+#bs-portal .ih-row:first-of-type{border-top:0}
+#bs-portal .ih-row small{margin-left:auto}
+@media (max-width:640px){#bs-portal .bill-vis{flex-wrap:wrap}}

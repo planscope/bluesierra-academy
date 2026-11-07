@@ -574,9 +574,14 @@
   ACTIONS.saveInvoice = function (db, me, b) { var r = _mSave(db, me, b), it = db.invoices.filter(function (i) { return i.id === r.id; })[0] || db.invoices[db.invoices.length - 1];
     if ((b.qb || (it && it.qb_id)) && b.qb !== false && meOut(me).money && (db.qb || {}).connected && it && it.status !== "draft") {
       var p = needProject(db, me, b.projectId); if (!p.qb_customer) ACTIONS.qbCreateCustomer(db, me, { projectId: p.id });
-      if (!it.qb_id) { db.qbNext = (db.qbNext || 1100) + 1; it.qb_id = String(db.qbNext); it.number = String(db.qbNext); it.pay_url = it.pay_url || "https://connect.intuit.com/pay/sample"; }
+      if (!it.qb_id) { db.qbNext = (db.qbNext || 1100) + 1; it.qb_id = String(db.qbNext); it.qb_made = "yes"; it.number = String(db.qbNext); it.pay_url = it.pay_url || "https://connect.intuit.com/pay/sample"; }
+      (it.history = it.history || []).unshift({ at: now(), by: me.name, what: "updated in QuickBooks (#" + it.number + ")" });
       r.qb = { id: it.qb_id, number: it.number, voided: it.status === "void" || undefined, payment: it.status === "paid" && !it.qbPaid ? { id: "p1", amount: num(it.amount) - num(it.retainage) } : undefined }; if (it.status === "paid") it.qbPaid = 1; }
     return r; };
+  var _mDel = ACTIONS.deleteInvoice;
+  ACTIONS.deleteInvoice = function (db, me, b) { var it = db.invoices.filter(function (i) { return i.id === b.invoiceId; })[0], res = {};
+    if (it && b.qb && it.qb_id) { if (it.qb_made !== "yes") throw new Error("Invoice " + it.number + " was made in QuickBooks, not here, so the portal won't delete it there."); res.qb = { deleted: true, number: it.number, payments: it.qbPaid ? 1 : 0 }; }
+    _mDel(db, me, b); return res; };
   ACTIONS.qbSendInvoice = function (db, me, b) { qbW(db, me); return { to: "client@example.com" }; };
   function spSeed(db) {
     if (db.spend) return db.spend;

@@ -43,7 +43,7 @@ var TABLES = {
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned", "aud", "author_email"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
   Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref", "pinned"],
-  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines", "created_by", "created_at", "updated_by", "updated_at", "qb_id", "qb_pdf"],
+  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines", "created_by", "created_at", "updated_by", "updated_at", "qb_id", "qb_pdf", "qb_made", "qb_pay"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort", "aud", "assignee", "created_by", "edited_by", "edited_at", "reactions", "pinned", "done_email"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
   Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort", "edited_by", "edited_at", "req_by", "req_at", "req_note"],
@@ -60,7 +60,7 @@ var TABLES = {
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
 /* Speed: everything a request needs is read from the sheet in one Sheets API call, then kept for the rest of the request. */
 var PREFETCH = {
-  getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
+  getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "QbLog"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
   activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
@@ -330,6 +330,7 @@ var ACTIONS = {
     var id = newId("p");
     patch.id = id; patch.folder_id = rootFolder().createFolder(patch.name + " · " + id).getId(); patch.created_at = now(); patch.status = patch.status || "active";
     patch.phase = patch.phase || CONFIG.PHASES[0]; patch.progress = patch.progress || "0";
+    if (patch.billing_aud == null) patch.billing_aud = "client";                     // new projects: the client sees Contract & billing (paid / due) unless Jesús turns it off
     insert("Projects", patch);
     return { project: projectOut(findBy("Projects", "id", id)) };
   },
@@ -1418,27 +1419,83 @@ function qbInvoiceBody(p, inv, item) {
   var c = projectClient(p); if (c) body.BillEmail = { Address: c.email };
   return body;
 }
-/* Make QuickBooks match the portal invoice: create or update it, void it, record the payment, bring back its number, pay link and PDF. */
+/* ---- Invoices, both ways. The portal knows what it made in QuickBooks (an invoice or payment whose QuickBooks note starts
+   "Blue Sierra Portal"), so it can take it back: un-pay deletes the payment it recorded, back to Draft or Delete removes the
+   invoice from QuickBooks. Anything someone made directly in QuickBooks is never deleted from here. Every step is logged. ---- */
+function personName(email) { var x = findBy("People", "email", email); return x ? x.name : email || "someone"; }
+function qbFootprint(p, inv, me) {
+  var made = inv.created_by ? personName(inv.created_by) + " " + String(inv.created_at || "").slice(0, 10) : "", last = personName(me.email) + " " + today();
+  return ("Blue Sierra Portal · " + p.name + (made ? " · created by " + made : "") + " · last change by " + last + " · portal invoice " + inv.id).slice(0, 4000);
+}
+function qbOurs(txn) { return /^(Blue Sierra Portal|Recorded (from|by .* in) the Blue Sierra Portal)/.test(String((txn || {}).PrivateNote || "")); }
+function qbIsGone(e) { return /not found|deleted|object not found|\b610\b|\b6240\b/i.test(String(e && e.message || e)); }
+function qbGetInvoice(id) { try { return (qbGet("/invoice/" + id) || {}).Invoice || null; } catch (e) { if (qbIsGone(e)) return null; throw e; } }
+/* Payments on this QuickBooks invoice: the ones the portal recorded, and the ones it didn't. */
+function qbInvoicePayments(cur, inv) {
+  var mine = [], theirs = [];
+  ((cur && cur.LinkedTxn) || []).forEach(function (l) {
+    if (l.TxnType !== "Payment") return;
+    var pay = null; try { pay = (qbGet("/payment/" + l.TxnId) || {}).Payment; } catch (e) { if (!qbIsGone(e)) throw e; }
+    if (!pay) return;
+    if (String(pay.Id) === String(inv.qb_pay || "") || qbOurs(pay)) mine.push(pay); else theirs.push(pay);
+  });
+  return { mine: mine, theirs: theirs };
+}
+function qbDeletePayments(list) { list.forEach(function (pay) { qbSend("post", "/payment?operation=delete", { Id: pay.Id, SyncToken: pay.SyncToken }); }); }
+function invLog(me, inv, what) { insert("QbLog", { id: newId("q"), at: now(), by: me.email, kind: "invoice", txn_type: "Invoice", txn_id: inv.id, before: "", after: String(what).slice(0, 500), undone: "" }); }
+/* Take a portal-made invoice out of QuickBooks (its portal payments first). Refuses if someone paid it inside QuickBooks. */
+function qbRemoveInvoice(me, p, inv) {
+  var cur = qbGetInvoice(inv.qb_id); if (!cur) return { gone: true };
+  if (!(isTrue(inv.qb_made) || qbOurs(cur))) throw new Error("Invoice " + (cur.DocNumber || inv.number) + " was made in QuickBooks, not here, so the portal won't delete it there. Delete or void it in QuickBooks.");
+  var pays = qbInvoicePayments(cur, inv);
+  if (pays.theirs.length) throw new Error("QuickBooks has a payment on invoice " + (cur.DocNumber || inv.number) + " that wasn't recorded from the portal. Remove that payment in QuickBooks first, or void the invoice instead.");
+  qbDeletePayments(pays.mine);
+  if (pays.mine.length) cur = qbGetInvoice(inv.qb_id) || cur;                       // new SyncToken after the payments go
+  qbSend("post", "/invoice?operation=delete", { Id: cur.Id, SyncToken: cur.SyncToken });
+  qbBustProject(p);
+  return { deleted: true, number: cur.DocNumber || "", payments: pays.mine.length };
+}
+/* Make QuickBooks match the portal invoice: create, update, record or take back the payment, void, or remove it (back to Draft). */
 function qbPushInvoice(me, p, invId) {
-  var inv = findBy("Invoices", "id", invId); if (!inv || inv.status === "draft") return null;      // drafts stay in the portal
-  var cur = inv.qb_id ? (qbGet("/invoice/" + inv.qb_id) || {}).Invoice : null, out = { id: "", number: "" };
+  var inv = findBy("Invoices", "id", invId); if (!inv) return null;
+  var cur = inv.qb_id ? qbGetInvoice(inv.qb_id) : null, out = { id: "", number: "" };
+  if (inv.qb_id && !cur) {                                                            // deleted in QuickBooks meanwhile
+    update("Invoices", "id", inv.id, { qb_id: "", qb_made: "", qb_pay: "" }); invLog(me, inv, "noticed it was deleted in QuickBooks");
+    if (inv.status === "draft" || inv.status === "void") return { gone: true };
+    inv = findBy("Invoices", "id", invId);
+  }
+  if (inv.status === "draft") {                                                       // kicked back to draft: take it out of QuickBooks
+    if (!cur) return null;
+    var rm = qbRemoveInvoice(me, p, inv);
+    update("Invoices", "id", inv.id, { qb_id: "", qb_made: "", qb_pay: "", pay_url: /intuit\.com/.test(inv.pay_url || "") ? "" : inv.pay_url });
+    invLog(me, inv, "moved back to draft: removed from QuickBooks (#" + (rm.number || inv.number) + ")" + (rm.payments ? " with its payment" : ""));
+    return { removed: true, number: rm.number };
+  }
   if (inv.status === "void") {
-    if (cur && !(num(cur.TotalAmt) === 0 && num(cur.Balance) === 0)) qbSend("post", "/invoice?operation=void", { Id: cur.Id, SyncToken: cur.SyncToken });
+    if (cur && !(num(cur.TotalAmt) === 0 && num(cur.Balance) === 0)) { qbSend("post", "/invoice?operation=void", { Id: cur.Id, SyncToken: cur.SyncToken }); invLog(me, inv, "voided in QuickBooks (#" + (cur.DocNumber || "") + ")"); }
     qbBustProject(p); return cur ? { id: String(cur.Id), number: cur.DocNumber || "", voided: true } : null;
   }
+  // Un-paid in the portal: take back the payment the portal recorded
+  if (cur && inv.status !== "paid" && num(cur.Balance) < num(cur.TotalAmt) - 0.004) {
+    var pays = qbInvoicePayments(cur, inv);
+    if (pays.mine.length) { qbDeletePayments(pays.mine); invLog(me, inv, "marked unpaid: payment removed from QuickBooks"); out.unpaid = true; update("Invoices", "id", inv.id, { qb_pay: "" }); cur = qbGetInvoice(inv.qb_id); }
+  }
   if (!p.qb_customer) qbEnsureCustomer(me, p);
-  var body = qbInvoiceBody(p, inv, qbItem()), res;
-  if (cur) { body.Id = cur.Id; body.SyncToken = cur.SyncToken; body.sparse = true; }
+  var body = qbInvoiceBody(p, inv, qbItem()), res, isNew = !cur;
+  body.PrivateNote = qbFootprint(p, inv, me);
+  if (cur) { body.Id = cur.Id; body.SyncToken = cur.SyncToken; body.sparse = true; if (!isTrue(inv.qb_made) && qbOurs(cur)) update("Invoices", "id", inv.id, { qb_made: "yes" }); }
   res = qbSend("post", "/invoice", body).Invoice;
   var patch = { qb_id: String(res.Id) }; out.id = patch.qb_id; out.number = res.DocNumber || "";
+  if (isNew) { patch.qb_made = "yes"; invLog(me, inv, "created in QuickBooks as #" + (res.DocNumber || res.Id)); } else invLog(me, inv, "updated in QuickBooks (#" + (res.DocNumber || res.Id) + ")");
   if (res.DocNumber && res.DocNumber !== inv.number) patch.number = res.DocNumber;
   if (!inv.pay_url && res.InvoiceLink && /^https:\/\//.test(res.InvoiceLink)) patch.pay_url = res.InvoiceLink;
   // Paid in the portal: record the payment in QuickBooks against this invoice (bookkeeping only, no money moves).
   if (inv.status === "paid" && num(res.Balance) > 0.004) {
     var pay = qbSend("post", "/payment", { CustomerRef: { value: String(p.qb_customer) }, TotalAmt: cents(res.Balance), TxnDate: inv.paid_date || today(),
-      PrivateNote: "Recorded from the Blue Sierra Portal", Line: [{ Amount: cents(res.Balance), LinkedTxn: [{ TxnId: String(res.Id), TxnType: "Invoice" }] }] }).Payment;
-    out.payment = { id: String(pay.Id), amount: cents(pay.TotalAmt) };
-  } else if (inv.status !== "paid" && num(res.TotalAmt) > 0 && num(res.Balance) < 0.005) { patch.status = "paid"; patch.paid_date = today(); out.paidInQb = true; }   // already paid in QuickBooks
+      PrivateNote: "Recorded by " + personName(me.email) + " in the Blue Sierra Portal · " + p.name, Line: [{ Amount: cents(res.Balance), LinkedTxn: [{ TxnId: String(res.Id), TxnType: "Invoice" }] }] }).Payment;
+    out.payment = { id: String(pay.Id), amount: cents(pay.TotalAmt) }; patch.qb_pay = String(pay.Id);
+    invLog(me, inv, "payment of $" + money(pay.TotalAmt) + " recorded in QuickBooks");
+  } else if (inv.status !== "paid" && !out.unpaid && num(res.TotalAmt) > 0 && num(res.Balance) < 0.005) { patch.status = "paid"; patch.paid_date = today(); out.paidInQb = true; }   // paid inside QuickBooks
   // The real QuickBooks PDF, unless someone attached their own
   if (!inv.pdf_file_id || isTrue(inv.qb_pdf)) try {
     var blob = qbFetch("/invoice/" + res.Id + "/pdf", "application/pdf").getBlob().setName("Invoice " + (res.DocNumber || res.Id) + ".pdf");
@@ -1449,22 +1506,46 @@ function qbPushInvoice(me, p, invId) {
   update("Invoices", "id", inv.id, patch); qbBustProject(p);
   return out;
 }
+var INV_FIELDS = [["number", "number"], ["title", "description"], ["amount", "amount"], ["retainage", "retainage"], ["issued", "issued date"], ["due", "due date"], ["status", "status"]];
 var _saveInvoice = ACTIONS.saveInvoice;
 ACTIONS.saveInvoice = function (me, b) {
+  var f0 = b.invoice || {}, old = f0.id ? findBy("Invoices", "id", f0.id) : null; old = old ? JSON.parse(JSON.stringify(old)) : null;
   var r = _saveInvoice(me, b), inv = b.invoice || {};
   if (inv.pdf && inv.pdf.data) update("Invoices", "id", r.id, { qb_pdf: "" });          // a hand-attached PDF is kept as is
   var row = findBy("Invoices", "id", r.id);
+  // Footprint in the portal: who made it, and what each edit changed
+  if (!old) invLog(me, row, "created it ($" + money(row.amount) + ", " + row.status + ")");
+  else {
+    var ch = INV_FIELDS.filter(function (k) { return String(old[k[0]] || "") !== String(row[k[0]] || "") && !(k[0] === "amount" || k[0] === "retainage" ? num(old[k[0]]) === num(row[k[0]]) : false); })
+      .map(function (k) { return k[1] + " " + (k[0] === "amount" || k[0] === "retainage" ? "$" + money(old[k[0]]) + " → $" + money(row[k[0]]) : (old[k[0]] || "—") + " → " + (row[k[0]] || "—")); });
+    if (inv.pdf && inv.pdf.data) ch.push("new PDF attached");
+    invLog(me, row, ch.length ? "edited: " + ch.join(", ") : "saved it (no changes)");
+  }
   if ((b.qb || (row && row.qb_id)) && canMoney(me) && qbCfg().refresh && b.qb !== false) {
     try { var q = qbPushInvoice(me, needProject(me, b.projectId), r.id); if (q) r.qb = q; }
     catch (e) { r.qbError = e.message; if (MAIL_NOTICES) MAIL_NOTICES.push("Saved in the portal, but QuickBooks didn't take it. " + e.message); }
-  }
+  } else if (row && row.qb_id && !canMoney(me) && MAIL_NOTICES) MAIL_NOTICES.push("Saved here. QuickBooks wasn't updated: only Jesús and people tagged #money change QuickBooks.");
   return r;
+};
+/* Delete in the portal, and (when asked) in QuickBooks too. If QuickBooks says no, nothing is deleted anywhere. */
+var _deleteInvoice = ACTIONS.deleteInvoice;
+ACTIONS.deleteInvoice = function (me, b) {
+  var i = findBy("Invoices", "id", b.invoiceId); if (!i) return {};
+  var p = needProject(me, i.project_id), res = {};
+  if (b.qb && i.qb_id) {
+    qbNeedWrite(me);
+    res.qb = qbRemoveInvoice(me, p, i);
+    invLog(me, i, res.qb.gone ? "deleted (it was already gone from QuickBooks)" : "deleted here and in QuickBooks (#" + (res.qb.number || i.number) + ")" + (res.qb.payments ? " with its payment" : ""));
+  } else invLog(me, i, "deleted here" + (i.qb_id ? " (kept in QuickBooks)" : ""));
+  _deleteInvoice(me, b);
+  return res;
 };
 ACTIONS.qbSendInvoice = function (me, b) {
   qbNeedWrite(me); var inv = findBy("Invoices", "id", b.invoiceId); if (!inv) throw new Error("Invoice not found.");
   var p = needProject(me, inv.project_id); if (!inv.qb_id) throw new Error("Put this invoice in QuickBooks first (Edit → Save with “Also in QuickBooks”).");
   var to = clean(b.to, 200) || (projectClient(p) || {}).email || ""; if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("Who should get it? Add the client's email.");
   qbSend("post", "/invoice/" + inv.qb_id + "/send?sendTo=" + encodeURIComponent(to));
+  invLog(me, inv, "emailed from QuickBooks to " + to);
   return { to: to };
 };
 
@@ -1802,6 +1883,9 @@ function invoiceOut(i, staff, ppl) {
     o.notes = i.notes; ppl = ppl || {};
     o.created_by = (ppl[i.created_by] || {}).name || ""; o.created_at = i.created_at || ""; o.cby_key = i.created_by ? keyOf(i.created_by) : ""; o.cby_avatar = (ppl[i.created_by] || {}).avatar || "";
     o.updated_by = (ppl[i.updated_by] || {}).name || ""; o.updated_at = i.updated_at || ""; o.qb_id = i.qb_id || "";
+    o.qb_made = isTrue(i.qb_made);
+    o.history = rows("QbLog").filter(function (l) { return l.txn_type === "Invoice" && l.txn_id === i.id; }).slice(-25).reverse()
+      .map(function (l) { return { at: l.at, by: (ppl[l.by] || {}).name || l.by, what: l.after }; });
   }
   return o;
 }

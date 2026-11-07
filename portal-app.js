@@ -1466,7 +1466,11 @@
           (staff() ? '<button class="btn ghost sm" data-a="modal" data-m="invoice" data-id="' + esc(i.id) + '">Edit</button>' : "") + "</div></td></tr>";
       }).join("") + "</tbody></table></div>" + (m.has ? '<p class="muted small" style="margin-top:8px">“Work billed” counts against the contract. ' + (showRet ? "Retainage is held back from each payment and paid at completion, so “Amount due” is what gets paid now. " : "") + "Drafts and void invoices don't count.</p>" : "")
       : '<div class="empty">No invoices yet.</div>';
-    return head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
+    var pj = (S.data && S.data.project) || {}, aud = pj.billing_aud || [], seesC = aud.indexOf("client") > -1;
+    var vis = staff() ? '<div class="card bill-vis' + (seesC ? " on" : "") + '">' + ICON.eye + '<div><b>' + (seesC ? "The client sees this tab" : "The client can’t see this tab") + '</b><span class="muted small">' +
+      (seesC ? "Contract, change orders and every invoice marked Paid, Due or Overdue. Drafts, void invoices and team notes stay hidden." : "Only Blue Sierra" + (aud.indexOf("architect") > -1 ? " and the architect" : "") + " see the contract and invoices.") + "</span></div>" +
+      (S.me.admin ? '<button class="btn ' + (seesC ? "ghost " : "") + 'sm" data-a="billAud" data-v="' + (seesC ? "off" : "on") + '">' + (seesC ? "Hide from the client" : "Show it to the client") + "</button>" : "") + "</div>" : "";
+    return vis + head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
   }
 
   /* ---------------- #money: what this job costs and makes, from QuickBooks (admin + people tagged #money) ---------------- */
@@ -1957,6 +1961,15 @@
         (!m.id && S.me.money ? '<label class="check-line qb-line"><input type="checkbox" name="qb" checked> ' + qbLogo() + " Also create it as a customer in QuickBooks, so invoices and costs go to the right job</label>" : "") +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
+    if (m.type === "delInv") {
+      var di = ((d && d.invoices) || []).filter(function (x) { return x.id === m.id; })[0] || {};
+      body = "<h2>Delete invoice " + esc(di.number) + "</h2>" + '<form class="form" data-form="delInv">' +
+        '<label class="radio-card"><input type="radio" name="where" value="both" checked><span><b>Here and in QuickBooks</b><small>' +
+          "Takes it all back: the invoice" + (di.status === "paid" ? " and the payment the portal recorded" : "") + " leave QuickBooks too. If it was made directly in QuickBooks, or someone recorded a payment there, the portal won't touch it and tells you why." + "</small></span></label>" +
+        '<label class="radio-card"><input type="radio" name="where" value="here"><span><b>Only here</b><small>It disappears from the portal and stays in QuickBooks as it is.</small></span></label>' +
+        '<p class="muted small">Want to keep a record instead? Edit it and set it to <b>Void</b>: it voids in QuickBooks and stays in both places.</p>' +
+        '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn danger-btn" type="submit">Delete invoice</button></div></form>';
+    }
     if (m.type === "invoice") {
       var i = m.id ? d.invoices.filter(function (x) { return x.id === m.id; })[0] || {} : { issued: today(), status: "sent" };
       var st = i.status === "overdue" ? "sent" : i.status, cm2 = contractMath(), billable = cm2.base.concat(cm2.cos.filter(function (l) { return l.status === "approved" || (i.lines && i.lines[l.id]); }));
@@ -1978,9 +1991,11 @@
         '<label class="f">Paid on<input type="date" name="paid_date" value="' + esc(i.paid_date) + '"></label></div>' +
         '<label class="f">Payment link (optional, https)<input type="url" name="pay_url" value="' + esc(i.pay_url) + '" placeholder="Stripe or QuickBooks payment link"></label>' +
         '<label class="f">PDF' + (i.pdf ? ' (one is attached; choose a file to replace it)' : "") + '<input type="file" name="pdf" accept="application/pdf"></label>' +
+        (i.qb_id && S.me.money ? '<p class="muted small qb-hint">' + qbLogo() + " Linked to QuickBooks #" + esc(i.number) + ". <b>Paid</b> records the payment there; back to <b>Sent / due</b> takes that payment back; back to <b>Draft</b> takes the invoice out of QuickBooks" + (i.qb_made ? "" : " (only for invoices made here)") + "; <b>Void</b> voids it.</p>" : "") +
         '<label class="f">Notes (team only)<textarea name="notes">' + esc(i.notes) + "</textarea></label>" +
         '<label class="check-line"><input type="checkbox" name="notify"' + (m.id ? "" : " checked") + "> Email the client that it's ready</label>" +
         (S.me.money ? '<label class="check-line qb-line"><input type="checkbox" name="qb"' + (i.qb_id || !m.id ? " checked" : "") + "> " + qbLogo() + (i.qb_id ? " In QuickBooks. Saving updates it there too (paid records the payment, void voids it)." : " Also create it in QuickBooks, with its PDF and pay link. Drafts stay here.") + "</label>" : "") +
+        ((i.history || []).length ? '<details class="inv-hist"><summary>History · ' + i.history.length + " change" + (i.history.length === 1 ? "" : "s") + "</summary>" + i.history.map(function (h) { return '<div class="ih-row"><b>' + esc(h.by) + "</b> " + esc(h.what) + '<small class="muted">' + esc(String(h.at).replace(/^(\d{4}-\d\d-\d\d)/, function (x) { return day(x); })) + "</small></div>"; }).join("") + "</details>" : "") +
         '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delInvoice" data-id="' + esc(m.id) + '" style="margin-right:auto;color:var(--bad)">Delete invoice</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
     }
     if (m.type === "cline") {
@@ -2134,6 +2149,8 @@
       case "moneyRefresh": loadMoney(true); keepScroll(render); return;
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
+      case "billAud": run(b, async function () { var pj = S.data.project, l = (pj.billing_aud || []).filter(function (x) { return x !== "client"; }); if (b.dataset.v === "on") l.push("client");
+        await call("saveProject", { project: { id: pj.id, name: pj.name, billing_aud: l } }); await refresh(true); toast(b.dataset.v === "on" ? "The client now sees Contract & billing" : "Hidden from the client"); }); return;
       case "qbCreateCust": run(b, async function () { var qc = await call("qbCreateCustomer", { projectId: S.pid }); S.qbp = null; S.qbCust = null; if (S.money) S.money[S.pid] = null; S.fin = null; await refresh(); toast(qc.existed ? "Already in QuickBooks" : "Created in QuickBooks as “" + qc.name + "”"); }); return;
       case "qbSendInv":
         if (!window.confirm("Email this invoice to the client from QuickBooks, with its pay link?")) return;
@@ -2274,7 +2291,8 @@
         });
         return;
       case "delInvoice":
-        var iid = b.dataset.id;
+        var iid = b.dataset.id, invD = (S.data.invoices || []).filter(function (x) { return x.id === iid; })[0] || {};
+        if (invD.qb_id && S.me.money) { S.modal = { type: "delInv", id: iid }; return keepScroll(render); }
         sure("Delete this invoice? Its PDF goes to the Drive trash and it disappears for the client.", function () {
           S.modal = null; S.data.invoices = S.data.invoices.filter(function (x) { return x.id !== iid; }); keepScroll(render);
           run(null, async function () { try { await call("deleteInvoice", { invoiceId: iid }); } catch (e) { await refresh(); throw e; } await refresh(); toast("Invoice deleted"); });
@@ -2475,6 +2493,11 @@
       if (kind === "cline") {
         await call("saveContractLine", { projectId: S.pid, line: { id: S.modal.id || undefined, kind: f.dataset.kind, number: v("number"), title: v("title"), amount: v("amount"), status: v("status"), date: v("date"), notes: v("notes") } });
         S.modal = null; await refresh(); toast("Contract updated"); return;
+      }
+      if (kind === "delInv") {
+        var did = S.modal.id, both = fd.get("where") === "both";
+        var rd = await call("deleteInvoice", { invoiceId: did, qb: both }); S.modal = null; S.qbp = null; if (S.money) S.money[S.pid] = null; await refresh(true);
+        toast(rd.qb ? (rd.qb.gone ? "Deleted (it was already gone from QuickBooks)" : "Deleted here and in QuickBooks" + (rd.qb.payments ? ", with its payment" : "")) : "Deleted here. It stays in QuickBooks."); return;
       }
       if (kind === "invoice") {
         var file = f.querySelector("[name=pdf]").files[0], pdf = file ? await readPdf(file) : null, lineVals = null;
