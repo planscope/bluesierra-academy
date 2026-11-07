@@ -413,11 +413,12 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
     var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (!staff() && lsRoleMe) head = head + '<div class="chips home-chips">' + [["projects", "Projects"], ["ls", lsRoleMe === "crew" ? "My route" : "My property"]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (view === "ls") return head + '<div class="ls-wrap">' + lsView() + "</div>";
+    if (view === "gr" && staff() && !S.viewAs) return head + '<div class="ls-wrap gr-wrap">' + grView() + "</div>";
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
     if (view === "finance" && S.me.money) return head + homeFinance();
@@ -535,7 +536,7 @@
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
         : item('data-a="home"', "All projects", home && S.home !== "ls") + (S.me && S.me.ls ? item('data-a="homeView" data-v="ls"', S.me.ls === "crew" ? "My route" : "My property", home && S.home === "ls") : "")) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
@@ -1957,7 +1958,7 @@
   }
   function renderModal() {
     var m = S.modal, d = S.data, body = "";
-    if (/^ls/.test(m.type)) body = lsModal(m);
+    if (/^(ls|grx)/.test(m.type)) body = lsModal(m);
     if (m.type === "project") {
       var p = m.id && d ? d.project : {};
       body = "<h2>" + (m.id ? "Edit project" : "New project") + '</h2><form class="form" data-form="project">' +
@@ -2559,7 +2560,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107133502";
+  var BUILD = "20261107140355";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4415,6 +4416,335 @@
     if (k === "lsxNotify") return run(btn, async function () { var r = await call("lsNotifyClient", { property_id: f.dataset.id, subject: V("subject"), text: V("text") }); S.modal = null; keepScroll(render); toast("Sent to " + r.sent + " client email" + (r.sent === 1 ? "" : "s")); });
     if (k === "lsxOpp") return run(btn, async function () { await call("lsSaveOpp", { opp: { property_id: V("property_id"), service: V("service"), reason: V("reason"), timing: V("timing"), owner: V("owner") } }); S.modal = null; await lsLoad(true); toast("Opportunity added"); });
   }, true);
+  /* ======================= Growth & Proposals (staff): pipeline → inspection → estimate → proposal PDF → maintenance ======================= */
+  var GR_STAGE = { identified: "Identified", qualified: "Qualified", contacted: "Contacted", visit: "Visit scheduled", inspected: "Inspection done", drafting: "Proposal in preparation", sent: "Proposal sent", negotiation: "Negotiation / board review", won: "Won", lost: "Lost", later: "Follow up later" };
+  var GR_SIG = { prospect: "Identified prospect", interest: "Interest confirmed", rfp: "Open RFP / bid" };
+  var GR_FQ = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly", quarterly: "Quarterly", three_a_year: "3 times a year", twice_a_year: "Twice a year", annual: "Once a year", once: "One time" };
+  var GR_BASIS = { verified: "Measured on site", client: "From the client", estimate: "Estimated", unknown: "Unknown" };
+  var GR_SEC = { recurring: "Recurring maintenance", seasonal: "Seasonal work", recovery: "Initial clean-up (one time)", option: "Optional" };
+  var GR_ZT = { lawn: "Turf / lawn", beds: "Planting beds", hedges: "Hedges", trees: "Trees", hardscape: "Walks / hardscape", irrigation: "Irrigation", slope: "Slope", other: "Other" };
+  var GR_ACCK = { management_company: "Management company", hoa: "HOA / community", estate: "Estate", estate_manager: "Estate manager", other: "Other" };
+  var GR_SRC = { manual: "Entered by hand", referral: "Referral", website_form: "Website form", public_site: "Public website", rfp: "Published RFP", directory: "Professional directory", csv: "CSV import" };
+  var GR_PST = { draft: ["Draft", ""], review: ["In internal review", "warn"], approved: ["Approved · make the PDF", "warn"], final: ["Final PDF", "ok"], sent: ["Sent", "ok"], accepted: ["Accepted by the client", "ok"] };
+  function grLoad() { if (S.grBusy) return; S.grBusy = 1; call("grHome", {}).then(function (r) { S.gr = r; }).catch(function (e) { S.gr = { err: e.message }; }).then(function () { S.grBusy = 0; if (!S.pid && S.home === "gr") keepScroll(render); }); }
+  function grO(id) { return ((S.gr && S.gr.opps) || []).filter(function (o) { return o.id === id; })[0]; }
+  function grA(id) { return ((S.gr && S.gr.accounts) || []).filter(function (a) { return a.id === id; })[0]; }
+  function grC(id) { return ((S.gr && S.gr.contacts) || []).filter(function (c) { return c.id === id; })[0]; }
+  function grOpt(list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(cur == null ? "" : cur) === String(o[0]) ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join(""); }
+  function grObj(obj) { return Object.keys(obj).map(function (k) { return [k, obj[k]]; }); }
+  function grSrcTxt(x) { return (GR_SRC[x.source] || "Entered by hand") + (x.source_url ? ' · <a href="' + esc(x.source_url) + '" target="_blank" rel="noopener">source</a>' : "") + (x.checked_at ? " · checked " + day(x.checked_at) : "") + (x.verified === "yes" ? ' · <span class="ok-t">verified</span>' : ' · <span class="muted">not verified</span>'); }
+  function grView() {
+    if (!S.gr) { grLoad(); return '<div class="loading" style="min-height:30vh">Loading Growth…</div>'; }
+    if (S.gr.err) return '<div class="empty">' + esc(S.gr.err) + ' <button class="link" data-a="grxReload">Try again</button></div>';
+    if (S.grId && grO(S.grId)) return grOppView(grO(S.grId));
+    var t = S.grTab || "dash", tabs = [["dash", "Dashboard"], ["pipe", "Pipeline"], ["acc", "Accounts & contacts"], ["set", "Rates & credentials"]];
+    return '<div class="ls-tabs gr-tabs">' + tabs.map(function (x) { return '<button class="chip' + (t === x[0] ? " on" : "") + '" data-a="grxTab" data-v="' + x[0] + '">' + x[1] + "</button>"; }).join("") + '<button class="btn sm" data-a="grxNew">＋ Opportunity</button></div>' +
+      (t === "pipe" ? grPipe() : t === "acc" ? grAccounts() : t === "set" ? grSettings() : grDash());
+  }
+  /* ---------- dashboard ---------- */
+  function grDash() {
+    var d = S.gr.dash, today = S.gr.today, act = S.gr.opps.filter(function (o) { return ["won", "lost", "later"].indexOf(o.stage) < 0; });
+    var due = act.filter(function (o) { return o.next_date; }).sort(function (a, b) { return a.next_date < b.next_date ? -1 : 1; }).slice(0, 8);
+    var dec = act.filter(function (o) { return o.rfp_due || o.board_date || o.walk_date; }).map(function (o) { return [o, [["RFP due", o.rfp_due], ["Site walk", o.walk_date], ["Board meeting", o.board_date]].filter(function (x) { return x[1] && x[1] >= today; })]; }).filter(function (x) { return x[1].length; });
+    return '<div class="grid g4 ls-kpis">' + stat("Follow-ups overdue", String(d.overdue), d.overdue ? "past their date" : "all on time") + stat("Site visits pending", String(d.visits), "scheduled or required walks") + stat("Proposals to finish", String(d.drafting), "drafts, review, PDF") + stat("Decisions in 3 weeks", String(d.decisions), "RFP deadlines and board meetings") + "</div>" +
+      '<div class="grid g4 ls-kpis">' + stat("Contracts won", String(d.won), "accepted proposals") + stat("Recurring revenue won", m0(d.mrr_confirmed) + "/mo", "confirmed: accepted proposals") + stat("Proposals out (projection)", m0(d.mrr_sent_projection) + "/mo", "if every sent proposal were accepted · not confirmed") + stat("Active opportunities", String(d.active), Object.keys(d.lost).length ? Object.keys(d.lost).map(function (k) { return d.lost[k] + " lost: " + k; }).slice(0, 2).join(" · ") : "no losses recorded") + "</div>" +
+      '<div class="section-title"><h2>Next follow-ups</h2></div>' + (due.length ? '<div class="card ls-list">' + due.map(grRow).join("") + "</div>" : '<div class="empty">No follow-ups yet. Add the first opportunity.</div>') +
+      (dec.length ? '<div class="section-title"><h2>Dates that matter</h2></div><div class="card ls-list">' + dec.map(function (x) { return '<div class="ls-row"><div class="ls-main" data-a="grxOpen" data-id="' + esc(x[0].id) + '"><b>' + esc(x[0].name) + '</b><small class="muted">' + x[1].map(function (y) { return y[0] + " " + day(y[1]); }).join(" · ") + "</small></div></div>"; }).join("") + "</div>" : "") +
+      '<div class="section-title"><h2>Recent activity</h2></div><div class="card ls-list">' + (S.gr.log.slice(0, 10).map(function (l) { var o = grO(l.ref); return '<div class="ls-row"><div class="ls-main"' + (o ? ' data-a="grxOpen" data-id="' + esc(o.id) + '"' : "") + "><b>" + esc(o ? o.name : "") + '</b><small class="muted">' + esc(l.by) + " · " + esc(String(l.at).slice(0, 16)) + " · " + esc(l.text) + "</small></div></div>"; }).join("") || '<p class="muted small" style="padding:10px 14px">Nothing yet.</p>') + "</div>";
+  }
+  function grRow(o) {
+    var mg = grA(o.mgmt_id), late = o.overdue;
+    return '<div class="ls-row"><div class="ls-main" data-a="grxOpen" data-id="' + esc(o.id) + '"><b>' + esc(o.name) + ' <span class="pill">' + (o.kind === "hoa" ? "HOA" : "Estate") + '</span> <span class="pill ' + (o.signal === "rfp" ? "warn" : o.signal === "interest" ? "ok" : "") + '">' + esc(GR_SIG[o.signal] || "") + "</span></b>" +
+      '<small class="muted">' + esc([mg ? mg.name : "", o.city, o.owner_name ? "👤 " + o.owner_name : "no owner"].filter(Boolean).join(" · ")) + "</small>" +
+      (o.next_action ? '<small class="' + (late ? "bad-t" : "") + '">Next: ' + esc(o.next_action) + (o.next_date ? " · " + day(o.next_date) + (late ? " (overdue)" : "") : "") + "</small>" : "") + "</div>" +
+      '<span class="pill ' + (o.stage === "won" ? "ok" : o.stage === "lost" ? "bad" : "") + '">' + esc(GR_STAGE[o.stage] || o.stage) + "</span></div>";
+  }
+  function grPipe() {
+    var f = S.grStageF || "active", list = S.gr.opps.filter(function (o) { return f === "all" || (f === "active" ? ["won", "lost", "later"].indexOf(o.stage) < 0 : o.stage === f); })
+      .sort(function (a, b) { return (S.gr.stages.indexOf(a.stage) - S.gr.stages.indexOf(b.stage)) || ((a.next_date || "9") < (b.next_date || "9") ? -1 : 1); });
+    var chips = [["active", "Active"]].concat(S.gr.stages.map(function (s) { return [s, GR_STAGE[s]]; }), [["all", "All"]]);
+    return '<div class="chips gr-stagef">' + chips.map(function (c) { var n = c[0] === "active" ? S.gr.dash.active : c[0] === "all" ? S.gr.opps.length : S.gr.opps.filter(function (o) { return o.stage === c[0]; }).length; return n || c[0] === "active" ? '<button class="chip' + (f === c[0] ? " on" : "") + '" data-a="grxStageF" data-v="' + c[0] + '">' + c[1] + " · " + n + "</button>" : ""; }).join("") + "</div>" +
+      (list.length ? '<div class="card ls-list">' + list.map(grRow).join("") + "</div>" : '<div class="empty">Nothing here.</div>') +
+      '<p class="muted small">Prospects come from what you enter, referrals, your website, published RFPs or a CSV. A directory listing is a lead to research, not a buyer looking for a contractor. External search isn\'t connected yet.</p>';
+  }
+  /* ---------- accounts ---------- */
+  function grAccounts() {
+    var acc = S.gr.accounts, mgs = acc.filter(function (a) { return a.kind === "management_company"; }), other = acc.filter(function (a) { return a.kind !== "management_company" && !a.parent_id; });
+    var contacts = function (a) { var cs = S.gr.contacts.filter(function (c) { return c.account_id === a.id; }); return cs.length ? cs.map(function (c) { return '<small class="gr-ct">👤 <b>' + esc(c.name) + "</b>" + (c.role ? " · " + esc(c.role) : "") + (c.email ? " · " + esc(c.email) : "") + (c.phone ? " · " + esc(c.phone) : "") + (c.can_approve === "yes" ? ' · <span class="pill ok">can approve</span>' : "") + " · " + grSrcTxt(c) + "</small>"; }).join("") : '<small class="muted">No contacts yet.</small>'; };
+    var card = function (a, kids) { return '<div class="card gr-acc"><b>' + esc(a.name) + ' <span class="pill">' + esc(GR_ACCK[a.kind] || a.kind) + '</span></b><small class="muted">' + esc([a.website, a.phone, a.email, [a.address, a.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ")) + "</small><small>" + grSrcTxt(a) + "</small>" + contacts(a) +
+      (kids && kids.length ? '<div class="gr-kids">' + kids.map(function (k) { var n = S.gr.opps.filter(function (o) { return o.account_id === k.id; }).length; return '<div><b>' + esc(k.name) + "</b> <small class=\"muted\">" + esc(GR_ACCK[k.kind]) + (n ? " · " + n + " opportunit" + (n === 1 ? "y" : "ies") : "") + "</small>" + contacts(k) + "</div>"; }).join("") + "</div>" : "") + "</div>"; };
+    return '<p class="muted small">A management company keeps all its communities and its people in one place, so a contact is never entered twice.</p>' +
+      (mgs.length ? mgs.map(function (m) { return card(m, acc.filter(function (a) { return a.parent_id === m.id; })); }).join("") : "") + other.map(function (a) { return card(a); }).join("") +
+      '<div class="section-title"><h2>Add an account</h2></div><form class="card form gr-form" data-form="grxAccount"><div class="row2"><label class="f">Type<select name="kind">' + grOpt(grObj(GR_ACCK), "management_company") + '</select></label><label class="f">Name<input name="name" required></label></div>' +
+      '<div class="row2"><label class="f">Part of (management company)<select name="parent_id">' + grOpt(mgs.map(function (m) { return [m.id, m.name]; }), "", "—") + '</select></label><label class="f">Website<input name="website" placeholder="https://"></label></div>' +
+      '<div class="row2"><label class="f">Phone<input name="phone"></label><label class="f">Email<input name="email"></label></div><div class="row2"><label class="f">Address<input name="address"></label><label class="f">City<input name="city"></label></div>' + grSrcFields({}) + '<div class="actions"><button class="btn" type="submit">Add account</button></div></form>';
+  }
+  function grSrcFields(x) { return '<div class="row2"><label class="f">Where it came from<select name="source">' + grOpt(grObj(GR_SRC), x.source || "manual") + '</select></label><label class="f">Source link<input name="source_url" value="' + esc(x.source_url || "") + '" placeholder="https://"></label></div><div class="row2"><label class="f">Date checked<input type="date" name="checked_at" value="' + esc(x.checked_at || "") + '"></label><label class="check-line"><input type="checkbox" name="verified" value="1"' + (x.verified === "yes" ? " checked" : "") + "> Verified by us</label></div>"; }
+  /* ---------- settings ---------- */
+  function grSettings() {
+    var r = S.gr.rates, admin = S.gr.admin, cr = S.gr.creds || [];
+    var rates = !r ? '<div class="empty">Production rates and margins are #money.</div>' : '<form class="card gr-form" data-form="grxRates"><div class="row2"><label class="f">Labor cost per person-hour<span class="ls-money">$<input type="number" step="0.5" name="labor_rate" value="' + r.labor_rate + '"' + (admin ? "" : " disabled") + '></span></label><label class="f">Target margin<span class="ls-money"><input type="number" step="1" min="0" max="80" name="margin" value="' + Math.round(r.margin * 100) + '"' + (admin ? "" : " disabled") + '>%</span></label></div>' +
+      '<div class="row2"><label class="f">Crew size for travel<input type="number" name="crew" min="1" value="' + r.crew + '"' + (admin ? "" : " disabled") + '></label><label class="f">Green-waste disposal per visit<span class="ls-money">$<input type="number" name="disposal" value="' + r.disposal + '"' + (admin ? "" : " disabled") + "></span></label></div>" +
+      '<table class="t gr-rt"><thead><tr><th>Task</th><th>Unit</th><th class="num">Person-min per unit</th><th class="num">Materials $ per unit</th><th>Default frequency</th></tr></thead><tbody>' + Object.keys(r.tasks).map(function (k) { var t = r.tasks[k]; return "<tr><td>" + esc(t.label) + "</td><td>per " + (t.per > 1 ? t.per.toLocaleString() + " " : "") + esc(t.unit) + '</td><td class="num"><input type="number" step="0.5" name="min:' + k + '" value="' + t.min + '"' + (admin ? "" : " disabled") + '></td><td class="num"><input type="number" step="1" name="mat:' + k + '" value="' + t.mat + '"' + (admin ? "" : " disabled") + "></td><td>" + esc(GR_FQ[t.freq]) + "</td></tr>"; }).join("") + "</tbody></table>" +
+      '<p class="muted small">These are starting values: change them to your crews\' real production. Every estimate shows them and can be adjusted line by line.</p>' + (admin ? '<div class="actions"><button class="btn" type="submit">Save rates</button></div>' : "") + "</form>";
+    var t = S.gr.today;
+    var creds = '<div class="card ls-list">' + (cr.length ? cr.map(function (c) { var bad = !c.verified || (c.expires && c.expires < t); return '<div class="ls-row"><div class="ls-main"><b>' + esc(c.name) + ' <span class="pill">' + esc(c.kind) + '</span></b><small class="muted">' + esc([c.number, c.detail, c.expires ? "expires " + c.expires : "no expiry"].filter(Boolean).join(" · ")) + "</small><small>" + (bad ? '<span class="bad-t">Not included in proposals (' + (!c.verified ? "not verified" : "expired") + ")</span>" : '<span class="ok-t">Included in proposals</span>') + "</small></div>" + (admin ? '<button class="link small" data-a="grxCredRm" data-id="' + esc(c.id) + '">Remove</button>' : "") + "</div>"; }).join("") : '<p class="muted small" style="padding:10px 14px">None yet. Only verified, current items go into proposals.</p>') + "</div>" +
+      (admin ? '<form class="card gr-form" data-form="grxCred"><div class="row2"><label class="f">Type<select name="kind">' + grOpt([["license", "License"], ["insurance", "Insurance"], ["certification", "Certification"], ["reference", "Reference"]], "license") + '</select></label><label class="f">Name<input name="name" required placeholder="e.g. C-27 Landscaping Contractor"></label></div><div class="row2"><label class="f">Number / policy<input name="number"></label><label class="f">Expires<input type="date" name="expires"></label></div><label class="f">Detail<input name="detail" placeholder="e.g. $2M general liability, carrier"></label><label class="check-line"><input type="checkbox" name="verified" value="1"> I checked the document and it\'s current</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>' : "");
+    return '<div class="section-title"><h2>Production rates & margin</h2></div>' + rates + '<div class="section-title"><h2>Licenses, insurance & references</h2></div>' + creds;
+  }
+  /* ---------- one opportunity ---------- */
+  function grOppView(o) {
+    var sub = S.grSub || "overview", tabs = [["overview", "Overview"], ["inspect", "Inspection"], ["estimate", "Estimate"], ["proposal", "Proposal"], ["convert", "Convert to maintenance"]];
+    var mg = grA(o.mgmt_id), acc = grA(o.account_id);
+    return '<button class="link small" data-a="grxBack">← All opportunities</button><div class="gr-head"><div><span class="eyebrow">' + (o.kind === "hoa" ? "HOA" : "Estate") + " · " + esc(GR_SIG[o.signal] || "") + "</span><h2>" + esc(o.name) + '</h2><small class="muted">' + esc([acc && acc.name !== o.name ? acc.name : "", mg ? mg.name : "", [o.address, o.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ")) + "</small></div>" +
+      '<label class="gr-stage">Stage<select data-grx-stage>' + grOpt(S.gr.stages.map(function (s) { return [s, GR_STAGE[s]]; }), o.stage) + "</select></label></div>" +
+      '<div class="chips gr-sub">' + tabs.map(function (t) { return '<button class="chip' + (sub === t[0] ? " on" : "") + '" data-a="grxSub" data-v="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</div>" +
+      (sub === "inspect" ? grInspect(o) : sub === "estimate" ? grEstimate(o) : sub === "proposal" ? grProposal(o) : sub === "convert" ? grConvert(o) : grOverview(o));
+  }
+  function grOverview(o) {
+    var mgs = S.gr.accounts.filter(function (a) { return a.kind === "management_company"; }), accs = S.gr.accounts.filter(function (a) { return a.kind !== "management_company"; });
+    var cts = S.gr.contacts.filter(function (c) { return [o.account_id, o.mgmt_id].indexOf(c.account_id) > -1 || c.id === o.contact_id; });
+    var hoa = o.kind === "hoa";
+    return '<form class="card form gr-form" data-form="grxOpp" data-id="' + esc(o.id) + '">' +
+      '<div class="row2"><label class="f">Name<input name="name" required value="' + esc(o.name) + '"></label><label class="f">Signal<select name="signal">' + grOpt(grObj(GR_SIG), o.signal) + "</select></label></div>" +
+      '<div class="row2"><label class="f">' + (hoa ? "Community / association" : "Estate / owner") + '<select name="account_id">' + grOpt(accs.map(function (a) { return [a.id, a.name]; }), o.account_id, "—") + '</select></label><label class="f">Management company<select name="mgmt_id">' + grOpt(mgs.map(function (a) { return [a.id, a.name]; }), o.mgmt_id, "—") + "</select></label></div>" +
+      '<div class="row2"><label class="f">Main contact<select name="contact_id">' + grOpt(cts.map(function (c) { return [c.id, c.name + (c.role ? " · " + c.role : "")]; }), o.contact_id, "—") + '</select></label><label class="f">Who approves (person or group)<input name="approver" value="' + esc(o.approver) + '" placeholder="' + (hoa ? "e.g. Board of directors" : "e.g. Owner") + '"></label></div>' +
+      '<div class="row2"><label class="f">Address<input name="address" value="' + esc(o.address) + '"></label><label class="f">City<input name="city" value="' + esc(o.city) + '"></label></div>' +
+      '<div class="row2"><label class="f">Owner<select name="owner">' + grOpt(S.gr.staff.map(function (x) { return [x.email, x.name]; }), o.owner, "—") + '</select></label><label class="f">Wanted start<input type="date" name="start_wanted" value="' + esc(o.start_wanted) + '"></label></div>' +
+      '<div class="row2"><label class="f">Next action<input name="next_action" value="' + esc(o.next_action) + '"></label><label class="f">Follow-up date<input type="date" name="next_date" value="' + esc(o.next_date) + '"></label></div>' +
+      (hoa ? "<h3>Bid / RFP</h3>" + '<div class="row2"><label class="f">RFP deadline<input type="date" name="rfp_due" value="' + esc(o.rfp_due) + '"></label><label class="f">Current contract ends (if known)<input type="date" name="contract_end" value="' + esc(o.contract_end) + '"></label></div>' +
+        '<div class="row2"><label class="f">Site walk<input type="date" name="walk_date" value="' + esc(o.walk_date) + '"></label><label class="check-line"><input type="checkbox" name="walk_required" value="1"' + (o.walk_required === "yes" ? " checked" : "") + '> Walk is mandatory</label></div>' +
+        '<div class="row2"><label class="f">Board meeting<input type="date" name="board_date" value="' + esc(o.board_date) + '"></label><label class="f">How they choose<input name="selection" value="' + esc(o.selection) + '" placeholder="e.g. manager short-list, board vote"></label></div>' +
+        '<label class="f">Documents required<input name="docs_required" value="' + esc(o.docs_required) + '" placeholder="e.g. COI, W-9, license, references"></label>' : "") +
+      grSrcFields(o) + '<label class="f">Notes (team only)<textarea name="notes">' + esc(o.notes) + "</textarea></label>" +
+      (o.stage === "lost" || o.lost_reason ? '<label class="f">Why it was lost<input name="lost_reason" value="' + esc(o.lost_reason) + '"></label>' : "") +
+      '<div class="actions"><button class="btn" type="submit">Save</button></div></form>' +
+      '<div class="section-title"><h2>People</h2></div><div class="card ls-list">' + (cts.length ? cts.map(function (c) { return '<div class="ls-row"><div class="ls-main"><b>' + esc(c.name) + (c.id === o.contact_id ? ' <span class="pill ok">main contact</span>' : "") + (c.can_approve === "yes" ? ' <span class="pill">can approve</span>' : "") + '</b><small class="muted">' + esc([c.role, c.email, c.phone, (grA(c.account_id) || {}).name].filter(Boolean).join(" · ")) + "</small><small>" + grSrcTxt(c) + "</small></div></div>"; }).join("") : '<p class="muted small" style="padding:10px 14px">No contacts yet.</p>') + "</div>" +
+      '<form class="card form gr-form" data-form="grxContact"><div class="row2"><label class="f">Name<input name="name" required></label><label class="f">Role<input name="role" placeholder="e.g. Community manager, Board president"></label></div><div class="row2"><label class="f">Email<input name="email"></label><label class="f">Phone<input name="phone"></label></div>' +
+      '<div class="row2"><label class="f">Works for<select name="account_id">' + grOpt(S.gr.accounts.filter(function (a) { return [o.account_id, o.mgmt_id].indexOf(a.id) > -1; }).map(function (a) { return [a.id, a.name]; }), o.mgmt_id || o.account_id) + '</select></label><label class="check-line"><input type="checkbox" name="can_approve" value="1"> Can approve the contract</label></div>' + grSrcFields({}) +
+      '<div class="actions"><button class="btn ghost" type="submit">Add contact</button></div></form>' +
+      '<div class="section-title"><h2>Write to them</h2><span class="muted small">Drafts from what we know; you check who it goes to and the text before sending</span></div><div class="chips">' + [["intro", "Introduction"], ["visit", "Ask for a site walk"], ["followup", "Follow-up"], ["objection", "Answer objections"]].map(function (k) { return '<button class="chip" data-a="grxDraft" data-k="' + k[0] + '">' + k[1] + "</button>"; }).join("") + "</div>";
+  }
+  /* ---------- inspection (phone-friendly) ---------- */
+  function grInsWork(o) {
+    if (S.grI && S.grI.opp === o.id) return S.grI; var last = o.inspections[o.inspections.length - 1];
+    S.grI = last ? { opp: o.id, id: last.id, zones: JSON.parse(JSON.stringify(last.zones)), site: Object.assign({}, last.site), recovery: JSON.parse(JSON.stringify(last.recovery)), priorities: last.priorities || "", issues: last.issues || "", status: last.status }
+      : { opp: o.id, zones: [{ id: "z1", name: "Front turf", type: "lawn", qty: "", unit: "sq ft", basis: "unknown", condition: "", notes: "", photos: [] }], site: {}, recovery: [], priorities: "", issues: "", status: "draft" };
+    return S.grI;
+  }
+  function grInspect(o) {
+    var w = grInsWork(o), units = { lawn: "sq ft", beds: "sq ft", hardscape: "sq ft", hedges: "lin ft", trees: "trees", irrigation: "valves", slope: "sq ft", other: "" };
+    var zone = function (z, i) { return '<div class="card gr-zone"><div class="row2"><label class="f">Zone<input data-gri="zones.' + i + '.name" value="' + esc(z.name) + '"></label><label class="f">Type<select data-gri="zones.' + i + '.type">' + grOpt(grObj(GR_ZT), z.type) + "</select></label></div>" +
+      '<div class="row3"><label class="f">Quantity<input type="number" min="0" data-gri="zones.' + i + '.qty" value="' + esc(z.qty == null ? "" : z.qty) + '"></label><label class="f">Unit<input data-gri="zones.' + i + '.unit" value="' + esc(z.unit || units[z.type] || "") + '"></label><label class="f">Where the number comes from<select data-gri="zones.' + i + '.basis">' + grOpt(grObj(GR_BASIS), z.basis) + "</select></label></div>" +
+      '<label class="f">Condition<input data-gri="zones.' + i + '.condition" value="' + esc(z.condition) + '" placeholder="e.g. thin turf by the entry, overgrown"></label><label class="f">Notes<input data-gri="zones.' + i + '.notes" value="' + esc(z.notes) + '"></label>' +
+      '<div class="gr-photos">' + (z.photos || []).map(function (p) { return '<a href="https://drive.google.com/file/d/' + esc(p) + '/view" target="_blank" rel="noopener"><img src="https://drive.google.com/thumbnail?id=' + esc(p) + '&sz=w300" alt=""></a>'; }).join("") +
+      (w.id ? '<label class="btn ghost sm gr-up">📷 Add photos<input type="file" accept="image/*" multiple data-grx-photo="' + esc(z.id) + '" hidden></label>' : '<small class="muted">Save once to add photos.</small>') + '</div><button type="button" class="link small" data-a="grxZoneRm" data-i="' + i + '">Remove zone</button></div>'; };
+    var site = [["access", "Access (gates, codes, who opens)"], ["parking", "Parking / where the truck goes"], ["waste", "Green-waste removal"], ["irrigation", "Irrigation (controllers, condition)"], ["slopes", "Slopes"], ["frequencies", "Frequencies they require"], ["restrictions", "Restrictions (hours, noise, residents)"], ["equipment", "Equipment needed (comma list)"], ["hours", "Allowed work hours"]];
+    return '<p class="muted small">Walk the property zone by zone. Each quantity says where it comes from: measured on site, told by the client, or estimated. A photo or aerial view is never treated as a measurement.</p>' +
+      w.zones.map(zone).join("") + '<button class="btn ghost sm" data-a="grxZoneAdd">＋ Zone</button>' +
+      '<div class="card gr-form"><h3>Site</h3>' + site.map(function (s) { return '<label class="f">' + s[1] + '<input data-gri="site.' + s[0] + '" value="' + esc(w.site[s[0]] || "") + '"></label>'; }).join("") + "</div>" +
+      '<div class="card gr-form"><h3>Initial clean-up (separate from recurring maintenance)</h3>' + w.recovery.map(function (r, i) { return '<div class="row3"><label class="f">Work<input data-gri="recovery.' + i + '.desc" value="' + esc(r.desc) + '"></label><label class="f">Person-hours<input type="number" min="0" data-gri="recovery.' + i + '.hours" value="' + esc(r.hours) + '"></label><label class="f">Materials $<input type="number" min="0" data-gri="recovery.' + i + '.materials" value="' + esc(r.materials) + '"></label></div><label class="f">Hours are<select data-gri="recovery.' + i + '.basis">' + grOpt(grObj(GR_BASIS), r.basis) + "</select></label>"; }).join("") + '<button class="btn ghost sm" data-a="grxRecAdd">＋ Clean-up item</button></div>' +
+      '<div class="card gr-form"><label class="f">What the client cares about most<textarea data-gri="priorities">' + esc(w.priorities) + '</textarea></label><label class="f">Problems we found<textarea data-gri="issues">' + esc(w.issues) + "</textarea></label></div>" +
+      '<div class="actions gr-sticky"><button class="btn ghost" data-a="grxInsSave" data-s="draft">Save</button><button class="btn" data-a="grxInsSave" data-s="done">Inspection done</button></div>';
+  }
+  /* ---------- estimate ---------- */
+  function grEstWork(o) {
+    if (S.grE && S.grE.opp === o.id) return S.grE; var e = o.estimates[0];
+    S.grE = e ? { opp: o.id, id: e.locked ? null : e.id, base: e.id, inspection_id: e.inspection_id, structure: e.structure, params: Object.assign({}, e.params || {}), lines: e.lines.map(function (l) { return Object.assign({}, l); }) } : { opp: o.id, lines: [], params: {}, structure: o.signal === "rfp" ? "rfp" : "packages" };
+    return S.grE;
+  }
+  function grEstimate(o) {
+    var w = grEstWork(o), e = o.estimates[0], money = S.gr.money, ins = o.inspections[o.inspections.length - 1];
+    if (!w.lines.length) return '<div class="empty">' + (ins ? 'Start from the inspection: each zone gets its usual tasks and the clean-up becomes its own section.<br><button class="btn sm" data-a="grxDraftLines" data-id="' + esc(ins.id) + '">Draft the estimate from the inspection</button>' : "Do the inspection first, so the quantities come from the walk.") + "</div>";
+    var row = function (l, i) { return '<tr class="' + (l.include === false ? "off" : "") + '"><td><input type="checkbox" data-gre="' + i + '.include"' + (l.include !== false ? " checked" : "") + '></td><td><select data-gre="' + i + '.section">' + grOpt(grObj(GR_SEC), l.section) + '</select></td><td><input data-gre="' + i + '.label" value="' + esc(l.label) + '"><small class="muted">' + esc(l.zone || "") + '</small></td><td><input type="number" data-gre="' + i + '.qty" value="' + esc(l.qty == null ? "" : l.qty) + '" class="n"> <small>' + esc(l.unit || "") + "</small></td>" +
+      '<td><select data-gre="' + i + '.freq">' + grOpt(grObj(GR_FQ), l.freq) + '</select></td><td><select data-gre="' + i + '.basis">' + grOpt(grObj(GR_BASIS), l.basis) + "</select></td>" +
+      (l.section === "recovery" || !l.task ? '<td><input type="number" data-gre="' + i + '.hours" value="' + esc(l.hours == null ? "" : l.hours) + '" class="n" placeholder="hours"></td><td><input type="number" data-gre="' + i + '.materials" value="' + esc(l.materials == null ? "" : l.materials) + '" class="n" placeholder="$"></td>' : money ? '<td><input type="number" step="0.5" data-gre="' + i + '.min" value="' + esc(l.min == null ? "" : l.min) + '" placeholder="' + esc(l.rate_min == null ? "" : l.rate_min) + '" class="n" title="person-minutes per unit (empty = the standard rate)"></td><td><input type="number" data-gre="' + i + '.mat" value="' + esc(l.mat == null ? "" : l.mat) + '" placeholder="' + esc(l.rate_mat == null ? "" : l.rate_mat) + '" class="n" title="materials $ per unit (empty = the standard rate)"></td>' : "<td>—</td><td>—</td>") +
+      (money ? '<td><input type="number" data-gre="' + i + '.sub" value="' + esc(l.sub || "") + '" class="n" placeholder="$"></td>' : "") + '<td class="num">' + (l.price != null ? m0(l.price) : "") + '</td><td><button class="link small" data-a="grxLineRm" data-i="' + i + '">✕</button></td></tr>'; };
+    var res = e ? e : null, t = res ? res.totals : null;
+    return '<div class="gr-esth"><label>Structure<select data-gre-structure>' + grOpt([["packages", "Our packages"], ["rfp", "Follow the RFP's structure exactly"]], w.structure) + "</select></label>" +
+      (money ? '<label>Margin <input type="number" min="0" max="80" data-gre-param="margin" value="' + esc(w.params.margin != null ? Math.round(w.params.margin * 100) : Math.round(S.gr.rates.margin * 100)) + '">%</label><label>Labor $/h <input type="number" data-gre-param="labor_rate" value="' + esc(w.params.labor_rate || S.gr.rates.labor_rate) + '"></label><label>Crew <input type="number" min="1" data-gre-param="crew" value="' + esc(w.params.crew || S.gr.rates.crew) + '"></label>' : "") + "</div>" +
+      '<div class="card tbl" data-lenis-prevent><table class="t gr-et"><thead><tr><th></th><th>Section</th><th>Service · zone</th><th>Qty</th><th>Frequency</th><th>Quantity is</th><th>' + (money ? "Min/unit · hours" : "Hours") + "</th><th>" + (money ? "Mat./unit · $" : "Materials") + "</th>" + (money ? "<th>Subcontract $</th>" : "") + '<th class="num">Price /yr</th><th></th></tr></thead><tbody>' + w.lines.map(row).join("") + "</tbody></table></div>" +
+      '<div class="actions" style="justify-content:flex-start"><button class="btn ghost sm" data-a="grxLineAdd">＋ Custom line</button><span style="flex:1"></span><button class="btn" data-a="grxEstSave">Calculate & save' + (w.id ? "" : " as a new version") + "</button></div>" +
+      (res ? '<div class="section-title"><h2>Estimate v' + res.version + ' <span class="pill ' + (res.status === "complete" ? "ok" : "warn") + '">' + (res.status === "complete" ? "Complete" : "Preliminary") + '</span></h2><span class="muted small">' + (res.locked ? "Used by a proposal: changes make a new version" : "Draft") + "</span></div>" +
+        (res.preliminary.length ? '<div class="ls-incomplete"><b>Preliminary:</b> ' + res.preliminary.map(esc).join(" · ") + "</div>" : "") +
+        '<div class="grid g4 ls-kpis">' + stat("Recurring maintenance", m0(t.recurring_monthly) + "/mo", m0(t.recurring_annual) + " a year · " + t.visits_year + " visits") + stat("Seasonal work", m0(t.seasonal_annual) + "/yr", "mulch, pruning, leaves, fertilizing…") + stat("Initial clean-up", m0(t.recovery_once), "one time") + stat("All-in per month", m0(t.monthly_all_in), "recurring + seasonal ÷ 12") + "</div>" +
+        '<p class="muted small">' + (t.person_min_visit ? t.person_min_visit + " person-minutes per visit" : "") + (t.travel_min != null ? " · " + t.travel_min + " min round trip from the office (" + (t.travel_real ? "Google" : "estimate") + ")" : "") + " · " + (t.hours_year || 0) + " crew hours a year" + (money && t.cost_annual ? " · cost " + m0(t.cost_annual) + "/yr · margin " + Math.round(t.margin * 100) + "% · labor $" + t.rate + "/h × " + t.crew : "") + ". Amounts come from the quantities and the rates, never typed in by hand.</p>" +
+        (t.options.length ? '<p class="small"><b>Options:</b> ' + t.options.map(function (x) { return esc(x.label) + " " + m0(x.price); }).join(" · ") + "</p>" : "") : "");
+  }
+  /* ---------- proposal ---------- */
+  function grProposal(o) {
+    var ps = o.proposals, p = ps[0], e = o.estimates[0], money = S.gr.money;
+    var head = '<div class="card ls-list">' + (ps.length ? ps.map(function (x) { var st = GR_PST[x.status] || [x.status, ""]; return '<div class="ls-row"><div class="ls-main"><b>Version ' + x.version + '</b><small class="muted">' + esc([x.created_at, x.reviewed_by ? "approved by " + x.reviewed_by : "", x.sent_at ? "sent " + String(x.sent_at).slice(0, 10) + " to " + x.sent_to : "", x.hash ? "seal " + x.hash : ""].filter(Boolean).join(" · ")) + "</small></div>" + (x.pdf_url ? '<a class="btn ghost sm" href="' + esc(x.pdf_url) + '" target="_blank" rel="noopener">PDF</a>' : "") + '<span class="pill ' + st[1] + '">' + st[0] + "</span></div>"; }).join("") : '<p class="muted small" style="padding:10px 14px">No proposal yet.</p>') + "</div>";
+    if (!e) return head + '<div class="empty">Make the estimate first: the proposal\'s prices come from it.</div>';
+    var newBtn = '<button class="btn ' + (p ? "ghost " : "") + 'sm" data-a="grxPropNew" data-e="' + esc(e.id) + '">' + (p ? "New version from estimate v" + e.version : "Start the proposal from estimate v" + e.version) + "</button>";
+    if (!p) return head + '<div class="actions" style="justify-content:flex-start">' + newBtn + "</div>";
+    var c = p.content || {}, draft = p.status === "draft", f = function (k, label, rows) { return '<label class="f">' + label + "<textarea data-grp=\"" + k + '" rows="' + (rows || 3) + '"' + (draft ? "" : " disabled") + ">" + esc(c[k] || "") + "</textarea></label>"; };
+    var tr = c.transition || {}, ins = o.inspections[o.inspections.length - 1], photos = ins ? ins.zones.reduce(function (a, z) { return a.concat(z.photos || []); }, []) : [];
+    var edit = '<div class="card gr-form"><h3>Version ' + p.version + " · " + (GR_PST[p.status] || [p.status])[0] + "</h3>" + (draft ? "" : '<p class="muted small">This version is locked. Make a new version to change anything.</p>') +
+      '<label class="f">Title<input data-grp="title" value="' + esc(c.title || "") + '"' + (draft ? "" : " disabled") + "></label>" + f("needs", "What you told us / what we found", 4) +
+      f("supervision", "Supervision") + f("communication", "Communication") + f("documentation", "Documentation of the work") + f("pending", "How open items are resolved") + f("exclusions", "Exclusions") +
+      '<div class="row3"><label class="f">First 30 days<textarea data-grp="transition.d30" rows="4"' + (draft ? "" : " disabled") + ">" + esc(tr.d30 || "") + '</textarea></label><label class="f">Days 31–60<textarea data-grp="transition.d60" rows="4"' + (draft ? "" : " disabled") + ">" + esc(tr.d60 || "") + '</textarea></label><label class="f">Days 61–90<textarea data-grp="transition.d90" rows="4"' + (draft ? "" : " disabled") + ">" + esc(tr.d90 || "") + "</textarea></label></div>" +
+      f("next_steps", "Next steps", 4) + (o.kind === "hoa" ? f("board", "One-page summary for the board", 5) : "") +
+      (photos.length ? '<div class="f"><span>Photos in the proposal</span><div class="gr-photos">' + photos.map(function (id) { var on = (c.photos || []).indexOf(id) > -1; return '<label class="gr-ph' + (on ? " on" : "") + '"><input type="checkbox" data-grp-photo="' + esc(id) + '"' + (on ? " checked" : "") + (draft ? "" : " disabled") + '><img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w300" alt=""></label>'; }).join("") + "</div></div>" : "") + "</div>";
+    var acts = '<div class="actions gr-sticky" style="justify-content:flex-start;flex-wrap:wrap">' + '<button class="btn ghost" data-a="grxPdf" data-id="' + esc(p.id) + '" data-final="0">Preview PDF</button>' +
+      (draft ? '<button class="btn ghost" data-a="grxPropSave" data-id="' + esc(p.id) + '">Save</button><button class="btn" data-a="grxReview" data-id="' + esc(p.id) + '" data-act="submit">Send to internal review</button>' : "") +
+      (p.status === "review" ? '<button class="btn ghost" data-a="grxReview" data-id="' + esc(p.id) + '" data-act="back">Back to draft</button>' + (money || S.gr.admin ? '<label class="check-line"><input type="checkbox" data-grx-prelim> Approve as a preliminary proposal</label><button class="btn" data-a="grxReview" data-id="' + esc(p.id) + '" data-act="approve">Approve</button>' : '<span class="muted small">Waiting for Jesús or #money to approve.</span>') : "") +
+      (p.status === "approved" ? '<button class="btn" data-a="grxPdf" data-id="' + esc(p.id) + '" data-final="1">Make the final PDF</button>' : "") +
+      (["final", "sent"].indexOf(p.status) > -1 ? '<button class="btn" data-a="grxDraft" data-k="proposal" data-p="' + esc(p.id) + '">Email it (draft)</button><button class="btn ghost" data-a="grxAccept" data-id="' + esc(p.id) + '">The client accepted this version</button>' : "") +
+      (!draft ? newBtn : "") + "</div>" + (S.grPdfMsg ? '<p class="small">' + S.grPdfMsg + "</p>" : "");
+    return head + edit + acts;
+  }
+  /* ---------- convert ---------- */
+  function grConvert(o) {
+    if (o.property_id) return '<div class="card"><b>✓ This is a maintenance property now.</b><p class="muted small">Operations sees the accepted proposal on the property.</p><button class="btn sm" data-a="grxGoProp">Open Maintenance</button></div>';
+    var acc = o.proposals.filter(function (p) { return p.status === "accepted"; })[0]; if (!acc) return '<div class="empty">When the client accepts a version, mark it on the Proposal tab. Then it can become a maintenance property here.</div>';
+    var w = S.grK && S.grK.opp === o.id ? S.grK : (S.grK = { opp: o.id, prop: {}, res: null }), r = w.res, pr = r ? r.prop : {}, v = function (k) { return esc(w.prop[k] != null && w.prop[k] !== "" ? w.prop[k] : pr[k] != null ? pr[k] : ""); };
+    var crews = (S.gr.crews || []).map(function (c) { return [c.id, c.name]; });
+    return '<p class="muted small">Everything comes from the accepted proposal v' + acc.version + ". Check it before activating; nothing is created until you press Create.</p>" +
+      '<form class="card form gr-form" data-form="grxConvert"><div class="row2"><label class="f">Property name<input name="name" value="' + v("name") + '"></label><label class="f">Client emails (portal access)<input name="client_emails" value="' + v("client_emails") + '"></label></div>' +
+      '<div class="row2"><label class="f">Address<input name="address" value="' + v("address") + '"></label><label class="f">City<input name="city" value="' + v("city") + '"></label></div><label class="f">Access<input name="access" value="' + v("access") + '"></label>' +
+      '<div class="row3"><label class="f">Crew<select name="crew_id">' + grOpt(crews, w.prop.crew_id, "Pick…") + '</select></label><label class="f">Service day<select name="weekday">' + grOpt(LS_DAYS.map(function (d, i) { return [String(i), d]; }), w.prop.weekday, "Pick…") + '</select></label><label class="f">Start<input type="date" name="start" value="' + v("start") + '"></label></div>' +
+      '<div class="row2"><label class="f">Planned labor per visit (person-min)<input type="number" name="visit_min" value="' + v("visit_min") + '"></label><label class="f">Equipment needed<input name="equipment" value="' + v("equipment") + '"></label></div>' +
+      (r ? '<p class="small">Agreement: <b>' + m0(pr.price) + "/month</b> · " + esc(pr.freq) + " · " + (pr.checklist || []).length + " checklist items</p>" : "") +
+      '<div class="actions"><button class="btn ghost" type="submit" value="check">Check</button><button class="btn" type="submit" value="create"' + (r && r.ready ? "" : " disabled") + ">Create the maintenance property</button></div></form>" +
+      (r ? '<div class="card gr-checks">' + r.checks.map(function (c) { return '<div class="' + (c.ok ? "ok-t" : c.key === "equipment" ? "warn-t" : "bad-t") + '">' + (c.ok ? "✓ " : c.key === "equipment" ? "⚠ " : "✗ ") + esc(c.text) + "</div>"; }).join("") + "</div>" : "");
+  }
+  /* ---------- the PDF (built in the browser from the client-safe view: selectable text, numbered pages, tables never cut) ---------- */
+  function grLibs() {
+    if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
+    var load = function (src) { return new Promise(function (ok, bad) { var s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = function () { bad(new Error("Couldn't load the PDF library.")); }; document.head.appendChild(s); }); };
+    return load("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js").then(function () { return load("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"); });
+  }
+  function grLogoPng() {
+    return new Promise(function (ok) { try { var svg = LOGO.replace('class="logo"', 'width="530" height="66"').replace(/currentColor/g, "#111"); var img = new Image(); img.onload = function () { var c = document.createElement("canvas"); c.width = 530; c.height = 66; c.getContext("2d").drawImage(img, 0, 0, 530, 66); ok(c.toDataURL("image/png")); }; img.onerror = function () { ok(null); };
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg.indexOf("xmlns=") > -1 ? svg : svg.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"')); } catch (e) { ok(null); } });
+  }
+  var GR_WHEN = { mulch: "Spring", leaves: "October–December", fert: "Quarterly", trees: "Winter (dormant season)", hedge: "Quarterly" };
+  function grPdfBuild(v, p, photos, logo, final) {
+    var J = window.jspdf.jsPDF, doc = new J({ unit: "pt", format: "letter" }), W = 612, M = 54, y = 0, ink = [17, 17, 17], mute = [110, 106, 98], green = [31, 107, 51];
+    var c = v.content || {}, t = v.totals || {}, money = function (n) { return "$" + Math.round(n || 0).toLocaleString("en-US"); };
+    var page = function () { doc.addPage(); y = M; }, need = function (h) { if (y + h > 792 - 70) page(); };
+    var h2 = function (s, keep) { need(keep || 110); y += 8; doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor.apply(doc, ink); doc.text(s, M, y); y += 8; doc.setDrawColor(220, 214, 204); doc.line(M, y, W - M, y); y += 16; };
+    var para = function (s, size) { if (!s) return; doc.setFont("helvetica", "normal"); doc.setFontSize(size || 10.5); doc.setTextColor.apply(doc, ink); doc.splitTextToSize(String(s), W - 2 * M).forEach(function (ln) { need(16); doc.text(ln, M, y); y += 14.5; }); y += 6; };
+    var table = function (head, body, opts) { need(70); doc.autoTable(Object.assign({ head: [head], body: body, startY: y, margin: { left: M, right: M, bottom: 70 }, styles: { font: "helvetica", fontSize: 9.5, cellPadding: 5, textColor: ink, overflow: "linebreak" }, headStyles: { fillColor: [17, 17, 17], textColor: 255 }, alternateRowStyles: { fillColor: [246, 242, 235] }, rowPageBreak: "avoid" }, opts || {})); y = doc.lastAutoTable.finalY + 18; };
+    // cover
+    doc.setFillColor(246, 242, 235); doc.rect(0, 0, W, 792, "F");
+    if (logo) doc.addImage(logo, "PNG", M, 64, 212, 26.4); else { doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text("Blue Sierra", M, 84); }
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor.apply(doc, mute); doc.text((v.kind === "hoa" ? "LANDSCAPE MAINTENANCE PROPOSAL" : "GARDEN CARE PROPOSAL") + " · VERSION " + p.version, M, 240);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(28); doc.setTextColor.apply(doc, ink); var ty = 276; doc.splitTextToSize(c.title || v.name, W - 2 * M).forEach(function (ln) { doc.text(ln, M, ty); ty += 32; });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(12); ty += 6;
+    [v.address, "Prepared for: " + [v.contact ? v.contact.name + (v.contact.role ? ", " + v.contact.role : "") : "", v.account, v.mgmt].filter(Boolean).join(" · "), v.approver ? "Decision: " + v.approver : "", "Date: " + v.date].filter(Boolean).forEach(function (s) { doc.splitTextToSize(s, W - 2 * M).forEach(function (ln) { doc.text(ln, M, ty); ty += 17; }); });
+    if (v.preliminary) { doc.setTextColor(164, 44, 34); doc.setFont("helvetica", "bold"); doc.text("PRELIMINARY: some quantities are not yet measured on site; the price can change after verification.", M, ty + 18, { maxWidth: W - 2 * M }); }
+    if (!final) { doc.setTextColor(200, 60, 50); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("PREVIEW · NOT THE FINAL DOCUMENT", M, 720); }
+    // content
+    page(); h2(v.kind === "hoa" ? "What the community needs" : "What matters to you"); para(c.needs || v.priorities); if (v.issues && !c.needs) para("What we found: " + v.issues);
+    var ph = (c.photos || []).filter(function (id) { return photos[id]; });
+    if (ph.length) { var pw = (W - 2 * M - 12) / 2, phh = pw * 0.66; ph.forEach(function (id, i) { if (i % 2 === 0) need(phh + 10); try { doc.addImage(photos[id], "JPEG", M + (i % 2) * (pw + 12), y, pw, phh); } catch (e) {} if (i % 2 === 1 || i === ph.length - 1) y += phh + 12; }); y += 6; }
+    h2("Scope by area"); var zones = {}; v.lines.filter(function (l) { return l.section !== "option"; }).forEach(function (l) { var k = l.zone || "Whole property"; (zones[k] = zones[k] || []).push(l); });
+    table(["Area", "Service", "Frequency", "Visits a year"], Object.keys(zones).reduce(function (a, z) { return a.concat(zones[z].map(function (l, i) { return [i ? "" : z, l.label, GR_FQ[l.freq] || l.freq, String(l.visits || "")]; })); }, []), { columnStyles: { 0: { fontStyle: "bold", cellWidth: 130 } } });
+    var seas = v.lines.filter(function (l) { return l.section === "seasonal"; }); if (seas.length) { h2("Seasonal calendar"); table(["Seasonal service", "When", "Frequency"], seas.map(function (l) { return [l.label + (l.zone ? " · " + l.zone : ""), GR_WHEN[l.task] || "As scheduled with you", GR_FQ[l.freq] || l.freq]; })); }
+    h2("Supervision, communication and documentation"); [["Supervision", c.supervision], ["Communication", c.communication], ["Documentation of the work", c.documentation], ["Open items", c.pending]].forEach(function (x) { if (!x[1]) return; need(30); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(x[0], M, y); y += 15; para(x[1]); });
+    h2("Pricing");
+    if (v.structure === "rfp") { para("Prices follow the structure of your request for proposal, line by line.", 9.5); table(["Item", "Area", "Frequency", "Annual price"], v.lines.filter(function (l) { return l.section !== "option"; }).map(function (l) { return [l.label, l.zone || "", GR_FQ[l.freq] || l.freq, money(l.price)]; }), { columnStyles: { 3: { halign: "right" } } }); }
+    table(["Summary", "Price"], [["Recurring maintenance (" + t.visits_year + " visits a year)", money(t.recurring_monthly) + " per month · " + money(t.recurring_annual) + " a year"], ["Seasonal work", money(t.seasonal_annual) + " a year"], ["Monthly, recurring + seasonal", money(t.monthly_all_in) + " per month"]].concat(t.recovery_once ? [["Initial clean-up (one time)", money(t.recovery_once)]] : []), { columnStyles: { 1: { halign: "right", fontStyle: "bold" } } });
+    if (t.options.length) { h2("Optional items (priced separately)"); table(["Option", "Price"], t.options.map(function (x) { return [x.label, money(x.price) + (x.freq && x.freq !== "once" ? " a year" : "")]; }), { columnStyles: { 1: { halign: "right" } } }); }
+    h2("Not included"); para(c.exclusions);
+    h2("Your first 90 days"); table(["Period", "What happens"], [["Days 1–30", (c.transition || {}).d30 || ""], ["Days 31–60", (c.transition || {}).d60 || ""], ["Days 61–90", (c.transition || {}).d90 || ""]], { columnStyles: { 0: { cellWidth: 90, fontStyle: "bold" } } });
+    if (v.creds && v.creds.length) { h2("Licenses, insurance and references"); table(["", "Detail"], v.creds.map(function (x) { return [x.name, [x.number, x.detail, x.expires ? "valid through " + x.expires : ""].filter(Boolean).join(" · ")]; })); }
+    h2("Next steps"); para(c.next_steps);
+    if (v.kind === "hoa" && c.board) { page(); h2("Summary for the board"); para(c.board); table(["", ""], [["Recurring maintenance", money(t.recurring_monthly) + " per month"], ["Seasonal work", money(t.seasonal_annual) + " a year"], ["Annual total", money(t.annual_total)]].concat(t.recovery_once ? [["Initial clean-up (one time)", money(t.recovery_once)]] : [], t.options.map(function (x) { return ["Option: " + x.label, money(x.price)]; })), { showHead: "never", columnStyles: { 1: { halign: "right", fontStyle: "bold" } } }); }
+    var n = doc.getNumberOfPages(); for (var i = 2; i <= n; i++) { doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor.apply(doc, mute); doc.text("Blue Sierra Construction · " + v.name + " · proposal v" + p.version + " · " + v.date + (final ? "" : " · PREVIEW"), M, 792 - 34); doc.text("Page " + i + " of " + n, W - M, 792 - 34, { align: "right" }); }
+    return doc;
+  }
+  function grMakePdf(b) {
+    var id = b.dataset.id, final = b.dataset.final === "1";
+    return run(b, async function () {
+      S.grPdfMsg = "Building the PDF…"; keepScroll(render);
+      var r = await call("grProposalView", { id: id }), v = r.view, photos = {};
+      if ((v.content.photos || []).length) { try { photos = (await call("grPhotoData", { ids: v.content.photos })).photos || {}; } catch (e) {} }
+      await grLibs(); var logo = await grLogoPng(), doc = grPdfBuild(v, r.proposal, photos, logo, final);
+      if (!final) { var url = URL.createObjectURL(doc.output("blob")); window.open(url, "_blank"); S.grPdfMsg = "Preview opened in a new tab (marked PREVIEW)."; keepScroll(render); return; }
+      var data = doc.output("datauristring"), s = await call("grSavePdf", { id: id, pdf: data });
+      S.grPdfMsg = 'Final PDF saved: <a href="' + esc(s.url) + '" target="_blank" rel="noopener">open it</a>. This version can no longer change.'; S.gr = null; grLoad();
+    });
+  }
+  /* ---------- events ---------- */
+  function grSet(obj, path, val) { var ks = path.split("."), o = obj; for (var i = 0; i < ks.length - 1; i++) { o = o[ks[i]] = o[ks[i]] || {}; } o[ks[ks.length - 1]] = val; }
+  function grResize(file) { return new Promise(function (ok, bad) { var rd = new FileReader(); rd.onload = function () { var im = new Image(); im.onload = function () { var k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); ok({ mime: "image/jpeg", data: c.toDataURL("image/jpeg", 0.82) }); }; im.onerror = bad; im.src = rd.result; }; rd.onerror = bad; rd.readAsDataURL(file); }); }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b || !/^grx/.test(b.dataset.a)) return; e.preventDefault(); e.stopImmediatePropagation();
+    var a = b.dataset.a, o = S.grId ? grO(S.grId) : null;
+    if (a === "grxReload") { S.gr = null; return keepScroll(render); }
+    if (a === "grxTab") { S.grTab = b.dataset.v; S.grId = null; return keepScroll(render); }
+    if (a === "grxStageF") { S.grStageF = b.dataset.v; return keepScroll(render); }
+    if (a === "grxOpen") { S.grId = b.dataset.id; S.grSub = "overview"; S.grI = null; S.grE = null; S.grK = null; S.grPdfMsg = ""; window.scrollTo(0, 0); return keepScroll(render); }
+    if (a === "grxBack") { S.grId = null; return keepScroll(render); }
+    if (a === "grxSub") { S.grSub = b.dataset.v; S.grPdfMsg = ""; return keepScroll(render); }
+    if (a === "grxNew") { S.modal = { type: "grxNew" }; return keepScroll(render); }
+    if (a === "grxZoneAdd") { var w = grInsWork(o); w.zones.push({ id: "z" + (w.zones.length + 1) + Math.random().toString(36).slice(2, 6), name: "Zone " + (w.zones.length + 1), type: "beds", qty: "", unit: "sq ft", basis: "unknown", photos: [] }); return keepScroll(render); }
+    if (a === "grxZoneRm") { grInsWork(o).zones.splice(+b.dataset.i, 1); return keepScroll(render); }
+    if (a === "grxRecAdd") { grInsWork(o).recovery.push({ desc: "", hours: "", materials: "", basis: "estimate" }); return keepScroll(render); }
+    if (a === "grxInsSave") { var wi = grInsWork(o); return run(b, async function () { var r = await call("grSaveInspection", { inspection: { id: wi.id, opp_id: o.id, zones: wi.zones, site: wi.site, recovery: wi.recovery, priorities: wi.priorities, issues: wi.issues, status: b.dataset.s } }); wi.id = r.id; S.gr = null; grLoad(); toast(b.dataset.s === "done" ? "Inspection done ✓" : "Saved"); }); }
+    if (a === "grxDraftLines") return run(b, async function () { var r = await call("grDraftLines", { inspection_id: b.dataset.id }), w = grEstWork(o); w.lines = r.lines; w.inspection_id = b.dataset.id; w.id = null; keepScroll(render); });
+    if (a === "grxLineAdd") { grEstWork(o).lines.push({ task: "", label: "", zone: "", section: "option", freq: "once", qty: null, unit: "", basis: "estimate", include: true }); return keepScroll(render); }
+    if (a === "grxLineRm") { grEstWork(o).lines.splice(+b.dataset.i, 1); return keepScroll(render); }
+    if (a === "grxEstSave") { var we = grEstWork(o); return run(b, async function () { var r = await call("grSaveEstimate", { id: we.id || undefined, opp_id: o.id, inspection_id: we.inspection_id, lines: we.lines, structure: we.structure, params: we.params }); S.gr = null; S.grE = null; await new Promise(function (ok) { call("grHome", {}).then(function (h) { S.gr = h; ok(); }).catch(ok); }); keepScroll(render); toast("Estimate v" + r.version + " · " + (r.status === "complete" ? "complete" : "preliminary")); }); }
+    if (a === "grxPropNew") return run(b, async function () { await call("grNewProposal", { opp_id: o.id, estimate_id: b.dataset.e }); S.gr = null; grLoad(); toast("Proposal drafted from the estimate"); });
+    if (a === "grxPropSave") return run(b, async function () { await call("grSaveProposal", { id: b.dataset.id, content: S.grPc || {} }); S.grPc = null; S.gr = null; grLoad(); toast("Saved"); });
+    if (a === "grxReview") { var pre = root.querySelector("[data-grx-prelim]"); return run(b, async function () { if (S.grPc) { await call("grSaveProposal", { id: b.dataset.id, content: S.grPc }); S.grPc = null; } await call("grReview", { id: b.dataset.id, act: b.dataset.act, preliminary_ok: pre && pre.checked }); S.gr = null; grLoad(); toast({ submit: "Sent to internal review", back: "Back to draft", approve: "Approved: make the final PDF" }[b.dataset.act]); }); }
+    if (a === "grxPdf") return grMakePdf(b);
+    if (a === "grxAccept") return sure("Mark version as accepted by the client? It becomes what operations delivers, and the opportunity is won.", function () { call("grAccept", { id: b.dataset.id }).then(function () { S.gr = null; grLoad(); toast("Won 🎉 Convert it to maintenance next."); }).catch(function (er) { toast(er.message); }); });
+    if (a === "grxDraft") return run(b, async function () { var r = await call("grDraftEmail", { opp_id: o.id, kind: b.dataset.k, proposal_id: b.dataset.p || undefined }); S.modal = { type: "grxEmail", opp: o.id, p: b.dataset.p || "", to: r.to.join(", "), subject: r.subject, text: r.text }; keepScroll(render); });
+    if (a === "grxCredRm") return run(b, async function () { await call("grSaveCred", { cred: { id: b.dataset.id, remove: true } }); S.gr = null; grLoad(); });
+    if (a === "grxGoProp") { S.home = "ls"; S.lsTab = "props"; return keepScroll(render); }
+  }, true);
+  root.addEventListener("input", function (e) {
+    var t = e.target; if (!t.matches) return; var o = S.grId ? grO(S.grId) : null; if (!o) return;
+    if (t.matches("[data-gri]")) { grSet(grInsWork(o), t.dataset.gri, t.value); return; }
+    if (t.matches("[data-gre]")) { var ks = t.dataset.gre.split("."), l = grEstWork(o).lines[+ks[0]]; l[ks[1]] = t.type === "checkbox" ? t.checked : t.value; return; }
+    if (t.matches("[data-gre-param]")) { var pv = t.value === "" ? undefined : Number(t.value); grEstWork(o).params[t.dataset.greParam] = t.dataset.greParam === "margin" && pv != null ? pv / 100 : pv; return; }
+    if (t.matches("[data-grp]")) { S.grPc = S.grPc || {}; if (/^transition\./.test(t.dataset.grp)) { var cur = (o.proposals[0] || {}).content || {}; S.grPc.transition = Object.assign({}, cur.transition || {}, S.grPc.transition || {}); S.grPc.transition[t.dataset.grp.split(".")[1]] = t.value; } else S.grPc[t.dataset.grp] = t.value; }
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches) return; var o = S.grId ? grO(S.grId) : null;
+    if (t.matches("[data-grx-stage]")) { e.stopImmediatePropagation(); var st = t.value, body = { id: o.id, stage: st };
+      if (st === "lost") { var why = window.prompt("Why was it lost? (price, scope, timing, incumbent kept, no decision…)"); if (!why) { t.value = o.stage; return; } body.lost_reason = why; }
+      call("grSaveOpp", { opp: body }).then(function () { S.gr = null; grLoad(); toast("Stage: " + GR_STAGE[st]); }).catch(function (er) { t.value = o.stage; toast(er.message); }); return; }
+    if (t.matches("[data-gre-structure]")) { grEstWork(o).structure = t.value; return; }
+    if (t.matches("[data-gre]") && t.tagName === "SELECT") { var ks = t.dataset.gre.split("."); grEstWork(o).lines[+ks[0]][ks[1]] = t.value; return; }
+    if (t.matches("[data-gri]") && t.tagName === "SELECT") { grSet(grInsWork(o), t.dataset.gri, t.value); if (/\.type$/.test(t.dataset.gri)) keepScroll(render); return; }
+    if (t.matches("[data-grp-photo]")) { var cur = ((o.proposals[0] || {}).content || {}).photos || []; S.grPc = S.grPc || {}; var ph = (S.grPc.photos || cur).slice(); var i = ph.indexOf(t.dataset.grpPhoto); if (t.checked && i < 0) ph.push(t.dataset.grpPhoto); if (!t.checked && i > -1) ph.splice(i, 1); S.grPc.photos = ph; return; }
+    if (t.matches("[data-grx-photo]")) { var files = [].slice.call(t.files || []).slice(0, 6), w = grInsWork(o); if (!files.length) return; toast("Uploading " + files.length + " photo" + (files.length > 1 ? "s" : "") + "…");
+      Promise.all(files.map(grResize)).then(function (list) { return call("grAddPhotos", { id: w.id, zone_id: t.dataset.grxPhoto, files: list }); }).then(function (r) { var z = w.zones.filter(function (x) { return x.id === t.dataset.grxPhoto; })[0]; if (z) z.photos = (z.photos || []).concat(r.ids); keepScroll(render); toast("Photos saved"); }).catch(function (er) { toast(er.message); }); return; }
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form^=grx]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var fd = new FormData(f), k = f.dataset.form, btn = e.submitter || f.querySelector("[type=submit]"), V = function (n) { return String(fd.get(n) == null ? "" : fd.get(n)).trim(); }, o = S.grId ? grO(S.grId) : null;
+    var src = function () { return { source: V("source"), source_url: V("source_url"), checked_at: V("checked_at"), verified: !!fd.get("verified") }; };
+    if (k === "grxNew") return run(btn, async function () { var r = await call("grSaveOpp", { opp: Object.assign({ kind: V("kind"), name: V("name"), address: V("address"), city: V("city"), signal: V("signal"), owner: V("owner"), next_action: V("next_action"), next_date: V("next_date"), mgmt_id: V("mgmt_id") || undefined, stage: "identified" }, src()) }); S.modal = null; S.gr = null; S.grId = r.id; S.grSub = "overview"; grLoad(); toast("Opportunity added"); });
+    if (k === "grxOpp") { var body = { id: f.dataset.id }; ["name", "signal", "account_id", "mgmt_id", "contact_id", "approver", "address", "city", "owner", "start_wanted", "next_action", "next_date", "rfp_due", "contract_end", "walk_date", "board_date", "selection", "docs_required", "notes", "lost_reason"].forEach(function (n) { if (fd.has(n)) body[n] = V(n); }); if (fd.has("rfp_due")) body.walk_required = !!fd.get("walk_required"); Object.assign(body, src());
+      return run(btn, async function () { await call("grSaveOpp", { opp: body }); S.gr = null; grLoad(); toast("Saved"); }); }
+    if (k === "grxContact") return run(btn, async function () { var r = await call("grSaveContact", { contact: Object.assign({ name: V("name"), role: V("role"), email: V("email"), phone: V("phone"), account_id: V("account_id"), can_approve: !!fd.get("can_approve") }, src()) }); if (o && !o.contact_id) await call("grSaveOpp", { opp: { id: o.id, contact_id: r.id } }); S.gr = null; grLoad(); toast(r.existing ? "That person was already in contacts: linked, not duplicated" : "Contact added"); });
+    if (k === "grxAccount") return run(btn, async function () { var r = await call("grSaveAccount", { account: Object.assign({ kind: V("kind"), name: V("name"), parent_id: V("parent_id"), website: V("website"), phone: V("phone"), email: V("email"), address: V("address"), city: V("city") }, src()) }); S.gr = null; grLoad(); toast(r.existing ? "Already there: not duplicated" : "Account added"); });
+    if (k === "grxRates") { var tasks = {}; Object.keys(S.gr.rates.tasks).forEach(function (t) { tasks[t] = { min: Number(V("min:" + t)), mat: Number(V("mat:" + t)) }; });
+      return run(btn, async function () { await call("grRates", { save: { tasks: tasks, labor_rate: Number(V("labor_rate")), margin: Number(V("margin")) / 100, crew: Number(V("crew")), disposal: Number(V("disposal")) } }); S.gr = null; grLoad(); toast("Rates saved: new estimates use them"); }); }
+    if (k === "grxCred") return run(btn, async function () { await call("grSaveCred", { cred: { kind: V("kind"), name: V("name"), number: V("number"), expires: V("expires"), detail: V("detail"), verified: !!fd.get("verified") } }); S.gr = null; grLoad(); toast("Added"); });
+    if (k === "grxEmail") return run(btn, async function () { var r = await call("grSendEmail", { opp_id: f.dataset.opp, proposal_id: f.dataset.p || undefined, to: V("to").split(/[,;\s]+/).filter(Boolean), subject: V("subject"), text: V("text") }); S.modal = null; S.gr = null; grLoad(); toast("Sent to " + r.sent); });
+    if (k === "grxConvert") { var w = S.grK, prop = {}; ["name", "client_emails", "address", "city", "access", "crew_id", "weekday", "start", "visit_min", "equipment"].forEach(function (n) { prop[n] = V(n); }); w.prop = prop;
+      if (btn && btn.value === "create") return run(btn, async function () { var r = await call("grConvert", { opp_id: o.id, prop: prop }); S.gr = null; S.ls = null; grLoad(); toast("Maintenance property created ✓ Its visits are on the schedule."); });
+      return run(btn, async function () { w.res = await call("grConvertCheck", { opp_id: o.id, prop: prop }); keepScroll(render);
+        var ff = document.querySelector("form[data-form=grxConvert]"); if (ff) Object.keys(w.res.prop).forEach(function (n) { var el = ff.querySelector('[name="' + n + '"]'); if (el && el.tagName === "INPUT" && !el.value && w.res.prop[n] != null) el.value = w.res.prop[n]; }); }); }
+  }, true);
+  var _lsModalGr = lsModal;
+  lsModal = function (m) {
+    if (m.type === "grxNew") { var mgs = (S.gr && S.gr.accounts || []).filter(function (a) { return a.kind === "management_company"; });
+      return '<h2>New opportunity</h2><form class="form" data-form="grxNew"><div class="row2"><label class="f">Type<select name="kind"><option value="hoa">HOA / community</option><option value="estate">Private estate</option></select></label><label class="f">Signal<select name="signal">' + grOpt(grObj(GR_SIG), "prospect") + '</select></label></div><label class="f">Name (community or estate)<input name="name" required></label>' +
+        '<div class="row2"><label class="f">Address<input name="address"></label><label class="f">City<input name="city"></label></div><label class="f">Management company (if any)<select name="mgmt_id">' + grOpt(mgs.map(function (a) { return [a.id, a.name]; }), "", "—") + '</select></label>' +
+        '<div class="row2"><label class="f">Owner<select name="owner">' + grOpt((S.gr && S.gr.staff || []).map(function (x) { return [x.email, x.name]; }), S.me.email, "—") + '</select></label><label class="f">Next action<input name="next_action" placeholder="e.g. Call the community manager"></label></div><label class="f">Follow-up date<input type="date" name="next_date"></label>' + grSrcFields({}) +
+        '<p class="muted small">Only what you know: no guessed contacts, budgets, renewal dates or current provider.</p><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Add</button></div></form>'; }
+    if (m.type === "grxEmail") return '<h2>Email</h2><form class="form" data-form="grxEmail" data-opp="' + esc(m.opp) + '" data-p="' + esc(m.p) + '"><label class="f">To<input name="to" required value="' + esc(m.to) + '"></label><label class="f">Subject<input name="subject" required value="' + esc(m.subject) + '"></label><label class="f">Message<textarea name="text" rows="10" required>' + esc(m.text) + "</textarea></label>" + (m.p ? '<p class="muted small">📎 The final PDF is attached.</p>' : "") + '<p class="muted small">Check who it goes to and the text. Nothing is sent until you press Send.</p><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Send</button></div></form>';
+    return _lsModalGr.apply(this, arguments);
+  };
   liveLoop();
   if (S.token) { render(); route(); } else render();
 })();

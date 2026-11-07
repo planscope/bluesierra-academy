@@ -1144,14 +1144,14 @@ ACTIONS.lsFuelFind = function (me, b) {
   var t0 = Date.now(), base = {};
   list.forEach(function (x, i) {
     x.real = false; x.min = Math.max(0, Math.round(x.d));
-    if (i >= 5 || Date.now() - t0 > 12000) return;
-    try { var A = x.pair[1], B = x.pair[2], via = B ? lsDirections([A, x.st, B]) : lsDirections([A, x.st]); if (!via) return;
-      var bk = B ? A.lat + "," + A.lon + ">" + B.lat + "," + B.lon : "", ab = !B ? { legs: [{ min: 0 }] } : base[bk] || (base[bk] = lsDirections([A, B])); if (!ab) return;
-      x.min = Math.max(0, via.legs.reduce(function (a, l) { return a + l.min; }, 0) - ab.legs[0].min); x.real = true; } catch (er) { console.warn("fuel detour: " + er.message); }
+    if (Date.now() - t0 > 20000) return;                                  // every station shown gets a Google detour (cached 6 h)
+    try { var A = x.pair[1], B = x.pair[2], via = B ? lsDirections([A, x.st, B]) : lsDirections([A, x.st]); if (!via) { x.err = "no route"; return; }
+      var bk = B ? A.lat + "," + A.lon + ">" + B.lat + "," + B.lon : "", ab = !B ? { legs: [{ min: 0 }] } : base[bk] || (base[bk] = lsDirections([A, B])); if (!ab) { x.err = "no base route"; return; }
+      x.min = Math.max(0, via.legs.reduce(function (a, l) { return a + l.min; }, 0) - ab.legs[0].min); x.real = true; } catch (er) { x.err = er.message.slice(0, 120); console.warn("fuel detour: " + er.message); }
   });
   list.sort(function (a, c) { return a.min - c.min; });
   return { prefs: prefs, near: near, n_stops: nS, has_origin: !!origin, source: "OpenStreetMap", stations: list.map(function (x) {
-    var r = recs[x.st.id] || null; return Object.assign({}, x.st, { detour_min: x.min, detour_real: x.real, pos: x.pair[0], rec: r });
+    var r = recs[x.st.id] || null; return Object.assign({}, x.st, { detour_min: x.min, detour_real: x.real, detour_err: x.err || undefined, pos: x.pair[0], rec: r });
   }) };
 };
 NO_LOCK.lsFuelFind = 1;
