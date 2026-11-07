@@ -1605,7 +1605,7 @@ var QB_BRANDS = [
   [/state farm/i, "statefarm.com"], [/geico/i, "geico.com"], [/progressive ins/i, "progressive.com"], [/allstate/i, "allstate.com"], [/farmers ins/i, "farmers.com"], [/nationwide/i, "nationwide.com"],
   [/the hartford|hartford ins/i, "thehartford.com"], [/travelers/i, "travelers.com"], [/liberty mutual/i, "libertymutual.com"], [/next insurance/i, "nextinsurance.com"], [/state fund|scif/i, "statefundca.com"],
   [/franchise tax|^ftb\b/i, "ftb.ca.gov"], [/^irs\b|internal revenue|us treasury|treasury dept/i, "irs.gov"], [/^edd\b|employment development/i, "edd.ca.gov"], [/^cslb\b|contractors state/i, "cslb.ca.gov"]];
-var QB_BIZ = /\b(inc|llc|l\.l\.c|co|corp|corporation|company|supply|supplies|lumber|rental|rentals|depot|store|market|services?|electric|plumbing|construction|materials?|nursery|tile|stone|glass|concrete|landscap\w*|irrigation|equipment|tools?|hardware|insurance|bank|systems|solutions|group|center|wholesale|motors?|auto|tire|gas|fuel|energy|water|waste|recycling|studio|design|media|graphics?|print\w*|signs?|software|online|distribution|industries|enterprises|partners|associates|builders|farms?|garden|pool|roofing|steel|iron\w*|metal|welding|trucking|transport|freight|lab|labs)\b|\.com\b/i;
+var QB_BIZ = /\b(inc|llc|l\.l\.c|co|corp|corporation|company|supply|supplies|lumber|rental|rentals|depot|store|market|services?|electric|plumbing|construction|materials?|nursery|tile|stone|glass|concrete|landscap\w*|irrigation|equipment|tools?|hardware|insurance|bank|systems|solutions|group|center|wholesale|motors?|auto|tire|gas|fuel|energy|water|waste|recycling|studio|design|media|graphics?|print\w*|signs?|software|online|distribution|industries|enterprises|partners|associates|builders|farms?|garden|pool|roofing|steel|iron\w*|metal|welding|trucking|transport|freight|lab|labs|quarry|steam|cleaning|janitorial|painting|paint|flooring|cabinets?|granite|marble|lighting|heating|hvac|mechanical|drywall|framing|demolition|excavation|grading|paving|asphalt|fencing|fence|scaffold\w*|crane|hauling|disposal|towing|lumberyard|mill|millwork|doors?|windows?|appliances?|repair|maintenance|consulting|engineering|surveying|architects?|permits?)\b|\.com\b/i;
 function qbVendorSites() {
   var c = CacheService.getScriptCache(), k = "qbv2:" + qbCfg().realm, hit = c.get(k); if (hit) return JSON.parse(hit);
   var m = { site: {}, biz: {}, person: {} };
@@ -1617,21 +1617,33 @@ function qbVendorSites() {
   try { c.put(k, JSON.stringify(m), 21600); } catch (e) {} return m;
 }
 /* A store's web address from its name: known brands first, then a guess (name.com) that Google's logo service confirms exists. */
-function qbLogoKey(name) { return "LG|" + String(name).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 60); }
+function qbLogoKey(name) { return "LG2|" + String(name).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 60); }
 function qbLogo(name, sites, isPerson) {
   if (!name) return ""; if (sites.site && sites.site[name]) return sites.site[name];
   for (var i = 0; i < QB_BRANDS.length; i++) if (QB_BRANDS[i][0].test(name)) return QB_BRANDS[i][1];
   var known = (sites.guessed || {})[qbLogoKey(name)]; return known && known !== "-" ? known : "";
 }
+/* "Jorge Rendon" or "Jose Luis Ramirez": two to five capitalized words and nothing business-like. Never guess a logo for a person. */
+function qbLooksPerson(name) {
+  var n = String(name || "").trim(), w = n.split(/\s+/);
+  if (w.length < 2 || w.length > 5 || QB_BIZ.test(n) || /[0-9&@#]/.test(n)) return false;
+  return w.every(function (x) { return /^[A-ZÁÉÍÓÚÑÜ][a-záéíóúñü'.-]*$/.test(x) || /^(de|del|la|las|los|y|van|von)$/i.test(x); });
+}
 function qbGuessCandidates(name, sites, isPerson) {
-  if (isPerson || (sites.person && sites.person[name])) return [];
-  var raw = String(name).replace(/#\s*\d+.*$/, "").replace(/\(.*?\)/g, " ").replace(/\b\d{2,}\b/g, " ");
-  var words = raw.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(function (w) { return w && ["the", "inc", "llc", "co", "corp", "corporation", "company", "of", "ltd", "dba"].indexOf(w) < 0; });
+  if (isPerson || (sites.person && sites.person[name]) || qbLooksPerson(name)) return [];
+  var raw = String(name).replace(/#\s*\d+.*$/, "").replace(/\(.*?\)/g, " ").replace(/\b\d{3,}\b/g, " ").replace(/['’]s\b/gi, "s");
+  var drop = ["the", "inc", "llc", "co", "corp", "corporation", "company", "of", "ltd", "dba"];
+  var words = raw.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(function (w) { return w && w.length > 1 && drop.indexOf(w) < 0; });
   if (!words.length || words.join("").length < 4) return [];
   var looksBiz = (sites.biz && sites.biz[name]) || QB_BIZ.test(name) || words.length === 1;
-  if (!looksBiz) return [];                                                          // "Jorge Rendon" is a person, not a store
-  var out = [words.join("") + ".com"]; if (words.length > 1) out.push(words.join("-") + ".com"); if (words.length > 2) out.push(words.slice(0, 2).join("") + ".com");
-  return out.filter(function (d, i, a) { return a.indexOf(d) === i && d.length <= 40; });
+  if (!looksBiz) return [];
+  var generic = /^(wholesale|supply|supplies|services?|company|group|enterprises|associates|and|inc)$/, core = words.filter(function (w) { return !generic.test(w); });
+  var out = [words.join("") + ".com"];
+  if (/['’]s\b/i.test(name)) out.push(words.map(function (w) { return w.replace(/s$/, ""); }).join("") + ".com");
+  if (core.length && core.length < words.length && core.join("").length >= 6) out.push(core.join("") + ".com");
+  if (words.length > 1) out.push(words.join("-") + ".com");
+  if (core.length > 2 && core.slice(0, 2).join("").length >= 8) out.push(core.slice(0, 2).join("") + ".com");
+  return out.filter(function (d, i, a) { return a.indexOf(d) === i && d.length <= 40; }).slice(0, 4);
 }
 /* Check up to `max` new names in one go (in parallel) and remember the answer, so each store is looked up once. */
 function qbLearnLogos(names, sites, max) {
@@ -1649,7 +1661,8 @@ function qbLearnLogos(names, sites, max) {
 }
 function qbLogoBook() {
   var sites = qbVendorSites(), all = PropertiesService.getScriptProperties().getProperties(); sites.guessed = {};
-  Object.keys(all).forEach(function (k) { if (k.indexOf("LG|") === 0) sites.guessed[k] = all[k]; });
+  Object.keys(all).forEach(function (k) { if (k.indexOf("LG|") === 0) try { PropertiesService.getScriptProperties().deleteProperty(k); } catch (e) {} });   // old guesses (before people were excluded)
+  Object.keys(all).forEach(function (k) { if (k.indexOf("LG2|") === 0 && !qbLooksPerson(k.slice(4).replace(/\b\w/g, function (c) { return c.toUpperCase(); }))) sites.guessed[k] = all[k]; });
   return sites;
 }
 function qbSpendRows(days) {
