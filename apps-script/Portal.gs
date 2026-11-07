@@ -1151,7 +1151,7 @@ function qbCompanyFinance() {
   var cash = { total: 0, accounts: [] }, cards = { total: 0, accounts: [] };
   acc.forEach(function (a) {
     if (a.AccountType === "Bank") { cash.total += num(a.CurrentBalance); cash.accounts.push({ name: a.Name, balance: r2(num(a.CurrentBalance)) }); }
-    if (a.AccountType === "Credit Card") { var owed = Math.abs(num(a.CurrentBalance)); if (!owed) return; cards.total += owed; cards.accounts.push({ name: a.Name, balance: r2(owed) }); }   // owed, always positive (QuickBooks sends it negative)
+    if (a.AccountType === "Credit Card") { var owed = -num(a.CurrentBalance); if (!owed) return; cards.total += owed; cards.accounts.push({ name: a.Name, balance: r2(owed) }); }   // the API sends what we owe as negative (QuickBooks shows $55,728 owed as -55728); a positive one is a credit
   });
   var ar = { open: 0, overdue: 0, count: 0 };
   tryIt("open invoices", function () { qbQueryAll("select * from Invoice where Balance > '0'", "Invoice").forEach(function (i) { var b = num(i.Balance); ar.open += b; ar.count++; if (i.DueDate && i.DueDate < t) ar.overdue += b; }); });
