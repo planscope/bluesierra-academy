@@ -440,7 +440,8 @@
 #bs-portal .ev-line{margin-top:3px;font-size:15px}
 #bs-portal .ev-line b{font-weight:600}
 #bs-portal .ev-detail{color:var(--ink-2);font-size:14px;margin-top:2px}
-#bs-portal .ev-btn{margin-top:10px;border:0;background:var(--evc);color:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+#bs-portal .ev-btn{margin-top:10px;border:0;background:var(--evc);color:#fff;border-radius:999px;padding:8px 16px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none;line-height:1.2;width:auto}
+#bs-portal .ev-btn .ico{display:inline-block;width:16px;height:16px;flex:none}
 #bs-portal .ev-btn:hover{filter:brightness(.95)}
 #bs-portal .ev-change .ev-btn{color:#111}
 #bs-portal .ev:hover .m-tools{opacity:1}
@@ -1406,3 +1407,25 @@
 #bs-portal .dk-who span{flex:1;display:flex;flex-direction:column;min-width:0}
 #bs-portal .dk-who small{font-size:12px}
 #bs-portal .dk-chans{flex-wrap:wrap;overflow:visible}
+#bs-portal .dk-who .pres{position:static;inset:auto;transform:none;width:10px;height:10px;min-width:0;border-radius:50%;flex:none;border:2px solid var(--card);box-shadow:none}
+#bs-portal .dk-chan.add.on{color:#fff}
+#bs-portal #bsp-dock .pres:not(.dk-who .pres){max-width:12px;max-height:12px}
+/* Incoming call */
+#bs-portal .inc-call{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:100;animation:icIn .25s ease-out}
+@keyframes icIn{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
+#bs-portal .ic-card{display:flex;align-items:center;gap:16px;background:#111;color:#fff;border-radius:22px;padding:14px 16px 14px 14px;box-shadow:0 24px 60px rgba(0,0,0,.35);min-width:min(420px,calc(100vw - 24px))}
+#bs-portal .ic-ring{position:relative;flex:none}
+#bs-portal .ic-ring::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid #34c759;animation:icPulse 1.4s infinite ease-out}
+@keyframes icPulse{from{transform:scale(.85);opacity:1}to{transform:scale(1.35);opacity:0}}
+#bs-portal .ic-ring .avatar{width:48px;height:48px}
+#bs-portal .ic-txt{flex:1;display:flex;flex-direction:column;min-width:0}
+#bs-portal .ic-txt b{font-size:16px;font-weight:600}
+#bs-portal .ic-txt span{font-size:13.5px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bs-portal .ic-txt small{font-size:11.5px;opacity:.55}
+#bs-portal .ic-acts{display:flex;gap:10px}
+#bs-portal .ic-acts>*{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:#fff;font:inherit;font-size:11px;cursor:pointer;text-decoration:none}
+#bs-portal .ic-acts .ico{width:46px;height:46px;padding:12px;border-radius:50%;box-sizing:border-box}
+#bs-portal .ic-no .ico{background:#e5322d}
+#bs-portal .ic-yes .ico{background:#34c759;animation:icShake 1.2s infinite}
+@keyframes icShake{0%,100%{transform:rotate(0)}10%,30%{transform:rotate(-12deg)}20%,40%{transform:rotate(12deg)}50%{transform:rotate(0)}}
+@media (max-width:640px){#bs-portal .inc-call{top:10px;left:10px;right:10px;transform:none}@keyframes icIn{from{opacity:0}to{opacity:1}}#bs-portal .ic-card{min-width:0}}

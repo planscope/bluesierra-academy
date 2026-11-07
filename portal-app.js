@@ -2541,7 +2541,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106182432";
+  var BUILD = "20261106184121";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2570,7 +2570,7 @@
         var next = document.createElement("div"); desc.set.call(next, html);
         try {
           MORPH(root, next, { childrenOnly: true,
-            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help"); },
+            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast")))); },
             onBeforeElUpdated: function (from, to) {
               if (from.isEqualNode(to)) return false;
               if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
@@ -2668,7 +2668,7 @@
   function dockUnread() { return (S.projects || []).reduce(function (a, p) { return a + (p.unread || 0); }, 0); }
   function dockChans(d) {
     var ch = (d && d.channels) || ["client"], seen = {};
-    ((d && d.messages) || []).forEach(function (m) { if (isDm(m.channel)) seen[m.channel] = 1; });
+    ((d && d.messages) || []).forEach(function (m) { if (isDm(m.channel) && dockLabel(d, m.channel) !== "@ private") seen[m.channel] = 1; });   // only conversations with people still on the project
     if (isDm(S.dock.ch)) seen[S.dock.ch] = 1;
     return ch.concat(Object.keys(seen));
   }
@@ -2726,7 +2726,7 @@
     if (d.picking) {
       var who = ((data && data.members) || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
       var bodyP = DOCK.querySelector(".dk-body"), htmlP = '<div class="dk-pick"><b>Message privately</b><span class="muted small">Only the two of you will see it.' + (staff() ? "" : " You can message Blue Sierra.") + "</span>" +
-        (who.length ? who.map(function (x) { return '<button class="dk-who" data-a="dkDm" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "xs", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span>" + presDot(x.key) + "</button>"; }).join("") : '<p class="muted small">Nobody to message here yet.</p>') + "</div>";
+        (who.length ? who.map(function (x) { return '<button class="dk-who" data-a="dkDm" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "xs", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></button>"; }).join("") : '<p class="muted small">Nobody to message here yet.</p>') + "</div>";
       if (bodyP.dataset.h !== String(scHash(htmlP))) { bodyP.innerHTML = htmlP; bodyP.dataset.h = scHash(htmlP); }
       return;
     }
@@ -2875,6 +2875,7 @@
       if (first && d.path === "/") { first = false; return; }                      // what was there before we connected
       first = false;
       if (d.path === "/m" && d.data && d.data.m) return rtMessage(d.data);
+      if (d.path === "/call" && d.data && d.data.url) return incomingCall(d.data);
       var mv = /^\/v\/(.+)$/.exec(d.path || ""); if (mv) return onVer(mv[1], d.data);
       if (d.path === "/v" && d.data) Object.keys(d.data).forEach(function (pid) { onVer(pid, d.data[pid]); });
     };
@@ -2933,6 +2934,34 @@
     var t = Date.now(); if (t - typedAt < 2000) return; typedAt = t;
     fetch(RT.url + "/rt/t/" + sec + "/" + S.me.key + ".json", { method: "PUT", body: JSON.stringify({ n: first(S.me.name), t: t }) }).catch(function () {});
   };
+  /* ---------- Incoming call: rings wherever you are, with Accept / Decline ---------- */
+  var RING = null;
+  function ringStart() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return; var ac = new Ctx(), on = true;
+      var beep = function () { if (!on) return; [0, 0.35].forEach(function (t) { var o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ac.currentTime + t); g.gain.exponentialRampToValueAtTime(0.18, ac.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t + 0.28); o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + 0.3); }); };
+      beep(); var iv = setInterval(beep, 2200);
+      RING = function () { on = false; clearInterval(iv); try { ac.close(); } catch (e) {} RING = null; };
+    } catch (e) {}
+  }
+  function incomingCall(c) {
+    if (!c || Date.now() - (c.ts || 0) > 90000 || S.lastCall === c.id) return;      // old ring from before we connected
+    S.lastCall = c.id; endIncoming();
+    var w = document.createElement("div"); w.className = "inc-call"; w.setAttribute("role", "alertdialog"); w.setAttribute("aria-label", c.from + " is calling");
+    w.innerHTML = '<div class="ic-card"><div class="ic-ring">' + av(c.from, c.avatar, "", "", c.akey) + '</div><div class="ic-txt"><b>' + esc(c.from) + '</b><span>is calling you · ' + esc(c.project || "") + '</span><small>Google Meet · ' + esc(c.code || "") + "</small></div>" +
+      '<div class="ic-acts"><button class="ic-no" aria-label="Decline">' + ICON.x + '<span>Decline</span></button><a class="ic-yes" href="' + esc(c.url) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + "<span>Accept</span></a></div></div>";
+    root.appendChild(w); ringStart();
+    var done = function () { endIncoming(); };
+    w.querySelector(".ic-yes").addEventListener("click", function (e) { if (!PHONE) { e.preventDefault(); window.open(c.url, "bsp-meet", "width=1180,height=780"); } done(); });
+    w.querySelector(".ic-no").addEventListener("click", function () {
+      done(); toast("Declined. We let " + first(c.from) + " know.");
+      call("sendMessage", { projectId: c.pid, channel: dmKey(c.akey), text: "📵 I can't take the call right now. I'll call you back." }).catch(function () {});
+    });
+    S.callTimer = setTimeout(function () { if (document.querySelector(".inc-call")) { endIncoming(); toast("Missed call from " + c.from); } }, 60000);
+    try { if (document.visibilityState !== "visible" && window.Notification && Notification.permission === "granted") { var n = new Notification("📹 " + c.from + " is calling you", { body: c.project + " · tap to join", tag: "bsp-call-" + c.id, requireInteraction: true }); n.onclick = function () { window.focus(); window.open(c.url, "bsp-meet", "width=1180,height=780"); endIncoming(); n.close(); }; } } catch (e) {}
+  }
+  if (!API) window.__bspTestCall = function (c) { incomingCall(Object.assign({ id: "t" + Date.now(), ts: Date.now(), pid: S.pid || "p1", project: "Hillside Residence", from: "Nayeli Toto", akey: "x", url: "https://meet.google.com/abc-defg-hij", code: "abc-defg-hij" }, c || {})); };   // preview only
+  function endIncoming() { if (RING) RING(); clearTimeout(S.callTimer); var w = document.querySelector(".inc-call"); if (w) w.remove(); }
   /* Admin: Home → Team → Instant chat (Firebase). */
   function rtCard() {
     if (!S.me || !S.me.admin) return "";

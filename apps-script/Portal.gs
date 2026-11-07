@@ -669,6 +669,8 @@ var ACTIONS = {
         "Tap Join (it opens the Google Meet app on phones), or open meet.google.com and enter this code. The link works for the next hour.", "meet:" + url, ch);
     });
     bumpVersion(p.id);
+    // Ring each person we called, wherever they are in the portal (instant, through Firebase).
+    try { who.forEach(function (x) { rtQueue("rt/u/" + rtUser(x.email) + "/call", "put", { id: newId("c"), pid: p.id, project: p.name, channel: ch, from: me.name, akey: pkey(me.email), avatar: me.avatar || "", url: as(x.email), code: code, ts: Date.now() }); }); } catch (e) {}
     return { url: as(me.email), code: code };
   },
 
