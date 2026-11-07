@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107123520";
+  var BUILD = "20261107131944";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3579,9 +3579,12 @@
         S.modal = null; await lsLoad(true); toast("Sent. Blue Sierra will review it and let you know."); return;
       }
       if (kind === "lsTriage") {
-        var body = { id: S.modal.id, status: fd.get("status"), office_note: v("office_note") };
+        var body = { id: S.modal.id, status: fd.get("status"), office_note: v("office_note") }, tri = (S.ls.issues || []).filter(function (x) { return x.id === S.modal.id; })[0] || {};
+        if (fd.has("owner")) { body.owner = v("owner"); body.next_action = v("next_action"); body.next_date = v("next_date"); }
         if (fd.get("make_visit")) { body.make_visit = true; body.date = v("date"); body.crew_id = v("crew_id"); if (v("price")) body.price = v("price"); }
-        await call("lsTriage", body); S.modal = null; await lsLoad(true); toast(body.make_visit ? "Work order scheduled" : "Saved"); return;
+        await call("lsTriage", body); S.modal = null; await lsLoad(true); toast(body.make_visit ? "Work order scheduled" : "Saved");
+        if (fd.get("notify")) { var pn = lsP(tri.property_id); S.modal = { type: "lsxNotify", prop: tri.property_id, subject: "About your request · " + (pn.name || ""), text: "Hi,\n\nThanks for letting us know about: " + String(tri.text || "").slice(0, 200) + "\n\n" + (v("office_note") || "") + (body.make_visit ? "\n\nWe scheduled it for " + lsDow(body.date) + " " + day(body.date) + "." : "") + "\n\nBlue Sierra" }; keepScroll(render); }
+        return;
       }
       if (kind === "lsMat") { var r = await call("lsVisitUpdate", { id: f.dataset.id, act: "material", item: v("item"), qty: v("qty"), cost: v("cost") }); lsApplyVisit(r.visit); return; }
       if (kind === "lsRates") {
@@ -3680,7 +3683,7 @@
         S.modal = null; await lsLoad(true); toast("Approved ✓ Blue Sierra will schedule the work."); return;
       }
       var id = S.modal.id || undefined, est = lsE(id) || {};
-      var r = await call("lsSaveEstimate", { estimate: { id: id, property_id: v("property_id") || est.property_id, issue_id: f.dataset.issue, kind: v("kind"), title: v("title"), scope: v("scope"), exclusions: v("exclusions"), impact: v("impact"), proposed_date: v("proposed_date"), lines: lsEstFormData(f) } });
+      var r = await call("lsSaveEstimate", { estimate: { opp_id: f.dataset.opp || undefined, id: id, property_id: v("property_id") || est.property_id, issue_id: f.dataset.issue, kind: v("kind"), title: v("title"), scope: v("scope"), exclusions: v("exclusions"), impact: v("impact"), proposed_date: v("proposed_date"), lines: lsEstFormData(f) } });
       if (go2 === "send") { var s2 = await call("lsSendEstimate", { id: r.id }); toast("Sent as version " + s2.version + ". The client got an email."); } else toast(r.status === "revised" ? "Saved. Send it so the client approves the new version." : "Draft saved");
       S.modal = null; await lsLoad(true);
     });
@@ -4035,7 +4038,7 @@
       (r.missing.length ? r.missing.map(function (m) { return '<div class="lsd-trow miss"><span class="ls-stop">!</span><div><b>' + esc(m.name) + '</b><small class="bad-t">Not in the drive times: ' + esc(m.why || "address incomplete") + '</small><button class="link small" data-a="modal" data-m="lsProp" data-id="' + esc(m.property_id) + '">Fix the address</button></div></div>'; }).join("") : "") +
       (r.origin && P.rows.length ? (P.break_min && !P.rows.some(function (x) { return x.brk; }) ? "" : "") + '<div class="lsd-leg">↓ ' + lsHm(P.back_min) + " · " + mi(P.back_km) + " back</div>" + '<div class="lsd-trow yard"><span class="ls-stop">🏠</span><div><b>Back at the yard ' + clk(P.finish) + "</b></div></div>" : "") + "</div>";
     var tot = '<div class="lsd-tot"><div><span class="eyebrow">Miles</span><b>' + mi(P.km).replace(" mi", "") + "</b></div><div><span class=\"eyebrow\">Driving</span><b>" + lsHm(P.drive_min) + "</b></div><div><span class=\"eyebrow\">On site</span><b>" + lsHm(P.svc_min) + "</b></div><div" + (over ? ' class="over"' : "") + '><span class="eyebrow">Back by</span><b>' + clk(P.finish) + "</b><small>" + (over ? "over the shift by " + lsHm(P.finish - hrs.end) : "shift ends " + clk(hrs.end)) + "</small></div></div>" +
-      '<small class="muted">Includes ' + (P.load_min ? lsHm(P.load_min) + " loading at the yard" : "no loading time") + (P.break_min ? ", " + lsHm(P.break_min) + " lunch" : "") + (P.wait_min ? ", " + lsHm(P.wait_min) + " waiting for access windows or locked times" : "") + ". Travel labor = driving × " + size + (size === 1 ? " person" : " people") + " in the truck.</small>";
+      '<small class="muted">Includes ' + (P.load_min ? lsHm(P.load_min) + " loading at the yard" : "no loading time") + (P.break_min ? ", " + lsHm(P.break_min) + " lunch" : "") + (P.fuel_min ? ", " + lsHm(P.fuel_min) + " at fuel, supply or disposal stops" : "") + (P.wait_min ? ", " + lsHm(P.wait_min) + " waiting for access windows or locked times" : "") + ". Travel labor = driving × " + size + (size === 1 ? " person" : " people") + " in the truck.</small>";
     var acts = '<div class="lsd-racts">' + (dirty ? '<button class="btn sm" data-a="lsxApply" data-o="' + esc(cur.order.join(",")) + '">Save this order for the crew</button><button class="btn ghost sm" data-a="lsxUndo">Undo changes</button>' : !r.saved && !sug ? '<button class="btn ghost sm" data-a="lsxApply" data-o="' + esc(cur.order.join(",")) + '">Save this order for the crew</button>' : "") +
       (P.maps ? '<a class="btn ghost sm" href="' + esc(P.maps) + '" target="_blank" rel="noopener">Open in Google Maps</a>' : "") + "</div>" + (dirty ? '<small class="muted">Your new order isn\'t saved yet. The crew\'s phone and navigation keep the saved order until you save.</small>' : "");
     return head + start + cmp + rowsH + tot + acts + lsDispatchSheet(r, P);
@@ -4184,7 +4187,8 @@
     var b = e.target.closest("[data-a=lsxMove], [data-a=lsxMoveGo]"); if (!b) return; e.preventDefault(); e.stopImmediatePropagation();
     if (b.dataset.a === "lsxMove") { S.modal = { type: "lsxMovePrev" }; keepScroll(render); call("lsMoveDayPreview", { id: b.dataset.id, weekday: Number(b.dataset.v) }).then(function (r) { if (S.modal && S.modal.type === "lsxMovePrev") { S.modal.data = r; keepScroll(render); } }).catch(function (er) { S.modal = null; toast(er.message); keepScroll(render); }); return; }
     var nm = b.dataset.n, to = LS_DAYS[+b.dataset.v];
-    run(b, async function () { await call("lsMoveDay", { id: b.dataset.id, weekday: Number(b.dataset.v) }); S.modal = null; S.lsSug = null; lsRefreshPlan(); await lsLoad(true); toast(nm + " is now on " + to + "s"); });
+    run(b, async function () { await call("lsMoveDay", { id: b.dataset.id, weekday: Number(b.dataset.v) }); S.lsSug = null; lsRefreshPlan(); await lsLoad(true); toast(nm + " is now on " + to + "s");
+      S.modal = { type: "lsxNotify", prop: b.dataset.id, subject: "Your maintenance day is changing · " + nm, text: "Hi,\n\nTo serve " + nm + " better, starting next week our crew will come on " + to + "s.\n\nIf that day doesn't work for you, just reply and we'll find another.\n\nThank you,\nBlue Sierra" }; keepScroll(render); });
   }, true);
   var _lsSugCard2 = lsSugCard;
   lsSugCard = function () {
@@ -4193,6 +4197,201 @@
       h = h.replace("Near " + esc(m.near), esc(why)); });
     return h.replace(/>Move<\/button>/g, ">Review the move</button>");
   };
+  /* ======================= batch 3: extra stops, places, crew outcomes, request queue, client messages, seasonal ======================= */
+  var LS_XK = { fuel: ["⛽", "Fuel"], supplier: ["🏪", "Supplier"], disposal: ["🗑", "Disposal"] };
+  S.lsFuelUI = {};
+  function lsPosOpts(P, cur) {
+    var stops = P.rows.filter(function (x) { return !x.fuel; }), o = '<option value="0"' + (cur === 0 ? " selected" : "") + ">Before the first stop</option>";
+    stops.forEach(function (x, i) { if (i < stops.length - 1) o += '<option value="' + (i + 1) + '"' + (cur === i + 1 ? " selected" : "") + ">After " + esc((lsP(x.property_id).name || "stop " + (i + 1))) + "</option>"; });
+    return o + '<option value="' + stops.length + '"' + (cur === stops.length ? " selected" : "") + ">On the way back</option>";
+  }
+  function lsExtrasPanel(r, P) {
+    var dk = lsDk(), ui = S.lsFuelUI[dk] || {}, places = (S.ls.places || []).filter(function (p) { return p.kind !== "fuel"; });
+    var h = '<div class="lsd-xbtns"><button class="btn ghost sm" data-a="lsxFuelOpen">⛽ Find fuel along the route</button><button class="btn ghost sm" data-a="lsxSupOpen">🏪 Supplier or 🗑 disposal stop</button></div>';
+    if (ui.sup) h += '<div class="lsd-xpanel"><b>Add a supplier or disposal stop</b>' + (places.length ? places.map(function (p) {
+      return '<form class="lsd-xrow" data-form="lsxAddPlace" data-id="' + esc(p.id) + '"><div><b>' + LS_XK[p.kind][0] + " " + esc(p.name) + '</b><small class="muted">' + esc(LS_XK[p.kind][1]) + " · " + esc(p.address || "") + (p.hours ? " · " + esc(p.hours) : " · hours not set") + "</small></div>" +
+        '<select name="pos">' + lsPosOpts(P, p.kind === "disposal" ? P.rows.filter(function (x) { return !x.fuel; }).length : 0) + '</select><input type="number" name="min" min="5" max="90" value="' + (p.min || 15) + '" title="Minutes there"> min<button class="btn sm" type="submit">Add</button></form>'; }).join("")
+      : '<p class="muted small">No suppliers or dump sites saved yet.</p>') + '<button class="link small" data-a="lsxPlacesGo">Manage places</button></div>';
+    if (ui.fuel) {
+      var res = ui.res, pref = r.fuel_pref || {};
+      h += '<div class="lsd-xpanel"><form class="lsd-fopts" data-form="lsxFuelFind"><b>Find fuel</b><label><input type="radio" name="fuel" value="gas"' + ((ui.fuelT || pref.fuel) !== "diesel" ? " checked" : "") + '> Gas</label><label><input type="radio" name="fuel" value="diesel"' + ((ui.fuelT || pref.fuel) === "diesel" ? " checked" : "") + '> Diesel</label>' +
+        '<label><input type="checkbox" name="trailer"' + ((ui.trailer != null ? ui.trailer : pref.trailer) ? " checked" : "") + '> Towing a trailer</label><select name="near"><option value="route"' + (ui.near !== "office" ? " selected" : "") + '>Along the route</option><option value="office"' + (ui.near === "office" ? " selected" : "") + '>Near the office</option></select><button class="btn sm" type="submit">Search</button></form>' +
+        (!res ? '<p class="muted small">Searches OpenStreetMap for stations, then checks the extra drive with Google.</p>' : res.busy ? '<p class="muted small">Looking for stations…</p>' : res.err ? '<p class="bad-t small">' + esc(res.err) + "</p>" : !res.stations.length ? '<p class="muted small">No stations found there.</p>' :
+          res.stations.map(function (st, k) {
+            var pl = st.place, rec = st.rec || {}, ver = function (ok, txt) { return '<span class="' + (ok ? "lsd-ok2" : "lsd-chk") + '">' + (ok ? "✓ " : "? ") + txt + "</span>"; };
+            var hours = pl && pl.hours ? ver(true, "Hours: " + pl.hours + " (checked by " + (pl.checked_by || "the office") + ")") : st.hours ? ver(false, "Hours listed on OpenStreetMap: " + st.hours + " · confirm") : ver(false, "Hours not listed · call to confirm");
+            var fuelT = (ui.fuelT || pref.fuel) === "diesel" ? ((pl && pl.diesel === "yes") || rec.diesel === "yes" ? ver(true, "Diesel (checked by the office)") : st.diesel === "yes" ? ver(false, "Diesel listed on OpenStreetMap · confirm") : ver(false, "Diesel not listed · confirm")) : (st.gas ? ver(false, "Gas listed · confirm") : "");
+            var tr = (pl && pl.trailer) || rec.trailer, trT = tr ? ver(tr === "ok", "Truck/trailer: " + { ok: "fits", tight: "tight", no: "no trailer" }[tr] + " (" + esc((pl && pl.checked_by) || rec.by || "office") + ")") : ver(false, "Truck/trailer access not recorded");
+            return '<div class="lsd-st"><div class="lsd-sth"><b>⛽ ' + esc(st.name) + "</b>" + (pl && pl.preferred ? '<span class="pill ok">Preferred</span>' : pl ? '<span class="pill">Saved</span>' : "") + '<span class="lsd-det">' + (st.detour_min == null ? "detour —" : "+" + lsHm(st.detour_min) + (st.detour_real ? "" : " (estimate)")) + "</span></div>" +
+              '<small class="muted">' + esc(st.addr || "address not listed") + (st.brand && st.brand !== st.name ? " · " + esc(st.brand) : "") + "</small><div class=\"lsd-vers\">" + hours + fuelT + trT + "</div>" +
+              (ui.note === k ? '<form class="lsd-note" data-form="lsxFuelNote" data-k="' + k + '">Trailer <select name="trailer"><option value="">not checked</option><option value="ok">fits</option><option value="tight">tight</option><option value="no">no trailer</option></select> Diesel <select name="diesel"><option value="">not checked</option><option value="yes">yes</option><option value="no">no</option></select><input name="note" placeholder="Note (e.g. use the back pumps)"><button class="btn sm" type="submit">Save</button></form>' : "") +
+              '<form class="lsd-xrow" data-form="lsxFuelAdd" data-k="' + k + '"><select name="pos">' + lsPosOpts(P, st.pos != null ? st.pos : 0) + '</select><input type="number" name="min" min="5" max="60" value="15" title="Minutes there"> min<button class="btn sm" type="submit">Add to the day</button><button type="button" class="link small" data-a="lsxFuelNoteOpen" data-k="' + k + '">Record access</button>' + (!(pl && pl.preferred) ? '<button type="button" class="link small" data-a="lsxFuelPref" data-k="' + k + '">Make preferred</button>' : "") + "</form></div>";
+          }).join("") + '<p class="muted small">Station names and places come from OpenStreetMap contributors; “?” means it still needs checking. ' + esc(res.prices || "Prices aren't shown: no reliable live price source is connected.") + "</p>") + "</div>";
+    }
+    return h;
+  }
+  var _lsRouteTab3 = lsRouteTab;
+  lsRouteTab = function () {
+    var h = _lsRouteTab3.apply(this, arguments), r = lsPlanGet(); if (!r || r.err || r.empty || !r.current) return h;
+    var dk = lsDk(), P = r.suggested && S.lsShowSug === dk ? r.suggested : r.current;
+    h = h.replace(/<div class="lsd-trow fuel"><span class="ls-stop">⛽<\/span><div><b>([^<]*)<\/b><small class="muted">([^<]*)<\/small><\/div><\/div>/g, function (all, name, info) {
+      var x = P.rows.filter(function (y) { return y.fuel && esc(y.name) === name; })[0] || {}, k = LS_XK[x.kind || "fuel"] || LS_XK.fuel;
+      return '<div class="lsd-trow fuel"><span class="ls-stop">' + k[0] + '</span><div class="lsd-tmain"><div class="lsd-tt"><b>' + name + '</b><span class="lsd-time">' + info.split(" · ")[0] + '</span></div><small class="muted">' + k[1] + " stop · " + (x.svc || "") + " min" + (x.address ? " · " + esc(x.address) : "") + "</small></div>" + (x.i != null ? '<button class="link small" data-a="lsxStopRm" data-i="' + x.i + '">Remove</button>' : "") + "</div>";
+    });
+    var i = h.indexOf('<div class="lsd-tot">'); return i < 0 ? h : h.slice(0, i) + lsExtrasPanel(r, P) + h.slice(i);
+  };
+  /* ---------- Crews tab: the day routine + places ---------- */
+  function lsPlacesCard() {
+    var cfg = S.ls.day_cfg || { load_min: 15, break_min: 30, break_at: 690 }, admin = S.me && S.me.role === "admin", pl = S.ls.places || [], ba = cfg.break_at, bt = (Math.floor(ba / 60) < 10 ? "0" : "") + Math.floor(ba / 60) + ":" + (ba % 60 < 10 ? "0" : "") + ba % 60;
+    return '<div class="section-title" id="ls-places"><h2>The working day & places</h2><span class="muted small">Used by every route</span></div><div class="card lsd-places">' +
+      (admin ? '<form class="lsd-routine" data-form="lsxRoutine"><label>Loading at the yard <input type="number" name="load_min" min="0" max="120" value="' + cfg.load_min + '"> min</label><label>Lunch <input type="number" name="break_min" min="0" max="120" value="' + cfg.break_min + '"> min</label><label>after <input type="time" name="break_at" value="' + bt + '"></label><button class="btn sm" type="submit">Save</button></form>'
+        : '<p class="small">Loading ' + cfg.load_min + " min · lunch " + cfg.break_min + " min after " + clk(ba) + " (Jesús changes these)</p>") +
+      '<p class="muted small">Each crew\'s shift is on the crew. Office address: ' + (S.ls.yard ? esc(S.ls.yard.address) : "not set") + ".</p>" +
+      '<div class="ls-list">' + (pl.length ? pl.map(function (p) { var k = LS_XK[p.kind] || LS_XK.supplier; return '<div class="ls-row"><span>' + k[0] + '</span><div class="ls-main"><b>' + esc(p.name) + (p.preferred ? ' <span class="pill ok">Preferred</span>' : "") + '</b><small class="muted">' + esc(k[1]) + " · " + esc(p.address || "") + " · " + (p.min || 15) + " min" + (p.hours ? " · " + esc(p.hours) : "") + (p.trailer ? " · trailer " + esc(p.trailer) : "") + (p.checked_by ? " · checked by " + esc(p.checked_by) + " " + esc(p.checked_at) : "") + '</small></div><button class="link small" data-a="lsxPlaceRm" data-id="' + esc(p.id) + '">Remove</button></div>'; }).join("") : '<p class="muted small">No places yet: add your fuel station, supplier and green-waste / dump site.</p>') + "</div>" +
+      '<form class="lsd-placef" data-form="lsxPlace"><select name="kind"><option value="supplier">🏪 Supplier</option><option value="disposal">🗑 Disposal / green waste</option><option value="fuel">⛽ Fuel station</option></select><input name="name" required placeholder="Name"><input name="address" required placeholder="Address, city"><input name="hours" placeholder="Hours (e.g. Mon–Sat 6–4)"><input type="number" name="min" min="5" max="90" placeholder="Minutes there" value="15"><label class="ls-chk"><input type="checkbox" name="preferred" value="1"> Preferred (fuel)</label><button class="btn sm" type="submit">Add place</button></form></div>';
+  }
+  var _lsCrews3 = lsCrews;
+  lsCrews = function () { return _lsCrews3.apply(this, arguments) + lsPlacesCard(); };
+  /* ---------- crew phone: the next stop with everything they need ---------- */
+  var _lsCrewView3 = lsCrewView;
+  lsCrewView = function () {
+    var h = _lsCrewView3.apply(this, arguments);
+    try {
+      var d = S.lsDay || S.ls.today, vs = S.ls.visits.filter(function (v) { return v.date === d && v.status !== "canceled"; }).sort(lsCmp), nx = vs.filter(function (v) { return ["scheduled", "in_progress"].indexOf(v.status) > -1; })[0];
+      if (!nx) return h; var p = lsP(nx.property_id), c = lsC(nx.crew_id), lines = [];
+      if (p.access) lines.push(["🔑 Access", p.access]); if (p.window_from || p.window_to) lines.push(["🕘 Access window", (p.window_from ? clk(hhmm(p.window_from)) : "any time") + " – " + (p.window_to ? clk(hhmm(p.window_to)) : "end of day")]);
+      if (nx.fixed_time) lines.push(["🔒 Appointment", clk(hhmm(nx.fixed_time))]); if (nx.kind !== "maintenance") lines.push([nx.kind === "extra" ? "➕ Approved extra work" : "🔧 Correction", nx.scope || ""]);
+      if (p.equipment) lines.push(["🧰 Bring", p.equipment]); if (p.contacts) lines.push(["📞 On site", p.contacts]);
+      var todo = (nx.checklist || []).filter(function (x) { return !x.done; }).map(function (x) { return x.t; });
+      var card = '<div class="card lsd-next"><span class="eyebrow">' + (nx.status === "in_progress" ? "Working now" : "Next stop") + '</span><h3>' + esc(p.name) + '</h3><small class="muted">' + esc([p.address, p.city].filter(Boolean).join(", ")) + " · " + lsSiteTxt(nx, true) + "</small>" +
+        (lines.length ? "<dl>" + lines.map(function (l) { return "<dt>" + l[0] + "</dt><dd>" + esc(l[1]) + "</dd>"; }).join("") + "</dl>" : "") + (todo.length ? '<p class="small"><b>To do:</b> ' + esc(todo.join(" · ")) + "</p>" : "") +
+        '<div class="lsc-acts"><a class="btn ghost sm" href="' + esc(lsNav(p)) + '" target="_blank" rel="noopener">🧭 Navigate</a><button class="btn sm" data-a="lsOpenVisit" data-id="' + esc(nx.id) + '">' + (nx.status === "in_progress" ? "Continue" : "Open work order") + "</button></div></div>";
+      var i = h.indexOf('<div class="card ls-stopcard'); return i < 0 ? h : h.slice(0, i) + card + h.slice(i);
+    } catch (e) { return h; }
+  };
+  var _lsWorkOrder3 = lsWorkOrder;
+  lsWorkOrder = function (v) {
+    var h = _lsWorkOrder3.apply(this, arguments); if (!v || ["completed", "canceled"].indexOf(v.status) > -1) return h;
+    h = h.replace('data-a="lsCannot"', 'data-a="lsxCannot"').replace('data-a="lsComplete"', 'data-a="lsxComplete"');
+    var fu = '<div class="lsd-fu"><label class="f">Anything left after today?<select data-lsx-fu><option value="">No, all done</option><option value="more_time">More time needed next visit</option><option value="another_visit">Another visit needed</option></select></label><input data-lsx-funote placeholder="What\'s left (the office sees this)"></div>';
+    if (S.lsCannot === v.id) fu = '<form class="lsd-cannot" data-form="lsxCannot" data-id="' + esc(v.id) + '"><b>What happened?</b>' + [["inaccessible", "Property inaccessible (gate locked, no access)"], ["weather", "Weather delay"], ["equipment", "Equipment problem"], ["other", "Other reason"]].map(function (o, i) { return '<label><input type="radio" name="outcome" value="' + o[0] + '"' + (i ? "" : " checked") + "> " + o[1] + "</label>"; }).join("") +
+      '<textarea name="reason" required placeholder="Tell the office what happened"></textarea><div class="actions"><button type="button" class="btn ghost" data-a="lsxCannotX">Back</button><button class="btn" type="submit">Send to the office</button></div></form>';
+    var i = h.indexOf('<div class="ls-finish">'); h = i < 0 ? h : h.slice(0, i) + fu + (S.lsCannot === v.id ? "" : h.slice(i)) + (S.lsCannot === v.id ? "</div>" : "");
+    return h.replace("Problems found / extra work to recommend (leaks, damaged plants, unsafe branches, gutters, drainage…)", "Extra work to recommend (the office reviews it, nothing is billed until they approve): leaks, damaged plants, unsafe branches…");
+  };
+  /* ---------- the office's request queue ---------- */
+  var LS_IK = { recommendation: "Crew recommendation", followup: "Follow-up from a visit", request: "" };
+  function lsChain(i) {
+    var c = i.chain; if (!c) return ""; var parts = [];
+    if (c.found_id) parts.push('<button class="link small" data-a="lsOpenVisit" data-id="' + esc(c.found_id) + '">found at the ' + day(c.found_date) + " visit</button>");
+    if (c.est_id) parts.push('<button class="link small" data-a="lsEstOpen" data-id="' + esc(c.est_id) + '">Estimate v' + (c.est_v || 1) + " · " + esc(c.est_status) + "</button>");
+    if (c.visit_id) parts.push('<button class="link small" data-a="lsOpenVisit" data-id="' + esc(c.visit_id) + '">Work order ' + day(c.visit_date) + " · " + esc((LS_ST[c.visit_status] || [c.visit_status])[0]) + "</button>");
+    if (c.done_at) parts.push('<button class="link small" data-a="lsOpenVisit" data-id="' + esc(c.visit_id) + '">✓ Report</button>');
+    return parts.length ? '<span class="lsd-chain">' + parts.join(" → ") + "</span>" : "";
+  }
+  var _lsIssueRow3 = lsIssueRow;
+  lsIssueRow = function (i) {
+    var h = _lsIssueRow3.apply(this, arguments); if (!S.ls || S.ls.role !== "office") return h;
+    var extra = (LS_IK[i.kind] ? '<span class="pill warn">' + LS_IK[i.kind] + "</span> " : "") + (i.owner_name ? "👤 " + esc(i.owner_name) : '<span class="muted">no owner</span>') + (i.next_action ? " · next: " + esc(i.next_action) + (i.next_date ? " by " + day(i.next_date) : "") : "") + " " + lsChain(i);
+    return h.replace(/(<\/small><\/div>)([^]*)$/, '</small><small class="lsd-iq">' + extra + "</small></div>$2");
+  };
+  var _lsModal3 = lsModal;
+  lsModal = function (m) {
+    if (m.type === "lsxNotify") {
+      var p = lsP(m.prop);
+      return '<h2>Message to the client</h2><p class="muted small">' + esc(p.name) + " · to " + esc(p.client_emails || "no client email yet") + '</p><form class="form" data-form="lsxNotify" data-id="' + esc(m.prop) + '"><label class="f">Subject<input name="subject" required value="' + esc(m.subject || "") + '"></label><label class="f">Message<textarea name="text" rows="8" required>' + esc(m.text || "") + '</textarea></label><p class="muted small">Nothing is sent until you press Send.</p><div class="actions"><button type="button" class="btn ghost" data-a="close">Not now</button><button class="btn" type="submit"' + (p.client_emails ? "" : " disabled") + ">Send</button></div></form>";
+    }
+    if (m.type === "lsxOpp") {
+      return '<h2>Seasonal opportunity</h2><form class="form" data-form="lsxOpp"><label class="f">Property<select name="property_id" required><option value="">Pick…</option>' + S.ls.props.filter(function (p) { return p.status === "active"; }).map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + "</option>"; }).join("") + "</select></label>" +
+        '<label class="f">Service<input name="service" required placeholder="e.g. Pre-winter pruning"></label><label class="f">Why now<input name="reason" placeholder="e.g. Before the rains"></label><div class="row2"><label class="f">When<input name="timing" placeholder="e.g. December"></label><label class="f">Owner<select name="owner"><option value="">—</option>' + (S.ls.staff || []).map(function (x) { return '<option value="' + esc(x.email) + '">' + esc(x.name) + "</option>"; }).join("") + '</select></label></div><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Add</button></div></form>';
+    }
+    var h = _lsModal3.apply(this, arguments);
+    if (m.type === "lsTriage") {
+      var i = (S.ls.issues || []).filter(function (x) { return x.id === m.id; })[0] || {};
+      var who = '<div class="row2"><label class="f">Owner<select name="owner"><option value="">—</option>' + (S.ls.staff || []).map(function (x) { return '<option value="' + esc(x.email) + '"' + (i.owner === x.email ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + '</select></label><label class="f">Next action<input name="next_action" value="' + esc(i.next_action || "") + '" placeholder="e.g. Send an estimate"></label></div><label class="f">By<input type="date" name="next_date" value="' + esc(i.next_date || "") + '"></label>';
+      h = h.replace('<details class="ls-mk"', who + '<details class="ls-mk"');
+      h = h.replace("</details>", '<button type="button" class="btn ghost sm" data-a="lsxImpact" data-p="' + esc(i.property_id) + '">See the effect on that day\'s route</button><div id="lsx-impact"></div></details><label class="check-line"><input type="checkbox" name="notify" value="1"> Then write the client a message</label>');
+      if (i.chain && !i.chain.visit_id && i.visit_id) h = h.replace('<details class="ls-mk">', '<details class="ls-mk" open>').replace("<summary>Work order already created</summary>", "<summary>Create a work order</summary>").replace('<input type="checkbox" name="make_visit">', '<input type="checkbox" name="make_visit" checked>');
+      if (LS_IK[i.kind]) h = h.replace("</p><p>", '</p><p><span class="pill warn">' + LS_IK[i.kind] + "</span></p><p>");
+      if (i.chain && (i.chain.est_id || i.chain.visit_id)) h = h.replace('<div class="ls-agree">', '<p class="small">Where it stands: ' + lsChain(i) + '</p><div class="ls-agree">');
+    }
+    return h;
+  };
+  /* ---------- seasonal opportunities ---------- */
+  var LS_OST = { idea: ["Idea", ""], proposed: ["Estimate sent", "warn"], approved: ["Approved", "ok"], scheduled: ["Scheduled", "ok"], done: ["Done", "ok"], declined: ["Declined", "bad"], dropped: ["Dropped", ""] };
+  function lsOppsSection() {
+    var list = (S.ls.opps || []).filter(function (o) { return o.status !== "dropped"; }), open = list.filter(function (o) { return ["idea", "proposed"].indexOf(o.status) > -1; }).length;
+    return '<div class="section-title"><h2>Seasonal opportunities</h2><span class="lsd-oppb"><button class="btn ghost sm" data-a="lsxOppSuggest">Suggest for this season</button><button class="btn sm" data-a="modal" data-m="lsxOpp">＋ Opportunity</button></span></div>' +
+      (list.length ? '<div class="card ls-list">' + list.slice(0, 30).map(function (o) { var p = lsP(o.property_id), st = LS_OST[o.status] || [o.status, ""];
+        return '<div class="ls-row"><div class="ls-main"><b>' + esc(o.service) + " · " + esc(p.name || "") + '</b><small class="muted">' + esc([o.timing, o.reason].filter(Boolean).join(" · ")) + "</small><small>👤 <select class=\"lsd-own\" data-lsx-oppowner=\"" + esc(o.id) + "\"><option value=\"\">no owner</option>" + (S.ls.staff || []).map(function (x) { return '<option value="' + esc(x.email) + '"' + (o.owner === x.email ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + "</select>" +
+          (o.est_id ? ' · <button class="link small" data-a="lsEstOpen" data-id="' + esc(o.est_id) + '">estimate</button>' : "") + (o.visit_id ? ' · <button class="link small" data-a="lsOpenVisit" data-id="' + esc(o.visit_id) + '">work order ' + day(o.visit_date) + "</button>" : "") + "</small></div>" +
+          '<span class="pill ' + st[1] + '">' + st[0] + "</span>" + (o.status === "idea" ? (S.ls.money ? '<button class="btn sm" data-a="lsxOppEst" data-id="' + esc(o.id) + '">Write estimate</button>' : "") + '<button class="link small" data-a="lsxOppSet" data-id="' + esc(o.id) + '" data-s="dropped">Drop</button>' : "") + "</div>"; }).join("") + "</div>" + '<p class="muted small">' + open + " open. The same service can't be proposed twice for a property within the season; approving the estimate schedules the work.</p>"
+        : '<div class="empty">No opportunities yet. “Suggest for this season” looks at each property\'s features and the month (pruning before the rains, irrigation, leaf cleanup, mulch…).</div>');
+  }
+  var _lsDash3 = lsDash;
+  lsDash = function () { var h = _lsDash3.apply(this, arguments); return h.replace(/<div class="section-title"><h2>Seasonal opportunities<\/h2><\/div><div class="card ls-soon">[\s\S]*?<\/div>/, lsOppsSection()); };
+  var _lsEstEditor3 = lsEstEditor;
+  lsEstEditor = function (m) {
+    var h = _lsEstEditor3.apply(this, arguments), o = m.opp ? (S.ls.opps || []).filter(function (x) { return x.id === m.opp; })[0] : null; if (!o) return h;
+    return h.replace('data-form="lsEst" data-issue="', 'data-form="lsEst" data-opp="' + esc(o.id) + '" data-issue="').replace('name="title" required value=""', 'name="title" required value="' + esc(o.service) + '"').replace('<textarea name="scope" required rows="4"></textarea>', '<textarea name="scope" required rows="4">' + esc(o.service + (o.reason ? ". " + o.reason : "")) + "</textarea>");
+  };
+  /* ---------- actions ---------- */
+  function lsPlanNow() { var r = lsPlanGet(); return r && r.current ? (r.suggested && S.lsShowSug === lsDk() ? r.suggested : r.current) : null; }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a, dk, ui;
+    var mine = /^lsx(FuelOpen|SupOpen|StopRm|FuelNoteOpen|FuelPref|PlacesGo|PlaceRm|Cannot|CannotX|Complete|Impact|OppSuggest|OppEst|OppSet)$/; if (!mine.test(a)) return; e.preventDefault(); e.stopImmediatePropagation();
+    if (a === "lsxFuelOpen" || a === "lsxSupOpen") { dk = lsDk(); ui = S.lsFuelUI[dk] = S.lsFuelUI[dk] || {}; if (a === "lsxFuelOpen") ui.fuel = !ui.fuel; else ui.sup = !ui.sup; return keepScroll(render); }
+    if (a === "lsxStopRm") return run(b, async function () { await call("lsStopRemove", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", i: Number(b.dataset.i) }); S.lsPlan = {}; keepScroll(render); toast("Stop removed"); });
+    if (a === "lsxFuelNoteOpen") { ui = S.lsFuelUI[lsDk()]; ui.note = ui.note === +b.dataset.k ? null : +b.dataset.k; return keepScroll(render); }
+    if (a === "lsxFuelPref") { var st = S.lsFuelUI[lsDk()].res.stations[+b.dataset.k];
+      return run(b, async function () { await call("lsSavePlace", { place: { kind: "fuel", name: st.name, address: st.addr || "", lat: st.lat, lon: st.lon, osm_id: st.id, preferred: true, hours: st.place ? st.place.hours : undefined } }); await lsLoad(true); S.lsFuelUI[lsDk()].res = null; toast(st.name + " is your preferred station"); }); }
+    if (a === "lsxPlacesGo") { S.lsTab = "crews"; S.flash = "ls-places"; return keepScroll(render); }
+    if (a === "lsxPlaceRm") return sure("Remove this place? Routes already planned keep their stops.", function () { call("lsSavePlace", { place: { id: b.dataset.id, remove: true } }).then(function () { return lsLoad(true); }).then(function () { toast("Removed"); }).catch(function (er) { toast(er.message); }); });
+    if (a === "lsxCannot") { S.lsCannot = b.dataset.id; return keepScroll(render); }
+    if (a === "lsxCannotX") { S.lsCannot = null; return keepScroll(render); }
+    if (a === "lsxComplete") {
+      var f = root.querySelector("form[data-form=lsLabor]"), lab = f ? [].map.call(f.querySelectorAll("input[type=number]"), function (x) { return { email: x.name, min: Number(x.value) || 0 }; }).filter(function (l) { return l.min > 0; }) : [];
+      var notes = (root.querySelector("[data-ls-notes]") || {}).value, problems = (root.querySelector("[data-ls-problems]") || {}).value, fu = (root.querySelector("[data-lsx-fu]") || {}).value || "", fun = (root.querySelector("[data-lsx-funote]") || {}).value || "", vid = b.dataset.id;
+      if (fu && !fun.trim()) return toast("Say what's left to do, so the office can plan it.");
+      return run(b, async function () {
+        var r = await call("lsVisitUpdate", { id: vid, act: "complete", labor: lab, notes: notes, problems: problems, followup: fu || undefined, followup_note: fun });
+        if (problems && problems.trim()) await call("lsReportIssue", { property_id: r.visit.property_id, visit_id: vid, text: problems.trim(), urgency: "normal", recommend: true }).catch(function () {});
+        S.modal = null; lsApplyVisit(r.visit); toast("Visit completed ✓" + (fu ? " · the office will plan what's left" : "") + (problems && problems.trim() ? " · recommendation sent for review" : ""));
+      });
+    }
+    if (a === "lsxImpact") {
+      var fm = b.closest("form"), out = document.getElementById("lsx-impact"), dd = fm.querySelector("[name=date]").value, cr = fm.querySelector("[name=crew_id]").value; out.innerHTML = '<p class="muted small">Planning that day…</p>';
+      return call("lsInsertImpact", { property_id: b.dataset.p, date: dd, crew_id: cr }).then(function (r) {
+        var A = r.after, B = r.before, over = A.finish > r.end;
+        out.innerHTML = '<div class="lsd-imp' + (over || A.late ? " bad" : "") + '"><b>' + lsDow(dd) + " " + day(dd) + ": stop " + r.position + " of " + A.stops + "</b><br>Driving " + lsHm(B.drive_min) + " → <b>" + lsHm(A.drive_min) + "</b> (+" + lsHm(Math.max(0, A.drive_min - B.drive_min)) + ") · back " + (B.finish ? clk(B.finish) : "—") + " → <b>" + clk(A.finish) + "</b>" +
+          (over ? '<br><span class="bad-t">Over the shift by ' + lsHm(A.finish - r.end) + "</span>" : "") + (A.late ? '<br><span class="bad-t">' + A.late + " stop(s) would be late</span>" : "") + (!r.routable ? '<br><span class="bad-t">This property\'s address is incomplete, so its driving isn\'t counted.</span>' : "") + (r.real ? "" : "<br><small>Estimated times</small>") + "</div>";
+      }).catch(function (er) { out.innerHTML = '<p class="bad-t small">' + esc(er.message) + "</p>"; });
+    }
+    if (a === "lsxOppSuggest") return run(b, async function () { var r = await call("lsSuggestOpps", {}); await lsLoad(true); toast(r.made ? r.made + " opportunities suggested" : "Nothing new for this season"); });
+    if (a === "lsxOppEst") { S.modal = { type: "lsEst", opp: b.dataset.id, prop: ((S.ls.opps || []).filter(function (o) { return o.id === b.dataset.id; })[0] || {}).property_id }; return keepScroll(render); }
+    if (a === "lsxOppSet") return run(b, async function () { await call("lsSaveOpp", { opp: { id: b.dataset.id, status: b.dataset.s } }); await lsLoad(true); toast("Updated"); });
+  }, true);
+  root.addEventListener("change", function (e) { var t = e.target; if (!t.matches || !t.matches("[data-lsx-oppowner]")) return; e.stopImmediatePropagation();
+    call("lsSaveOpp", { opp: { id: t.dataset.lsxOppowner, owner: t.value } }).then(function () { (S.ls.opps || []).forEach(function (o) { if (o.id === t.dataset.lsxOppowner) { o.owner = t.value; } }); toast("Owner saved"); }).catch(function (er) { toast(er.message); }); }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=lsxAddPlace], form[data-form=lsxFuelFind], form[data-form=lsxFuelAdd], form[data-form=lsxFuelNote], form[data-form=lsxRoutine], form[data-form=lsxPlace], form[data-form=lsxCannot], form[data-form=lsxNotify], form[data-form=lsxOpp]")) return;
+    e.preventDefault(); e.stopImmediatePropagation(); var fd = new FormData(f), k = f.dataset.form, btn = f.querySelector("[type=submit]"), dk = lsDk(), ui = S.lsFuelUI[dk] = S.lsFuelUI[dk] || {};
+    var V = function (n) { return String(fd.get(n) == null ? "" : fd.get(n)).trim(); };
+    if (k === "lsxAddPlace") return run(btn, async function () { await call("lsStopAdd", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", place_id: f.dataset.id, pos: Number(V("pos")), min: Number(V("min")) }); S.lsPlan = {}; ui.sup = false; keepScroll(render); toast("Stop added to the day"); });
+    if (k === "lsxFuelFind") { ui.fuelT = V("fuel"); ui.trailer = !!fd.get("trailer"); ui.near = V("near"); ui.res = { busy: 1 }; keepScroll(render); var r0 = lsPlanNow();
+      return call("lsFuelFind", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", fuel: ui.fuelT, trailer: ui.trailer, near: ui.near, order: r0 ? r0.order : undefined }).then(function (r) { ui.res = r; }).catch(function (er) { ui.res = { err: er.message, stations: [] }; }).then(function () { keepScroll(render); }); }
+    if (k === "lsxFuelAdd") { var st = ui.res.stations[+f.dataset.k];
+      return run(btn, async function () { await call("lsFuelSet", { date: lsMapDayGet(), crew_id: S.lsPCrew || "", station: { id: st.id, name: st.name, lat: st.lat, lon: st.lon, addr: st.addr }, pos: Number(V("pos")), min: Number(V("min")) }); S.lsPlan = {}; ui.fuel = false; keepScroll(render); toast("⛽ " + st.name + " added to the day"); }); }
+    if (k === "lsxFuelNote") { var s2 = ui.res.stations[+f.dataset.k];
+      return run(btn, async function () { var body = { trailer: V("trailer"), diesel: V("diesel"), note: V("note") };
+        if (s2.place) await call("lsSavePlace", { place: { id: s2.place.id, trailer: body.trailer, diesel: body.diesel, notes: body.note } }); else await call("lsFuelNote", Object.assign({ id: s2.id, name: s2.name }, body));
+        s2.rec = { trailer: body.trailer, diesel: body.diesel, note: body.note, by: S.me.name }; if (s2.place) { s2.place.trailer = body.trailer; s2.place.diesel = body.diesel; } ui.note = null; keepScroll(render); toast("Recorded"); }); }
+    if (k === "lsxRoutine") return run(btn, async function () { var r = await call("lsSettings", { load_min: Number(V("load_min")), break_min: Number(V("break_min")), break_at: V("break_at") }); S.ls.day_cfg = { load_min: r.cfg.load_min, break_min: r.cfg.break_min, break_at: r.cfg.break_at }; S.lsPlan = {}; keepScroll(render); toast("Saved: every route uses it"); });
+    if (k === "lsxPlace") return run(btn, async function () { await call("lsSavePlace", { place: { kind: V("kind"), name: V("name"), address: V("address"), hours: V("hours"), min: Number(V("min")) || 15, preferred: !!fd.get("preferred") } }); await lsLoad(true); toast("Place added"); });
+    if (k === "lsxCannot") return run(btn, async function () { var oc = V("outcome"), r = await call("lsVisitUpdate", { id: f.dataset.id, act: "cannot", outcome: oc === "other" ? undefined : oc, reason: V("reason"), status: oc === "weather" ? "weather" : "blocked" }); S.lsCannot = null; S.modal = null; lsApplyVisit(r.visit); toast("Sent to the office. It's on their Needs attention list."); });
+    if (k === "lsxNotify") return run(btn, async function () { var r = await call("lsNotifyClient", { property_id: f.dataset.id, subject: V("subject"), text: V("text") }); S.modal = null; keepScroll(render); toast("Sent to " + r.sent + " client email" + (r.sent === 1 ? "" : "s")); });
+    if (k === "lsxOpp") return run(btn, async function () { await call("lsSaveOpp", { opp: { property_id: V("property_id"), service: V("service"), reason: V("reason"), timing: V("timing"), owner: V("owner") } }); S.modal = null; await lsLoad(true); toast("Opportunity added"); });
+  }, true);
   liveLoop();
   if (S.token) { render(); route(); } else render();
 })();

@@ -11,9 +11,10 @@
 TABLES.LsProps = ["id", "name", "client_name", "client_emails", "address", "city", "lat", "lon", "contacts", "access", "notes", "features", "crew_id", "freq", "weekday", "start", "visit_min",
   "price", "billing", "included", "excluded", "status", "created_at", "sample", "checklist"];
 TABLES.LsCrews = ["id", "name", "members", "lead", "color", "skills", "hours", "sample", "vehicle"];
+var lsFollowups = [];
 TABLES.LsVisits = ["id", "property_id", "date", "plan_date", "series", "kind", "crew_id", "status", "reason", "stop", "est_min", "scope", "checklist", "notes", "problems",
   "photos_before", "photos_after", "materials", "labor", "travel_min", "started_at", "done_at", "done_by", "priority", "issue_id", "price", "sample", "updated_by", "updated_at"];
-TABLES.LsIssues = ["id", "property_id", "at", "by_email", "by_name", "text", "photos", "urgency", "place", "status", "office_note", "visit_id", "source", "sample"];
+TABLES.LsIssues = ["id", "property_id", "at", "by_email", "by_name", "text", "photos", "urgency", "place", "status", "office_note", "visit_id", "source", "sample", "owner", "next_action", "next_date", "kind", "found_visit"];
 TABLES.LsExpenses = ["id", "at", "date", "property_id", "visit_id", "category", "vendor", "amount", "note", "receipt", "by_email", "status", "sample"];
 TABLES.LsRates = ["email", "rate", "updated_at"];
 TABLES.LsLog = ["id", "at", "by", "kind", "ref", "text"];
@@ -154,7 +155,8 @@ function lsVisitOut(v, role, money) {
 }
 function lsIssueOut(i, role) {
   return { id: i.id, property_id: i.property_id, at: i.at, by_name: i.by_name, text: i.text, photos: lsPhotoOut(i.photos), urgency: i.urgency, place: i.place, status: i.status,
-    office_note: role === "office" ? i.office_note : (["included", "billable", "scheduled", "closed", "correction"].indexOf(i.status) > -1 ? i.office_note : ""), visit_id: i.visit_id, source: i.source, sample: isTrue(i.sample) };
+    office_note: role === "office" ? i.office_note : (["included", "billable", "scheduled", "closed", "correction"].indexOf(i.status) > -1 ? i.office_note : ""), visit_id: i.visit_id, source: i.source, sample: isTrue(i.sample), kind: i.kind || "request",
+    owner: role === "office" ? i.owner || "" : undefined, owner_name: role === "office" && i.owner ? personName(i.owner) : undefined, next_action: role === "office" ? i.next_action || "" : undefined, next_date: role === "office" ? i.next_date || "" : undefined };
 }
 
 /* ---- the one call each screen makes ---- */
@@ -353,10 +355,15 @@ ACTIONS.lsVisitUpdate = function (me, b) {
     if (!labNow.length) throw new Error("Add the crew's time first (minutes per person).");
     patch.labor = JSON.stringify(labNow); patch.status = "completed"; patch.done_at = now(); patch.done_by = me.email; if (b.notes != null) patch.notes = clean(b.notes, 3000);
     if (b.problems != null) patch.problems = clean(b.problems, 2000); log = "completed the visit";
+    if (b.followup === "more_time" || b.followup === "another_visit") { var fu = clean(b.followup_note, 600); if (!fu) throw new Error("Say what's left to do.");
+      patch.outcome = b.followup; lsFollowups.push({ property_id: v.property_id, visit_id: v.id, kind: "followup", text: (b.followup === "more_time" ? "More time needed next visit: " : "Another visit needed: ") + fu }); }
   }
-  else if (act === "cannot") { var why = clean(b.reason, 300); if (!why) throw new Error("Say why it can't be completed."); patch.status = b.status === "canceled" ? "canceled" : b.status === "weather" ? "weather" : "blocked"; patch.reason = why; log = "marked " + patch.status + ": " + why; }
+  else if (act === "cannot") { var why = clean(b.reason, 300); if (!why) throw new Error("Say why it can't be completed."); patch.status = b.status === "canceled" ? "canceled" : b.status === "weather" || b.outcome === "weather" ? "weather" : "blocked"; patch.reason = why;
+    var oc = { inaccessible: "Property inaccessible", weather: "Weather delay", equipment: "Equipment problem" }[b.outcome]; if (oc) { patch.outcome = b.outcome; patch.reason = oc + ": " + why; } log = "marked " + patch.status + ": " + why; }
   else throw new Error("Unknown update.");
   update("LsVisits", "id", v.id, patch); if (log) lsLog(me, "visit", v.id, log);
+  lsFollowups.splice(0).forEach(function (f) { insert("LsIssues", { id: newId("li"), property_id: f.property_id, at: now(), by_email: me.email, by_name: me.name, text: f.text, photos: "[]", urgency: "normal", place: "", status: "new", office_note: "", visit_id: f.visit_id, source: lsRole(me), sample: "", kind: f.kind, found_visit: f.visit_id }); lsLog(me, "issue", f.property_id, f.text.slice(0, 120)); });
+  if (patch.status === "blocked" || patch.status === "weather") lsLog(me, "visit", v.id, "back to the office: " + patch.reason);
   return { visit: lsVisitOut(findBy("LsVisits", "id", v.id), lsRole(me), lsMoney(me)) };
 };
 
@@ -367,7 +374,8 @@ ACTIONS.lsReportIssue = function (me, b) {
   var c = CacheService.getScriptCache(), k = "lsiss:" + pkey(me.email), n = Number(c.get(k) || 0); if (n >= 20) throw new Error("That's a lot of reports in an hour. Call us if it's urgent.");
   var photos = lsSaveImages(p, b.photos || [], role === "client" ? "Client report" : "Crew report");
   var row = { id: newId("li"), property_id: p.id, at: now(), by_email: me.email, by_name: me.name, text: text, photos: JSON.stringify(photos), urgency: ["low", "normal", "urgent"].indexOf(b.urgency) > -1 ? b.urgency : "normal",
-    place: clean(b.place, 200), status: "new", office_note: "", visit_id: clean(b.visit_id, 40), source: role === "office" ? "office" : role, sample: "" };
+    place: clean(b.place, 200), status: "new", office_note: "", visit_id: clean(b.visit_id, 40), source: role === "office" ? "office" : role, sample: "",
+    kind: role === "crew" && b.recommend ? "recommendation" : "request", found_visit: clean(b.visit_id, 40) };                                    // crews recommend extra work; only the office decides if it's billable
   withLock(function () { _ROWS = {}; prefetch(["People", "Projects"].concat(LS_TABLES)); insert("LsIssues", row); lsLog(me, "issue", p.id, "reported: " + text.slice(0, 120)); });
   c.put(k, String(n + 1), 3600);
   if (role !== "office") notifyJesus(me.email, (row.urgency === "urgent" ? "🚨 URGENT · " : "") + "Maintenance issue at " + p.name, "<p><b>" + esc(me.name) + "</b> (" + role + ") reported:</p><blockquote>" + nl2br(esc(text)) + "</blockquote>" + (row.place ? "<p>Where: " + esc(row.place) + "</p>" : "") + button("Open the portal", CONFIG.PORTAL_URL));
@@ -377,6 +385,9 @@ ACTIONS.lsTriage = function (me, b) {
   lsNeedOffice(me); var i = findBy("LsIssues", "id", b.id); if (!i) throw new Error("Request not found.");
   var st = ["review", "included", "correction", "billable", "scheduled", "closed"].indexOf(b.status) > -1 ? b.status : i.status, patch = { status: st };
   if (b.office_note != null) patch.office_note = clean(b.office_note, 1000);
+  if (b.owner != null) { var ow = normEmail(b.owner); if (ow && !isStaff(findPerson(ow) || {})) throw new Error("Pick someone from the office."); patch.owner = ow; }
+  if (b.next_action != null) patch.next_action = clean(b.next_action, 200);
+  if (b.next_date != null) patch.next_date = dateOrEmpty(b.next_date);
   if (b.make_visit) {
     var kind = st === "billable" ? "extra" : st === "correction" ? "correction" : "maintenance";
     var r = ACTIONS.lsSaveVisit(me, { visit: { property_id: i.property_id, date: b.date, crew_id: b.crew_id, kind: kind === "maintenance" ? "extra" : kind, scope: (kind === "extra" ? "Additional work: " : kind === "correction" ? "Correction: " : "Included: ") + i.text.slice(0, 300), issue_id: i.id, price: lsMoney(me) && b.price != null ? b.price : undefined, priority: i.urgency === "urgent" ? "high" : "normal" } });
@@ -913,10 +924,14 @@ ACTIONS.lsPropLine = function (me, b) {
 NO_LOCK.lsPropLine = 1;
 /* One fuel stop per crew and day, kept with the day's plan. pos = how many stops come before it (n = on the way back). */
 function lsFuelKey(date, crew) { return "LSF:" + date + "|" + (crew || "-"); }
-function lsWithFuel(seq, fuel) {
-  var nodes = seq.slice(); if (!fuel || fuel.lat == null) return nodes;
-  var f = { fuel: true, lat: num(fuel.lat), lon: num(fuel.lon), name: fuel.name || "Fuel", address: fuel.addr || "", id: fuel.id || "", svc: Math.max(5, Math.min(60, num(fuel.min) || 15)) };
-  nodes.splice(Math.max(0, Math.min(seq.length, Math.round(num(fuel.pos)))), 0, f); return nodes;
+/* Extra stops (fuel, supplier, disposal) sit at a position: how many property stops come before them (n = on the way back). */
+function lsExtras(list, n) {
+  return [].concat(list || []).map(function (f, i) { return f && f.lat != null ? { fuel: true, kind: f.kind || "fuel", i: i, lat: num(f.lat), lon: num(f.lon), name: f.name || "Fuel", address: f.addr || "", id: f.id || "", place_id: f.place_id || "",
+    svc: Math.max(5, Math.min(90, num(f.min) || 15)), pos: Math.max(0, Math.min(n, Math.round(num(f.pos)))) } : null; }).filter(Boolean).sort(function (a, b) { return a.pos - b.pos || a.i - b.i; });
+}
+function lsWithFuel(seq, list) {
+  var nodes = seq.slice(), ex = lsExtras(list, seq.length);
+  ex.forEach(function (f, k) { nodes.splice(f.pos + k, 0, f); }); return nodes;
 }
 /* Walk the day: arrive, wait for a locked time or the access window, work, leave. legs[i] = drive into node i. */
 function lsTimeline(nodes, startMin, hrs, legs, back, opt) {
@@ -948,10 +963,10 @@ function lsLegsFor(nodes, origin, k) {
 /* Best stop orders by estimated time (every order up to 8 stops, else nearest-neighbour + local moves). Top 3. */
 function lsSolve(stops, origin, fuel, startMin, hrs, k) {
   var n = stops.length; if (n < 2) return [stops.map(function (x, i) { return i; })];
-  var fz = fuel && fuel.lat != null ? lsWithFuel([], fuel)[0] : null, all = stops.concat(fz ? [fz] : [], origin ? [origin] : []), F = fz ? n : -1, O = origin ? all.length - 1 : -1;
-  var M = all.map(function (a) { return all.map(function (c) { return a === c ? 0 : lsEstMin(a, c) * k; }); }), fpos = fz ? Math.max(0, Math.min(n, Math.round(num(fuel.pos)))) : -1;
+  var ex = lsExtras(fuel, n), all = stops.concat(ex, origin ? [origin] : []), O = origin ? all.length - 1 : -1;
+  var M = all.map(function (a) { return all.map(function (c) { return a === c ? 0 : lsEstMin(a, c) * k; }); });
   var cost = function (ord) {
-    var seq = ord.slice(); if (F >= 0) seq.splice(fpos, 0, F);
+    var seq = ord.slice(); ex.forEach(function (f, x) { seq.splice(f.pos + x, 0, n + x); });
     var t = startMin, prev = O, drive = 0, wait = 0, late = 0;
     for (var i = 0; i < seq.length; i++) {
       var j = seq[i], s = all[j], d = prev < 0 ? 0 : M[prev][j], w = 0; t += d; drive += d;
@@ -977,7 +992,7 @@ function lsSolve(stops, origin, fuel, startMin, hrs, k) {
 function lsPlanRows(tl, store, y) {
   return tl.rows.map(function (r) {
     var s = r.node;
-    if (s.fuel) return { fuel: true, id: s.id, name: s.name, address: s.address, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, depart: r.depart, svc: s.svc, brk: r.brk };
+    if (s.fuel) return { fuel: true, kind: s.kind, i: s.i, id: s.id, place_id: s.place_id, name: s.name, address: s.address, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, depart: r.depart, svc: s.svc, brk: r.brk };
     var od = lsOfficeOf(store, y, s.p);
     return { visit_id: s.v.id, property_id: s.p.id, lat: s.lat, lon: s.lon, drive_min: r.drive_min, km: r.km, arrive: r.arrive, start: r.start, depart: r.depart, wait: r.wait, late: r.late, why: r.why, svc: s.svc, svc_src: s.src, person_min: num(s.v.est_min),
       fixed: s.v.fixed_time || "", window: (s.wf != null || s.wt != null) ? [s.p.window_from || "", s.p.window_to || ""] : null, need: s.need, lack: s.lack, brk: r.brk,
@@ -1006,7 +1021,7 @@ ACTIONS.lsPlanDay = function (me, b) {
     var os = lsOnSite(v, p, size);
     stops.push({ v: v, p: p, lat: num(p.lat), lon: num(p.lon), svc: os.min, src: os.src, wf: lsMinOf(p.window_from), wt: lsMinOf(p.window_to), fixed: lsMinOf(v.fixed_time), need: need, lack: lack });
   });
-  var fuel = b.nofuel ? null : parseJson(pr.getProperty(lsFuelKey(date, crew)), null); if (fuel) fuel.pos = Math.min(num(fuel.pos), stops.length);
+  var fuel = b.nofuel ? [] : lsDayExtras(date, crew);
   var ord = b.order ? [].concat(b.order).map(String) : null, cmp = lsStopCmp(props);
   var cur = stops.slice().sort(function (a, c) { if (ord) { var ia = ord.indexOf(a.v.id), ic = ord.indexOf(c.v.id); return (ia < 0 ? 999 : ia) - (ic < 0 ? 999 : ic) || cmp(a.v, c.v); } return cmp(a.v, c.v); }), saved = stops.length > 0 && stops.every(function (s) { return num(s.v.stop) > 0; });
   var curNodes = lsWithFuel(cur, fuel), curLg = lsLegsFor(curNodes, origin, 1), opt = { load: cfg.load_min, brk: cfg.break_min, brkAt: cfg.break_at }, curTl = lsTimeline(curNodes, startMin, hrs, curLg.legs, curLg.back, opt), current = lsPlanOut(curNodes, curTl, curLg, origin, store, cfg.yard);
@@ -1025,7 +1040,7 @@ ACTIONS.lsPlanDay = function (me, b) {
   }
   return { date: date, crew_id: crew, size: size, no_crew: !cw, origin: origin, office: cfg.yard, start_time: startMin, hours: hrs, saved: saved, custom_order: !!ord, current: current, suggested: suggested,
     save_min: suggested ? current.drive_min - suggested.drive_min : 0, save_km: suggested ? Math.round((current.km - suggested.km) * 10) / 10 : 0, save_finish: suggested ? current.finish - suggested.finish : 0,
-    missing: missing, fuel: fuel, fuel_pref: parseJson(pr.getProperty("LS_FUELPREF"), { fuel: "gas", trailer: false }) };
+    missing: missing, fuel: fuel, extras: fuel, fuel_pref: parseJson(pr.getProperty("LS_FUELPREF"), { fuel: "gas", trailer: false }) };
 };
 NO_LOCK.lsPlanDay = 1;
 /* Save an order as the crew's stop numbers (with each drive time). */
@@ -1111,10 +1126,11 @@ ACTIONS.lsFuelNote = function (me, b) {
 ACTIONS.lsFuelSet = function (me, b) {
   lsNeedOffice(me); var date = dateOrEmpty(b.date); if (!date) throw new Error("Pick a day."); var pr = PropertiesService.getScriptProperties(), key = lsFuelKey(date, String(b.crew_id || ""));
   var old = lsAdd(lsDay(new Date()), -14); Object.keys(pr.getProperties()).forEach(function (k) { if (k.indexOf("LSF:") === 0 && k.slice(4, 14) < old) pr.deleteProperty(k); });
-  if (b.clear) { pr.deleteProperty(key); return { ok: true }; }
+  var list = lsDayExtras(date, String(b.crew_id || "")).filter(function (x) { return x.kind !== "fuel"; }); pr.deleteProperty(key);
+  if (b.clear) { lsSaveExtras(date, String(b.crew_id || ""), list); return { ok: true }; }
   var st = b.station || {}; if (st.lat == null || st.lon == null) throw new Error("Pick a station.");
-  var f = { id: clean(st.id, 40), name: clean(st.name, 80) || "Fuel", addr: clean(st.addr, 160), lat: Math.round(num(st.lat) * 1e6) / 1e6, lon: Math.round(num(st.lon) * 1e6) / 1e6, pos: Math.max(0, Math.round(num(b.pos))), min: Math.max(5, Math.min(60, Math.round(num(b.min)) || 15)) };
-  pr.setProperty(key, JSON.stringify(f)); lsLog(me, "route", (b.crew_id || "-") + "|" + date, "added a fuel stop: " + f.name);
+  var f = { kind: "fuel", id: clean(st.id, 40), name: clean(st.name, 80) || "Fuel", addr: clean(st.addr, 160), lat: Math.round(num(st.lat) * 1e6) / 1e6, lon: Math.round(num(st.lon) * 1e6) / 1e6, pos: Math.max(0, Math.round(num(b.pos))), min: Math.max(5, Math.min(60, Math.round(num(b.min)) || 15)) };
+  lsSaveExtras(date, String(b.crew_id || ""), list.concat([f])); lsLog(me, "route", (b.crew_id || "-") + "|" + date, "added a fuel stop: " + f.name);
   return { fuel: f };
 };
 var _lsMoveDayPlan = ACTIONS.lsMoveDay;
@@ -1150,3 +1166,169 @@ ACTIONS.lsMoveDayPreview = function (me, b) {
 };
 NO_LOCK.lsMoveDayPreview = 1;
 PREFETCH.lsMoveDayPreview = ["People", "Projects"].concat(LS_TABLES);
+
+/* ======================================================================================================
+   Batch 3: extra stops (fuel, supplier, disposal) as real appointments, saved places, crew outcomes,
+   the office's request queue (owner, next action, the chain to estimate / work order / report),
+   the effect of an urgent visit on a day before inserting it, client messages, seasonal opportunities.
+   ====================================================================================================== */
+if (TABLES.LsVisits.indexOf("outcome") < 0) TABLES.LsVisits.push("outcome");
+TABLES.LsPlaces = ["id", "kind", "name", "address", "lat", "lon", "hours", "notes", "min", "preferred", "trailer", "diesel", "osm_id", "checked_by", "checked_at", "status"];
+TABLES.LsOpps = ["id", "property_id", "service", "reason", "timing", "owner", "status", "est_id", "visit_id", "created_at", "created_by", "key", "note"];
+["LsPlaces", "LsOpps"].forEach(function (t) { if (LS_TABLES.indexOf(t) < 0) LS_TABLES.push(t); });
+var LS_PLACE_KINDS = { fuel: "Fuel", supplier: "Supplier", disposal: "Disposal / green waste" };
+var _lsVisitOutB3 = lsVisitOut;
+lsVisitOut = function (v, role, money) { var o = _lsVisitOutB3(v, role, money); if (role !== "client") o.outcome = v.outcome || ""; return o; };
+function lsExKey(date, crew) { return "LSX:" + date + "|" + (crew || "-"); }
+function lsDayExtras(date, crew) {
+  var pr = PropertiesService.getScriptProperties(), list = parseJson(pr.getProperty(lsExKey(date, crew)), []), old = parseJson(pr.getProperty(lsFuelKey(date, crew)), null);
+  if (old && old.lat != null) list = list.concat([Object.assign({ kind: "fuel" }, old)]);                     // a fuel stop saved before extra stops existed
+  return list;
+}
+function lsSaveExtras(date, crew, list) {
+  var pr = PropertiesService.getScriptProperties(), old = lsAdd(lsDay(new Date()), -14);
+  Object.keys(pr.getProperties()).forEach(function (k) { if ((k.indexOf("LSX:") === 0 || k.indexOf("LSF:") === 0) && k.slice(4, 14) < old) pr.deleteProperty(k); });
+  pr.deleteProperty(lsFuelKey(date, crew));
+  if (list.length) pr.setProperty(lsExKey(date, crew), JSON.stringify(list.slice(0, 8))); else pr.deleteProperty(lsExKey(date, crew));
+}
+function lsPlaceOut(p) { return { id: p.id, kind: p.kind, name: p.name, address: p.address, lat: p.lat ? num(p.lat) : null, lon: p.lon ? num(p.lon) : null, hours: p.hours, notes: p.notes, min: num(p.min) || 15,
+  preferred: isTrue(p.preferred), trailer: p.trailer || "", diesel: p.diesel || "", osm_id: p.osm_id || "", checked_by: p.checked_by ? personName(p.checked_by) : "", checked_at: p.checked_at || "" }; }
+/* Places the office uses: preferred fuel station, suppliers, dump / green-waste sites. */
+ACTIONS.lsSavePlace = function (me, b) {
+  lsNeedOffice(me); var f = b.place || {}, old = f.id ? findBy("LsPlaces", "id", String(f.id)) : null; if (f.id && !old) throw new Error("Place not found.");
+  if (f.remove) { update("LsPlaces", "id", old.id, { status: "deleted" }); return { id: old.id }; }
+  var patch = { kind: LS_PLACE_KINDS[f.kind] ? f.kind : (old ? old.kind : "supplier"), name: clean(f.name, 80) || (old && old.name), address: f.address != null ? clean(f.address, 200) : old ? old.address : "",
+    hours: f.hours != null ? clean(f.hours, 120) : old ? old.hours : "", notes: f.notes != null ? clean(f.notes, 300) : old ? old.notes : "", min: String(Math.max(5, Math.min(90, Math.round(num(f.min)) || (old ? num(old.min) : 15) || 15))),
+    preferred: f.preferred != null ? (f.preferred ? "yes" : "") : old ? old.preferred : "", trailer: f.trailer != null ? (["ok", "tight", "no"].indexOf(f.trailer) > -1 ? f.trailer : "") : old ? old.trailer : "",
+    diesel: f.diesel != null ? (["yes", "no"].indexOf(f.diesel) > -1 ? f.diesel : "") : old ? old.diesel : "", osm_id: f.osm_id != null ? clean(f.osm_id, 40) : old ? old.osm_id : "", status: "active" };
+  if (!patch.name) throw new Error("Give the place a name.");
+  if (f.trailer != null || f.diesel != null || f.hours != null) { patch.checked_by = me.email; patch.checked_at = lsDay(new Date()); }
+  if (f.lat != null && f.lon != null) { patch.lat = String(num(f.lat)); patch.lon = String(num(f.lon)); }
+  else if (patch.address && (!old || patch.address !== old.address)) { var g = lsGeocode(patch.address); if (!g) throw new Error("Google couldn't find that address. Add the street number and city."); patch.lat = String(g.lat); patch.lon = String(g.lon); patch.address = g.address; }
+  if (!patch.lat && !(old && old.lat)) throw new Error("Add the address so it can go on the route.");
+  if (patch.preferred && patch.kind === "fuel") rows("LsPlaces").forEach(function (x) { if (x.kind === "fuel" && isTrue(x.preferred) && (!old || x.id !== old.id)) update("LsPlaces", "id", x.id, { preferred: "" }); });
+  if (old) { update("LsPlaces", "id", old.id, patch); return { id: old.id }; }
+  patch.id = newId("pl"); insert("LsPlaces", patch); lsLog(me, "place", patch.id, "added " + patch.kind + " place " + patch.name); return { id: patch.id };
+};
+/* Add a fuel / supplier / disposal stop to a crew's day, or take one out. */
+ACTIONS.lsStopAdd = function (me, b) {
+  lsNeedOffice(me); var date = dateOrEmpty(b.date); if (!date) throw new Error("Pick a day."); var crew = String(b.crew_id || ""), list = lsDayExtras(date, crew), st;
+  if (b.place_id) { var pl = findBy("LsPlaces", "id", String(b.place_id)); if (!pl || pl.status === "deleted") throw new Error("Place not found."); st = { kind: pl.kind, place_id: pl.id, name: pl.name, addr: pl.address, lat: num(pl.lat), lon: num(pl.lon), min: num(b.min) || num(pl.min) || 15 }; }
+  else { var s0 = b.station || {}; if (s0.lat == null) throw new Error("Pick a place."); st = { kind: LS_PLACE_KINDS[b.kind] ? b.kind : "fuel", id: clean(s0.id, 40), name: clean(s0.name, 80) || "Stop", addr: clean(s0.addr, 160), lat: num(s0.lat), lon: num(s0.lon), min: num(b.min) || 15 }; }
+  st.pos = Math.max(0, Math.round(num(b.pos))); st.min = Math.max(5, Math.min(90, Math.round(st.min)));
+  if (list.length >= 8) throw new Error("That's enough extra stops for one day."); list.push(st); lsSaveExtras(date, crew, list);
+  lsLog(me, "route", (crew || "-") + "|" + date, "added a " + st.kind + " stop: " + st.name); return { extras: list };
+};
+ACTIONS.lsStopRemove = function (me, b) {
+  lsNeedOffice(me); var date = dateOrEmpty(b.date), crew = String(b.crew_id || ""), list = lsDayExtras(date, crew), i = Number(b.i); if (!list[i]) throw new Error("Stop not found.");
+  var gone = list.splice(i, 1)[0]; lsSaveExtras(date, crew, list); lsLog(me, "route", (crew || "-") + "|" + date, "removed the " + gone.kind + " stop " + gone.name); return { extras: list };
+};
+/* Fuel: the preferred station (and other saved ones) come first, marked as checked by the office. */
+var _lsFuelFindB3 = ACTIONS.lsFuelFind;
+ACTIONS.lsFuelFind = function (me, b) {
+  var r = _lsFuelFindB3(me, b), saved = rows("LsPlaces").filter(function (p) { return p.kind === "fuel" && p.status !== "deleted" && p.lat; });
+  (r.stations || []).forEach(function (s) { var pl = saved.filter(function (p) { return p.osm_id === s.id; })[0]; if (pl) { s.place = lsPlaceOut(pl); } });
+  saved.forEach(function (pl) { if ((r.stations || []).some(function (s) { return s.place && s.place.id === pl.id; })) return;
+    if (r.prefs && r.prefs.fuel === "diesel" && pl.diesel === "no") return;
+    (r.stations = r.stations || []).push({ id: pl.osm_id || pl.id, name: pl.name, addr: pl.address, lat: num(pl.lat), lon: num(pl.lon), hours: pl.hours || "", diesel: pl.diesel || "", gas: "", hgv: "", detour_min: null, detour_real: false, pos: 0, place: lsPlaceOut(pl) }); });
+  (r.stations || []).sort(function (a, c) { var pa = a.place && a.place.preferred ? 0 : 1, pc = c.place && c.place.preferred ? 0 : 1; return pa - pc || (a.detour_min == null ? 999 : a.detour_min) - (c.detour_min == null ? 999 : c.detour_min); });
+  r.prices = "Prices aren't shown: no reliable live price source is connected.";
+  return r;
+};
+/* Before inserting an urgent visit: the day with and without it (best position, conflicts, return time). Nothing is saved. */
+ACTIONS.lsInsertImpact = function (me, b) {
+  lsNeedOffice(me); var p = lsProp(b.property_id), date = dateOrEmpty(b.date); if (!date) throw new Error("Pick a day.");
+  var before = ACTIONS.lsPlanDay(me, { date: date, crew_id: b.crew_id }), tmp = { id: "new-visit", property_id: p.id, date: date, plan_date: date, series: "one", kind: "extra", crew_id: String(b.crew_id || ""), status: "scheduled", stop: "", est_min: String(num(b.est_min) || num(p.visit_min) || 60), fixed_time: "" };
+  rows("LsVisits").push(tmp);
+  try { var after = ACTIONS.lsPlanDay(me, { date: date, crew_id: b.crew_id }); } finally { var L = rows("LsVisits"), k = L.indexOf(tmp); if (k > -1) L.splice(k, 1); }
+  var pick = function (r) { var pl = r.suggested || r.current; return { drive_min: pl.drive_min, km: pl.km, finish: pl.finish, over_min: pl.over_min, late: pl.rows.filter(function (x) { return x.late; }).length, stops: pl.rows.filter(function (x) { return !x.fuel; }).length, order: pl.order }; };
+  var a = pick(after), bf = before.current.rows.length ? pick(before) : { drive_min: 0, km: 0, finish: null, over_min: 0, late: 0, stops: 0, order: [] };
+  return { date: date, crew_id: String(b.crew_id || ""), routable: lsRoutable(p), before: bf, after: a, position: a.order.indexOf("new-visit") + 1, end: after.hours.end, real: (after.suggested || after.current).real };
+};
+NO_LOCK.lsInsertImpact = 1;
+/* A message to the property's client, written (or edited) by the office and sent only when they press Send. */
+ACTIONS.lsNotifyClient = function (me, b) {
+  lsNeedOffice(me); var p = lsProp(b.property_id), to = splitIds(p.client_emails), subject = clean(b.subject, 150), text = clean(b.text, 4000);
+  if (!to.length) throw new Error("This property has no client email yet. Add one on the property.");
+  if (!subject || !text) throw new Error("Write a subject and a message.");
+  to.forEach(function (e) { safeMail(function () { sendMail(e, subject, "<p>" + nl2br(esc(text)) + "</p>"); }); });
+  lsLog(me, "property", p.id, "emailed the client: " + subject); return { sent: to.length };
+};
+/* ---- seasonal opportunities ---- */
+var LS_SEASON = [
+  { service: "Pre-winter pruning", months: [10, 11, 0, 1], feat: [], reason: "Dormant season: prune before the rains to reduce storm damage." },
+  { service: "Reduce irrigation schedule for winter", months: [10, 11], feat: ["Irrigation"], reason: "Rain season: cutting watering avoids runoff and saves the client's water bill." },
+  { service: "Gutter and drain cleaning", months: [10, 11], feat: ["Drainage"], reason: "Leaves clog drains before the first big storms." },
+  { service: "Leaf cleanup", months: [10, 11], feat: ["Trees"], reason: "Heavy leaf drop this time of year." },
+  { service: "Mulch refresh", months: [1, 2, 3], feat: ["Planting beds"], reason: "Spring mulch holds moisture and keeps weeds down." },
+  { service: "Lawn aeration and overseeding", months: [2, 3, 8, 9], feat: ["Lawn"], reason: "Cool, moist weeks are best for aeration and seed." },
+  { service: "Spring fertilizing", months: [2, 3], feat: ["Lawn", "Planting beds"], reason: "Feed at the start of the growing season." },
+  { service: "Irrigation check and summer schedule", months: [3, 4], feat: ["Irrigation"], reason: "Fix leaks and broken heads before the heat." }
+];
+function lsOppKey(pid, service) { return pid + "|" + String(service || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+function lsOppOut(o) {
+  var e = o.est_id ? findBy("LsEstimates", "id", o.est_id) : null, v = o.visit_id ? findBy("LsVisits", "id", o.visit_id) : (e && e.visit_id ? findBy("LsVisits", "id", e.visit_id) : null), st = o.status;
+  if (e && st !== "declined") st = v && v.status === "completed" ? "done" : v ? "scheduled" : e.status === "approved" || e.status === "scheduled" ? "approved" : e.status === "declined" ? "declined" : e.status === "sent" || e.status === "revised" ? "proposed" : st;
+  return { id: o.id, property_id: o.property_id, service: o.service, reason: o.reason, timing: o.timing, owner: o.owner, owner_name: o.owner ? personName(o.owner) : "", status: st, est_id: o.est_id || "", est_status: e ? e.status : "",
+    visit_id: v ? v.id : "", visit_date: v ? v.date : "", created_at: o.created_at, note: o.note || "" };
+}
+function lsOppOpen(o) { var st = lsOppOut(o).status; return ["declined", "done", "dropped"].indexOf(st) < 0 || String(o.created_at).slice(0, 10) > lsAdd(lsDay(new Date()), -300); }
+ACTIONS.lsSaveOpp = function (me, b) {
+  lsNeedOffice(me); var f = b.opp || {}, old = f.id ? findBy("LsOpps", "id", String(f.id)) : null; if (f.id && !old) throw new Error("Opportunity not found.");
+  if (old) {
+    var patch = {}; ["reason", "timing", "note"].forEach(function (k) { if (f[k] != null) patch[k] = clean(f[k], 300); });
+    if (f.owner != null) { var ow = normEmail(f.owner); if (ow && !isStaff(findPerson(ow) || {})) throw new Error("Pick someone from the office."); patch.owner = ow; }
+    if (f.status != null) { if (["idea", "proposed", "declined", "dropped"].indexOf(f.status) < 0) throw new Error("Unknown status."); patch.status = f.status; }
+    if (f.est_id != null) { if (f.est_id && !findBy("LsEstimates", "id", f.est_id)) throw new Error("Estimate not found."); patch.est_id = f.est_id; if (f.est_id && old.status === "idea") patch.status = "proposed"; }
+    update("LsOpps", "id", old.id, patch); lsLog(me, "opp", old.property_id, "updated opportunity " + old.service); return { id: old.id };
+  }
+  var p = lsProp(f.property_id), service = clean(f.service, 100); if (!service) throw new Error("What service?");
+  var key = lsOppKey(p.id, service), dup = rows("LsOpps").filter(function (o) { return o.key === key && lsOppOpen(o); })[0];
+  if (dup) throw new Error("“" + service + "” is already proposed for " + p.name + " (" + lsOppOut(dup).status + "). Open that one instead.");
+  var row = { id: newId("lo"), property_id: p.id, service: service, reason: clean(f.reason, 300), timing: clean(f.timing, 60), owner: normEmail(f.owner || ""), status: "idea", est_id: "", visit_id: "", created_at: now(), created_by: me.email, key: key, note: "" };
+  insert("LsOpps", row); lsLog(me, "opp", p.id, "seasonal opportunity: " + service); return { id: row.id };
+};
+/* Suggest this season's work for every active property (skips anything already proposed). */
+ACTIONS.lsSuggestOpps = function (me, b) {
+  lsNeedOffice(me); var m = new Date().getMonth(), made = [], props = rows("LsProps").filter(function (p) { return p.status === "active" && !isTrue(p.sample) || (b.sample && isTrue(p.sample)); });
+  var mon = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  LS_SEASON.filter(function (s) { return s.months.indexOf(m) > -1 || s.months.indexOf((m + 1) % 12) > -1; }).forEach(function (s) {
+    props.forEach(function (p) {
+      var feats = parseJson(p.features, []); if (s.feat.length && !s.feat.some(function (x) { return feats.indexOf(x) > -1; })) return;
+      if (String(p.included || "").toLowerCase().indexOf(s.service.toLowerCase().split(" ")[0]) > -1) return;          // already in the agreement
+      var key = lsOppKey(p.id, s.service); if (rows("LsOpps").some(function (o) { return o.key === key && lsOppOpen(o); })) return;
+      var when = s.months.filter(function (x) { return x >= m; })[0]; var row = { id: newId("lo"), property_id: p.id, service: s.service, reason: s.reason, timing: mon[when == null ? s.months[0] : when], owner: "", status: "idea", est_id: "", visit_id: "", created_at: now(), created_by: me.email, key: key, note: "" };
+      insert("LsOpps", row); made.push(row.id);
+    });
+  });
+  if (made.length) lsLog(me, "opp", "", "suggested " + made.length + " seasonal opportunities"); return { made: made.length };
+};
+/* An estimate written from an opportunity links back to it. */
+var _lsSaveEstB3 = ACTIONS.lsSaveEstimate;
+ACTIONS.lsSaveEstimate = function (me, b) {
+  var r = _lsSaveEstB3(me, b), oid = b.estimate && b.estimate.opp_id;
+  if (oid) { var o = findBy("LsOpps", "id", String(oid)); if (o) update("LsOpps", "id", o.id, { est_id: r.id, status: "proposed" }); }
+  return r;
+};
+/* The office's screens get places, opportunities and, on each request, where it stands (estimate → work order → report). */
+var _lsHomeB3 = ACTIONS.lsHome;
+ACTIONS.lsHome = function (me, b) {
+  var out = _lsHomeB3(me, b); if (out.role !== "office") return out;
+  out.places = rows("LsPlaces").filter(function (p) { return p.status !== "deleted"; }).map(lsPlaceOut);
+  var pids = {}; out.props.forEach(function (p) { pids[p.id] = 1; });
+  out.opps = rows("LsOpps").filter(function (o) { return pids[o.property_id]; }).map(lsOppOut).sort(function (a, c) { return a.created_at < c.created_at ? 1 : -1; });
+  var ests = rows("LsEstimates");
+  (out.issues || []).forEach(function (i) {
+    var e = ests.filter(function (x) { return x.issue_id === i.id && x.status !== "withdrawn"; })[0];
+    var v = rows("LsVisits").filter(function (x) { return x.issue_id === i.id; })[0] || (e && e.visit_id ? findBy("LsVisits", "id", e.visit_id) : null);   // the work order made for this request
+    var raw = findBy("LsIssues", "id", i.id) || {}, fid = raw.found_visit || (i.visit_id && (!v || v.id !== i.visit_id) ? i.visit_id : ""), found = fid && (!v || v.id !== fid) ? findBy("LsVisits", "id", fid) : null;                                         // the visit where the crew found it
+    i.chain = { est_id: e ? e.id : "", est_status: e ? e.status : "", est_v: e ? num(e.version) : 0, visit_id: v ? v.id : "", visit_date: v ? v.date : "", visit_status: v ? v.status : "", done_at: v ? v.done_at || "" : "",
+      found_id: found ? found.id : "", found_date: found ? found.date : "" };
+  });
+  out.staff = rows("People").filter(function (x) { return isTrue(x.active) && isStaff(x); }).map(function (x) { return { email: x.email, name: x.name }; });
+  return out;
+};
+["lsSavePlace", "lsStopAdd", "lsStopRemove", "lsInsertImpact", "lsNotifyClient", "lsSaveOpp", "lsSuggestOpps"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
+["lsHome", "lsSaveProperty", "lsSaveCrew", "lsSaveVisit", "lsMoveVisits", "lsRoute", "lsVisitUpdate", "lsReportIssue", "lsTriage", "lsSaveExpense", "lsReviewExpense", "lsSetRate", "lsSeed", "lsClearSample", "lsProperty",
+ "lsSaveEstimate", "lsSendEstimate", "lsDecide", "lsWithdraw", "lsEstimate", "lsDayRoutes", "lsFixPins", "lsSettings", "lsSuggestDays", "lsMoveDay", "lsPricing", "lsImport", "lsOfficeDist", "lsPropLine", "lsPlanDay", "lsSaveOrder",
+ "lsFixTime", "lsFuelFind", "lsFuelNote", "lsFuelSet", "lsMoveDayPreview"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });
