@@ -2559,7 +2559,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261106200855";
+  var BUILD = "20261107071451";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2592,7 +2592,7 @@
             onBeforeElUpdated: function (from, to) {
               if (from.isEqualNode(to)) return false;
               if (from.hasAttribute && from.hasAttribute("data-keep")) return false;
-              if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
+              if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName) && from.tagName === to.tagName && (from.getAttribute("name") || "") === (to.getAttribute("name") || "") && (from.getAttribute("type") || "") === (to.getAttribute("type") || "")) return false;   // same field you're typing in: leave it alone (a different field in the same spot gets replaced)
               return true;
             } });
         } catch (e) { desc.set.call(root, html); }
@@ -3120,6 +3120,7 @@
   var LS_FREQ_TXT = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly", seasonal: "Seasonal (4×/yr)", none: "No recurring visits" };
   var LS_FEATURES = ["Lawn", "Planting beds", "Trees", "Shrubs", "Irrigation", "Drainage", "Hardscape", "Gutters", "Pool area", "Slopes"];
   var LS_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  function lsDaysTxt(w, short) { var l = String(w).split(",").filter(function (x) { return /^[0-6]$/.test(x); }).map(Number); if (l.length > 2 && l.every(function (x, i) { return !i || x === l[i - 1] + 1; })) return LS_DAYS[l[0]].slice(0, 3) + "–" + LS_DAYS[l[l.length - 1]].slice(0, 3); return l.map(function (x) { return short || l.length > 1 ? LS_DAYS[x].slice(0, 3) : LS_DAYS[x]; }).join(", "); }
   function lsToday() { var d = new Date(), p = function (x) { return String(x).padStart(2, "0"); }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); }
   function lsAddD(s, n) { var d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); var p = function (x) { return String(x).padStart(2, "0"); }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); }
   function lsDow(s) { return LS_DAYS[new Date(s + "T12:00:00").getDay()]; }
@@ -3281,7 +3282,7 @@
         var c = lsC(p.crew_id);
         return '<button class="card ls-pcard" data-a="lsOpenProp" data-id="' + esc(p.id) + '"><div class="ls-pch"><b>' + esc(p.name) + "</b>" + (p.status !== "active" ? '<span class="pill">' + esc(p.status) + "</span>" : "") + "</div>" +
           '<small class="muted">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + "</small>" +
-          '<div class="ls-pcm"><span>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.freq !== "none" && p.weekday !== "" ? " · " + LS_DAYS[+p.weekday].slice(0, 3) : "") + "</span><span>" + lsDot(c) + esc(c ? c.name : "No crew") + "</span></div>" +
+          '<div class="ls-pcm"><span>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.freq !== "none" && p.weekday !== "" ? " · " + lsDaysTxt(p.weekday, true) : "") + "</span><span>" + lsDot(c) + esc(c ? c.name : "No crew") + "</span></div>" +
           '<div class="ls-pcm"><span>Next: ' + next(p) + "</span>" + (p.price != null ? "<b>" + m0(p.price) + "/" + ({ monthly: "mo", per_visit: "visit", quarterly: "qtr", annual: "yr" }[p.billing] || "mo") + "</b>" : "") + "</div>" +
           (p.features.length ? '<div class="ls-tags">' + p.features.slice(0, 5).map(function (f) { return "<span>" + esc(f) + "</span>"; }).join("") + "</div>" : "") + "</button>";
       }).join("") + "</div>" : '<div class="empty">No properties yet. Add the first one with its maintenance agreement' + (S.me.admin ? ', or load sample data to try it out.' : ".") + "</div>");
@@ -3366,7 +3367,7 @@
         '<div class="f"><span>Features</span><div class="ls-checks">' + LS_FEATURES.map(function (f) { return '<label><input type="checkbox" name="features" value="' + f + '"' + (p.features.indexOf(f) > -1 ? " checked" : "") + "> " + f + "</label>"; }).join("") + "</div></div>" +
         '<label class="f">Service notes (team only)<textarea name="notes">' + esc(p.notes) + "</textarea></label>" +
         "<h3>Maintenance agreement</h3>" +
-        '<div class="row2"><label class="f">How often<select name="freq">' + Object.keys(LS_FREQ_TXT).map(function (k) { return '<option value="' + k + '"' + (p.freq === k ? " selected" : "") + ">" + LS_FREQ_TXT[k] + "</option>"; }).join("") + '</select></label><label class="f">Day<select name="weekday">' + LS_DAYS.map(function (n, i) { return '<option value="' + i + '"' + (String(p.weekday) === String(i) ? " selected" : "") + ">" + n + "</option>"; }).join("") + "</select></label></div>" +
+        '<div class="row2"><label class="f">How often<select name="freq">' + Object.keys(LS_FREQ_TXT).map(function (k) { return '<option value="' + k + '"' + (p.freq === k ? " selected" : "") + ">" + LS_FREQ_TXT[k] + "</option>"; }).join("") + '</select></label><div class="f" role="group" aria-label="Service days">Day(s)<span class="ls-days">' + LS_DAYS.map(function (n, i) { return '<label class="ls-dayc"><input type="checkbox" name="weekday" value="' + i + '"' + (String(p.weekday).split(",").indexOf(String(i)) > -1 ? " checked" : "") + "><span>" + n.slice(0, 3) + "</span></label>"; }).join("") + "</span></div></div>" +
         '<div class="row2"><label class="f">Starts<input type="date" name="start" value="' + esc(p.start) + '"></label><label class="f">Crew<select name="crew_id"><option value="">No crew yet</option>' + (d.crews || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (p.crew_id === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select></label></div>" +
         '<div class="row2"><label class="f">Planned labor per visit (person-minutes)<input type="number" name="visit_min" min="10" step="5" value="' + esc(p.visit_min) + '"></label>' +
         (d.money ? '<label class="f">Price<span class="ls-money">$<input type="number" name="price" step="0.01" min="0" value="' + esc(p.price == null ? "" : p.price) + '"></span><select name="billing">' + [["monthly", "per month"], ["per_visit", "per visit"], ["quarterly", "per quarter"], ["annual", "per year"]].map(function (o) { return '<option value="' + o[0] + '"' + (p.billing === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" : '<span class="muted small" style="align-self:end">Price: only Jesús and #money</span>') + "</div>" +
@@ -3425,7 +3426,7 @@
     var x = S.lsProp; if (!x) return '<div class="loading">Loading…</div>'; var p = x.prop, c = lsC(p.crew_id), office = S.ls && S.ls.role === "office";
     return '<div class="ls-pv"><div class="ls-pvh"><div><div class="eyebrow">' + esc(p.client_name || "Property") + "</div><h2>" + esc(p.name) + '</h2><p class="muted small">' + esc([p.address, p.city].filter(Boolean).join(", ")) + (p.lat != null ? ' · <a href="' + esc(lsNav(p)) + '" target="_blank" rel="noopener">Directions</a>' : "") + "</p></div>" +
       (office ? '<div class="actions"><button class="btn ghost sm" data-a="modal" data-m="lsProp" data-id="' + esc(p.id) + '">Edit</button><button class="btn sm" data-a="lsNewWO" data-id="' + esc(p.id) + '">＋ Work order</button></div>' : "") + "</div>" +
-      '<div class="grid g3"><div class="card"><span class="eyebrow">Agreement</span><b>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.weekday !== "" && p.freq !== "none" ? " · " + LS_DAYS[+p.weekday] : "") + "</b><small class=\"muted\">" + (p.price != null ? m0(p.price) + " " + ({ monthly: "per month", per_visit: "per visit", quarterly: "per quarter", annual: "per year" }[p.billing] || "") + " · " : "") + lsHm(p.visit_min) + " planned per visit</small></div>" +
+      '<div class="grid g3"><div class="card"><span class="eyebrow">Agreement</span><b>' + esc(LS_FREQ_TXT[p.freq] || "") + (p.weekday !== "" && p.freq !== "none" ? " · " + lsDaysTxt(p.weekday) : "") + "</b><small class=\"muted\">" + (p.price != null ? m0(p.price) + " " + ({ monthly: "per month", per_visit: "per visit", quarterly: "per quarter", annual: "per year" }[p.billing] || "") + " · " : "") + lsHm(p.visit_min) + " planned per visit</small></div>" +
       '<div class="card"><span class="eyebrow">Crew</span><b>' + lsDot(c) + esc(c ? c.name : "No crew") + '</b><small class="muted">' + esc(p.access || "No access notes") + "</small></div>" +
       '<div class="card"><span class="eyebrow">Features</span><div class="ls-tags">' + (p.features.map(function (f) { return "<span>" + esc(f) + "</span>"; }).join("") || '<small class="muted">—</small>') + "</div></div></div>" +
       '<div class="ls-agree"><div><b>Included</b><p class="muted small ls-pre">' + esc(p.included || "—") + '</p></div><div><b>Not included (priced separately)</b><p class="muted small ls-pre">' + esc(p.excluded || "—") + "</p></div></div>" +
@@ -3541,7 +3542,7 @@
     run(btn, async function () {
       if (kind === "lsProp") {
         var prop = { id: S.modal.id || undefined, name: v("name"), client_name: v("client_name"), client_emails: v("client_emails"), address: v("address"), city: v("city"), contacts: v("contacts"), access: v("access"), notes: v("notes"),
-          features: fd.getAll("features"), freq: v("freq"), weekday: v("weekday"), start: v("start"), crew_id: v("crew_id"), visit_min: v("visit_min"), included: v("included"), excluded: v("excluded"), checklist: v("checklist").split("\n").map(function (x) { return x.trim(); }).filter(Boolean) };
+          features: fd.getAll("features"), freq: v("freq"), weekday: fd.getAll("weekday").join(","), start: v("start"), crew_id: v("crew_id"), visit_min: v("visit_min"), included: v("included"), excluded: v("excluded"), checklist: v("checklist").split("\n").map(function (x) { return x.trim(); }).filter(Boolean) };
         if (fd.has("price")) { prop.price = v("price") || 0; prop.billing = v("billing"); } if (fd.has("status")) prop.status = v("status");
         var old = S.modal.id ? lsP(S.modal.id) : {};
         if (prop.address && (prop.address !== old.address || prop.city !== old.city || old.lat == null)) try {

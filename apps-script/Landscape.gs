@@ -74,12 +74,16 @@ function lsParse(s) { var m = String(s || "").match(/^(\d{4})-(\d\d)-(\d\d)$/); 
 function lsAdd(s, days) { var d = lsParse(s); d.setDate(d.getDate() + days); return lsDay(d); }
 /* The dates an agreement puts on the calendar between two days. Monthly = same weekday in the first full week; seasonal = first weekday of Mar, Jun, Sep, Dec. */
 function lsPlanDates(p, from, to) {
-  var out = [], start = lsParse(p.start) || lsParse(from), wd = p.weekday === "" ? start.getDay() : Number(p.weekday), freq = p.freq || "none";
+  var out = [], start = lsParse(p.start) || lsParse(from), wds = lsWds(p, start), wd = wds[0], freq = p.freq || "none";
   if (freq === "none" || p.status !== "active") return out;
-  var d = new Date(start.getTime()); while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
   var end = lsParse(to), begin = lsParse(from);
   if (freq === "weekly" || freq === "biweekly") {
-    for (var step = LS_FREQ[freq]; d <= end; d.setDate(d.getDate() + step)) if (d >= begin) out.push(lsDay(d));
+    // Each service day runs its own cadence from the start date (e.g. an HOA done Tuesday to Friday).
+    wds.forEach(function (w) {
+      var d = new Date(start.getTime()); while (d.getDay() !== w) d.setDate(d.getDate() + 1);
+      for (var step = LS_FREQ[freq]; d <= end; d.setDate(d.getDate() + step)) if (d >= begin) out.push(lsDay(d));
+    });
+    out.sort();
   } else {
     var months = freq === "monthly" ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : [2, 5, 8, 11];
     for (var y = begin.getFullYear(); y <= end.getFullYear(); y++) months.forEach(function (mo) {
@@ -109,6 +113,11 @@ function lsEnsureVisits(until) {
 
 /* ---- money: how a visit is valued and what it cost ---- */
 function lsRateOf(email) { var r = findBy("LsRates", "email", normEmail(email)); return r ? num(r.rate) : num(PropertiesService.getScriptProperties().getProperty("LS_DEFAULT_RATE") || 32); }
+/* Service days: "2" or "2,3,4,5" (0 = Sunday). Empty = the start date's weekday. */
+function lsWds(p, start) {
+  var l = String(p.weekday == null ? "" : p.weekday).split(",").filter(function (x) { return /^[0-6]$/.test(x.trim()); }).map(Number);
+  return l.length ? l : [(start || lsParse(p.start) || new Date()).getDay()];
+}
 function lsVisitsPerMonth(freq) { return { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1, seasonal: 1 / 3 }[freq] || 1; }
 /* Recurring revenue: the agreement price spread evenly over the visits it pays for. Extra work: its own price. */
 function lsVisitRevenue(v, p) {
@@ -117,7 +126,7 @@ function lsVisitRevenue(v, p) {
   var b = (p && p.billing) || "monthly";
   if (b === "per_visit") return price;
   var perMonth = b === "monthly" ? price : b === "quarterly" ? price / 3 : b === "annual" ? price / 12 : price;
-  return perMonth / lsVisitsPerMonth(p.freq);
+  return perMonth / (lsVisitsPerMonth(p.freq) * (p.freq === "weekly" || p.freq === "biweekly" ? lsWds(p).length : 1));
 }
 function lsLabor(v) { return parseJson(v.labor, []).filter(function (l) { return l && l.email; }); }
 function lsLaborMin(v) { return lsLabor(v).reduce(function (a, l) { return a + num(l.min); }, 0); }
@@ -226,7 +235,8 @@ ACTIONS.lsSaveProperty = function (me, b) {
   if (f.checklist != null) patch.checklist = JSON.stringify([].concat(f.checklist).map(function (x) { return clean(x, 120); }).filter(Boolean).slice(0, 30));
   if (f.crew_id != null) { if (f.crew_id && !findBy("LsCrews", "id", f.crew_id)) throw new Error("Pick a crew."); patch.crew_id = f.crew_id; }
   if (f.freq != null) { if (!(f.freq in LS_FREQ)) throw new Error("Pick how often."); patch.freq = f.freq; }
-  if (f.weekday != null) patch.weekday = f.weekday === "" ? "" : String(Math.max(0, Math.min(6, Number(f.weekday) || 0)));
+  if (f.weekday != null) { var wl = [].concat(Array.isArray(f.weekday) ? f.weekday : String(f.weekday).split(",")).map(function (x) { return String(x).trim(); }).filter(function (x) { return /^[0-6]$/.test(x); });
+    patch.weekday = wl.filter(function (x, i) { return wl.indexOf(x) === i; }).sort().join(","); }
   if (f.start != null) patch.start = dateOrEmpty(f.start) || lsDay(new Date());
   if (f.visit_min != null) patch.visit_min = String(Math.max(10, Math.min(1440, Math.round(num(f.visit_min)) || 60)));
   if (f.price != null) { if (!lsMoney(me) && old) throw new Error("Only Jesús and #money change prices."); patch.price = String(cents(f.price)); }
@@ -234,6 +244,7 @@ ACTIONS.lsSaveProperty = function (me, b) {
   if (f.status != null) patch.status = ["active", "paused", "ended"].indexOf(f.status) > -1 ? f.status : "active";
   ["lat", "lon"].forEach(function (k) { if (f[k] != null) patch[k] = f[k] === "" ? "" : String(Math.round(num(f[k]) * 1e6) / 1e6); });
   if (old) {
+    old = Object.assign({}, old);                       // update() changes the cached row in place; keep the before-picture to compare
     update("LsProps", "id", old.id, patch); lsLog(me, "property", old.id, "edited the property / agreement");
     // A changed schedule re-plans the future visits nobody has touched yet (moved or worked ones stay as they are).
     if (["freq", "weekday", "start", "crew_id", "visit_min"].some(function (k) { return patch[k] != null && patch[k] !== old[k]; })) {
@@ -553,3 +564,22 @@ ACTIONS.lsHome = function (me, b) {
     .map(function (e) { return lsEstOut(e, out.role, out.money); }).sort(function (a, c) { return (a.sent_at || a.created_at) < (c.sent_at || c.created_at) ? 1 : -1; });
   return out;
 };
+
+/* Bring in properties from a spreadsheet (Jesús only). Same name as one already there = skipped, so running it twice is safe.
+   Visits are planned from today on; nothing is billed or emailed. */
+ACTIONS.lsImport = function (me, b) {
+  if (me.role !== "admin") throw new Error("Only Jesús imports properties.");
+  var list = [].concat(b.props || []).slice(0, 300), have = {}, made = [], skipped = [];
+  rows("LsProps").forEach(function (p) { if (!isTrue(p.sample)) have[String(p.name).trim().toLowerCase()] = p.id; });
+  list.forEach(function (f) {
+    var name = clean(f && f.name, 200), k = name.toLowerCase(); if (!name) return;
+    if (have[k]) { skipped.push(name); return; }
+    var prop = { name: name };
+    ["client_name", "address", "city", "notes", "freq", "weekday", "start", "billing", "visit_min", "status", "client_emails", "lat", "lon", "price"].forEach(function (x) { if (f[x] != null && f[x] !== "") prop[x] = f[x]; });
+    if (prop.freq && !(prop.freq in LS_FREQ)) prop.freq = "weekly";
+    var r = ACTIONS.lsSaveProperty(me, { prop: prop }); have[k] = r.id; made.push(name);
+  });
+  if (made.length) lsLog(me, "property", "", "imported " + made.length + " properties");
+  return { made: made, skipped: skipped };
+};
+PREFETCH.lsImport = ["People", "Projects"].concat(LS_TABLES);
