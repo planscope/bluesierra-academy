@@ -43,7 +43,7 @@ var TABLES = {
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned", "aud", "author_email"],
   Photos: ["id", "project_id", "file_id", "caption", "at", "author", "update_id"],
   Messages: ["id", "project_id", "at", "author", "author_email", "role", "kind", "text", "question_id", "status", "via", "channel", "thread_id", "files", "reactions", "ref", "pinned"],
-  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines", "created_by", "created_at", "updated_by", "updated_at", "qb_id"],
+  Invoices: ["id", "project_id", "number", "title", "amount", "issued", "due", "status", "paid_date", "pdf_file_id", "pay_url", "notes", "retainage", "lines", "created_by", "created_at", "updated_by", "updated_at", "qb_id", "qb_pdf"],
   Checklist: ["id", "project_id", "phase", "item", "owner", "due", "done", "done_by", "done_at", "sort", "aud", "assignee", "created_by", "edited_by", "edited_at", "reactions", "pinned", "done_email"],
   EmailImports: ["gmail_id", "project_id", "message_id", "at", "result"],
   Schedule: ["id", "project_id", "kind", "title", "start", "end", "phase", "owner", "status", "notes", "sort", "edited_by", "edited_at", "req_by", "req_at", "req_note"],
@@ -53,16 +53,18 @@ var TABLES = {
   Reads: ["email", "project_id", "channel", "at"],
   // Plan sets: one row per uploaded revision. "sheets" is JSON: [{n, sheet, title, img, w, h, status, score, boxes}]
   Plans: ["id", "project_id", "set", "rev", "date", "notes", "visible", "pdf_file_id", "pdf_name", "pages", "sheets", "status", "by", "at", "text_file_id"],      // when each person last looked at each channel (unread counts)
-  ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"]
+  ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"],
+  // Every change the portal made to a QuickBooks charge, with what it was before (for Undo).
+  QbLog: ["id", "at", "by", "kind", "txn_type", "txn_id", "before", "after", "undone"]
 };
 var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone", "deadline"];
 /* Speed: everything a request needs is read from the sheet in one Sheets API call, then kept for the rest of the request. */
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule"],
-  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People"], markRead: ["People", "Projects", "Reads"]
 };
-var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
@@ -1309,11 +1311,16 @@ function qbJobMoney(cust) {
       var h = num(a.Hours) + num(a.Minutes) / 60, n = ((a.EmployeeRef || a.VendorRef || {}).name) || "Someone"; hours += h; hrs[n] = (hrs[n] || 0) + h;
     });
   });
+  var payments = tryIt("payments", function () {
+    return (qbQuery("select * from Payment where CustomerRef = '" + cust + "' maxresults 200").Payment || []).map(function (y) {
+      return { date: y.TxnDate || "", amount: r2(num(y.TotalAmt)), ref: y.PaymentRefNum || "", method: ((y.PaymentMethodRef || {}).name) || "" };
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 20);
+  }, []);
   var name = tryIt("customer", function () { return (qbGet("/customer/" + cust).Customer || {}).DisplayName || ""; }, "");
   Object.keys(out).forEach(function (k) { out[k] = r2(out[k]); }); Object.keys(inn).forEach(function (k) { inn[k] = r2(inn[k]); });
   return { customer: name, company: qbCfg().company, updated: now(), inn: inn, out: out, income: r2(income),
     accounts: accounts.filter(function (a) { return a.bucket; }).sort(function (a, b) { return b.amount - a.amount; }).slice(0, 12).map(function (a) { return { name: a.name, amount: r2(a.amount), bucket: a.bucket }; }),
-    owe: { open: r2(owe.open), overdue: r2(owe.overdue) }, bills: bills.slice(0, 25), recent: recent.slice(0, 15),
+    owe: { open: r2(owe.open), overdue: r2(owe.overdue) }, bills: bills.slice(0, 25), recent: recent.slice(0, 15), payments: payments,
     hours: { total: Math.round(hours * 10) / 10, people: Object.keys(hrs).map(function (n) { return { name: n, hours: Math.round(hrs[n] * 10) / 10 }; }).sort(function (a, b) { return b.hours - a.hours; }).slice(0, 8) },
     warnings: warn };
 }
@@ -1327,6 +1334,253 @@ ACTIONS.qbMoney = function (me, b) {
   qbCheck(); var data = qbJobMoney(p.qb_customer);
   try { c.put(ck, JSON.stringify(data), 900); } catch (e) {}
   return Object.assign(data, base);
+};
+
+/* ============ Writing to QuickBooks: you work in the portal, QuickBooks stays the books ============
+   A project becomes a QuickBooks customer, its invoices become QuickBooks invoices (with the real PDF and pay link),
+   "paid" records the payment against the invoice, and any charge, bill or timesheet can be put on a job or recategorized.
+   Every change to a charge is logged (QbLog) with what it was before, so it can be undone. Nothing here moves money. */
+function qbSend(method, path, body) {
+  var cfg = qbCfg(), url = QB.API[cfg.env] + "/v3/company/" + cfg.realm + path + (path.indexOf("?") > -1 ? "&" : "?") + "minorversion=" + QB.MINOR;
+  var opts = function () { var o = { method: method, muteHttpExceptions: true, headers: { Authorization: "Bearer " + qbAccess(), Accept: "application/json" } }; if (body != null) { o.contentType = "application/json"; o.payload = JSON.stringify(body); } return o; };
+  var r = UrlFetchApp.fetch(url, opts());
+  if (r.getResponseCode() === 401) { CacheService.getScriptCache().remove("qb:access"); r = UrlFetchApp.fetch(url, opts()); }
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+  if (r.getResponseCode() !== 200) {
+    var tid = qbTid(r), fault = j.Fault || j.fault || {}, f = (fault.Error || fault.error || [])[0] || {};
+    console.error("QuickBooks write error " + r.getResponseCode() + " " + path.split("?")[0] + " intuit_tid=" + tid + " " + String(r.getContentText()).slice(0, 300));
+    throw new Error("QuickBooks said: " + (f.Detail || f.detail || f.Message || f.message || ("error " + r.getResponseCode())) + (tid ? " (ref " + tid + ")" : ""));
+  }
+  CacheService.getScriptCache().remove("qbf:" + cfg.realm);           // Finances shows the change next time
+  return j;
+}
+function qbNeedWrite(me) {
+  if (!canMoney(me)) throw new Error("That's #money. Ask Jesús to tag you #money.");
+  if (!qbCfg().refresh) throw new Error("QuickBooks isn't connected. Jesús can connect it from Home → Team.");
+}
+function qbBustProject(p) { CacheService.getScriptCache().remove("qbm:" + qbCfg().realm + ":" + p.id + ":" + (p.qb_customer || "")); }
+function qbEsc(s) { return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'"); }
+function projectClient(p) {
+  return rows("People").filter(function (x) { return x.role === "client" && isTrue(x.active) && splitIds(x.project_ids).indexOf(p.id) > -1; })[0] || null;
+}
+/* Blue Sierra names QuickBooks customers "street/client" (e.g. "455 Pinehill Rd/John Ihn"). */
+function qbCustomerName(p) {
+  var street = String(p.address || "").split(",")[0].trim(), n = street && p.client_name ? street + "/" + p.client_name : (p.name || p.client_name || "");
+  return String(n).replace(/[:\t\r\n"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+}
+function qbEnsureCustomer(me, p, wanted) {
+  if (p.qb_customer) return p.qb_customer;
+  var name = clean(wanted, 100).replace(/[:"]/g, " ").trim() || qbCustomerName(p); if (!name) throw new Error("The project needs a name first.");
+  var found = (qbQuery("select * from Customer where DisplayName = '" + qbEsc(name) + "'").Customer || [])[0], id;
+  if (found) id = String(found.Id);
+  else {
+    var c = projectClient(p), body = { DisplayName: name, Notes: "Created from the Blue Sierra Portal · " + p.name };
+    if (p.client_name) body.PrintOnCheckName = String(p.client_name).slice(0, 100);
+    if (p.address) body.BillAddr = body.ShipAddr = { Line1: String(p.address).slice(0, 500), City: p.city || undefined };
+    if (c) body.PrimaryEmailAddr = { Address: c.email };
+    id = String(qbSend("post", "/customer", body).Customer.Id);
+  }
+  update("Projects", "id", p.id, { qb_customer: id }); p.qb_customer = id;
+  return id;
+}
+ACTIONS.qbCreateCustomer = function (me, b) {
+  qbNeedWrite(me); var p = needProject(me, b.projectId);
+  if (p.qb_customer) return { customerId: p.qb_customer, existed: true };
+  var id = qbEnsureCustomer(me, p, b.name);
+  return { customerId: id, name: qbCustomerName(p) };
+};
+
+/* The QuickBooks product every portal invoice line uses: an existing "Construction…" service, or one made once. */
+function qbItem() {
+  var pr = qbProps(), k = "QB_ITEM_" + qbCfg().realm, have = pr.getProperty(k); if (have) return JSON.parse(have);
+  var items = qbQuery("select * from Item where Type = 'Service' and Active = true maxresults 1000").Item || [];
+  var pick = items.filter(function (i) { return /^construction/i.test(i.Name); })[0] || items.filter(function (i) { return /construction|remodel|contract/i.test(i.Name); })[0] || items.filter(function (i) { return /^services?$/i.test(i.Name); })[0];
+  if (!pick) {
+    var inc = qbQuery("select * from Account where AccountType = 'Income' and Active = true maxresults 1000").Account || [];
+    var acc = inc.filter(function (a) { return /construction/i.test(a.Name); })[0] || inc.filter(function (a) { return /service|sales|contract/i.test(a.Name); })[0] || inc[0];
+    if (!acc) throw new Error("QuickBooks has no income account for invoices.");
+    pick = qbSend("post", "/item", { Name: "Construction", Type: "Service", IncomeAccountRef: { value: String(acc.Id) } }).Item;
+  }
+  var it = { value: String(pick.Id), name: pick.Name }; pr.setProperty(k, JSON.stringify(it)); return it;
+}
+function qbInvoiceBody(p, inv, item) {
+  var split = parseJson(inv.lines, null), cl = {}, L = [];
+  rows("ContractLines").forEach(function (l) { if (l.project_id === p.id) cl[l.id] = l; });
+  var add = function (desc, amt) { amt = cents(amt); if (!amt) return; L.push({ DetailType: "SalesItemLineDetail", Amount: amt, Description: String(desc).slice(0, 4000), SalesItemLineDetail: { ItemRef: item, Qty: 1, UnitPrice: amt } }); };
+  if (split && Object.keys(split).length) Object.keys(split).forEach(function (k) { var l = cl[k] || {}; add((l.kind === "change" ? "Change order " : "") + (l.number ? l.number + " · " : "") + (l.title || "Contract work"), split[k]); });
+  else add(inv.title || "Construction work", inv.amount);
+  if (num(inv.retainage)) add(num(inv.retainage) > 0 ? "Less retainage held" : "Retainage released", -num(inv.retainage));
+  if (!L.length) throw new Error("This invoice has no amount to put in QuickBooks.");
+  var body = { CustomerRef: { value: String(p.qb_customer) }, Line: L, TxnDate: inv.issued || today(), PrivateNote: "Blue Sierra Portal · " + p.name };
+  if (inv.due) body.DueDate = inv.due;
+  if (inv.number) body.DocNumber = String(inv.number).slice(0, 21);
+  if (inv.title) body.CustomerMemo = { value: String(inv.title).slice(0, 1000) };
+  var c = projectClient(p); if (c) body.BillEmail = { Address: c.email };
+  return body;
+}
+/* Make QuickBooks match the portal invoice: create or update it, void it, record the payment, bring back its number, pay link and PDF. */
+function qbPushInvoice(me, p, invId) {
+  var inv = findBy("Invoices", "id", invId); if (!inv || inv.status === "draft") return null;      // drafts stay in the portal
+  var cur = inv.qb_id ? (qbGet("/invoice/" + inv.qb_id) || {}).Invoice : null, out = { id: "", number: "" };
+  if (inv.status === "void") {
+    if (cur && !(num(cur.TotalAmt) === 0 && num(cur.Balance) === 0)) qbSend("post", "/invoice?operation=void", { Id: cur.Id, SyncToken: cur.SyncToken });
+    qbBustProject(p); return cur ? { id: String(cur.Id), number: cur.DocNumber || "", voided: true } : null;
+  }
+  if (!p.qb_customer) qbEnsureCustomer(me, p);
+  var body = qbInvoiceBody(p, inv, qbItem()), res;
+  if (cur) { body.Id = cur.Id; body.SyncToken = cur.SyncToken; body.sparse = true; }
+  res = qbSend("post", "/invoice", body).Invoice;
+  var patch = { qb_id: String(res.Id) }; out.id = patch.qb_id; out.number = res.DocNumber || "";
+  if (res.DocNumber && res.DocNumber !== inv.number) patch.number = res.DocNumber;
+  if (!inv.pay_url && res.InvoiceLink && /^https:\/\//.test(res.InvoiceLink)) patch.pay_url = res.InvoiceLink;
+  // Paid in the portal: record the payment in QuickBooks against this invoice (bookkeeping only, no money moves).
+  if (inv.status === "paid" && num(res.Balance) > 0.004) {
+    var pay = qbSend("post", "/payment", { CustomerRef: { value: String(p.qb_customer) }, TotalAmt: cents(res.Balance), TxnDate: inv.paid_date || today(),
+      PrivateNote: "Recorded from the Blue Sierra Portal", Line: [{ Amount: cents(res.Balance), LinkedTxn: [{ TxnId: String(res.Id), TxnType: "Invoice" }] }] }).Payment;
+    out.payment = { id: String(pay.Id), amount: cents(pay.TotalAmt) };
+  } else if (inv.status !== "paid" && num(res.TotalAmt) > 0 && num(res.Balance) < 0.005) { patch.status = "paid"; patch.paid_date = today(); out.paidInQb = true; }   // already paid in QuickBooks
+  // The real QuickBooks PDF, unless someone attached their own
+  if (!inv.pdf_file_id || isTrue(inv.qb_pdf)) try {
+    var blob = qbFetch("/invoice/" + res.Id + "/pdf", "application/pdf").getBlob().setName("Invoice " + (res.DocNumber || res.Id) + ".pdf");
+    var file = projectFolder(p).createFile(blob); try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    if (inv.pdf_file_id) try { DriveApp.getFileById(inv.pdf_file_id).setTrashed(true); } catch (e) {}
+    patch.pdf_file_id = file.getId(); patch.qb_pdf = "yes";
+  } catch (e) { out.pdfError = e.message; }
+  update("Invoices", "id", inv.id, patch); qbBustProject(p);
+  return out;
+}
+var _saveInvoice = ACTIONS.saveInvoice;
+ACTIONS.saveInvoice = function (me, b) {
+  var r = _saveInvoice(me, b), inv = b.invoice || {};
+  if (inv.pdf && inv.pdf.data) update("Invoices", "id", r.id, { qb_pdf: "" });          // a hand-attached PDF is kept as is
+  var row = findBy("Invoices", "id", r.id);
+  if ((b.qb || (row && row.qb_id)) && canMoney(me) && qbCfg().refresh && b.qb !== false) {
+    try { var q = qbPushInvoice(me, needProject(me, b.projectId), r.id); if (q) r.qb = q; }
+    catch (e) { r.qbError = e.message; if (MAIL_NOTICES) MAIL_NOTICES.push("Saved in the portal, but QuickBooks didn't take it. " + e.message); }
+  }
+  return r;
+};
+ACTIONS.qbSendInvoice = function (me, b) {
+  qbNeedWrite(me); var inv = findBy("Invoices", "id", b.invoiceId); if (!inv) throw new Error("Invoice not found.");
+  var p = needProject(me, inv.project_id); if (!inv.qb_id) throw new Error("Put this invoice in QuickBooks first (Edit → Save with “Also in QuickBooks”).");
+  var to = clean(b.to, 200) || (projectClient(p) || {}).email || ""; if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("Who should get it? Add the client's email.");
+  qbSend("post", "/invoice/" + inv.qb_id + "/send?sendTo=" + encodeURIComponent(to));
+  return { to: to };
+};
+
+/* ---- Spending: every card charge, check, bill and timesheet, with the store's logo, ready to put on a job ---- */
+var QB_BRANDS = [[/home ?depot/i, "homedepot.com"], [/lowe'?s/i, "lowes.com"], [/vulcan/i, "vulcanmaterials.com"], [/amazon|amzn/i, "amazon.com"], [/costco/i, "costco.com"],
+  [/chevron/i, "chevron.com"], [/^shell\b/i, "shell.com"], [/^76\b|\b76 (gas|station)/i, "76.com"], [/^arco\b/i, "arco.com"], [/valero/i, "valero.com"], [/ferguson/i, "ferguson.com"], [/white ?cap/i, "whitecap.com"],
+  [/ace hardware/i, "acehardware.com"], [/harbor freight/i, "harborfreight.com"], [/sherwin/i, "sherwin-williams.com"], [/kelly.?moore/i, "kellymoore.com"], [/dunn.?edwards/i, "dunnedwards.com"],
+  [/uline/i, "uline.com"], [/grainger/i, "grainger.com"], [/united rentals/i, "unitedrentals.com"], [/sunbelt/i, "sunbeltrentals.com"], [/floor ?(&|and) ?decor/i, "flooranddecor.com"],
+  [/ewing/i, "ewingirrigation.com"], [/pg ?& ?e|pacific gas/i, "pge.com"], [/verizon/i, "verizon.com"], [/^at ?& ?t/i, "att.com"], [/comcast|xfinity/i, "xfinity.com"], [/^google/i, "google.com"],
+  [/^apple\b/i, "apple.com"], [/adobe/i, "adobe.com"], [/microsoft/i, "microsoft.com"], [/intuit|quickbooks/i, "intuit.com"], [/^uber\b/i, "uber.com"], [/^lyft/i, "lyft.com"],
+  [/starbucks/i, "starbucks.com"], [/^target\b/i, "target.com"], [/walmart/i, "walmart.com"], [/best buy/i, "bestbuy.com"], [/capital one/i, "capitalone.com"], [/american express|^amex/i, "americanexpress.com"],
+  [/^chase\b/i, "chase.com"], [/wells fargo/i, "wellsfargo.com"], [/bank of america|^boa\b/i, "bankofamerica.com"], [/geico/i, "geico.com"], [/state farm/i, "statefarm.com"],
+  [/bedrosians/i, "bedrosians.com"], [/daltile/i, "daltile.com"], [/^build\.?com/i, "build.com"], [/wayfair/i, "wayfair.com"], [/ikea/i, "ikea.com"], [/o'?reilly/i, "oreillyauto.com"],
+  [/autozone/i, "autozone.com"], [/u-?haul/i, "uhaul.com"], [/^hertz/i, "hertz.com"], [/southwest air/i, "southwest.com"], [/airbnb/i, "airbnb.com"], [/doordash/i, "doordash.com"],
+  [/safeway/i, "safeway.com"], [/in-n-out/i, "in-n-out.com"], [/chipotle/i, "chipotle.com"], [/^shopify/i, "shopify.com"], [/^paypal/i, "paypal.com"], [/^square\b/i, "squareup.com"],
+  [/^gusto/i, "gusto.com"], [/^adp\b/i, "adp.com"], [/franchise tax|^ftb\b/i, "ftb.ca.gov"], [/^irs\b|internal revenue/i, "irs.gov"], [/^edd\b|employment development/i, "edd.ca.gov"], [/^dmv\b/i, "dmv.ca.gov"]];
+function qbVendorSites() {
+  var c = CacheService.getScriptCache(), k = "qbv:" + qbCfg().realm, hit = c.get(k); if (hit) return JSON.parse(hit);
+  var m = {}; try { qbQueryAll("select * from Vendor", "Vendor").forEach(function (v) { var u = v.WebAddr && v.WebAddr.URI; if (u) { var d = String(u).replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[\/?#]/)[0].toLowerCase(); if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) m[v.DisplayName] = d; } }); } catch (e) {}
+  try { c.put(k, JSON.stringify(m), 21600); } catch (e) {} return m;
+}
+function qbLogo(name, sites) {
+  if (!name) return ""; if (sites[name]) return sites[name];
+  for (var i = 0; i < QB_BRANDS.length; i++) if (QB_BRANDS[i][0].test(name)) return QB_BRANDS[i][1];
+  return "";
+}
+function qbSpendRows(days) {
+  var since = Utilities.formatDate(new Date(Date.now() - days * 864e5), CONFIG.TZ, "yyyy-MM-dd"), out = [], sites = qbVendorSites();
+  var push = function (type, x, who, from) {
+    (x.Line || []).forEach(function (l) {
+      var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail; if (!d) return;
+      var acc = d.AccountRef || d.ItemRef || {}, sign = x.Credit === true ? -1 : 1;
+      out.push({ type: type, id: String(x.Id), line: String(l.Id || ""), date: x.TxnDate || "", who: who || "", logo: qbLogo(who, sites), amount: cents(num(l.Amount) * sign),
+        what: l.Description || x.PrivateNote || "", account: acc.name || "", accountId: d.AccountRef ? String(d.AccountRef.value) : "", item: !!l.ItemBasedExpenseLineDetail,
+        cust: d.CustomerRef ? String(d.CustomerRef.value) : "", custName: d.CustomerRef ? d.CustomerRef.name || "" : "", from: from || "", bucket: qbBucket(acc.name) });
+    });
+  };
+  qbQueryAll("select * from Purchase where TxnDate >= '" + since + "'", "Purchase").forEach(function (x) { push("Purchase", x, (x.EntityRef || {}).name, (x.AccountRef || {}).name); });
+  qbQueryAll("select * from Bill where TxnDate >= '" + since + "'", "Bill").forEach(function (x) { push("Bill", x, (x.VendorRef || {}).name, "Bill" + (num(x.Balance) > 0 ? " · open" : " · paid")); });
+  try {
+    qbQueryAll("select * from TimeActivity where TxnDate >= '" + since + "'", "TimeActivity").forEach(function (a) {
+      var h = num(a.Hours) + num(a.Minutes) / 60, who = ((a.EmployeeRef || a.VendorRef || {}).name) || "Crew";
+      out.push({ type: "TimeActivity", id: String(a.Id), line: "", date: a.TxnDate || "", who: who, logo: "", hours: Math.round(h * 100) / 100, amount: a.CostRate ? cents(h * num(a.CostRate)) : 0,
+        what: a.Description || "Hours", account: "Labor", accountId: "", item: false, cust: a.CustomerRef ? String(a.CustomerRef.value) : "", custName: a.CustomerRef ? a.CustomerRef.name || "" : "", from: "Timesheet", bucket: "labor" });
+    });
+  } catch (e) {}
+  return out.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+}
+ACTIONS.qbSpend = function (me, b) {
+  qbNeedWrite(me); qbCheck();
+  var days = Math.max(7, Math.min(365, Number(b.days) || 60)), list = qbSpendRows(days), q = String(b.q || "").toLowerCase().trim(), proj = {}, byCust = {};
+  rows("Projects").forEach(function (p) { if (p.status !== "deleted") { proj[p.id] = p; if (p.qb_customer) byCust[p.qb_customer] = p.id; } });
+  var only = b.projectId ? needProject(me, b.projectId) : null;
+  if (b.filter === "nojob") list = list.filter(function (r) { return !r.cust; });
+  if (only) list = list.filter(function (r) { return only.qb_customer && r.cust === only.qb_customer; });
+  if (q) list = list.filter(function (r) { return (r.who + " " + r.what + " " + r.account + " " + r.custName).toLowerCase().indexOf(q) > -1; });
+  var total = list.reduce(function (a, r) { return a + (r.amount || 0); }, 0), noJob = 0;
+  list.forEach(function (r) { if (!r.cust) noJob += r.amount || 0; r.project = byCust[r.cust] || ""; });
+  var off = Math.max(0, Number(b.offset) || 0), lim = Math.max(10, Math.min(200, Number(b.limit) || 60));
+  return { days: days, count: list.length, total: cents(total), noJob: cents(noJob), rows: list.slice(off, off + lim), more: list.length > off + lim,
+    projects: Object.keys(proj).map(function (id) { return { id: id, name: proj[id].name, qb: proj[id].qb_customer || "" }; }) };
+};
+ACTIONS.qbCategories = function (me) {
+  qbNeedWrite(me);
+  var c = CacheService.getScriptCache(), k = "qbcat:" + qbCfg().realm, hit = c.get(k); if (hit) return { categories: JSON.parse(hit) };
+  var list = qbQueryAll("select * from Account where Active = true", "Account").filter(function (a) { return ["Expense", "Cost of Goods Sold", "Other Expense"].indexOf(a.AccountType) > -1; })
+    .map(function (a) { return { id: String(a.Id), name: a.FullyQualifiedName || a.Name, bucket: qbBucket(a.FullyQualifiedName || a.Name) }; }).sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+  try { c.put(k, JSON.stringify(list), 3600); } catch (e) {}
+  return { categories: list };
+};
+var QB_PATH = { Purchase: "purchase", Bill: "bill", TimeActivity: "timeactivity" };
+/* Put a charge (or some of its lines) on a job, and/or give it a new category. Writes QuickBooks, logs what it was. */
+function qbApply(type, id, lines, cust, accountId) {
+  var x = qbGet("/" + QB_PATH[type] + "/" + id)[type], before = {}, after = {}, n = 0;
+  if (!x) throw new Error("QuickBooks couldn't find that charge.");
+  var setCust = function (holder, key) { if (cust == null) return; if (cust) holder.CustomerRef = { value: String(cust) }; else delete holder.CustomerRef; };
+  if (type === "TimeActivity") {
+    before.t = { cust: x.CustomerRef ? String(x.CustomerRef.value) : "" }; setCust(x); after.t = { cust: cust == null ? before.t.cust : cust }; n = 1;
+  } else (x.Line || []).forEach(function (l) {
+    var d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail; if (!d || (lines && lines.length && lines.indexOf(String(l.Id)) < 0)) return;
+    var k = String(l.Id || ""); before[k] = { cust: d.CustomerRef ? String(d.CustomerRef.value) : "", acc: d.AccountRef ? String(d.AccountRef.value) : "" };
+    setCust(d); if (accountId && l.AccountBasedExpenseLineDetail) d.AccountRef = { value: String(accountId) };
+    after[k] = { cust: d.CustomerRef ? String(d.CustomerRef.value) : "", acc: d.AccountRef ? String(d.AccountRef.value) : "" }; n++;
+  });
+  if (!n) throw new Error("Nothing on that charge to change.");
+  qbSend("post", "/" + QB_PATH[type], x);
+  return { before: before, after: after };
+}
+ACTIONS.qbAssign = function (me, b) {
+  qbNeedWrite(me);
+  var type = String(b.type || ""), id = String(b.id || ""); if (!QB_PATH[type] || !/^\d{1,15}$/.test(id)) throw new Error("Pick a charge.");
+  var cust = null, p = null;
+  if (b.projectId) { p = needProject(me, b.projectId); cust = qbEnsureCustomer(me, p); }
+  else if (b.customerId === "") cust = "";
+  else if (b.customerId != null) { if (!/^\d{1,12}$/.test(String(b.customerId))) throw new Error("Pick a job."); cust = String(b.customerId); }
+  var acc = b.accountId ? String(b.accountId) : ""; if (acc && !/^\d{1,12}$/.test(acc)) throw new Error("Pick a category.");
+  if (cust == null && !acc) throw new Error("Pick a job or a category.");
+  var lines = [].concat(b.lines || (b.line ? [b.line] : [])).map(String).filter(function (s) { return /^\d{1,6}$/.test(s); });
+  var ch = qbApply(type, id, lines, cust, acc), logId = newId("q");
+  insert("QbLog", { id: logId, at: now(), by: me.email, kind: "assign", txn_type: type, txn_id: id, before: JSON.stringify(ch.before), after: JSON.stringify(ch.after), undone: "" });
+  rows("Projects").forEach(function (x) { if (x.qb_customer && (x.qb_customer === cust || JSON.stringify(ch.before).indexOf('"' + x.qb_customer + '"') > -1)) qbBustProject(x); });
+  return { logId: logId, project: p ? p.id : "" };
+};
+ACTIONS.qbUndo = function (me, b) {
+  qbNeedWrite(me); var l = findBy("QbLog", "id", b.logId); if (!l) throw new Error("Nothing to undo."); if (l.undone) throw new Error("Already undone.");
+  var before = parseJson(l.before, {}), x = qbGet("/" + QB_PATH[l.txn_type] + "/" + l.txn_id)[l.txn_type];
+  if (l.txn_type === "TimeActivity") { if (before.t.cust) x.CustomerRef = { value: before.t.cust }; else delete x.CustomerRef; }
+  else (x.Line || []).forEach(function (ln) {
+    var k = String(ln.Id || ""), d = ln.AccountBasedExpenseLineDetail || ln.ItemBasedExpenseLineDetail; if (!d || !before[k]) return;
+    if (before[k].cust) d.CustomerRef = { value: before[k].cust }; else delete d.CustomerRef;
+    if (before[k].acc && ln.AccountBasedExpenseLineDetail) d.AccountRef = { value: before[k].acc };
+  });
+  qbSend("post", "/" + QB_PATH[l.txn_type], x);
+  update("QbLog", "id", l.id, { undone: now() });
+  rows("Projects").forEach(function (p) { if (p.qb_customer) qbBustProject(p); });
+  return {};
 };
 
 var WIPE_TABLES = ["Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads"];

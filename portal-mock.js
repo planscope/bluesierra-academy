@@ -544,6 +544,7 @@
       accounts: [{ name: "Payroll Expenses:Wages", amount: 39800, bucket: "labor" }, { name: "Job Materials", amount: 38900, bucket: "materials" }, { name: "Subcontractors", amount: 21800, bucket: "subs" }, { name: "Payroll Expenses:Taxes", amount: 6400, bucket: "labor" }, { name: "Equipment Rental", amount: 3240, bucket: "other" }, { name: "Dump fees", amount: 2200, bucket: "other" }],
       owe: { open: 14260, overdue: 3120 }, bills: [{ vendor: "Golden State Lumber", number: "88231", due: "2026-10-30", amount: 3120, late: true, what: "Job Materials" }, { vendor: "Peninsula Electric", number: "1207", due: "2026-11-14", amount: 8400, late: false, what: "Subcontractors" }, { vendor: "Ferguson Plumbing", number: "55-901", due: "2026-11-22", amount: 2740, late: false, what: "Job Materials" }],
       recent: [{ date: "2026-11-04", who: "Home Depot", what: "Framing lumber, hangers", amount: 1284.55, bucket: "materials" }, { date: "2026-11-01", who: "Payroll", what: "Payroll Expenses:Wages", amount: 6240, bucket: "labor" }, { date: "2026-10-28", who: "Peninsula Electric", what: "Rough-in progress billing", amount: 8400, bucket: "subs" }, { date: "2026-10-24", who: "Sunbelt Rentals", what: "Mini excavator, 3 days", amount: 1080, bucket: "other" }],
+      payments: [{ date: "2026-10-20", amount: 42000, method: "Check", ref: "1088" }, { date: "2026-09-18", amount: 40000, method: "ACH", ref: "" }, { date: "2026-08-15", amount: 40000, method: "Check", ref: "1032" }],
       hours: { total: 612, people: [{ name: "Miguel R.", hours: 214 }, { name: "Luis P.", hours: 188 }, { name: "Andrés G.", hours: 141 }, { name: "Chris T.", hours: 69 }] }, warnings: [] });
   };
   ACTIONS.qbFinance = function (db, me, b) {
@@ -565,6 +566,52 @@
     if (me.role !== "admin") throw new Error("Only Jesús creates projects from QuickBooks.");
     var r = ACTIONS.saveProject(db, me, { project: { name: b.name, client_name: b.client } }); var p = db.projects.filter(function (x) { return x.id === r.project.id; })[0]; p.qb_customer = String(b.customerId); return { project: r.project };
   };
+  // QuickBooks writes in the preview: a pretend company that remembers what you change.
+  function qbW(db, me) { if (!meOut(me).money) throw new Error("That's #money. Ask Jesús to tag you #money."); if (!(db.qb || {}).connected) throw new Error("QuickBooks isn't connected."); }
+  ACTIONS.qbCreateCustomer = function (db, me, b) { qbW(db, me); var p = needProject(db, me, b.projectId); if (p.qb_customer) return { customerId: p.qb_customer, existed: true };
+    p.qb_customer = String(80 + db.projects.indexOf(p)); var street = String(p.address || "").split(",")[0].trim(); return { customerId: p.qb_customer, name: street && p.client_name ? street + "/" + p.client_name : p.name }; };
+  var _mSave = ACTIONS.saveInvoice;
+  ACTIONS.saveInvoice = function (db, me, b) { var r = _mSave(db, me, b), it = db.invoices.filter(function (i) { return i.id === r.id; })[0] || db.invoices[db.invoices.length - 1];
+    if ((b.qb || (it && it.qb_id)) && b.qb !== false && meOut(me).money && (db.qb || {}).connected && it && it.status !== "draft") {
+      var p = needProject(db, me, b.projectId); if (!p.qb_customer) ACTIONS.qbCreateCustomer(db, me, { projectId: p.id });
+      if (!it.qb_id) { db.qbNext = (db.qbNext || 1100) + 1; it.qb_id = String(db.qbNext); it.number = String(db.qbNext); it.pay_url = it.pay_url || "https://connect.intuit.com/pay/sample"; }
+      r.qb = { id: it.qb_id, number: it.number, voided: it.status === "void" || undefined, payment: it.status === "paid" && !it.qbPaid ? { id: "p1", amount: num(it.amount) - num(it.retainage) } : undefined }; if (it.status === "paid") it.qbPaid = 1; }
+    return r; };
+  ACTIONS.qbSendInvoice = function (db, me, b) { qbW(db, me); return { to: "client@example.com" }; };
+  function spSeed(db) {
+    if (db.spend) return db.spend;
+    var L = function (type, id, line, date, who, logo, amount, what, account, accountId, cust, from, bucket, extra) { return Object.assign({ type: type, id: id, line: line, date: date, who: who, logo: logo, amount: amount, what: what, account: account, accountId: accountId, item: false, cust: cust, custName: cust ? "Sample Client" : "", from: from, bucket: bucket }, extra || {}); };
+    db.spend = [
+      L("Purchase", "41", "1", "2026-11-05", "The Home Depot #0627", "homedepot.com", 1284.55, "Framing lumber, hangers", "Job Materials", "80", "", "Amex Business Gold", "materials"),
+      L("Purchase", "42", "1", "2026-11-04", "Chevron 0091", "chevron.com", 96.4, "Truck fuel", "Truck fuel", "84", "", "Amex Business Gold", "other"),
+      L("Bill", "60", "1", "2026-11-03", "Peninsula Electric", "", 8400, "Rough-in progress billing", "Subcontractors", "82", "58", "Bill · open", "subs"),
+      L("Purchase", "43", "1", "2026-11-02", "Lowe's #1702", "lowes.com", 342.18, "Tile spacers, thinset", "Job Materials", "80", "", "Chase Ink", "materials"),
+      L("TimeActivity", "7", "", "2026-11-02", "Miguel R.", "", 320, "Framing", "Labor", "", "58", "Timesheet", "labor", { hours: 8 }),
+      L("Purchase", "44", "1", "2026-11-01", "Sunbelt Rentals", "sunbeltrentals.com", 1080, "Mini excavator, 3 days", "Equipment Rental", "83", "", "Chase Checking", "other"),
+      L("Bill", "61", "1", "2026-10-30", "Vulcan Materials Company", "vulcanmaterials.com", 1000, "Base rock", "Job Materials", "80", "", "Bill · open", "materials"),
+      L("Purchase", "45", "1", "2026-10-29", "Amazon", "amazon.com", 61.2, "Shop vac filters", "Supplies", "85", "", "Amex Business Gold", "materials"),
+      L("Purchase", "46", "1", "2026-10-28", "Ferguson Plumbing", "ferguson.com", 2740, "Rough plumbing", "Job Materials", "80", "58", "Chase Ink", "materials"),
+      L("Purchase", "47", "1", "2026-10-27", "Starbucks", "starbucks.com", 38.75, "Crew coffee", "Meals", "86", "", "Amex Business Gold", "other")];
+    return db.spend;
+  }
+  ACTIONS.qbSpend = function (db, me, b) { qbW(db, me); var list = spSeed(db).slice(), byC = {}; db.projects.forEach(function (p) { if (p.qb_customer) byC[p.qb_customer] = p.id; });
+    var only = b.projectId ? needProject(db, me, b.projectId) : null, q = String(b.q || "").toLowerCase();
+    if (b.filter === "nojob") list = list.filter(function (r) { return !r.cust; });
+    if (only) list = list.filter(function (r) { return only.qb_customer && r.cust === only.qb_customer; });
+    if (q) list = list.filter(function (r) { return (r.who + " " + r.what + " " + r.account).toLowerCase().indexOf(q) > -1; });
+    list.forEach(function (r) { r.project = byC[r.cust] || ""; });
+    var off = Number(b.offset) || 0, lim = Number(b.limit) || 40;
+    return { days: b.days || 60, count: list.length, total: list.reduce(function (a, r) { return a + r.amount; }, 0), noJob: list.filter(function (r) { return !r.cust; }).reduce(function (a, r) { return a + r.amount; }, 0),
+      rows: list.slice(off, off + lim), more: list.length > off + lim, projects: db.projects.filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return { id: p.id, name: p.name, qb: p.qb_customer || "" }; }) }; };
+  ACTIONS.qbCategories = function (db, me) { qbW(db, me); return { categories: [{ id: "83", name: "Equipment Rental" }, { id: "80", name: "Job Materials" }, { id: "86", name: "Meals" }, { id: "82", name: "Subcontractors" }, { id: "85", name: "Supplies" }, { id: "84", name: "Truck fuel" }] }; };
+  ACTIONS.qbAssign = function (db, me, b) { qbW(db, me); var r = spSeed(db).filter(function (x) { return x.type === b.type && x.id === b.id; })[0]; if (!r) throw new Error("Not found");
+    var before = { cust: r.cust, accountId: r.accountId, account: r.account }, p = null;
+    if (b.projectId) { p = needProject(db, me, b.projectId); if (!p.qb_customer) ACTIONS.qbCreateCustomer(db, me, { projectId: p.id }); r.cust = p.qb_customer; }
+    else if (b.customerId != null) r.cust = b.customerId;
+    if (b.accountId) { r.accountId = b.accountId; r.account = ({ 83: "Equipment Rental", 80: "Job Materials", 86: "Meals", 82: "Subcontractors", 85: "Supplies", 84: "Truck fuel" })[b.accountId] || r.account; }
+    db.qbLog = db.qbLog || []; var lid = "q" + db.qbLog.length; db.qbLog.push({ id: lid, type: b.type, txn: b.id, before: before }); return { logId: lid, project: p ? p.id : "" }; };
+  ACTIONS.qbUndo = function (db, me, b) { qbW(db, me); var l = (db.qbLog || []).filter(function (x) { return x.id === b.logId; })[0]; if (!l || l.undone) throw new Error("Nothing to undo.");
+    var r = spSeed(db).filter(function (x) { return x.type === l.type && x.id === l.txn; })[0]; Object.assign(r, l.before); l.undone = 1; return {}; };
   var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1 };
   function previewMe(db, role) {
     if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");

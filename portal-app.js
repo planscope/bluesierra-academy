@@ -491,7 +491,7 @@
     if (st.error) return '<div class="card qb-card"><div class="qb-h">' + qbLogo() + "<b>From QuickBooks</b></div><p class=\"muted small\">" + esc(st.error) + "</p></div>";
     if (!st.linked) {
       if (!S.qbCust) { S.qbCust = "loading"; call("qbCustomers").then(function (r) { S.qbCust = r.customers; }).catch(function (e) { S.qbCust = []; toast(e.message); }).then(function () { keepScroll(render); }); }
-      return '<div class="card qb-card"><div class="qb-h">' + qbLogo() + "<div><b>From QuickBooks</b><div class=\"muted small\">Which QuickBooks customer is this project?</div></div></div>" +
+      return '<div class="card qb-card"><div class="qb-h">' + qbLogo() + "<div><b>QuickBooks</b><div class=\"muted small\">Which QuickBooks customer is this project?</div></div>" + (S.me.money ? '<button class="btn sm" data-a="qbCreateCust" style="margin-left:auto">Create it in QuickBooks</button>' : "") + "</div>" +
         (S.qbCust === "loading" ? '<p class="muted small">Loading customers…</p>' : '<form class="form qb-link" data-form="qbLink"><select name="customer" required><option value="">Pick the customer</option>' + (S.qbCust || []).map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + "</option>"; }).join("") + '</select><button class="btn sm" type="submit">Link</button></form>') + "</div>";
     }
     return '<div class="card qb-card"><div class="qb-h">' + qbLogo() + '<div><b>From QuickBooks</b><div class="muted small">Bring an invoice in: the client sees the real QuickBooks PDF (only if they can see Contract & billing).</div></div><button class="link small" data-a="qbUnlink" style="margin-left:auto">Change customer</button></div>' +
@@ -1457,11 +1457,12 @@
     var table = list.length ? '<div class="card tbl" data-lenis-prevent><table class="t inv"><thead><tr><th>Invoice</th><th>Issued</th><th class="num">Work billed</th>' + (showRet ? '<th class="num">Retainage</th>' : "") + '<th class="num">Amount due</th>' + (m.has ? '<th class="num">Contract left after</th>' : "") + "<th>Status</th><th></th></tr></thead><tbody>" +
       list.map(function (i) {
         var counted = m.after[i.id] != null;
-        return '<tr id="inv-' + esc(i.id) + '"' + (counted ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + esc(i.number) + "</b><div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + (i.due ? "<div class='muted small'>Due " + day(i.due) + "</div>" : "") + "</td>" +
+        return '<tr id="inv-' + esc(i.id) + '"' + (counted ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + esc(i.number) + "</b>" + (i.qb_id && staff() ? ' <span class="qb-badge" title="In QuickBooks">QB</span>' : "") + "<div class='muted small'>" + esc(i.title) + "</div></td><td>" + day(i.issued) + (i.due ? "<div class='muted small'>Due " + day(i.due) + "</div>" : "") + "</td>" +
           '<td class="num">' + money(i.amount) + "</td>" + (showRet ? '<td class="num">' + (i.retainage ? (i.retainage > 0 ? "−" : "+") + money(Math.abs(i.retainage)) + (i.retainage < 0 ? "<div class='muted small'>released</div>" : "") : "—") + "</td>" : "") +
           '<td class="num"><b style="font-weight:500">' + money(i.amount - (i.retainage || 0)) + "</b></td>" + (m.has ? '<td class="num">' + (counted ? money(m.after[i.id]) : "—") + "</td>" : "") + "<td>" + pill(i.status) + "</td>" +
           '<td><div class="row-actions">' + (i.pdf ? '<a class="btn ghost sm" href="' + esc(i.pdf) + '" target="_blank" rel="noopener noreferrer">PDF</a>' : "") +
           (i.pay_url && i.status !== "paid" && !staff() ? '<a class="btn sm" href="' + esc(i.pay_url) + '" target="_blank" rel="noopener noreferrer">Pay</a>' : "") +
+          (S.me.money && i.qb_id && i.status !== "paid" && i.status !== "void" && i.status !== "draft" ? '<button class="btn ghost sm" data-a="qbSendInv" data-id="' + esc(i.id) + '" title="Email it from QuickBooks with its pay link">Email</button>' : "") +
           (staff() ? '<button class="btn ghost sm" data-a="modal" data-m="invoice" data-id="' + esc(i.id) + '">Edit</button>' : "") + "</div></td></tr>";
       }).join("") + "</tbody></table></div>" + (m.has ? '<p class="muted small" style="margin-top:8px">“Work billed” counts against the contract. ' + (showRet ? "Retainage is held back from each payment and paid at completion, so “Amount due” is what gets paid now. " : "") + "Drafts and void invoices don't count.</p>" : "")
       : '<div class="empty">No invoices yet.</div>';
@@ -1502,7 +1503,7 @@
     if (!m) { loadMoney(false); return head + '<div class="loading" style="min-height:30vh">Counting the money…</div>'; }
     if (m.err) return head + '<div class="empty">' + esc(m.err) + ' <button class="link" data-a="moneyRefresh">Try again</button></div>';
     if (!m.connected) return head + '<div class="empty">QuickBooks isn’t connected yet. ' + (S.me.admin ? '<button class="link" data-a="homeTeamQb">Connect it in Home → Team</button>.' : "Jesús can connect it from Home → Team.") + "</div>";
-    if (!m.linked) return head + '<div class="empty">This job isn’t linked to its QuickBooks customer yet. <button class="link" data-a="tab" data-t="invoices">Link it in Contract & billing → From QuickBooks</button>.</div>';
+    if (!m.linked) return head + '<div class="card fin-empty">' + qbLogo() + '<div><b>This job isn’t in QuickBooks yet</b><p class="muted small">Create it as a QuickBooks customer and its invoices, payments and costs flow both ways. Already there? Link it in Contract & billing.</p></div><div class="fe-acts"><button class="btn" data-a="qbCreateCust">Create it in QuickBooks</button><button class="link" data-a="tab" data-t="invoices">Link an existing one</button></div></div>';
     var inn = m.inn || {}, out = m.out || {}, owe = m.owe || {}, billed = inn.billed || 0, spent = out.total || 0, profit = billed - spent, mood = moneyMood(billed, spent);
     var margin = billed ? Math.round(profit / billed * 1000) / 10 : null;
     var hero = '<div class="card money-hero mood-' + mood[0] + '">' + piggy(mood[0], margin == null ? 0 : margin * 2.5) +
@@ -1526,10 +1527,103 @@
     var hrs = m.hours && m.hours.total ? '<div class="section-title"><h2>Crew hours</h2><span class="muted small">' + m.hours.total + " hours logged to this job</span></div><div class=\"card vs\">" + m.hours.people.map(function (h) { return '<div class="vs-row"><span>' + esc(h.name) + '</span><div class="vs-track"><i class="vs-hrs" style="width:' + pctOf(h.hours, m.hours.people[0].hours) + '%"></i></div><b>' + h.hours + " h</b></div>"; }).join("") + "</div>" : "";
     var recent = (m.recent || []).length ? '<div class="section-title"><h2>Latest spending</h2><span class="muted small">Last 6 months</span></div><div class="card m-list">' + m.recent.map(function (r) {
       return '<div class="m-row"><div><b>' + esc(r.who || r.what) + '</b><small class="muted">' + esc(r.what) + "</small></div><span class=\"m-due\"><i class=\"mdot mb-" + r.bucket + '"></i>' + day(r.date) + "</span><b>" + money(r.amount) + "</b></div>"; }).join("") + "</div>" : "";
-    return head + hero + tiles + where + vs + bills + hrs + recent +
+    return head + moneyFlow(m, S.pid) + hero + tiles + where + vs + bills + hrs + moneyLists(m, S.pid) +
       '<p class="muted small m-foot">From QuickBooks' + (m.company ? " (" + esc(m.company) + ")" : "") + " · updated " + day(m.updated) + (m.cached ? " · saved copy, Refresh for the latest" : "") + ((m.warnings || []).length ? " · couldn’t read: " + esc(m.warnings.join(", ")) : "") + ".</p>";
   }
 
+  /* ---------------- Spending: every charge with its store's logo, put on a job in one tap (it's saved in QuickBooks) ---------------- */
+  function spKey(r) { return r.type + ":" + r.id + ":" + (r.line || ""); }
+  function spLogo(r) {
+    var name = String(r.who || "?").replace(/^the\s+/i, "").trim(), h = 0; name.split("").forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) % 360; });
+    return '<span class="sp-logo" style="--h:' + h + '" aria-hidden="true"><span>' + esc((name.charAt(0) || "?").toUpperCase()) + "</span>" +
+      (r.logo ? '<img src="https://www.google.com/s2/favicons?domain=' + encodeURIComponent(r.logo) + '&amp;sz=64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : "") + "</span>";
+  }
+  async function loadSpend(k, params, more) {
+    S.spend = S.spend || {}; S.spBusy = S.spBusy || {}; if (S.spBusy[k]) return; S.spBusy[k] = 1;
+    var cur = S.spend[k];
+    try {
+      var r = await call("qbSpend", Object.assign({}, params, { offset: more && cur ? cur.rows.length : 0 }));
+      if (more && cur) { r.rows = cur.rows.concat(r.rows); }
+      r.params = params; S.spend[k] = r; S.spProjects = r.projects;
+    } catch (e) { S.spend[k] = { err: e.message, params: params }; }
+    S.spBusy[k] = 0; keepScroll(render);
+  }
+  function spFind(key) { var hit = null; Object.keys(S.spend || {}).forEach(function (k) { ((S.spend[k] || {}).rows || []).forEach(function (r) { if (spKey(r) === key) hit = hit || r; }); }); return hit; }
+  function spRow(r, pid) {
+    var key = spKey(r), undo = (S.spUndo || {})[key], projs = S.spProjects || [], cur = r.project ? r.project : r.cust ? "c:" + r.cust : "";
+    var job = '<select class="sp-sel" data-sp-job="' + esc(key) + '" aria-label="Job"><option value="-"' + (cur ? "" : " selected") + ">No job</option>" +
+      (r.cust && !r.project ? '<option value="c:' + esc(r.cust) + '" selected>' + esc(r.custName || "QuickBooks customer") + "</option>" : "") +
+      projs.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === r.project ? " selected" : "") + ">" + esc(p.name) + "</option>"; }).join("") + "</select>";
+    var cat = r.type === "TimeActivity" || r.item ? '<span class="sp-cat muted small">' + esc(r.account) + "</span>"
+      : S.spCats && S.spCats.length ? '<select class="sp-sel cat" data-sp-cat="' + esc(key) + '" aria-label="Category">' + (S.spCats.some(function (c) { return c.id === r.accountId; }) ? "" : '<option value="">' + esc(r.account) + "</option>") +
+          S.spCats.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === r.accountId ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") + "</select>"
+      : '<button class="sp-cat link small" data-a="spCats" title="Change the category">' + esc(r.account || "Category") + "</button>";
+    var quick = pid && !r.cust ? '<button class="btn sm sp-add" data-a="spAdd" data-key="' + esc(key) + '" data-pid="' + esc(pid) + '">Add to this job</button>' : "";
+    return '<div class="sp-row b-' + esc(r.bucket || "other") + (S.spBusyRow === key ? " busy" : "") + '">' + spLogo(r) +
+      '<div class="sp-main"><b>' + esc(r.who || r.what || "Charge") + '</b><small class="muted">' + esc([day(r.date), r.what && r.what !== r.who ? r.what : "", r.from].filter(Boolean).join(" · ")) + "</small></div>" +
+      '<div class="sp-tags">' + cat + (quick || job) + (undo ? '<button class="link small" data-a="spUndo" data-key="' + esc(key) + '">Undo</button>' : "") + "</div>" +
+      '<b class="sp-amt' + (r.amount < 0 ? " pos" : "") + '">' + (r.type === "TimeActivity" ? (r.hours || 0) + " h" + (r.amount ? '<small class="muted">' + money(r.amount) + "</small>" : "") : (r.amount < 0 ? "+" : "") + money(Math.abs(r.amount))) + "</b></div>";
+  }
+  function spList(k, s, pid) {
+    if (!s) return '<div class="card sp-card"><p class="muted small">Loading charges…</p></div>';
+    if (s.err) return '<div class="card sp-card"><p class="muted small">' + esc(s.err) + ' <button class="link" data-a="spReload" data-k="' + esc(k) + '">Try again</button></p></div>';
+    if (!s.rows.length) return '<div class="card sp-card"><p class="muted small">' + (s.params && s.params.filter === "nojob" ? "Every charge is on a job. Nice." : "No charges here.") + "</p></div>";
+    return '<div class="card sp-card">' + s.rows.map(function (r) { return spRow(r, pid); }).join("") +
+      (s.more ? '<button class="btn ghost sm sp-more" data-a="spMore" data-k="' + esc(k) + '"' + (S.spBusy && S.spBusy[k] ? " disabled" : "") + ">Show more</button>" : "") + "</div>";
+  }
+  async function spAssign(key, val, kind) {
+    var r = spFind(key); if (!r) return; S.spBusyRow = key; keepScroll(render);
+    var body = { type: r.type, id: r.id, line: r.line || undefined };
+    if (kind === "cat") body.accountId = val;
+    else if (val === "-") body.customerId = "";
+    else if (val.indexOf("c:") === 0) body.customerId = val.slice(2);
+    else body.projectId = val;
+    try {
+      var res = await call("qbAssign", body); S.spUndo = S.spUndo || {}; S.spUndo[key] = res.logId;
+      if (kind === "cat") { r.accountId = val; r.account = ((S.spCats || []).filter(function (c) { return c.id === val; })[0] || {}).name || r.account; }
+      else { r.project = body.projectId || ""; r.cust = body.projectId ? ((S.spProjects || []).filter(function (p) { return p.id === body.projectId; })[0] || {}).qb || "x" : body.customerId || ""; if (body.projectId && res.project) (S.spProjects || []).forEach(function (p) { if (p.id === res.project && !p.qb) p.qb = r.cust; }); }
+      toast(kind === "cat" ? "Category changed in QuickBooks" : body.customerId === "" ? "Taken off the job in QuickBooks" : "Put on the job in QuickBooks");
+      S.fin = null; spRefreshAll();
+    } catch (e) { toast(e.message); }
+    S.spBusyRow = null; keepScroll(render);
+  }
+  /* After a change: totals and lists refresh in the background, keeping what's on screen until the new numbers arrive. */
+  function spRefreshAll() {
+    if (S.money) Object.keys(S.money).forEach(function (k) { if (k !== S.pid) delete S.money[k]; });
+    if (S.pid && S.money && S.money[S.pid] && !S.money[S.pid].err) loadMoney(true);
+    Object.keys(S.spend || {}).forEach(function (k) { if (k !== "fin" && S.spend[k] && S.spend[k].params) { var pr = S.spend[k].params; S.spend[k].params = null; S.spend[k].params = pr; loadSpend(k, pr); } });
+  }
+  function finSpending() {
+    var fl = S.spF || { filter: "all", q: "", days: 60 }, k = "fin", s = (S.spend || {})[k];
+    var params = { filter: fl.filter, q: fl.q, days: fl.days, limit: 40 };
+    if (!s || JSON.stringify(s.params) !== JSON.stringify(params)) { if (!(S.spBusy || {})[k]) loadSpend(k, params); }
+    var head = '<div class="section-title"><div><h2>Spending</h2><span class="muted small">Every card charge, check, bill and timesheet. Pick the job or category and it’s saved in QuickBooks.</span></div></div>' +
+      '<div class="sp-bar"><div class="chips ck-filter">' + [["all", "All"], ["nojob", "No job yet"]].map(function (o) { return '<button class="chip' + (fl.filter === o[0] ? " on" : "") + '" data-a="spFilter" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
+      '<input type="search" class="sp-q" data-sp-q placeholder="Search Home Depot, lumber, a job…" value="' + esc(fl.q) + '">' +
+      '<select class="sp-sel" data-sp-days aria-label="Period">' + [[30, "Last 30 days"], [60, "Last 60 days"], [90, "Last 90 days"], [180, "Last 6 months"], [365, "Last year"]].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === fl.days ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div>";
+    var sum = s && !s.err && s.rows ? '<div class="sp-sum"><span><b>' + s.count + "</b> charges</span><span><b>" + m0(s.total) + "</b> spent</span>" + (s.noJob ? '<span class="warn"><b>' + m0(s.noJob) + '</b> with no job · <button class="link" data-a="spFilter" data-v="nojob">put them on a job</button></span>' : '<span class="ok">Everything is on a job</span>') + "</div>" : "";
+    return head + sum + spList(k, s && JSON.stringify(s.params) === JSON.stringify(params) ? s : null);
+  }
+  /* Inside a project (#money): what came in, what went out, and the charges that still need a job. */
+  function moneyFlow(m, pid) {
+    var inn = m.inn || {}, out = m.out || {}, billed = inn.billed || 0, got = inn.collected || 0, spent = out.total || 0, profit = billed - spent, cash = got - spent, c = m.contract || 0;
+    var step = function (lbl, val, sub, cls, act) { return '<div class="mf-step ' + cls + '"><span class="eyebrow">' + lbl + "</span><b>" + money(val) + "</b><small>" + sub + "</small>" + (act || "") + "</div>"; };
+    return '<div class="card mflow">' +
+      step("Contract", c, c ? "the job" : "add contract lines", "c", '<button class="link small" data-a="tab" data-t="invoices">Contract</button>') + '<i class="mf-arrow">→</i>' +
+      step("Invoiced", billed, c ? pctOf(billed, c) + "% of the contract" : (inn.count || 0) + " invoices", "inv", '<button class="link small" data-a="modal" data-m="invoice">＋ New invoice</button>') + '<i class="mf-arrow">→</i>' +
+      step("Collected", got, inn.open ? money(inn.open) + " still owed" : "all collected", "got", '<button class="link small" data-a="tab" data-t="invoices">Record a payment</button>') + '<i class="mf-arrow">→</i>' +
+      step("Spent", spent, out.labor ? money(out.labor) + " labor" : "labor, materials, subs", "out", '<button class="link small" data-a="spJump">＋ Add costs</button>') + '<i class="mf-arrow">=</i>' +
+      step("Profit so far", profit, (billed ? Math.round(profit / billed * 100) + "% of billed · " : "") + "cash in hand " + m0(cash), profit < 0 ? "neg" : "pro") + "</div>";
+  }
+  function moneyLists(m, pid) {
+    var kj = "pj:" + pid, kn = "pn:" + pid, sj = (S.spend || {})[kj], sn = (S.spend || {})[kn];
+    if (!sj && !(S.spBusy || {})[kj]) loadSpend(kj, { projectId: pid, days: 365, limit: 25 });
+    if (!sn && !(S.spBusy || {})[kn]) loadSpend(kn, { filter: "nojob", days: 60, limit: 15 });
+    var pays = (m.payments || []).length ? '<div class="section-title"><h2>Money in</h2><span class="muted small">Payments received in QuickBooks</span></div><div class="card m-list">' + m.payments.map(function (y) {
+      return '<div class="m-row"><div><b>' + money(y.amount) + '</b><small class="muted">' + esc([y.method, y.ref ? "#" + y.ref : ""].filter(Boolean).join(" · ") || "Payment") + '</small></div><span class="m-due">' + day(y.date) + "</span><b class=\"pos\">+" + money(y.amount) + "</b></div>"; }).join("") + "</div>" : "";
+    return pays + '<div class="section-title"><h2>Costs on this job</h2><span class="muted small">Last 12 months · change the job or category right here</span></div>' + spList(kj, sj) +
+      '<div class="section-title" id="sp-nojob"><h2>Charges with no job yet</h2><span class="muted small">Last 60 days. If it was for this job, add it: QuickBooks gets it too.</span></div>' + spList(kn, sn, pid);
+  }
   /* ---------------- Home → Finances (#money): the whole company, Monarch-style, from QuickBooks ---------------- */
   async function loadFin(refresh) {
     if (S.finBusy) return; S.finBusy = 1; if (refresh && S.fin) S.fin.refreshing = true;
@@ -1618,7 +1712,7 @@
         free.map(function (p) { return '<div class="fj-row"><div class="fj-name"><b>' + esc(p.name) + '</b><small>Portal project</small></div><div></div><div class="fj-link"><select class="fin-sel" data-fin-proj="' + esc(p.id) + '"><option value="">Pick its QuickBooks customer…</option>' + unlinkedJobs.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + "</option>"; }).join("") + "</select></div></div>"; }).join("") + "</div>" : "");
     return '<div class="section-title fin-head"><div><h2>Finances</h2><span class="muted small">' + esc(f.company || "From QuickBooks") + (f.env === "sandbox" ? " · sandbox" : "") + " · only you and #money see this</span></div>" +
       '<button class="btn ghost sm" data-a="finRefresh"' + (f.refreshing ? " disabled" : "") + ">" + (f.refreshing ? "Counting…" : "Refresh") + "</button></div>" +
-      hero + '<div class="fin-grid">' + flow + year + "</div>" + '<div class="fin-grid">' + accts + bills + "</div>" + jobsCard +
+      hero + '<div class="fin-grid">' + flow + year + "</div>" + '<div class="fin-grid">' + accts + bills + "</div>" + finSpending() + jobsCard +
       '<p class="muted small m-foot">From QuickBooks · updated ' + day(f.updated) + (f.cached ? " · saved copy, Refresh for the latest" : "") + ((f.warnings || []).length ? " · couldn’t read: " + esc(f.warnings.join(", ")) : "") + ".</p>";
   }
   /* One small tooltip for every chart mark with data-tip="Title|line|line" (hover or keyboard focus). */
@@ -1860,6 +1954,7 @@
           (d && d.wipe ? '<div class="restore-box"><b>Saved copy from ' + day(String(d.wipe.at).slice(0, 10)) + "</b> · " + d.wipe.items + ' items<button type="button" class="btn sm" data-a="restoreWipe">Restore it</button></div>' : "") +
           '<label class="f">Type <b>' + esc(p.name) + '</b> to confirm<input type="text" data-wipe-confirm autocomplete="off"></label><button type="button" class="btn danger-btn" data-a="wipeProject">Start over</button></details>' : "") +
         (m.id && S.me.admin ? '<details class="danger"><summary>Delete this project</summary><p class="muted small">It disappears for everyone, including the client. Photos and files stay in Google Drive, and you can restore it from Home → Recently deleted.</p><label class="f">Type <b>' + esc(p.name) + '</b> to confirm<input type="text" data-del-confirm autocomplete="off"></label><button type="button" class="btn danger-btn" data-a="delProject" data-id="' + esc(p.id) + '">Delete project</button></details>' : "") +
+        (!m.id && S.me.money ? '<label class="check-line qb-line"><input type="checkbox" name="qb" checked> ' + qbLogo() + " Also create it as a customer in QuickBooks, so invoices and costs go to the right job</label>" : "") +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "invoice") {
@@ -1885,6 +1980,7 @@
         '<label class="f">PDF' + (i.pdf ? ' (one is attached; choose a file to replace it)' : "") + '<input type="file" name="pdf" accept="application/pdf"></label>' +
         '<label class="f">Notes (team only)<textarea name="notes">' + esc(i.notes) + "</textarea></label>" +
         '<label class="check-line"><input type="checkbox" name="notify"' + (m.id ? "" : " checked") + "> Email the client that it's ready</label>" +
+        (S.me.money ? '<label class="check-line qb-line"><input type="checkbox" name="qb"' + (i.qb_id || !m.id ? " checked" : "") + "> " + qbLogo() + (i.qb_id ? " In QuickBooks. Saving updates it there too (paid records the payment, void voids it)." : " Also create it in QuickBooks, with its PDF and pay link. Drafts stay here.") + "</label>" : "") +
         '<div class="actions">' + (m.id ? '<button type="button" class="btn ghost" data-a="delInvoice" data-id="' + esc(m.id) + '" style="margin-right:auto;color:var(--bad)">Delete invoice</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save invoice</button></div></form>';
     }
     if (m.type === "cline") {
@@ -2038,6 +2134,18 @@
       case "moneyRefresh": loadMoney(true); keepScroll(render); return;
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
+      case "qbCreateCust": run(b, async function () { var qc = await call("qbCreateCustomer", { projectId: S.pid }); S.qbp = null; S.qbCust = null; if (S.money) S.money[S.pid] = null; S.fin = null; await refresh(); toast(qc.existed ? "Already in QuickBooks" : "Created in QuickBooks as “" + qc.name + "”"); }); return;
+      case "qbSendInv":
+        if (!window.confirm("Email this invoice to the client from QuickBooks, with its pay link?")) return;
+        run(b, async function () { var rs = await call("qbSendInvoice", { invoiceId: b.dataset.id }); toast("Emailed from QuickBooks to " + rs.to); }); return;
+      case "spFilter": S.spF = Object.assign({ filter: "all", q: "", days: 60 }, S.spF || {}, { filter: b.dataset.v }); keepScroll(render); return;
+      case "spMore": var sk = b.dataset.k, sp = (S.spend || {})[sk]; if (sp) loadSpend(sk, sp.params, true); keepScroll(render); return;
+      case "spReload": var sk2 = b.dataset.k, sp2 = (S.spend || {})[sk2]; delete S.spend[sk2]; if (sp2) loadSpend(sk2, sp2.params); keepScroll(render); return;
+      case "spCats": if (S.spCats === "loading") return; S.spCats = "loading"; call("qbCategories").then(function (r) { S.spCats = r.categories; }).catch(function (e) { S.spCats = null; toast(e.message); }).then(function () { keepScroll(render); }); return;
+      case "spAdd": spAssign(b.dataset.key, b.dataset.pid, "job"); return;
+      case "spUndo":
+        run(b, async function () { var key = b.dataset.key; await call("qbUndo", { logId: S.spUndo[key] }); delete S.spUndo[key]; S.fin = null; if (S.spend && S.spend.fin) loadSpend("fin", S.spend.fin.params); spRefreshAll(); toast("Undone in QuickBooks"); }); return;
+      case "spJump": var el = root.querySelector("#sp-nojob"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return;
       case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
@@ -2232,6 +2340,10 @@
   });
   root.addEventListener("change", function (e) {
     if (e.target.matches("[data-fin-link], [data-fin-proj]")) { finLink(e.target); return; }
+    if (e.target.matches("[data-sp-job]")) { spAssign(e.target.dataset.spJob, e.target.value, "job"); return; }
+    if (e.target.matches("[data-sp-cat]")) { if (e.target.value) spAssign(e.target.dataset.spCat, e.target.value, "cat"); return; }
+    if (e.target.matches("[data-sp-q]")) { S.spF = Object.assign({ filter: "all", q: "", days: 60 }, S.spF || {}, { q: e.target.value.trim() }); keepScroll(render); return; }
+    if (e.target.matches("[data-sp-days]")) { S.spF = Object.assign({ filter: "all", q: "", days: 60 }, S.spF || {}, { days: Number(e.target.value) }); keepScroll(render); return; }
     if (e.target.matches("[data-att]")) {
       var k = e.target.dataset.att, fl = [].slice.call(e.target.files || []); S.att = S.att || { main: [], thread: [] };
       var roomA = Math.max(0, 5 - S.att[k].length); if (fl.length > roomA) toast("Up to 5 files per message.");
@@ -2356,6 +2468,7 @@
         var lf = f.querySelector("[name=logo]"); if (lf && lf.files && lf.files[0]) proj.logo = await resize(lf.files[0], 600);
         if (f.dataset.dropLogo) proj.logo = "";
         var r2 = await call("saveProject", { project: proj }); S.modal = null;
+        if (!proj.id && fd.get("qb")) { try { var qc = await call("qbCreateCustomer", { projectId: r2.project.id }); toast("Project created · in QuickBooks as “" + (qc.name || proj.name) + "”"); } catch (e) { toast("Project created. QuickBooks: " + e.message); } }
         if (!proj.id) { S.projects = null; return go(r2.project.id); }
         await refresh(true); toast("Project saved"); return;
       }
@@ -2366,8 +2479,9 @@
       if (kind === "invoice") {
         var file = f.querySelector("[name=pdf]").files[0], pdf = file ? await readPdf(file) : null, lineVals = null;
         if (f.querySelector("[name^='line:']")) { lineVals = {}; f.querySelectorAll("[name^='line:']").forEach(function (x) { if (Number(x.value)) lineVals[x.name.slice(5)] = x.value; }); }
-        await call("saveInvoice", { projectId: S.pid, notify: !!fd.get("notify"), invoice: { id: S.modal.id || undefined, number: v("number"), title: v("title"), amount: v("amount"), issued: v("issued"), due: v("due"), status: v("status"), paid_date: v("paid_date"), pay_url: v("pay_url"), pdf: pdf, notes: v("notes"), retainage: fd.has("retainage") ? v("retainage") || 0 : undefined, lines: lineVals || undefined } });
-        S.modal = null; await refresh(true); toast("Invoice saved"); return;
+        var ri = await call("saveInvoice", { projectId: S.pid, notify: !!fd.get("notify"), qb: S.me.money ? !!fd.get("qb") : undefined, invoice: { id: S.modal.id || undefined, number: v("number"), title: v("title"), amount: v("amount"), issued: v("issued"), due: v("due"), status: v("status"), paid_date: v("paid_date"), pay_url: v("pay_url"), pdf: pdf, notes: v("notes"), retainage: fd.has("retainage") ? v("retainage") || 0 : undefined, lines: lineVals || undefined } });
+        S.modal = null; S.qbp = null; if (S.money) S.money[S.pid] = null; await refresh(true);
+        toast(ri.qbError ? "Saved here. QuickBooks: " + ri.qbError : ri.qb ? (ri.qb.voided ? "Voided in QuickBooks too" : "Saved · QuickBooks invoice #" + (ri.qb.number || ri.qb.id) + (ri.qb.payment ? " · payment recorded" : ri.qb.paidInQb ? " · already paid in QuickBooks" : "")) : "Invoice saved"); return;
       }
       if (kind === "sched") {
         await call("saveScheduleItem", { projectId: S.pid, item: { id: S.modal.id || undefined, kind: v("kind"), title: v("title"), start: v("start"), end: v("kind") === "task" ? v("end") : "", phase: v("phase"), owner: v("owner"), status: v("status"), notes: v("notes") } });
