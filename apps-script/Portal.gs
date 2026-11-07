@@ -469,6 +469,8 @@ var ACTIONS = {
       var other = channel.slice(3).split("-").filter(function (k) { return k !== pkey(me.email); })[0];
       dmTo = membersOf(p).filter(function (x) { return pkey(x.email) === other; })[0];
       if (!dmTo) throw new Error("That person isn't on this project.");
+      // Private messages: Blue Sierra can write to anyone; clients, architects and the crew only to Blue Sierra (the crew never DMs a client).
+      if (!isStaff(me) && !isStaff(dmTo)) throw new Error("Private messages are with Blue Sierra. Write to " + first(dmTo.name) + " in the project chat instead.");
     }
     var root = "";
     if (b.threadId) {

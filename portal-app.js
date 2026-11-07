@@ -663,6 +663,7 @@
   function myChannels() { return (S.data && S.data.channels) || ["client"]; }
   function isDm(ch) { return /^dm:/.test(String(ch || "")); }
   function dmWith(ch) { var ks = String(ch).slice(3).split("-"), other = ks[0] === S.me.key ? ks[1] : ks[0]; return ((S.data && S.data.members) || []).filter(function (m) { return m.key === other; })[0] || { name: "Someone", key: other }; }
+  function dmOk(role) { return staff() || role === "admin" || role === "staff"; }
   function dmKey(otherKey) { return "dm:" + [S.me.key, otherKey].sort().join("-"); }
   function myDms() { var seen = {}; (S.data.messages || []).forEach(function (m) { if (isDm(m.channel) && dmWith(m.channel).role) seen[m.channel] = 1; }); if (isDm(S.chan)) seen[S.chan] = 1; return Object.keys(seen); }
   function chanLabel(ch) { return isDm(ch) ? "@ " + dmWith(ch).name : "# " + CH_INFO[ch][0]; }
@@ -2033,7 +2034,7 @@
     }
     if (m.type === "sheet") body = sheetModal(m);
     if (m.type === "dm") {
-      var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key; });
+      var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
       body = "<h2>Private message</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Only you and the person you pick will see it. Nobody else on the project, not even the team.</p>" +
         '<div class="dm-list">' + (ppl2.length ? ppl2.map(function (x) { return '<button class="dm-row" data-a="dmPick" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span></button>"; }).join("") : '<div class="empty">Nobody else is on this project yet.</div>') + "</div>" +
         '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-a="close">Cancel</button></div>';
@@ -2540,6 +2541,30 @@
   };
 
   /* ================= Beta v1.1: live chat, chat dock, support widget, smoother redraws ================= */
+  // The Webflow page smooth-scrolls with Lenis, which makes the wheel lag behind. Inside the portal: plain, instant scrolling.
+  root.setAttribute("data-lenis-prevent", "");
+  /* Smart redraws: instead of rebuilding the whole page on every update, only what changed is touched (morphdom).
+     Photos and maps don't flash, animations don't replay, and the box you're typing in is left alone. */
+  var MORPH = null;
+  (function () { var sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/morphdom@2.7.4/dist/morphdom-umd.min.js"; sc.async = true; sc.onload = function () { MORPH = window.morphdom || null; }; document.head.appendChild(sc); })();
+  (function () {
+    var desc = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML"); if (!desc || !desc.set) return;
+    try {
+      Object.defineProperty(root, "innerHTML", { configurable: true, get: function () { return desc.get.call(root); }, set: function (html) {
+        if (!MORPH || !root.firstElementChild) return desc.set.call(root, html);
+        var next = document.createElement("div"); desc.set.call(next, html);
+        try {
+          MORPH(root, next, { childrenOnly: true,
+            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help"); },
+            onBeforeElUpdated: function (from, to) {
+              if (from.isEqualNode(to)) return false;
+              if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
+              return true;
+            } });
+        } catch (e) { desc.set.call(root, html); }
+      } });
+    } catch (e) {}
+  })();
   var ERRLOG = [];
   window.addEventListener("error", function (e) { ERRLOG.push(String(e.message || e.error || "error").slice(0, 200)); if (ERRLOG.length > 10) ERRLOG.shift(); });
   var _call2 = call;
@@ -2629,6 +2654,7 @@
   function dockChans(d) {
     var ch = (d && d.channels) || ["client"], seen = {};
     ((d && d.messages) || []).forEach(function (m) { if (isDm(m.channel)) seen[m.channel] = 1; });
+    if (isDm(S.dock.ch)) seen[S.dock.ch] = 1;
     return ch.concat(Object.keys(seen));
   }
   function dockLabel(d, c) {
@@ -2667,7 +2693,7 @@
   }
   function dockPaint(fromFeed) {
     if (!DOCK) return;
-    var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid);
+    var d = S.dock, onFull = S.pid && S.tab === "messages" && (!d.pid || d.pid === S.pid) && !(d.open && !d.min);
     if (!d.pid && S.pid) d.pid = S.pid;
     if (!d.pid && (S.projects || []).length) d.pid = S.projects[0].id;
     DOCK.className = (d.open && !d.min ? "open" : "") + (d.closed || onFull ? " gone" : "");
@@ -2679,7 +2705,16 @@
     var projs = S.projects || [], pname = (projs.filter(function (p) { return p.id === d.pid; })[0] || {}).name || "Chat";
     DOCK.querySelector(".dk-head").innerHTML = (projs.length > 1 ? '<select class="dk-proj" aria-label="Project">' + projs.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === d.pid ? " selected" : "") + ">" + esc(p.name) + (p.unread ? " (" + p.unread + ")" : "") + "</option>"; }).join("") + "</select>" : "<b>" + esc(pname) + "</b>") +
       '<button class="dk-x" data-a="dkFull" title="Open the full chat">⤢</button><button class="dk-x" data-a="dkMin" title="Minimize">–</button><button class="dk-x" data-a="dkClose" title="Close">×</button>';
-    DOCK.querySelector(".dk-chans").innerHTML = chans.map(function (c) { return '<button class="dk-chan' + (c === d.ch ? " on" : "") + '" data-a="dkChan" data-c="' + esc(c) + '">' + esc(dockLabel(data, c)) + "</button>"; }).join("");
+    var unreadOf = function (c) { if (!data || c === d.ch) return 0; var r = (data.reads || {})[c] || ""; return (data.messages || []).filter(function (m) { return (m.channel || "client") === c && !m.mine && m.at > r; }).length; };
+    DOCK.querySelector(".dk-chans").innerHTML = chans.map(function (c) { var n = unreadOf(c); return '<button class="dk-chan' + (c === d.ch ? " on" : "") + (isDm(c) ? " dm" : "") + '" data-a="dkChan" data-c="' + esc(c) + '">' + esc(dockLabel(data, c)) + (n ? "<i>" + n + "</i>" : "") + "</button>"; }).join("") +
+      '<button class="dk-chan add' + (d.picking ? " on" : "") + '" data-a="dkPick" title="Message one person privately">＋ Private</button>';
+    if (d.picking) {
+      var who = ((data && data.members) || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
+      var bodyP = DOCK.querySelector(".dk-body"), htmlP = '<div class="dk-pick"><b>Message privately</b><span class="muted small">Only the two of you will see it.' + (staff() ? "" : " You can message Blue Sierra.") + "</span>" +
+        (who.length ? who.map(function (x) { return '<button class="dk-who" data-a="dkDm" data-k="' + esc(x.key) + '">' + av(x.name, x.avatar, x.role, "xs", x.key) + "<span><b>" + esc(x.name) + '</b><small class="muted">' + esc(roleName(x.role)) + "</small></span>" + presDot(x.key) + "</button>"; }).join("") : '<p class="muted small">Nobody to message here yet.</p>') + "</div>";
+      if (bodyP.dataset.h !== String(scHash(htmlP))) { bodyP.innerHTML = htmlP; bodyP.dataset.h = scHash(htmlP); }
+      return;
+    }
     var body = DOCK.querySelector(".dk-body"), atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     var list = data ? (data.messages || []).filter(function (m) { return (m.channel || "client") === d.ch && !m.thread_id && m.kind !== "answer"; }).slice(-60) : null;
     var html = !data ? '<p class="muted small dk-empty">Loading…</p>' : list.length ? list.map(dockMsg).join("") : '<p class="muted small dk-empty">No messages here yet. Say hi 👋</p>';
@@ -2707,7 +2742,9 @@
     if (a === "dkOpen") { d.open = true; d.min = false; d.closed = false; if (S.pid) d.pid = d.pid || S.pid; dockSave(); dockPaint(); loadFeed(d.pid); liveLoop(true); setTimeout(function () { var t = DOCK.querySelector("textarea"); if (t && !PHONE) t.focus(); }, 50); return true; }
     if (a === "dkMin") { d.min = true; d.open = false; dockSave(); dockPaint(); return true; }
     if (a === "dkClose") { d.closed = true; d.open = false; dockSave(); dockPaint(); toast("Chat closed. It comes back when someone writes, or from the 💬 in the top bar."); return true; }
-    if (a === "dkChan") { d.ch = b.dataset.c; dockSave(); var body = DOCK.querySelector(".dk-body"); body.dataset.h = ""; dockPaint(); liveLoop(true); return true; }
+    if (a === "dkPick") { d.picking = !d.picking; DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); return true; }
+    if (a === "dkDm") { d.picking = false; d.ch = dmKey(b.dataset.k); dockSave(); DOCK.querySelector(".dk-body").dataset.h = ""; dockPaint(); liveLoop(true); setTimeout(function () { var t = DOCK.querySelector("textarea"); if (t) t.focus(); }, 30); return true; }
+    if (a === "dkChan") { d.picking = false; d.ch = b.dataset.c; dockSave(); var body = DOCK.querySelector(".dk-body"); body.dataset.h = ""; dockPaint(); liveLoop(true); return true; }
     if (a === "dkFull") { d.open = false; d.min = true; dockSave(); S.wantChan = d.ch; go(d.pid, "messages"); return true; }
     return false;
   }
@@ -2717,16 +2754,34 @@
 
   /* ---------- Support widget: a screenshot of what's wrong (mark it up) + a short note, straight to Jesús ---------- */
   var H2C = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-  function loadScript(src) { return new Promise(function (res, rej) { if (window.html2canvas) return res(); var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = function () { rej(new Error("Couldn't load the screenshot tool.")); }; document.head.appendChild(s); }); }
+  function loadH2C(src) { return new Promise(function (res, rej) { if (window.html2canvas) return res(); var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = function () { rej(new Error("Couldn't load the screenshot tool.")); }; document.head.appendChild(s); }); }
   async function snapPage() {
-    await loadScript(H2C);
+    await loadH2C(H2C);
     var c = await window.html2canvas(document.body, { useCORS: true, logging: false, backgroundColor: "#f6f2eb", scale: Math.min(1.5, window.devicePixelRatio || 1),
       x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight, windowWidth: document.documentElement.clientWidth,
       ignoreElements: function (el) { return el.id === "bsp-help" || el.classList && el.classList.contains("hp-panel"); } });
     return c;
   }
-  async function helpOpen() {
+  /* An exact screenshot of this tab (Chrome/Edge/Safari on a computer ask "share this tab?" once). Phones fall back to a redraw. */
+  function grabTab() {
+    var md = navigator.mediaDevices; if (PHONE || !md || !md.getDisplayMedia) return Promise.reject(new Error("unsupported"));
+    return md.getDisplayMedia({ video: { displaySurface: "browser", frameRate: 5 }, audio: false, preferCurrentTab: true, selfBrowserSurface: "include", surfaceSwitching: "exclude", monitorTypeSurfaces: "exclude" })
+      .then(function (stream) {
+        var v = document.createElement("video"); v.muted = true; v.playsInline = true; v.srcObject = stream;
+        var stop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); };
+        return v.play().then(function () { return new Promise(function (r) { setTimeout(r, 400); }); }).then(function () {
+          var c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0); stop();
+          if (!c.width) throw new Error("empty"); return c;
+        }, function (e) { stop(); throw e; });
+      });
+  }
+  function helpOpen() {
     if (document.querySelector(".hp-panel")) return;
+    var shot = grabTab();                                   // must start right inside the click
+    shot.catch(function () {});
+    helpPanel(shot);
+  }
+  async function helpPanel(grab) {
     var w = document.createElement("div"); w.className = "hp-panel"; w.setAttribute("role", "dialog"); w.setAttribute("aria-label", "Report a problem");
     w.innerHTML = '<div class="hp-card"><div class="hp-top"><b>Help us fix it</b><span class="muted small">Beta v1.1 · goes straight to Jesús</span><button class="hp-x" aria-label="Close">×</button></div>' +
       '<div class="hp-shot"><p class="muted small hp-wait">Taking a screenshot of this page…</p></div>' +
@@ -2753,8 +2808,8 @@
     w.querySelector(".hp-undo").onclick = function () { strokes.pop(); draw(); };
     w.querySelector(".hp-clear").onclick = function () { strokes = []; draw(); };
     w.querySelector(".hp-file").onchange = function (e) { var f = e.target.files[0]; if (!f) return; var im = new Image(); im.onload = function () { useImage(im); }; im.src = URL.createObjectURL(f); };
-    w.style.visibility = "hidden";
-    try { var c = await snapPage(); useImage(c); } catch (e) { shot.innerHTML = '<p class="muted small">Couldn\'t take the screenshot here. Use "Use another image" to add one, or just write what happened.</p>'; }
+    w.style.visibility = "hidden"; w.setAttribute("data-lenis-prevent", "");
+    try { var c = await grab.catch(function () { return snapPage(); }); useImage(c); } catch (e) { shot.innerHTML = '<p class="muted small">Couldn\'t take the screenshot here. Use "Use another image" to add one, or just write what happened.</p>'; }
     w.style.visibility = "";
     w.querySelector(".hp-text").focus();
     w.querySelector(".hp-send").onclick = function () {
@@ -2786,7 +2841,9 @@
     if (/^dk/.test(a)) { e.preventDefault(); e.stopImmediatePropagation(); dockAction(a, b); return; }
     if (a === "helpOpen") { e.preventDefault(); e.stopImmediatePropagation(); helpOpen(); return; }
     if (a === "fbDone") { e.preventDefault(); e.stopImmediatePropagation(); call("setFeedback", { id: b.dataset.id, status: b.dataset.s }).then(function () { (S.fb || []).forEach(function (f) { if (f.id === b.dataset.id) f.status = b.dataset.s; }); keepScroll(render); }).catch(function (er) { toast(er.message); }); return; }
-    if (a === "chatDock") { e.preventDefault(); e.stopImmediatePropagation(); S.dock.closed = false; dockAction("dkOpen", b); return; }
+    if (a === "chatDock") { e.preventDefault(); e.stopImmediatePropagation(); S.dock.closed = false; if (S.dock.open && !S.dock.min) dockAction("dkMin", b); else dockAction("dkOpen", b); return; }
+    if (a === "dmGo" && !(S.pid === b.dataset.p && S.tab === "messages")) { e.preventDefault(); e.stopImmediatePropagation(); S.peopleOpen = false; keepScroll(render);
+      S.dock.pid = b.dataset.p; S.dock.ch = dmKey(b.dataset.k); S.dock.picking = false; S.dock.closed = false; DOCK && (DOCK.querySelector(".dk-body").dataset.h = ""); dockAction("dkOpen", b); loadFeed(b.dataset.p); return; }
   }, true);
   /* ---------- Instant (Firebase): the server rings a private doorbell; we hear it in well under a second ---------- */
   var RT = { es: null, url: "", u: "", open: false, tes: null, tkey: "", typ: {} };
