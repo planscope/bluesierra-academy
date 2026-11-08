@@ -399,7 +399,7 @@
 
   function renderList() {
     var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
-    var list = list0, view = staff() ? (S.home || "projects") : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
+    var list = list0, view = staff() ? (S.home || (S.viewAs ? "projects" : "today")) : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
     var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
@@ -413,10 +413,12 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + [["projects", "Projects", 0], ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]].concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? "Home" : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]]).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (!staff() && lsRoleMe) head = head + '<div class="chips home-chips">' + [["projects", "Projects"], ["ls", lsRoleMe === "crew" ? "My route" : "My property"]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
+    if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
+    if (view === "today" && staff() && !S.viewAs) return head + todayView();
     if (view === "ls") return head + '<div class="ls-wrap">' + lsView() + "</div>";
     if (view === "gr" && staff() && !S.viewAs) return head + '<div class="ls-wrap gr-wrap">' + grView() + "</div>";
     if (view === "activity") return head + homeActivity();
@@ -536,7 +538,7 @@
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="projects"', "Home", home && (S.home || "projects") === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="today"', "Today", home && (S.home || "today") === "today") + item('data-a="homeView" data-v="projects"', "Projects", home && S.home === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
         : item('data-a="home"', "All projects", home && S.home !== "ls") + (S.me && S.me.ls ? item('data-a="homeView" data-v="ls"', S.me.ls === "crew" ? "My route" : "My property", home && S.home === "ls") : "")) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
@@ -2225,7 +2227,7 @@
         run(null, async function () { try { await call("deleteMessage", { messageId: gone }); } catch (e) { await refresh(); throw e; } toast("Deleted"); }); }); return;
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
-        S.home = b.dataset.v; if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
+        S.home = b.dataset.v; if (b.dataset.v === "today") { S.td = null; S.fromToday = 0; } if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
         if (b.dataset.v === "finance" && S.fin && S.fin.err) S.fin = null;
         refreshList(); if (S.pid) return go(null); return keepScroll(render);
       case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
@@ -2560,7 +2562,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261107162019";
+  var BUILD = "20261108104233";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4506,7 +4508,7 @@
     var rates = !r ? '<div class="empty">Production rates and margins are #money.</div>' : '<form class="card gr-form" data-form="grxRates"><div class="row2"><label class="f">Labor cost per person-hour<span class="ls-money">$<input type="number" step="0.5" name="labor_rate" value="' + r.labor_rate + '"' + (admin ? "" : " disabled") + '></span></label><label class="f">Target margin<span class="ls-money"><input type="number" step="1" min="0" max="80" name="margin" value="' + Math.round(r.margin * 100) + '"' + (admin ? "" : " disabled") + '>%</span></label></div>' +
       '<div class="row2"><label class="f">Crew size for travel<input type="number" name="crew" min="1" value="' + r.crew + '"' + (admin ? "" : " disabled") + '></label><label class="f">Green-waste disposal per visit<span class="ls-money">$<input type="number" name="disposal" value="' + r.disposal + '"' + (admin ? "" : " disabled") + "></span></label></div>" +
       '<table class="t gr-rt"><thead><tr><th>Task</th><th>Unit</th><th class="num">Person-min per unit</th><th class="num">Materials $ per unit</th><th>Default frequency</th></tr></thead><tbody>' + Object.keys(r.tasks).map(function (k) { var t = r.tasks[k]; return "<tr><td>" + esc(t.label) + "</td><td>per " + (t.per > 1 ? t.per.toLocaleString() + " " : "") + esc(t.unit) + '</td><td class="num"><input type="number" step="0.5" name="min:' + k + '" value="' + t.min + '"' + (admin ? "" : " disabled") + '></td><td class="num"><input type="number" step="1" name="mat:' + k + '" value="' + t.mat + '"' + (admin ? "" : " disabled") + "></td><td>" + esc(GR_FQ[t.freq]) + "</td></tr>"; }).join("") + "</tbody></table>" +
-      '<p class="muted small">These are starting values: change them to your crews\' real production. Every estimate shows them and can be adjusted line by line.</p>' + (admin ? '<div class="actions"><button class="btn" type="submit">Save rates</button></div>' : "") + "</form>";
+      '<p class="muted small">' + (r.reviewed_at ? "Last checked against real production on " + esc(r.reviewed_at) + "." : "These are starting values: change them to your crews\' real production.") + ' Every estimate shows them and can be adjusted line by line.</p>' + (admin ? '<label class="check-line"><input type="checkbox" name="reviewed"> I checked these against our crews\' real production</label><div class="actions"><button class="btn" type="submit">Save rates</button></div>' : "") + "</form>";
     var t = S.gr.today;
     var creds = '<div class="card ls-list">' + (cr.length ? cr.map(function (c) { var bad = !c.verified || (c.expires && c.expires < t); return '<div class="ls-row"><div class="ls-main"><b>' + esc(c.name) + ' <span class="pill">' + esc(c.kind) + '</span></b><small class="muted">' + esc([c.number, c.detail, c.expires ? "expires " + c.expires : "no expiry"].filter(Boolean).join(" · ")) + "</small><small>" + (bad ? '<span class="bad-t">Not included in proposals (' + (!c.verified ? "not verified" : "expired") + ")</span>" : '<span class="ok-t">Included in proposals</span>') + "</small></div>" + (admin ? '<button class="link small" data-a="grxCredRm" data-id="' + esc(c.id) + '">Remove</button>' : "") + "</div>"; }).join("") : '<p class="muted small" style="padding:10px 14px">None yet. Only verified, current items go into proposals.</p>') + "</div>" +
       (admin ? '<form class="card gr-form" data-form="grxCred"><div class="row2"><label class="f">Type<select name="kind">' + grOpt([["license", "License"], ["insurance", "Insurance"], ["certification", "Certification"], ["reference", "Reference"]], "license") + '</select></label><label class="f">Name<input name="name" required placeholder="e.g. C-27 Landscaping Contractor"></label></div><div class="row2"><label class="f">Number / policy<input name="number"></label><label class="f">Expires<input type="date" name="expires"></label></div><label class="f">Detail<input name="detail" placeholder="e.g. $2M general liability, carrier"></label><label class="check-line"><input type="checkbox" name="verified" value="1"> I checked the document and it\'s current</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>' : "");
@@ -4752,7 +4754,7 @@
     if (k === "grxContact") return run(btn, async function () { var r = await call("grSaveContact", { contact: Object.assign({ name: V("name"), role: V("role"), email: V("email"), phone: V("phone"), account_id: V("account_id"), can_approve: !!fd.get("can_approve") }, src()) }); if (o && !o.contact_id) await call("grSaveOpp", { opp: { id: o.id, contact_id: r.id } }); S.gr = null; grLoad(); toast(r.existing ? "That person was already in contacts: linked, not duplicated" : "Contact added"); });
     if (k === "grxAccount") return run(btn, async function () { var r = await call("grSaveAccount", { account: Object.assign({ kind: V("kind"), name: V("name"), parent_id: V("parent_id"), website: V("website"), phone: V("phone"), email: V("email"), address: V("address"), city: V("city") }, src()) }); S.gr = null; grLoad(); toast(r.existing ? "Already there: not duplicated" : "Account added"); });
     if (k === "grxRates") { var tasks = {}; Object.keys(S.gr.rates.tasks).forEach(function (t) { tasks[t] = { min: Number(V("min:" + t)), mat: Number(V("mat:" + t)) }; });
-      return run(btn, async function () { await call("grRates", { save: { tasks: tasks, labor_rate: Number(V("labor_rate")), margin: Number(V("margin")) / 100, crew: Number(V("crew")), disposal: Number(V("disposal")) } }); S.gr = null; grLoad(); toast("Rates saved: new estimates use them"); }); }
+      return run(btn, async function () { await call("grRates", { save: { tasks: tasks, labor_rate: Number(V("labor_rate")), margin: Number(V("margin")) / 100, crew: Number(V("crew")), disposal: Number(V("disposal")) }, reviewed: !!fd.get("reviewed") }); S.gr = null; grLoad(); toast("Rates saved: new estimates use them"); }); }
     if (k === "grxCred") return run(btn, async function () { await call("grSaveCred", { cred: { kind: V("kind"), name: V("name"), number: V("number"), expires: V("expires"), detail: V("detail"), verified: !!fd.get("verified") } }); S.gr = null; grLoad(); toast("Added"); });
     if (k === "grxEmail") return run(btn, async function () {
       var m = S.modal, to = V("to").toLowerCase().split(/[,;\s]+/).filter(Boolean); m.to = V("to"); m.subject = V("subject"); m.text = V("text"); m.err = "";
@@ -4793,6 +4795,86 @@
       '<p class="muted small">A signed proposal or a purchase order needs the file. An email acceptance needs the file or where to find it.</p><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Record acceptance</button></div></form>';
     if (m.type === "grxEmail") return '<h2>Email</h2>' + (m.result ? grSendLine(m.result) + '<p class="muted small">Fix the problem (a wrong address, Gmail\'s daily limit) and press Retry. Nobody who already got it is emailed again.</p>' : "") + (m.err ? '<div class="ls-incomplete">' + esc(m.err) + "</div>" : "") + '<form class="form" data-form="grxEmail" data-opp="' + esc(m.opp) + '" data-p="' + esc(m.p) + '"><label class="f">To<input name="to" required value="' + esc(m.to) + '"></label><label class="f">Subject<input name="subject" required value="' + esc(m.subject) + '"></label><label class="f">Message<textarea name="text" rows="10" required>' + esc(m.text) + "</textarea></label>" + (m.p ? '<p class="muted small">📎 The final PDF is attached.</p>' : "") + '<p class="muted small">Check who it goes to and the text. Nothing is sent until you press Send.</p>' + (m.again ? '<label class="check-line"><input type="checkbox" name="again"> Yes, send this version to them again</label>' : "") + '<div class="actions"><button type="button" class="btn ghost" data-a="close">' + (m.result ? "Close" : "Cancel") + '</button><button class="btn" type="submit">' + (m.result ? "Retry the ones that failed" : "Send") + "</button></div></form>";
     return _lsModalGr.apply(this, arguments);
+  };
+  /* ================= Today: the office's work queue + "Ready to operate" ================= */
+  var TD_PRI = { 1: ["Now", "bad"], 2: ["Soon", "warn"], 3: ["", ""] }, TD_AREA = { projects: "Project", maintenance: "Maintenance", growth: "Growth", money: "Money" };
+  function tdLoad(force) {
+    if (S.tdBusy) return; S.tdBusy = 1; var at = Date.now(); S.tdAt = at;
+    call("todayQueue", { show_snoozed: !!S.tdShowSn }).then(function (r) { if (S.tdAt === at) S.td = r; }).catch(function (e) { if (S.tdAt === at) S.td = { err: e.message }; }).then(function () { S.tdBusy = 0; keepScroll(render); });
+  }
+  function tdList() {
+    var r = S.td, f = S.tdF || "all";
+    return r.items.filter(function (x) { return f === "mine" ? x.mine : f === "none" ? !x.owner : f === "jesus" ? x.authority || x.priority === 1 : true; });
+  }
+  function tdReadyCard() {
+    var R = S.td.ready; if (!R) return "";
+    var bad = R.groups.filter(function (g) { return !g.ok; }), open = !!S.tdReadyOpen;
+    return '<div class="card td-ready"><button class="td-rh" data-a="tdReadyTog" aria-expanded="' + open + '"><div><span class="eyebrow">Ready to operate</span><b>' + R.done + " of " + R.total + " ready</b><small class=\"muted\">" + (bad.length ? "Missing: " + bad.slice(0, 3).map(function (g) { return g.title.replace(/ \(.*\)$/, ""); }).join(" · ") + (bad.length > 3 ? " · +" + (bad.length - 3) + " more" : "") + " · tap to see each one" : "Everything the portal needs is in place") + '</small></div><div class="td-prog" role="img" aria-label="' + R.done + " of " + R.total + ' ready"><i style="width:' + Math.round(R.done / R.total * 100) + '%"></i></div><span class="td-car">' + (open ? "▴" : "▾") + "</span></button>" +
+      (open ? '<div class="td-groups">' + R.groups.map(function (g, i) {
+        return '<div class="td-g' + (g.ok ? " ok" : "") + '"><span class="td-gi" aria-hidden="true">' + (g.ok ? "✓" : "○") + '</span><div class="td-gm"><b>' + esc(g.title) + ' <small class="muted">' + g.done + " / " + g.total + "</small></b>" +
+          (g.ok ? '<small class="muted">' + esc(g.note || "Done") + "</small>" : '<small class="muted">' + esc(g.todo.slice(0, 4).map(function (t) { return t.name; }).join(" · ")) + (g.todo.length > 4 ? " · +" + (g.todo.length - 4) + " more" : "") + "</small><small>Usually: " + esc(g.owner) + "</small>") + "</div>" +
+          (g.ok ? "" : '<button class="btn ghost sm" data-a="tdFix" data-i="' + i + '">Fix</button>') + "</div>"; }).join("") + "</div>" : "") + "</div>";
+  }
+  function tdCard(x, i) {
+    var pr = TD_PRI[x.priority] || TD_PRI[3], st = S.td.staff || [];
+    return '<div class="card td-item p' + x.priority + '"><div class="td-top"><span class="td-area">' + esc(TD_AREA[x.area] || x.area) + "</span>" + (pr[0] ? '<span class="pill ' + pr[1] + '">' + pr[0] + "</span>" : "") + (x.authority ? '<span class="pill gold">Needs Jesús</span>' : "") + (x.due ? '<span class="muted small">' + esc(x.due === S.td.today ? "today" : x.due) + "</span>" : "") + "</div>" +
+      '<b class="td-t">' + esc(x.title) + '</b><small class="td-sub">' + esc(x.sub || "") + '</small><p class="td-why">' + esc(x.why || "") + "</p>" +
+      '<p class="td-next"><span class="eyebrow">Next</span> ' + esc(x.next || "") + "</p>" + (x.note ? '<p class="td-note">📝 ' + esc(x.note) + (x.state_by ? " · " + esc(x.state_by) : "") + "</p>" : "") +
+      '<div class="td-acts"><button class="btn sm" data-a="tdOpen" data-i="' + i + '">Open</button>' +
+      '<label class="td-own"><span class="sr">Owner</span><select data-td-owner="' + i + '"><option value="">' + (x.owner ? "Unassign" : "No owner yet") + "</option>" + st.map(function (p) { return '<option value="' + esc(p.email) + '"' + (p.email === x.owner ? " selected" : "") + ">" + esc(p.email === S.td.me ? "Me (" + first(p.name) + ")" : p.name) + "</option>"; }).join("") + "</select></label>" +
+      (x.snooze_until ? '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="">Snoozed to ' + esc(x.snooze_until) + " · undo</button>" : '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="1">Tomorrow</button><button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="7">Next week</button>') +
+      '<button class="link small" data-a="tdNote" data-i="' + i + '">' + (x.note ? "Edit note" : "Note") + "</button></div></div>";
+  }
+  function todayView() {
+    if (!S.td) { tdLoad(); return '<div class="loading" style="min-height:30vh">Working out what needs attention…</div>'; }
+    var r = S.td; if (r.err) return '<div class="card ls-incomplete"><b>Today couldn\'t load.</b> ' + esc(r.err) + ' <button class="link" data-a="tdReload">Try again</button><p class="small">Nothing here means "nothing pending" until it loads.</p></div>';
+    var all = r.items, n = function (f) { var k = S.tdF; S.tdF = f; var c = tdList().length; S.tdF = k; return c; }, f = S.tdF || "all", list = tdList();
+    S.tdShown = list;
+    var fl = [["all", "All"], ["mine", "Mine"], ["none", "No owner"]].concat(r.admin ? [["jesus", "For Jesús"]] : []);
+    return tdReadyCard() + '<div class="td-bar"><div class="chips">' + fl.map(function (o) { return '<button class="chip' + (f === o[0] ? " on" : "") + '" data-a="tdF" data-v="' + o[0] + '">' + o[1] + ' <span class="count td-c">' + n(o[0]) + "</span></button>"; }).join("") + "</div>" +
+      '<span class="muted small">Worked out ' + esc(String(r.computed_at).slice(11)) + ' · <button class="link small" data-a="tdReload">Refresh</button>' + (r.snoozed || S.tdShowSn ? ' · <button class="link small" data-a="tdSn">' + (S.tdShowSn ? "Hide snoozed" : "Show " + r.snoozed + " snoozed") + "</button>" : "") + "</span></div>" +
+      (list.length ? '<div class="td-list">' + list.map(tdCard).join("") + "</div>" : '<div class="empty">' + (all.length ? "Nothing in this filter." : "Nothing waiting right now. Checked " + esc(String(r.computed_at).slice(11)) + ".") + "</div>") +
+      '<p class="muted small td-foot">Each item comes from the record itself (a message, visit, request, estimate, proposal or expense); fix it there and it leaves this list. Not covered yet: billing-ready work, shared inbox email.</p>';
+  }
+  function tdGo(l) {
+    if (!l) return; S.fromToday = 1;
+    if (l.type === "project") { if (l.ch) S.wantChan = l.ch; return go(l.pid, l.tab || "overview"); }
+    if (l.type === "opp") { S.home = "gr"; S.grId = l.id; S.grSub = l.sub || "overview"; S.grI = null; S.grE = null; S.grK = null; window.scrollTo(0, 0); return keepScroll(render); }
+    if (l.type === "grtab") { S.home = "gr"; S.grId = null; S.grTab = l.tab; window.scrollTo(0, 0); return keepScroll(render); }
+    if (l.type === "projects") { S.home = "projects"; window.scrollTo(0, 0); return keepScroll(render); }
+    S.home = "ls"; window.scrollTo(0, 0);
+    if (l.type === "lsday") { S.lsTab = "schedule"; S.lsMode = "map"; S.lsPTab = "route"; S.lsMob = "list"; S.lsMapDay = l.date; if (l.visit && S.ls && S.ls.visits && S.ls.visits.some(function (v) { return v.id === l.visit; })) S.modal = { type: "lsWork", id: l.visit }; }
+    else S.lsTab = { requests: "requests", estimates: "est", costs: "costs", lstab: l.tab }[l.type] || "today";
+    return keepScroll(render);
+  }
+  async function tdSet(i, patch) { var x = S.tdShown[i]; if (!x) return; await call("todaySet", Object.assign({ key: x.key }, patch)); S.td = null; tdLoad(); }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b || !/^td[A-Z]/.test(b.dataset.a)) return; e.preventDefault(); e.stopImmediatePropagation();
+    var a = b.dataset.a, i = +b.dataset.i;
+    if (a === "tdReload") { S.td = null; return keepScroll(render); }
+    if (a === "tdF") { S.tdF = b.dataset.v; return keepScroll(render); }
+    if (a === "tdSn") { S.tdShowSn = !S.tdShowSn; S.td = null; return keepScroll(render); }
+    if (a === "tdReadyTog") { S.tdReadyOpen = !S.tdReadyOpen; return keepScroll(render); }
+    if (a === "tdOpen") return tdGo(S.tdShown[i] && S.tdShown[i].link);
+    if (a === "tdFix") return tdGo(S.td.ready.groups[i].link);
+    if (a === "tdBack") { S.home = "today"; S.fromToday = 0; S.td = null; S.modal = null; if (S.pid) return go(null); window.scrollTo(0, 0); return keepScroll(render); }
+    if (a === "tdSnooze") { var d = b.dataset.d, dt = ""; if (d) { var z = new Date(S.td.today + "T12:00:00"); z.setDate(z.getDate() + Number(d)); dt = z.getFullYear() + "-" + String(z.getMonth() + 1).padStart(2, "0") + "-" + String(z.getDate()).padStart(2, "0"); }
+      return run(b, async function () { await tdSet(i, { snooze_until: dt }); toast(dt ? "Snoozed to " + dt + ". It comes back by itself." : "Back in the list"); }); }
+    if (a === "tdNote") { var x = S.tdShown[i]; S.modal = { type: "lsxTdNote", i: i, key: x.key, title: x.title, note: x.note || "" }; return keepScroll(render); }
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches || !t.matches("[data-td-owner]")) return; e.stopImmediatePropagation();
+    var i = +t.dataset.tdOwner; tdSet(i, { owner: t.value }).then(function () { toast(t.value ? "Assigned" : "Unassigned"); }).catch(function (er) { toast(er.message); S.td = null; keepScroll(render); });
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !f.matches("form[data-form=tdNote]")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var m = S.modal, txt = String(new FormData(f).get("note") || "").trim(), btn = f.querySelector("[type=submit]");
+    run(btn, async function () { await call("todaySet", { key: m.key, note: txt }); S.modal = null; S.td = null; tdLoad(); toast("Note saved"); });
+  }, true);
+  var _lsModalTd = lsModal;
+  lsModal = function (m) {
+    if (m.type === "lsxTdNote") return '<h2>Note</h2><p class="muted small">' + esc(m.title) + '</p><form class="form" data-form="tdNote"><label class="f">Visible to the office on this item<textarea name="note" rows="3" maxlength="300">' + esc(m.note) + '</textarea></label><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+    return _lsModalTd(m);
   };
   liveLoop();
   if (S.token) { render(); route(); } else render();
