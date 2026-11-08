@@ -14,8 +14,12 @@ TABLES.GrOpps = ["id", "kind", "name", "account_id", "mgmt_id", "contact_id", "a
   "property_id", "notes", "created_at", "created_by", "updated_at", "status"];
 TABLES.GrInspections = ["id", "opp_id", "at", "by", "zones", "site", "recovery", "priorities", "issues", "status", "updated_at"];
 TABLES.GrEstimates = ["id", "opp_id", "inspection_id", "version", "status", "lines", "params", "totals", "structure", "notes", "locked", "created_at", "created_by"];
-TABLES.GrProposals = ["id", "opp_id", "estimate_id", "version", "status", "template", "content", "snapshot", "pdf_id", "hash", "reviewed_by", "reviewed_at", "sent_at", "sent_to", "accepted_at", "created_at", "created_by"];
-var GR_TABLES = ["GrAccounts", "GrContacts", "GrOpps", "GrInspections", "GrEstimates", "GrProposals"];
+TABLES.GrProposals = ["id", "opp_id", "estimate_id", "version", "status", "template", "content", "snapshot", "pdf_id", "hash", "reviewed_by", "reviewed_at", "sent_at", "sent_to", "accepted_at", "created_at", "created_by",
+  "outbox_id", "accept_method", "accept_by", "accept_role", "accept_date", "accept_evidence_id", "accept_note", "accept_recorded_by"];
+/* Every email the office sends from Growth: one row per attempt (the browser's key), one result per recipient.
+   "accepted" = Gmail took the message (message id kept). It does NOT mean delivered or read. */
+TABLES.GrOutbox = ["id", "key", "opp_id", "proposal_id", "version", "subject", "body", "recipients", "status", "last_error", "tries", "created_at", "created_by", "updated_at"];
+var GR_TABLES = ["GrAccounts", "GrContacts", "GrOpps", "GrInspections", "GrEstimates", "GrProposals", "GrOutbox"];
 if (TABLES.LsProps.indexOf("proposal_id") < 0) TABLES.LsProps.push("proposal_id");
 var GR_STAGES = ["identified", "qualified", "contacted", "visit", "inspected", "drafting", "sent", "negotiation", "won", "lost", "later"];
 var GR_SIGNALS = ["prospect", "interest", "rfp"];                 // identified prospect · confirmed interest · open bid (RFP)
@@ -208,6 +212,7 @@ ACTIONS.grSaveEstimate = function (me, b) {
   grNeed(me); var o = grOpp(b.opp_id), rates = grRates(), money = grMoney(me), old = b.id ? findBy("GrEstimates", "id", b.id) : null;
   var params = {}; if (money) ["margin", "labor_rate", "crew", "disposal"].forEach(function (k) { if (b.params && b.params[k] != null && b.params[k] !== "") params[k] = num(b.params[k]); });
   else if (old) params = parseJson(old.params, {});
+  grCheckMargin(params.margin);
   var lines = [].concat(b.lines || []).slice(0, 120).map(function (l) {
     var x = { task: rates.tasks[l.task] ? l.task : "", label: clean(l.label, 160), zone: clean(l.zone, 80), section: l.section, freq: l.freq, qty: l.qty === "" || l.qty == null ? null : num(l.qty), unit: clean(l.unit, 20), basis: l.basis, include: l.include !== false && l.include !== "false", per: l.per };
     if (money) { ["min", "mat", "hours", "materials", "sub"].forEach(function (k) { if (l[k] != null && l[k] !== "") x[k] = num(l[k]); }); }
@@ -225,11 +230,13 @@ ACTIONS.grSaveEstimate = function (me, b) {
   if (GR_STAGES.indexOf(o.stage) < GR_STAGES.indexOf("drafting")) update("GrOpps", "id", o.id, { stage: "drafting", updated_at: now() });
   return { id: row.id, version: v, status: row.status, preliminary: calc.preliminary };
 };
+/* Margin is a share of the PRICE (cost 100 at 30% → 142.86), not a markup on cost. Out-of-range values are refused, never clamped. */
+function grCheckMargin(m) { if (m == null || m === "") return; var v = Number(m); if (!isFinite(v) || v < 0 || v >= 0.8) throw new Error("Margin must be between 0% and 79% of the price (30% is 0.30). " + m + " isn't valid."); }
 ACTIONS.grRates = function (me, b) {
   grNeed(me); if (!grMoney(me)) throw new Error("Rates and margins are #money.");
   if (b.save) { if (me.role !== "admin") throw new Error("Only Jesús changes the rates."); var r = b.save, cur = parseJson(PropertiesService.getScriptProperties().getProperty("GR_RATES"), {}), tasks = cur.tasks || {};
     Object.keys(r.tasks || {}).forEach(function (k) { if (!GR_TASKS[k]) return; tasks[k] = { min: Math.max(0, num(r.tasks[k].min)), mat: Math.max(0, num(r.tasks[k].mat)) }; });
-    var next = { tasks: tasks, labor_rate: num(r.labor_rate) || cur.labor_rate, margin: r.margin != null ? Math.max(0, Math.min(0.8, num(r.margin))) : cur.margin, disposal: r.disposal != null ? num(r.disposal) : cur.disposal, crew: num(r.crew) || cur.crew };
+    var next = { tasks: tasks, labor_rate: num(r.labor_rate) || cur.labor_rate, margin: r.margin != null ? (grCheckMargin(r.margin), num(r.margin)) : cur.margin, disposal: r.disposal != null ? num(r.disposal) : cur.disposal, crew: num(r.crew) || cur.crew };
     PropertiesService.getScriptProperties().setProperty("GR_RATES", JSON.stringify(next)); grLog(me, "", "changed the estimate rates"); }
   return { rates: grRates() };
 };
@@ -260,7 +267,10 @@ function grTransition(o, est) {
 }
 function grPropOut(p, money, full) {
   var o = { id: p.id, opp_id: p.opp_id, estimate_id: p.estimate_id, version: num(p.version), status: p.status, template: p.template, pdf_id: p.pdf_id || "", pdf_url: p.pdf_id ? "https://drive.google.com/file/d/" + p.pdf_id + "/view" : "",
-    hash: p.hash || "", reviewed_by: p.reviewed_by ? personName(p.reviewed_by) : "", reviewed_at: p.reviewed_at, sent_at: p.sent_at, sent_to: p.sent_to, accepted_at: p.accepted_at, created_at: p.created_at };
+    hash: p.hash || "", reviewed_by: p.reviewed_by ? personName(p.reviewed_by) : "", reviewed_at: p.reviewed_at, sent_at: p.sent_at, sent_to: p.sent_to, accepted_at: p.accepted_at, created_at: p.created_at,
+    acceptance: p.status === "accepted" ? { method: p.accept_method || "unrecorded", by: p.accept_by || "", role: p.accept_role || "", date: p.accept_date || String(p.accepted_at || "").slice(0, 10), note: p.accept_note || "", evidence_id: p.accept_evidence_id || "",
+      evidence_url: p.accept_evidence_id ? "https://drive.google.com/file/d/" + p.accept_evidence_id + "/view" : "", recorded_by: p.accept_recorded_by ? personName(p.accept_recorded_by) : "", in_portal: false } : null,
+    sends: rows("GrOutbox").filter(function (x) { return x.proposal_id === p.id; }).map(grOutboxOut) };
   if (full) { o.content = parseJson(p.content, {}); o.snapshot = parseJson(p.snapshot, null); }
   return o;
 }
@@ -335,11 +345,13 @@ ACTIONS.grSavePdf = function (me, b) {
   update("GrProposals", "id", p.id, { status: "final", pdf_id: file.getId() }); grLog(me, o.id, "final PDF for proposal v" + p.version);
   return { pdf_id: file.getId(), url: "https://drive.google.com/file/d/" + file.getId() + "/view" };
 };
+/* "We maintain properties in <city>" only when an active, real maintenance property there proves it. */
+function grServeIn(city) { var c = String(city || "").trim().toLowerCase(); return !!c && rows("LsProps").some(function (p) { return p.status === "active" && !isTrue(p.sample) && String(p.city || "").trim().toLowerCase() === c; }); }
 /* Email drafts the office edits; nothing is sent until they press Send. */
 function grDraft(kind, o, me, p) {
   var ct = o.contact_id ? findBy("GrContacts", "id", o.contact_id) : null, hi = "Hi" + (ct && ct.name ? " " + ct.name.split(" ")[0] : "") + ",\n\n", sig = "\n\nBest regards,\n" + me.name + "\nBlue Sierra Construction";
   var t = {
-    intro: ["Landscape maintenance for " + o.name, hi + "I'm with Blue Sierra, a landscape construction and maintenance company in the Bay Area. We already service properties near " + (o.city || "your community") + " and would welcome the chance to walk " + o.name + " and understand what matters most to you." + sig],
+    intro: ["Landscape maintenance for " + o.name, hi + "I'm with Blue Sierra, a landscape construction and maintenance company in the Bay Area." + (grServeIn(o.city) ? " We maintain properties in " + o.city + " today." : "") + " We would welcome the chance to walk " + o.name + " and understand what matters most to you." + sig],
     visit: ["Site walk at " + o.name, hi + "Could we schedule a site walk at " + o.name + "? It takes about an hour. We'll measure the areas, note anything that needs attention, and use it to prepare an accurate proposal. Which days work for you?" + sig],
     followup: ["Following up · " + o.name, hi + "I wanted to follow up on " + (p ? "our proposal (version " + p.version + ")" : "our conversation") + " for " + o.name + ". Happy to answer questions or adjust the scope." + sig],
     proposal: ["Blue Sierra proposal · " + o.name, hi + "Attached is our proposal for " + o.name + (p ? " (version " + p.version + ")" : "") + ". It includes the scope by area, frequencies, the seasonal plan and pricing. Let me know if you'd like to walk through it together." + sig],
@@ -350,20 +362,98 @@ function grDraft(kind, o, me, p) {
 }
 ACTIONS.grDraftEmail = function (me, b) { grNeed(me); var o = grOpp(b.opp_id), p = b.proposal_id ? findBy("GrProposals", "id", b.proposal_id) : null; return grDraft(b.kind, o, me, p); };
 NO_LOCK.grDraftEmail = 1;
+/* Sending is recorded before and after each recipient, so a failure is never reported as "sent".
+   The browser gives each compose a key: a double-click or a retry with the same key never re-sends to someone Gmail already accepted. */
+function grOutboxOut(m) {
+  var r = parseJson(m.recipients, []);
+  return { id: m.id, key: m.key, proposal_id: m.proposal_id || "", version: m.version ? num(m.version) : null, subject: m.subject, status: m.status, last_error: m.last_error || "", tries: num(m.tries), at: m.updated_at || m.created_at, by: personName(m.created_by),
+    recipients: r.map(function (x) { return { email: x.email, status: x.status, at: x.at || "", error: x.error || "", msg_id: x.msg_id || "" }; }) };
+}
+function grOutboxStatus(list) { var a = list.filter(function (x) { return x.status === "accepted"; }).length; return a === list.length ? "sent" : a ? "partial" : "failed"; }
 ACTIONS.grSendEmail = function (me, b) {
-  grNeed(me); var o = grOpp(b.opp_id), to = [].concat(b.to || []).map(normEmail).filter(Boolean), subject = clean(b.subject, 160), text = clean(b.text, 6000);
-  if (!to.length) throw new Error("Add who it goes to."); to.forEach(function (e) { if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("Check " + e); });
-  if (!subject || !text) throw new Error("Write a subject and a message.");
-  var p = b.proposal_id ? findBy("GrProposals", "id", b.proposal_id) : null, att = null;
-  if (p) { if (["final", "sent", "accepted"].indexOf(p.status) < 0 || !p.pdf_id) throw new Error("Make the final PDF first."); att = DriveApp.getFileById(p.pdf_id).getBlob(); }
-  to.forEach(function (e) { safeMail(function () { if (att) GmailApp.sendEmail(e, subject, text, { name: CONFIG.COMPANY, attachments: [att], from: fromAddress() || undefined }); else sendMail(e, subject, "<p>" + nl2br(esc(text)) + "</p>"); }); });
-  if (p && p.status === "final") { update("GrProposals", "id", p.id, { status: "sent", sent_at: now(), sent_to: to.join(",") }); if (GR_STAGES.indexOf(o.stage) < GR_STAGES.indexOf("sent")) update("GrOpps", "id", o.id, { stage: "sent", updated_at: now() }); }
-  grLog(me, o.id, "emailed " + to.join(", ") + ": " + subject); return { sent: to.length };
+  grNeed(me); var o = grOpp(b.opp_id), key = String(b.key || "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new Error("Reload the portal and try again (missing send key).");
+  var p = b.proposal_id ? findBy("GrProposals", "id", String(b.proposal_id)) : null;
+  if (b.proposal_id && !p) throw new Error("Proposal not found.");
+  if (p && p.opp_id !== o.id) throw new Error("That proposal belongs to another opportunity. Nothing was sent.");
+  var ob = findBy("GrOutbox", "key", key), list, subject, text;
+  if (ob) {                                                          // same compose again: retry only who didn't get it
+    if (ob.opp_id !== o.id || String(ob.proposal_id || "") !== String(p ? p.id : "")) throw new Error("That send belongs to another record. Nothing was sent.");
+    list = parseJson(ob.recipients, []); subject = ob.subject; text = ob.body;
+  } else {
+    var to = [].concat(b.to || []).map(normEmail).filter(Boolean).filter(function (e, i, a) { return a.indexOf(e) === i; });
+    subject = clean(b.subject, 160); text = clean(b.text, 6000);
+    if (!to.length) throw new Error("Add who it goes to."); if (to.length > 10) throw new Error("Ten recipients at most.");
+    to.forEach(function (e) { if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("Check " + e); });
+    if (!subject || !text) throw new Error("Write a subject and a message.");
+    if (p) {
+      if (["final", "sent", "accepted"].indexOf(p.status) < 0 || !p.pdf_id) throw new Error("Make the final PDF first.");
+      var before = String(p.sent_to || "").split(",").map(normEmail).filter(Boolean), again = to.filter(function (e) { return before.indexOf(e) > -1; });
+      if (again.length && !b.again) throw new Error("Version " + p.version + " was already sent to " + again.join(", ") + ". Confirm to send it again.");
+    }
+    list = to.map(function (e) { return { email: e, status: "pending" }; });
+    ob = { id: newId("gm"), key: key, opp_id: o.id, proposal_id: p ? p.id : "", version: p ? String(p.version) : "", subject: subject, body: text, recipients: JSON.stringify(list), status: "pending", last_error: "", tries: "0", created_at: now(), created_by: me.email, updated_at: now() };
+    insert("GrOutbox", ob);                                          // recorded first: a crash mid-way leaves "pending", never "sent"
+  }
+  var todo = list.filter(function (x) { return x.status !== "accepted"; }), lastErr = "";
+  if (todo.length) {
+    var att = null, quota = 0;
+    try { quota = MailApp.getRemainingDailyQuota(); } catch (e) { quota = todo.length; }
+    if (p) { try { att = DriveApp.getFileById(p.pdf_id).getBlob(); } catch (e) { lastErr = "The final PDF couldn't be read from Drive: " + String(e.message || e); } }
+    todo.forEach(function (x) {
+      if (lastErr && p && !att) { x.status = "failed"; x.error = lastErr; return; }
+      if (quota < 1) { x.status = "failed"; x.error = lastErr = "Gmail's daily sending limit is used up. Try again tomorrow."; return; }
+      try {
+        var opt = { name: CONFIG.COMPANY, htmlBody: "<div style='font-family:Arial,sans-serif;font-size:15px;color:#111;line-height:1.5;max-width:560px'>" + nl2br(esc(text)) + "</div>", from: fromAddress() || undefined };
+        if (att) opt.attachments = [att];
+        var msg = GmailApp.createDraft(x.email, subject, text, opt).send();      // the sent message is the evidence Gmail accepted it
+        x.status = "accepted"; x.at = now(); x.error = ""; x.msg_id = msg && msg.getId ? msg.getId() : ""; x.thread_id = msg && msg.getThread ? msg.getThread().getId() : ""; quota--;
+      } catch (e) { x.status = "failed"; x.at = now(); x.error = lastErr = String(e.message || e).slice(0, 300); }
+    });
+  }
+  var st = grOutboxStatus(list);
+  update("GrOutbox", "id", ob.id, { recipients: JSON.stringify(list), status: st, last_error: st === "sent" ? "" : lastErr || ob.last_error || "", tries: String(num(ob.tries) + (todo.length ? 1 : 0)), updated_at: now() });
+  var ok = list.filter(function (x) { return x.status === "accepted"; }).map(function (x) { return x.email; }), bad = list.filter(function (x) { return x.status !== "accepted"; }).map(function (x) { return x.email; });
+  // Only a send Gmail accepted for every recipient moves the proposal to "sent".
+  // sent_to = everyone Gmail accepted this version for, across all attempts
+  var allOk = p ? rows("GrOutbox").filter(function (m) { return m.proposal_id === p.id; }).reduce(function (a, m) { return a.concat(parseJson(m.id === ob.id ? JSON.stringify(list) : m.recipients, []).filter(function (x) { return x.status === "accepted"; }).map(function (x) { return x.email; })); }, []).filter(function (e, i, a) { return a.indexOf(e) === i; }) : [];
+  if (p && st === "sent" && p.status === "final") {
+    update("GrProposals", "id", p.id, { status: "sent", sent_at: now(), sent_to: allOk.join(","), outbox_id: ob.id });
+    if (GR_STAGES.indexOf(o.stage) < GR_STAGES.indexOf("sent")) update("GrOpps", "id", o.id, { stage: "sent", updated_at: now() });
+  } else if (p && st === "sent") update("GrProposals", "id", p.id, { sent_to: allOk.join(",") });
+  if (todo.length) grLog(me, o.id, "email \"" + subject + "\"" + (p ? " (proposal v" + p.version + ")" : "") + ": " + (ok.length ? "Gmail accepted " + ok.join(", ") : "") + (bad.length ? (ok.length ? "; " : "") + "FAILED " + bad.join(", ") + " (" + lastErr + ")" : ""));
+  return { status: st, sent: ok.length, failed: bad.length, accepted_to: ok, failed_to: bad, error: st === "sent" ? "" : lastErr, outbox: grOutboxOut(findBy("GrOutbox", "id", ob.id)), proposal_status: p ? findBy("GrProposals", "id", p.id).status : "" };
 };
-/* The client accepted a version: that frozen version is what operations delivers. */
+/* Staging check of the real Gmail path (same call as proposals), sent only to the person pressing it. Touches no business record. */
+ACTIONS.grMailSelfTest = function (me, b) {
+  grNeed(me); if (me.role !== "admin") throw new Error("Only Jesús runs the email check.");
+  var msg = GmailApp.createDraft(me.email, "Blue Sierra portal · email check", "This is a test from the portal's proposal sender. Nothing else was sent.", { name: CONFIG.COMPANY, from: fromAddress() || undefined }).send();
+  return { to: me.email, msg_id: msg.getId(), thread_id: msg.getThread().getId(), from: fromAddress() || "(the script owner's address)", quota_left: MailApp.getRemainingDailyQuota() };
+};
+NO_LOCK.grMailSelfTest = 1;
+/* Acceptance is a contract fact: who accepted, when, which version, how (method) and the proof (file or reference).
+   Growth clients aren't portal users yet, so every acceptance here is recorded by the office and says so. */
+var GR_ACCEPT_METHODS = { signed_pdf: "Signed proposal (file)", email: "Written acceptance by email", board_minutes: "Board vote / minutes", purchase_order: "Purchase order / contract" };
 ACTIONS.grAccept = function (me, b) {
-  grNeed(me); var p = findBy("GrProposals", "id", String(b.id || "")); if (!p) throw new Error("Proposal not found."); if (["sent", "final"].indexOf(p.status) < 0) throw new Error("Only a final or sent version can be accepted.");
-  var o = grOpp(p.opp_id); update("GrProposals", "id", p.id, { status: "accepted", accepted_at: now() }); update("GrOpps", "id", o.id, { stage: "won", updated_at: now() }); grLog(me, o.id, "WON with proposal v" + p.version);
+  grNeed(me); if (!(me.role === "admin" || grMoney(me))) throw new Error("Only Jesús or #money record a client's acceptance.");
+  var p = findBy("GrProposals", "id", String(b.id || "")); if (!p) throw new Error("Proposal not found."); if (["sent", "final"].indexOf(p.status) < 0) throw new Error("Only a final or sent version can be accepted.");
+  var o = grOpp(p.opp_id), other = rows("GrProposals").filter(function (x) { return x.opp_id === o.id && x.status === "accepted"; })[0];
+  if (other) throw new Error("Version " + other.version + " is already the accepted one.");
+  var a = b.acceptance || {}, method = String(a.method || ""), by = clean(a.by, 120), role = clean(a.role, 120), date = String(a.date || ""), note = clean(a.note, 1000);
+  if (!GR_ACCEPT_METHODS[method]) throw new Error("How did they accept? Pick the method.");
+  if (by.length < 2) throw new Error("Who accepted it? Write the person's name.");
+  if (!/^\d{4}-\d\d-\d\d$/.test(date) || date > grToday()) throw new Error("When did they accept? Use a date that isn't in the future.");
+  var fileId = "";
+  if (a.file) {
+    var bytes = Utilities.base64Decode(String(a.file).replace(/^data:[^,]+,/, "")); if (bytes.length < 200 || bytes.length > 20 * 1024 * 1024) throw new Error("That file looks wrong.");
+    var mime = (String(a.file).match(/^data:([^;,]+)/) || [])[1] || "application/pdf"; if (!/^(application\/pdf|image\/(jpeg|png|heic|webp)|message\/rfc822|text\/plain)$/.test(mime)) throw new Error("Attach a PDF, a photo or the saved email.");
+    fileId = grFolder().createFile(Utilities.newBlob(bytes, mime, (o.name + " · acceptance v" + p.version + " · " + date + "." + (mime === "application/pdf" ? "pdf" : mime.split("/")[1])).replace(/[\/:]/g, "-"))).getId();
+  }
+  if ((method === "signed_pdf" || method === "purchase_order") && !fileId) throw new Error("Attach the signed document.");
+  if (!fileId && note.length < 10) throw new Error("Attach the proof, or write where it is (e.g. the email's date, sender and subject).");
+  update("GrProposals", "id", p.id, { status: "accepted", accepted_at: now(), accept_method: method, accept_by: by, accept_role: role, accept_date: date, accept_evidence_id: fileId, accept_note: note, accept_recorded_by: me.email });
+  update("GrOpps", "id", o.id, { stage: "won", updated_at: now() });
+  grLog(me, o.id, "WON with proposal v" + p.version + ": accepted by " + by + (role ? " (" + role + ")" : "") + " on " + date + " · " + GR_ACCEPT_METHODS[method] + (fileId ? " · proof on file" : " · " + note.slice(0, 80)) + " · recorded by the office");
   return { status: "accepted" };
 };
 /* ---- won → maintenance: check everything first, then create the property, agreement, checklist, labor budget and visits ---- */
@@ -396,15 +486,18 @@ ACTIONS.grConvertCheck = function (me, b) {
     rows("LsProps").push(tmpP); try { cap = ACTIONS.lsInsertImpact(me, { property_id: "gr-tmp", date: first, crew_id: cw.id, est_min: f.visit_min }); } catch (e) { cap = { err: e.message }; } finally { var L = rows("LsProps"); L.splice(L.indexOf(tmpP), 1); }
     checks.push({ key: "capacity", ok: !!(cap && !cap.err && cap.after && cap.after.finish <= cap.end && !cap.after.late), text: cap && cap.after ? "First " + grDow(first) + " (" + first + "): back at " + Math.floor(cap.after.finish / 60) + ":" + ("0" + cap.after.finish % 60).slice(-2) + (cap.after.finish > cap.end ? " · over the crew's shift" : " · fits the shift") + (cap.after.late ? " · " + cap.after.late + " stop(s) late" : "") : "Couldn't check the route: " + ((cap && cap.err) || "") });
   } else checks.push({ key: "capacity", ok: false, text: "Pick the crew, the day and the start date to check the route" });
-  return { prop: f, checks: checks, ready: checks.every(function (c) { return c.ok || c.key === "equipment"; }), proposal_id: d.proposal.id, version: num(d.proposal.version) };
+  return { prop: f, checks: checks, ready: checks.every(function (c) { return c.ok || c.key === "equipment"; }), preliminary: !!parseJson(d.proposal.snapshot, {}).preliminary, proposal_id: d.proposal.id, version: num(d.proposal.version) };
 };
 NO_LOCK.grConvertCheck = 1;
 ACTIONS.grConvert = function (me, b) {
   grNeed(me); var o = grOpp(b.opp_id); if (o.property_id) throw new Error("Already converted.");
-  var chk = ACTIONS.grConvertCheck(me, { opp_id: o.id, prop: b.prop }); if (!chk.ready && !b.force) throw new Error("Fix the checks first: " + chk.checks.filter(function (c) { return !c.ok && c.key !== "equipment"; }).map(function (c) { return c.text; }).join("; "));
+  var chk = ACTIONS.grConvertCheck(me, { opp_id: o.id, prop: b.prop }), why = clean(b.force_reason, 300);
+  if (!chk.ready && b.force) { if (me.role !== "admin") throw new Error("Only Jesús can activate with open checks."); if (why.length < 8) throw new Error("Write why it's activated with open checks."); }
+  if (!chk.ready && !b.force) throw new Error("Fix the checks first: " + chk.checks.filter(function (c) { return !c.ok && c.key !== "equipment"; }).map(function (c) { return c.text; }).join("; "));
   var f = chk.prop, r = ACTIONS.lsSaveProperty(me, { prop: { name: f.name, client_name: f.client_name, client_emails: f.client_emails, address: f.address, city: f.city, contacts: f.contacts, access: f.access, notes: f.notes, features: f.features,
-    freq: f.freq, weekday: f.weekday, start: f.start, crew_id: f.crew_id, visit_min: f.visit_min, price: f.price, billing: "monthly", included: f.included, excluded: f.excluded, checklist: f.checklist, equipment: f.equipment, labor_ok: true } });
+    freq: f.freq, weekday: f.weekday, start: f.start, crew_id: f.crew_id, visit_min: f.visit_min, price: f.price, billing: "monthly", included: f.included, excluded: f.excluded, checklist: f.checklist, equipment: f.equipment, labor_ok: !chk.preliminary } });
   update("LsProps", "id", r.id, { proposal_id: chk.proposal_id });
+  if (!chk.ready) grLog(me, o.id, "OVERRIDE: activated with open checks (" + chk.checks.filter(function (c) { return !c.ok && c.key !== "equipment"; }).map(function (c) { return c.key; }).join(", ") + "). Reason: " + why);
   update("GrOpps", "id", o.id, { property_id: r.id, stage: "won", updated_at: now() }); grLog(me, o.id, "converted to maintenance property " + f.name);
   return { property_id: r.id };
 };
@@ -417,6 +510,7 @@ ACTIONS.grHome = function (me, b) {
     x.inspections = ins.filter(function (i) { return i.opp_id === o.id; }).map(function (i) { return { id: i.id, status: i.status, at: i.at, by: personName(i.by), zones: parseJson(i.zones, []), site: parseJson(i.site, {}), recovery: parseJson(i.recovery, []), priorities: i.priorities, issues: i.issues }; });
     x.estimates = ests.filter(function (e) { return e.opp_id === o.id; }).map(function (e) { return grEstOut(e, money); }).sort(function (a, c) { return c.version - a.version; });
     x.proposals = props.filter(function (p) { return p.opp_id === o.id; }).map(function (p) { return grPropOut(p, money, true); }).sort(function (a, c) { return c.version - a.version; });
+    x.emails = rows("GrOutbox").filter(function (m) { return m.opp_id === o.id; }).map(grOutboxOut).reverse().slice(0, 20);
     x.overdue = ["won", "lost", "later"].indexOf(o.stage) < 0 && o.next_date && o.next_date < today;
     return x;
   });
@@ -438,4 +532,4 @@ NO_LOCK.grHome = 1;
 var _lsPropOutGr = lsPropOut;
 lsPropOut = function (p, role, money) { var o = _lsPropOutGr(p, role, money); if (role === "office") o.proposal_id = p.proposal_id || ""; return o; };
 ["grSaveAccount", "grSaveContact", "grSaveOpp", "grSaveInspection", "grAddPhotos", "grDraftLines", "grSaveEstimate", "grRates", "grSaveCred", "grNewProposal", "grSaveProposal", "grProposalView", "grPhotoData", "grReview", "grSavePdf",
- "grDraftEmail", "grSendEmail", "grAccept", "grConvertCheck", "grConvert", "grHome"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES, GR_TABLES); });
+ "grDraftEmail", "grSendEmail", "grMailSelfTest", "grAccept", "grConvertCheck", "grConvert", "grHome"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES, GR_TABLES); });

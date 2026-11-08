@@ -825,12 +825,22 @@ ACTIONS.lsPricing = function (me, b) {
     var price = num(p.price), b2 = p.billing || "monthly", rev = !price ? 0 : b2 === "per_visit" ? price * perMonthVisits : b2 === "quarterly" ? price / 3 : b2 === "annual" ? price / 12 : price;
     var lg = logged[p.id], size = lsCrewSize(p.crew_id), siteMin = lg ? lg.min / lg.n : num(p.visit_dur) > 0 ? num(p.visit_dur) * size : num(p.visit_min || 60);   // person-minutes of labor
     var cw = p.crew_id ? findBy("LsCrews", "id", p.crew_id) : null, ems = splitIds(cw && cw.members), rate = ems.length ? ems.reduce(function (a, e) { return a + lsRateOf(e); }, 0) / ems.length : cfg.rate;
+    var ownRate = ems.some(function (e) { return !!findBy("LsRates", "email", normEmail(e)); }), routable = lsRoutable(p), estOk = !!lg || isTrue(p.labor_ok);
+    // What this row rests on. Anything missing makes it an estimate (or incomplete), never a conclusion.
+    var gaps = []; if (!price) gaps.push("no agreement price"); if (!routable) gaps.push("address can't be routed, so driving isn't counted"); if (!p.crew_id) gaps.push("no crew: 1 person assumed");
+    if (!estOk) gaps.push("time on site not confirmed"); if (!ownRate) gaps.push("default labor rate " + "$" + cfg.rate + "/h");
     var driveMin = (drive[p.id] || 0) / days;                              // per visit, truck minutes
     var personHours = (siteMin + driveMin * size) * perMonthVisits / 60, cost = personHours * rate;
     return { id: p.id, name: p.name, revenue: Math.round(rev), visits: Math.round(perMonthVisits * 10) / 10, site_min: Math.round(siteMin), drive_min: Math.round(driveMin), crew: size, hours: Math.round(personHours * 10) / 10,
-      cost: Math.round(cost), profit: Math.round(rev - cost), per_hour: personHours ? Math.round(rev / personHours) : null, logged: !!lg, no_price: !price, no_pin: !lsRoutable(p), no_crew: !p.crew_id, est_ok: !!lg || isTrue(p.labor_ok) };
+      cost: Math.round(cost), contribution: price ? Math.round(rev - cost) : null, per_hour: price && personHours ? Math.round(rev / personHours) : null, logged: !!lg, no_price: !price, no_pin: !routable, no_crew: !p.crew_id, est_ok: estOk, own_rate: ownRate,
+      gaps: gaps, confidence: !price || !routable ? "incomplete" : gaps.length ? "estimated" : lg ? "logged" : "planned" };
   }).sort(function (a, c) { return (a.per_hour == null ? -1 : a.per_hour) - (c.per_hour == null ? -1 : c.per_hour); });
-  return { rows: out, target: cfg.target, rate: cfg.rate, yard: !!cfg.yard };
+  // F02: this is revenue minus crew labor (on site + driving). It is NOT profit: the exclusions travel with the numbers.
+  return { rows: out, target: cfg.target, rate: cfg.rate, yard: !!cfg.yard, computed_at: now(), currency: "USD",
+    basis: { period: "Per month, from a typical week of the current schedule", revenue: "Agreement price (not invoices or payments)", labor: "Person-minutes on site (logged in the last 90 days, otherwise planned) + driving × people in the truck, at each member's rate or the default",
+      driving: "Estimated from distance (town and freeway speeds), not Google traffic" + (cfg.yard ? "; starts and ends at the yard" : "; the yard isn't set"),
+      excluded: ["materials and dump fees", "fuel, vehicles and equipment", "payroll taxes, workers' comp and benefits (unless already in the rate)", "insurance, office and other overhead"] },
+    reliable: out.filter(function (x) { return x.confidence === "planned" || x.confidence === "logged"; }).length };
 };
 NO_LOCK.lsPricing = 1;
 ["lsDayRoutes", "lsFixPins", "lsSettings", "lsSuggestDays", "lsMoveDay", "lsPricing"].forEach(function (a) { PREFETCH[a] = ["People", "Projects"].concat(LS_TABLES); });

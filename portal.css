@@ -1841,3 +1841,15 @@
 #bs-portal table.gr-rt input{width:80px;padding:4px 6px}
 #bs-portal .gr-checks{padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 @media (max-width:700px){#bs-portal .row3{grid-template-columns:1fr}#bs-portal .gr-head h2{font-size:22px}}
+/* Phase 1: send attempts, acceptance proof, data confidence */
+#bs-portal .gr-send{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--line,#e7e2d8);font-size:14px}
+#bs-portal .gr-send>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+#bs-portal .gr-send.bad{background:#fdf3f1}
+#bs-portal .gr-send.ok b{color:var(--ok)}
+#bs-portal .gr-send.bad b{color:var(--bad)}
+#bs-portal .gr-acc{display:block;margin-top:4px;color:var(--ok)}
+#bs-portal .ls-gaps{display:block;color:var(--warn);font-size:12px;line-height:1.35;margin-top:2px;max-width:320px}
+#bs-portal .ls-basis{margin:6px 0 8px 18px;padding:0}
+#bs-portal .ls-basis li{margin:2px 0}
+@media (max-width:640px){#bs-portal .gr-send{flex-direction:column;align-items:flex-start}}
+#bs-portal .gr-send.hist{background:none;padding:4px 14px 8px}
