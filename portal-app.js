@@ -134,7 +134,7 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
+  var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
     if (S.viewAs) {
@@ -253,11 +253,11 @@
   }
   function enterPreview(role) {
     if (!S.viewAs) S.realMe = S.me;
-    S.viewAs = role; S.viewAsLs = null; lsReset(); S.modal = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; S.peopleOpen = false; S.presence = null; S.team = null;
+    S.viewAs = role; S.viewAsLs = null; lsReset(); S.modal = null; S.tt = null; S.ttErr = ""; S.home = null; S.projects = null; S.data = null; S.notif = null; S.bell = false; S.peopleOpen = false; S.presence = null; S.team = null;
     if (S.tab === "money" || S.tab === "people") history.replaceState(null, "", S.pid ? "#p=" + S.pid : location.pathname + location.search);
     window.scrollTo(0, 0); route();
   }
-  function exitPreview() { S.viewAs = null; S.viewAsLs = null; lsReset(); if (S.realMe) S.me = S.realMe; S.realMe = null; S.projects = null; S.data = null; S.notif = null; route(); ping(); }
+  function exitPreview() { S.viewAs = null; S.viewAsLs = null; S.tt = null; S.ttErr = ""; S.home = null; lsReset(); if (S.realMe) S.me = S.realMe; S.realMe = null; S.projects = null; S.data = null; S.notif = null; route(); ping(); }
   function previewBar() {
     if (!S.viewAs) return "";
     return '<div class="viewas-bar"><span class="va-txt">' + ICON.eye + ' Previewing as <span class="tg tg-' + S.viewAs + '">#' + S.viewAs + "</span> · exactly what they see. Nothing saves.</span>" +
@@ -366,14 +366,18 @@
     var w = WORK[S.loginPick]; return ["https://cdn.prod.website-files.com/69582886d4d5d7d43ba632a5/" + w[0], w[1]];
   }
   /* This device remembers who logged in, so next time it's just the PIN. */
-  function loginStep() { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && r.email) { S.email = r.email; S.who = r.name; return "pin"; } } catch (e) {} return "email"; }
-  function remember(email, name) { try { localStorage.setItem("bsp-remember", JSON.stringify({ email: email, name: name || "" })); } catch (e) {} }
+  /* This phone's own random id: created once, kept on the phone. The server learns which person uses which phone. */
+  function devId() { try { var d = localStorage.getItem("bsp-device"); if (!d) { d = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); localStorage.setItem("bsp-device", d); } return d; } catch (e) { return ""; } }
+  function loginStep() { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && (r.email || r.phone)) { S.email = r.email || ""; S.phone = r.phone || ""; S.who = r.name; return "pin"; } } catch (e) {} return "email"; }
+  function remember(email, name, phone) { try { localStorage.setItem("bsp-remember", JSON.stringify({ email: email, name: name || "", phone: phone || "" })); } catch (e) {} }
+  function phoneOf(v) { var d = String(v || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); return /@/.test(v) ? "" : d.length === 10 ? d : ""; }
+  function phoneFmt(d) { return d && d.length === 10 ? "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6) : d; }
   function forget() { try { localStorage.removeItem("bsp-remember"); } catch (e) {} S.who = ""; }
   async function savePin(pin) {
     await call("setPin", { pin: pin }); S.lastCode = null; S.resetPin = false;
     S.me = S.pendingMe; S.me.hasPin = true; S.pendingMe = null; S.projects = null; toast("PIN saved 🔐 Next time, just your email and PIN."); return route();
   }
-  (function () { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && r.email) { S.email = r.email; S.who = r.name; S.step = "pin"; } } catch (e) {} })();
+  (function () { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && (r.email || r.phone)) { S.email = r.email || ""; S.phone = r.phone || ""; S.who = r.name; S.step = "pin"; } } catch (e) {} })();
   function renderLogin() {
     var demo = !API && window.BSP_MOCK, lp = loginPhoto();
     root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
@@ -381,14 +385,17 @@
       (S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
           '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>' +
           (S.lastCode ? '<button class="link" data-a="keepCode">Keep ' + esc(S.lastCode) + " as my PIN</button>" : "")
+        : S.step === "pin" && S.phone ? "<h1>Hola" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Escribe tu PIN de 6 números para <b>' + esc(phoneFmt(S.phone)) + "</b>. / Type your 6-digit PIN.</p>" +
+          '<form class="form" data-form="pin"><input type="text" name="username" autocomplete="username" value="' + esc(S.phone) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Entrar / Log in</button></form>' +
+          '<div class="login-links"><span class="muted small">¿Olvidaste tu PIN? Pídele uno nuevo a la oficina.</span><button class="link" data-a="restart">No soy ' + esc(S.who || "yo") + " / Not me</button></div>"
         : S.step === "pin" ? "<h1>Welcome back" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Type your 6-digit PIN for <b>' + esc(S.email) + "</b>.</p>" +
           '<form class="form" data-form="pin"><input type="email" name="username" autocomplete="username" value="' + esc(S.email) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
           '<div class="login-links"><button class="link" data-a="forgotPin">Forgot my PIN</button><button class="link" data-a="restart">Not ' + esc(S.who || "you") + "? Use another email</button></div>"
         : S.step === "code" ? "<h1>" + (S.resetPin ? "Reset your PIN." : "Check your email.") + '</h1><p class="muted">We sent a 6-digit code to <b>' + esc(S.email) + "</b>. It works for 15 minutes." + (S.resetPin ? " Then you'll choose a new PIN." : " It's only for this first time: next you'll choose your own PIN.") + "</p>" +
           '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Continue</button></form>' +
           '<button class="link" data-a="restart">Use a different email</button>'
-        : '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, chat, the schedule and invoices for your Blue Sierra project. Type your email to log in.</p>' +
-          '<form class="form" data-form="email"><label class="f">Email<input type="email" name="email" autocomplete="username email" required value="' + esc(S.email) + '"></label><button class="btn" type="submit">Continue</button></form>') +
+        : '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, chat, the schedule and invoices for your Blue Sierra project. Type your email to log in. Crew: tu número de teléfono.</p>' +
+          '<form class="form" data-form="email"><label class="f">Email o teléfono / Email or phone<input type="text" name="email" autocomplete="username email" autocapitalize="off" required value="' + esc(S.email || (S.phone ? phoneFmt(S.phone) : "")) + '"></label><button class="btn" type="submit">Continue</button></form>') +
       (S.err ? '<p class="error">' + esc(S.err) + "</p>" : "") +
       (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team), <b>client@example.com</b> (client), <b>architect@example.com</b> or <b>crew@example.com</b>. The first time the code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
       (!API && !window.BSP_MOCK ? '<p class="error">The portal isn\'t connected yet.</p>' : "") +
@@ -400,7 +407,9 @@
   function renderList() {
     var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
     var list = list0, view = staff() ? (S.home || (S.viewAs ? "projects" : "today")) : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
-    if (S.home === "tt" && ttOn()) view = "tt"; var ttc = S.me && S.me.crew && ttOn() ? ttCard() : "";
+    var crewClock = ttCrewUI() && ttOn() && (S.tt ? S.tt.enabled : (ttCard(), true));      // while it loads the tab shows; it hides only if the clock is off for them
+    if (!staff() && !S.home && crewClock) view = "tt";
+    if (S.home === "tt" && ttOn()) view = "tt"; var ttc = crewClock ? "ttc" : "";
     var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
@@ -414,14 +423,14 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
     var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
-    if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + [["projects", "Projects"]].concat(lsRoleMe ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : [], ttc ? [["tt", tx("my")]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
+    if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + (ttc ? [["tt", ttL() === "es" ? "Horas" : "Hours"]] : []).concat([["projects", "Projects"]], lsRoleMe ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
     if (view === "tt") return head + ttView();
     if (view === "today" && staff() && !S.viewAs) return head + ttCard() + todayView();
-    if (view === "ls") return head + ttc + '<div class="ls-wrap">' + lsView() + "</div>";
+    if (view === "ls") return head + '<div class="ls-wrap">' + lsView() + "</div>";
     if (view === "gr" && staff() && !S.viewAs) return head + '<div class="ls-wrap gr-wrap">' + grView() + "</div>";
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
@@ -434,7 +443,7 @@
         stat("Billed", money(t.billed), pctOf(t.billed, t.total) + "% of the contracts") + stat("Collected", money(t.paid), pctOf(t.paid, t.total) + "% of the contracts") +
         stat("To collect", money(t.waiting), t.overdue ? '<span style="color:var(--bad)">' + money(t.overdue) + " overdue</span>" : "Nothing overdue" + (t.held ? " · " + money(t.held) + " retainage held" : "")) + "</div>";
     }
-    return head + ttc + portfolio + homePins() +
+    return head + portfolio + homePins() +
       (active.length ? '<div class="projects">' + active.map(card).join("") + "</div>" : '<div class="empty">' + (staff() ? "No projects yet. Create the first one." : "There's no project on your account yet. Blue Sierra will add it soon.") + "</div>") +
       (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "") +
       (deleted.length ? '<div class="section-title"><h2>Recently deleted</h2><span class="muted small">Only you see these.</span></div><div class="card" style="display:flex;flex-direction:column;gap:10px">' + deleted.map(function (p) { return '<div class="team-row"><div style="flex:1"><b style="font-weight:500">' + esc(p.name) + '</b><div class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + '</div></div><button class="btn ghost sm" data-a="restoreProject" data-id="' + esc(p.id) + '">Restore</button><button class="btn ghost sm danger-txt" data-a="modal" data-m="purge" data-id="' + esc(p.id) + '">Delete forever</button></div>'; }).join("") + "</div>" : "");
@@ -2158,7 +2167,7 @@
     switch (a) {
       case "forgotPin": run(b, async function () { await call("requestCode", { email: S.email }); S.resetPin = true; S.step = "code"; render(); }); return;
       case "keepCode": run(b, async function () { await savePin(S.lastCode); }); return;
-      case "restart": forget(); S.step = "email"; return render();
+      case "restart": forget(); S.step = "email"; S.phone = ""; S.email = ""; return render();
       case "retry": root.innerHTML = '<div class="loading">Loading…</div>'; return route();
       case "forget": store("del"); resetState(); S.step = loginStep(); return render();
       case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); resetState(); S.step = loginStep(); history.pushState(null, "", location.pathname + location.search); render(); }); return;
@@ -2437,12 +2446,16 @@
     run(btn, async function () { try { await submitForm(); } catch (e) { if (!loginForm) throw e; S.err = e.message; renderLogin(); } }).catch(function () {});
     async function submitForm() {
       if (kind === "email") {
-        S.email = v("email").toLowerCase(); var ce = await call("checkEmail", { email: S.email }); S.who = ce.name;
+        var ph = phoneOf(v("email"));
+        if (ph) { var cph = await call("checkPhone", { phone: ph }); S.phone = ph; S.email = ""; S.who = cph.name; if (!cph.hasPin) throw new Error("Todavía no tienes PIN. Pídeselo a la oficina. / Ask the office for your PIN."); S.step = "pin"; return render(); }
+        S.phone = ""; S.email = v("email").toLowerCase(); if (S.email.indexOf("@") < 1) throw new Error("Escribe tu email o tu número de 10 dígitos. / Type your email or 10-digit phone.");
+        var ce = await call("checkEmail", { email: S.email }); S.who = ce.name;
         if (ce.hasPin) { S.step = "pin"; return render(); }
         await call("requestCode", { email: S.email }); S.step = "code"; S.resetPin = false; return render();
       }
       if (kind === "pin") {
-        var rp = await call("loginPin", { email: S.email, pin: v("pin") }); remember(S.email, S.who);
+        var rp = S.phone ? await call("loginPhone", { phone: S.phone, pin: v("pin"), device_id: devId(), ua: (navigator.userAgent || "").slice(0, 160) }) : await call("loginPin", { email: S.email, pin: v("pin"), device_id: devId(), ua: (navigator.userAgent || "").slice(0, 160) });
+        remember(S.phone ? "" : S.email, S.who, S.phone);
         S.token = rp.token; store("set", rp.token); S.me = rp.me; S.projects = null; return route();
       }
       if (kind === "code") {
@@ -2564,7 +2577,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110095646";
+  var BUILD = "20261110113939";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4844,7 +4857,7 @@
     if (l.type === "opp") { S.home = "gr"; S.grId = l.id; S.grSub = l.sub || "overview"; S.grI = null; S.grE = null; S.grK = null; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "grtab") { S.home = "gr"; S.grId = null; S.grTab = l.tab; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "projects") { S.home = "projects"; window.scrollTo(0, 0); return keepScroll(render); }
-    if (l.type === "time") { S.home = "tt"; S.ttTab = "team"; S.ttWeekQ = { emp: l.emp, week: l.week }; S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
+    if (l.type === "time") { S.home = "tt"; S.ttTab = "team"; S.ttWeekQ = l.case_id ? {} : { emp: l.emp, week: l.week }; if (l.case_id) { S.ttRWeek = l.week; S.ttR = null; } S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
     S.home = "ls"; window.scrollTo(0, 0);
     if (l.type === "lsday") { S.lsTab = "schedule"; S.lsMode = "map"; S.lsPTab = "route"; S.lsMob = "list"; S.lsMapDay = l.date; if (l.visit && S.ls && S.ls.visits && S.ls.visits.some(function (v) { return v.id === l.visit; })) S.modal = { type: "lsWork", id: l.visit }; }
     else S.lsTab = { requests: "requests", estimates: "est", costs: "costs", lstab: l.tab }[l.type] || "today";
@@ -4894,7 +4907,18 @@
       day: "Día", tin: "Hora de entrada", tout: "Hora de salida", whichShift: "Jornada", which: "Registro", newTime: "Hora correcta", newJob: "Trabajo correcto", mstart: "Inicio de comida", mend: "Fin de comida", lang: "English",
       prevWeek: "Semana anterior", nextWeek: "Semana siguiente", nothing: "Sin registros esta semana.", reg: "Regular", ot: "Overtime", dt: "Doble", why: "Así funciona",
       x_missing_out: "Falta la hora de salida", x_open_long: "Jornada abierta mucho tiempo", x_unassigned: "Tiempo sin trabajo asignado", x_meal: "Comida por revisar", x_no_location: "Sin ubicación al marcar (tu hora cuenta igual)",
-      x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada" },
+      x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada", x_presence: "Entrada pendiente de validación",
+      a_general: "", a_maint: "Mantenimiento", a_prune: "Poda", a_irrig: "Riego / drenaje", a_pavers: "Pavers / piedra", a_concrete: "Concreto", a_walls: "Muros", a_other: "Otra",
+      a_load: "Carga en el yard", a_travel: "Traslado", a_materials: "Compra de materiales", a_disposal: "Basura / disposición", a_office: "Oficina", a_work: "", a_unassigned: "",
+      q_site: "¿En qué jobsite estás?", q_act: "¿Qué vas a hacer?", opt: "(opcional)", write_act: "Escribir otra actividad", act_ph: "Ej. instalar sod", q_clock: "Toca el reloj: pediremos tu ubicación",
+      nogeo: "sin punto en el mapa: quedará pendiente", more_sites: "Ver más lugares", fewer: "Ver menos", noplaces: "No tienes jobsites asignados todavía. Avísale a la oficina.",
+      ok_in: "Entrada confirmada", ok_loc: "Tu ubicación coincide con el jobsite", pend_t: "Entrada pendiente de validación",
+      pend_m: "Tu entrada quedó pendiente porque no pudimos confirmar que estás en el jobsite. Activa tu ubicación o revisa el lugar seleccionado. La oficina recibirá un aviso.",
+      out_t: "Tu ubicación no coincide con este jobsite", out_m: "Revisa el lugar seleccionado o vuelve a intentar.", later_t: "Ubicación confirmada desde las ", later_m: "El tiempo antes de esa hora queda pendiente para que la oficina lo revise.",
+      retry_loc: "Reintentar ubicación", explain_btn: "Enviar explicación", change_site: "Cambiar jobsite", sent_office: "La oficina ya tiene el aviso.", queued_office: "Sin señal: tu entrada y el aviso a la oficina se enviarán cuando vuelva la conexión.",
+      explained: "Explicación enviada. La oficina decide; explicar no aprueba la entrada.", working_at: "Trabajando en ", change_act: "Cambiar actividad", moved_q: "¿Te cambiaste de jobsite?", tap_new: "Toca el nuevo jobsite (se revisa tu ubicación):",
+      rs_denied: "El permiso de ubicación está apagado. iPhone: Ajustes › Privacidad › Localización › Safari (o tu navegador): \"Al usar la app\" y \"Ubicación precisa\". Android: toca el candado junto a la dirección › Permisos › Ubicación › Permitir.", rs_timeout: "El teléfono tardó demasiado en ubicarse.", rs_unavailable: "El teléfono no pudo obtener tu ubicación.", rs_unsupported: "Este teléfono no comparte ubicación.", rs_none: "No llegó ubicación.", rs_stale: "La ubicación del teléfono era vieja.", rs_imprecise: "La ubicación no era suficientemente precisa. Revisa que \"Ubicación precisa\" esté activada y vuelve a intentar al aire libre.", rs_uncertain: "Estás muy cerca del límite del jobsite para confirmarlo.", rs_no_geocode: "Este jobsite todavía no tiene su punto en el mapa.", rs_no_place: "No elegiste jobsite.", rs_outside: "", rs_other_device: "Este teléfono está registrado a otra persona. Marca con tu propio teléfono.", rs_new_device: "Es un teléfono nuevo para ti. La oficina tiene que aprobarlo.", rs_no_device: "No pudimos identificar este teléfono.", rs_blocked_device: "Este teléfono está bloqueado. Habla con la oficina.",
+      p_verified: "ubicación verificada", p_pending: "pendiente de validación", p_outside: "lejos del jobsite" },
     en: { off: "Off the clock", work: "Working", rest: "Paid rest break", meal: "Meal (unpaid)", "in": "Check in", out: "Check out", meal_start: "Start meal", meal_end: "End meal", rest_start: "Paid rest", rest_end: "End rest", "switch": "Change job",
       since: "since", my: "My hours", fix: "Request a correction", what: "What gets recorded?", saved: "Saved", pending: "Waiting to send", err: "Not saved", retry: "Retry", locating: "Getting location…", saving: "Saving…",
       pick: "What are you working on?", route: "Today's route", acts: "Other activity", other: "Another project or property", a_work: "Job work", a_load: "Loading / yard prep", a_travel: "Travel between jobs", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_office: "Office work", a_unassigned: "Not assigned (pick later)", rest_seg: "Paid rest",
@@ -4904,27 +4928,56 @@
       sumT: "Check-out saved", sumQ: "Anything missing from today?", allgood: "All good", items: "To review", noitems: "Nothing to review.", est: "Estimate, not net pay",
       r_missed_in: "Forgot to check in", r_missed_out: "Forgot to check out", r_wrong_job: "Wrong job", r_meal: "Meal not recorded", r_tech: "Technical problem", r_other: "Other", r_declared: "Time given when clocking", explain: "What happened?", place: "Where were you? (optional, saved as a declared location)", send: "Send request",
       day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "Español",
-      prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works" }
+      prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works",
+      a_general: "", a_maint: "Maintenance", a_prune: "Pruning", a_irrig: "Irrigation / drainage", a_pavers: "Pavers / stone", a_concrete: "Concrete", a_walls: "Walls", a_other: "Other",
+      a_load: "Loading at the yard", a_travel: "Travel", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_office: "Office", a_work: "", a_unassigned: "",
+      q_site: "Which jobsite are you at?", q_act: "What are you doing?", opt: "(optional)", write_act: "Write another activity", act_ph: "e.g. lay sod", q_clock: "Tap the clock: we'll ask for your location",
+      nogeo: "no map point: it will be pending", more_sites: "More places", fewer: "Show fewer", noplaces: "No jobsites assigned yet. Tell the office.",
+      ok_in: "Check-in confirmed", ok_loc: "Your location matches the jobsite", pend_t: "Check-in pending validation",
+      pend_m: "Your check-in is pending because we couldn't confirm you're at the jobsite. Turn on your location or check the place you picked. The office will be notified.",
+      out_t: "Your location doesn't match this jobsite", out_m: "Check the place you picked or try again.", later_t: "Location confirmed from ", later_m: "The time before that stays pending for the office to review.",
+      retry_loc: "Retry location", explain_btn: "Send an explanation", change_site: "Change jobsite", sent_office: "The office has the alert.", queued_office: "No signal: your check-in and the alert to the office will be sent when the connection is back.",
+      explained: "Explanation sent. The office decides; explaining doesn't approve the check-in.", working_at: "Working at ", change_act: "Change activity", moved_q: "Moved to another jobsite?", tap_new: "Tap the new jobsite (your location is checked):",
+      rs_denied: "Location permission is off. iPhone: Settings › Privacy › Location Services › Safari (or your browser): \"While Using\" and \"Precise Location\". Android: tap the lock next to the address › Permissions › Location › Allow.", rs_timeout: "The phone took too long to find you.", rs_unavailable: "The phone couldn't get your location.", rs_unsupported: "This phone doesn't share location.", rs_none: "No location arrived.", rs_stale: "The phone's location was old.", rs_imprecise: "The location wasn't precise enough. Make sure \"Precise Location\" is on and try again outdoors.", rs_uncertain: "You're too close to the jobsite's edge to confirm.", rs_no_geocode: "This jobsite has no map point yet.", rs_no_place: "No jobsite was picked.", rs_outside: "", rs_other_device: "This phone is registered to someone else. Clock in with your own phone.", rs_new_device: "This is a new phone for you. The office has to approve it.", rs_no_device: "We couldn't identify this phone.", rs_blocked_device: "This phone is blocked. Talk to the office.",
+      p_verified: "location verified", p_pending: "pending validation", p_outside: "away from the jobsite" }
   };
   function ttL() { return (S.tt && S.tt.lang) || (S.me && S.me.crew ? "es" : "en"); }
   function tx(k) { var d = TTX[ttL()]; return d[k] != null ? d[k] : TTX.en[k] != null ? TTX.en[k] : k; }
-  function ttOn() { return !!(S.me && (S.me.crew || staff()) && !S.viewAs); }
+  function ttOn() { return !!(S.me && (S.me.crew || staff()) && (!S.viewAs || S.viewAs === "crew")); }
+  function ttCrewUI() { return !!(S.me && S.me.crew && !staff()); }                      // crew: only the 3 steps and their own records
   function ttHm24(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Los_Angeles" }); }
   function ttHm(iso) { var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(ttL() === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" }); }
   function ttDur(min) { min = Math.max(0, Math.round(min || 0)); var h = Math.floor(min / 60), m = min % 60; return h ? h + " h" + (m ? " " + String(m).padStart(2, "0") + " min" : "") : m + " min"; }
   function ttDayName(d) { return new Date(d + "T12:00:00").toLocaleDateString(ttL() === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric" }); }
-  function ttJobName(j) { if (!j) return ""; return j.act === "work" ? (j.ref_name || tx("a_work")) : tx("a_" + j.act); }
+  function ttActName(j) { return !j || !j.act ? "" : j.act === "other" || j.act === "scope" ? (j.act_note || "") : tx("a_" + j.act); }
+  function ttJobName(j) { if (!j) return ""; var a = ttActName(j); return (j.ref_name || (ttL() === "es" ? "Sin jobsite" : "No jobsite")) + (a ? " · " + a : ""); }
   function ttKey() { return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
   function ttQKey() { return "bsp_ttq_" + (S.me && S.me.key); }
   function ttQ(v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(ttQKey()) || "[]"); localStorage.setItem(ttQKey(), JSON.stringify(v)); } catch (e) { return v === undefined ? (S.ttMemQ || []) : (S.ttMemQ = v); } }
-  function ttLoad() { if (S.ttBusy) return; S.ttBusy = 1; call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; }).catch(function (e) { S.ttErr = e.message; }).then(function () { S.ttBusy = 0; ttFlush(); keepScroll(render); }); }
+  function ttLoad() {
+    if (S.ttBusy || !S.token) return; S.ttBusy = 1;
+    call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; S.ttTries = 0; }).catch(function (e) {
+      S.ttErr = e.message; if ((S.ttTries = (S.ttTries || 0) + 1) < 3) setTimeout(function () { if (!S.tt) { S.ttErr = ""; keepScroll(render); } }, 2500 * S.ttTries);   // quietly try again (e.g. right after logging in)
+    }).then(function () { S.ttBusy = 0; ttFlush(); keepScroll(render); });
+  }
+  /* The phone's location at the moment of the tap. Phones often give a rough first fix (cell towers, ±100 m+) and then a
+     precise one (GPS) a few seconds later, so we listen for up to 12 s and keep the most precise reading, stopping early
+     at ±25 m or better. Each reading keeps its own capture time; the server rejects old or imprecise ones. */
   function ttLoc() {
     return new Promise(function (res) {
-      if (!navigator.geolocation) return res({ status: "unsupported" }); var done = 0, t = setTimeout(function () { if (!done) { done = 1; res({ status: "timeout" }); } }, 8000);
-      navigator.geolocation.getCurrentPosition(function (p) { if (done) return; done = 1; clearTimeout(t); res({ status: "ok", lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: new Date(p.timestamp).toISOString() }); },
-        function (er) { if (done) return; done = 1; clearTimeout(t); res({ status: er.code === 1 ? "denied" : er.code === 3 ? "timeout" : "unavailable" }); }, { enableHighAccuracy: true, timeout: 7500, maximumAge: 0 });
+      if (!window.isSecureContext || !navigator.geolocation) return res({ status: "unsupported" });
+      var best = null, n = 0, done = 0, id = null, lastErr = 0;
+      var pack = function (p) { return { status: "ok", lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: new Date(p.timestamp || Date.now()).toISOString(), samples: n }; };
+      var finish = function (r) { if (done) return; done = 1; clearTimeout(t1); try { if (id != null) navigator.geolocation.clearWatch(id); } catch (e) {} res(r); };
+      var t1 = setTimeout(function () { finish(best ? pack(best) : { status: lastErr === 2 ? "unavailable" : "timeout" }); }, 12000);
+      try {
+        id = navigator.geolocation.watchPosition(function (p) { n++; if (!best || p.coords.accuracy < best.coords.accuracy) best = p; if (best.coords.accuracy <= 25) finish(pack(best)); },
+          function (er) { lastErr = er.code; if (er.code === 1) finish({ status: "denied" }); }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+      } catch (e) { finish({ status: "unavailable" }); }
     });
   }
+  /* The public IP the phone reports (from a free lookup service). On cell data it changes often and is shared, so it's only a detail. */
+  function ttIp() { if (S.ttIpAt && Date.now() - S.ttIpAt < 300000) return Promise.resolve(S.ttIpV || ""); return new Promise(function (res) { var t = setTimeout(function () { res(""); }, 2500); fetch("https://api.ipify.org?format=json").then(function (r) { return r.json(); }).then(function (j) { clearTimeout(t); S.ttIpV = String(j.ip || ""); S.ttIpAt = Date.now(); res(S.ttIpV); }).catch(function () { clearTimeout(t); res(""); }); }); }
   var TT_NEXT = { "in": "work", out: "off", meal_start: "meal", meal_end: "work", rest_start: "rest", rest_end: "work", "switch": "work" };
   /* A time the person types (instead of "now") never replaces the clock: the tap is saved at the real time and the
      typed time goes to the office as a request ("time given when clocking"). */
@@ -4936,19 +4989,21 @@
   function ttHm12(local) { var h = +local.slice(11, 13), m = local.slice(14, 16); return ((h % 12) || 12) + ":" + m + (h < 12 ? " am" : " pm"); }
   async function ttDo(kind, job, declared) {
     if (S.ttWorking) return; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
-    var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 80) }, job || {});
+    var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 200) }, job || {});
     if (declared) ev.declare_at = declared;
-    ev.loc = await ttLoc(); S.ttSync = { st: "saving" }; keepScroll(render);
+    var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0]; if (both[1]) ev.ip = both[1]; ev.device_id = devId(); S.ttSync = { st: "saving" }; keepScroll(render);
     try {
       if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
-      var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); S.ttSync = { st: "ok", at: r.event.recv_at };
+      var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); S.ttSync = { st: "ok", at: r.event.recv_at }; S.ttPres = r.presence || null; S.ttExplained = 0;
       if (r.summary) { if (ttSimple()) S.ttLast = { at: r.event.at, min: r.state.today_min, shift: r.summary.id, ask: !!r.summary.ask_meal }; else S.modal = { type: "lsxTtSum", s: r.summary }; }
       if (declared) await ttDeclare(r.event.id, declared, kind);
       if (job && job.ref_id) try { localStorage.setItem("bsp_tt_last_" + S.me.key, job.ref_type + "|" + job.ref_id); } catch (x) {}
     } catch (e) {
       if (e instanceof TypeError || /fetch|network|offline/i.test(e.message)) {
         ev.offline = true; var q = ttQ(); q.push(ev); ttQ(q); S.ttSync = { st: "pending", n: q.length };
-        S.tt = Object.assign(S.tt || {}, { mode: TT_NEXT[kind], shift: kind === "out" ? null : Object.assign({}, (S.tt && S.tt.shift) || { start: ev.device_at }, kind === "in" || kind === "switch" ? { job: job } : {}) });
+        var keepJob = (S.tt && S.tt.shift && S.tt.shift.job) || {};
+        S.tt = Object.assign(S.tt || {}, { mode: kind === "presence" ? (S.tt && S.tt.mode) || "work" : TT_NEXT[kind], shift: kind === "out" ? null : Object.assign({}, (S.tt && S.tt.shift) || { start: ev.device_at }, kind === "in" || kind === "switch" ? { job: Object.assign({}, kind === "switch" && !job.ref_id ? keepJob : {}, job, kind === "switch" && !job.ref_id ? { ref_type: keepJob.ref_type, ref_id: keepJob.ref_id, ref_name: keepJob.ref_name } : {}) } : {}) });
+        if (kind === "in" || kind === "presence" || (kind === "switch" && job && job.ref_id)) S.tt.presence = { status: "queued" };
       } else { S.ttSync = { st: "err", msg: e.message }; }
     }
     S.ttWorking = 0; keepScroll(render);
@@ -4978,14 +5033,15 @@
     if (!s) return ""; if (s.st === "locating") return '<span class="tt-sync">' + tx(ttSimple() ? "saving" : "locating") + "</span>"; if (s.st === "saving") return '<span class="tt-sync">' + tx("saving") + "</span>";
     if (s.st === "err") return '<span class="tt-sync bad">✕ ' + tx("err") + ": " + esc(s.msg) + "</span>";
     if (s.st === "warn") return '<span class="tt-sync bad">⚠ ' + esc(s.msg) + "</span>";
-    return '<span class="tt-sync ok">✓ ' + tx("saved") + (s.at ? " " + ttHm(s.at) : "") + (s.note ? " · " + esc(s.note) : "") + "</span>";
+    var pendNow = S.tt && S.tt.mode !== "off" && S.tt.presence && S.tt.presence.status !== "verified";
+    return '<span class="tt-sync' + (pendNow ? "" : " ok") + '">' + (pendNow ? (ttL() === "es" ? "Registro guardado " : "Record saved ") : "✓ " + tx("saved") + " ") + (s.at ? ttHm(s.at) : "") + (s.note ? " · " + esc(s.note) : "") + "</span>";
   }
   /* ---- the crew's screen: pick the place with one tap, tap the clock. Location is taken quietly for the office. ---- */
-  function ttSimple() { return !!(S.me && S.me.crew && !staff()); }
+  function ttSimple() { return !!(S.me && (S.me.crew || staff())); }      // crew and team: the same jobsite → location → check-in
   var TT_CLOCK = '<svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M24 12v13l8 5" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function ttPlaces() {
     var g = (S.tt && S.tt.suggest) || {}, out = [], seen = {};
-    (g.visits || []).map(function (v) { return Object.assign({ route: 1 }, v); }).concat(g.projects || [], g.properties || []).forEach(function (o) { var k = o.name.toLowerCase(); if (seen[k]) return; seen[k] = 1; out.push(o); });
+    (g.visits || []).map(function (v) { return Object.assign({ route: 1 }, v); }).concat(g.projects || [], g.properties || [], g.zones || []).forEach(function (o) { var k = o.name.toLowerCase(); if (seen[k]) return; seen[k] = 1; out.push(o); });
     return out;
   }
   function ttPickDefault(list) {
@@ -4993,25 +5049,71 @@
     var hit = list.filter(function (o) { return o.ref_type + "|" + o.ref_id === last; })[0] || list.filter(function (o) { return o.route; })[0];
     return hit ? hit.ref_type + "|" + hit.ref_id : "";
   }
+  function ttSiteName(k) { var o = ttPlaces().filter(function (x) { return x.ref_type + "|" + x.ref_id === k; })[0]; return o ? o.name : ""; }
+  function ttTiles(places, action, onKey) {
+    var es = ttL() === "es", max = S.ttsMore ? 99 : 6;
+    var tiles = places.slice(0, max).map(function (o) { var k = o.ref_type + "|" + o.ref_id, on = onKey === k;
+      return '<button class="tts-place' + (on ? " on" : "") + '" data-a="' + action + '" data-k="' + esc(k) + '" aria-pressed="' + on + '"><b>' + esc(o.name) + "</b>" + (o.route ? '<small class="tts-route">' + (es ? "Asignado hoy" : "Assigned today") + "</small>" : "") + (o.sub && o.sub !== o.name ? "<small>" + esc(o.sub) + "</small>" : "") + (o.geo === false ? '<small class="tts-nogeo">⚠ ' + tx("nogeo") + "</small>" : "") + (on ? '<i class="tts-check">✓</i>' : "") + "</button>"; }).join("");
+    var more = places.length > 6 ? '<button class="link small" data-a="ttsMore">' + (S.ttsMore ? tx("fewer") : tx("more_sites") + " (" + (places.length - 6) + ")") + "</button>" : "";
+    return places.length ? '<div class="tts-places">' + tiles + "</div>" + more : '<p class="muted">' + tx("noplaces") + "</p>";
+  }
+  function ttPlaceObj(k) { return ttPlaces().filter(function (x) { return x.ref_type + "|" + x.ref_id === k; })[0] || null; }
+  /* The activity buttons are the picked jobsite's own scope of work (project schedule tasks, maintenance checklist). */
+  function ttActChips(action, cur, secondary, placeKey) {
+    var p = ttPlaceObj(placeKey), sc = (p && p.scope) || [], es = ttL() === "es";
+    var items = sc.map(function (x) { return ["scope:" + x.id, x.title]; }).concat(secondary ? ["load", "travel", "materials", "disposal"].map(function (a) { return [a, tx("a_" + a)]; }) : []);
+    if (!placeKey) return '<p class="muted small">' + (es ? "Primero elige el jobsite." : "Pick the jobsite first.") + "</p>";
+    return (sc.length ? "" : '<p class="muted small">' + (es ? "Este jobsite no tiene tareas en su calendario. Puedes escribir la actividad." : "This jobsite has no tasks in its schedule. You can write the activity.") + "</p>") +
+      '<div class="chips tts-acts">' + items.map(function (a) { return '<button class="chip' + (cur === a[0] ? " on" : "") + '" data-a="' + action + '" data-v="' + esc(a[0]) + '">' + esc(a[1]) + "</button>"; }).join("") +
+      '<button class="chip' + (cur === "other" ? " on" : "") + '" data-a="' + action + '" data-v="other">✎ ' + tx("write_act") + "</button></div>" +
+      (cur === "other" ? '<input class="tts-actnote" data-tts-actnote maxlength="80" placeholder="' + esc(tx("act_ph")) + '" value="' + esc(S.ttsActNote || "") + '">' : "");
+  }
+  /* What the server decided about the last check-in / move / retry, in words the crew understands. Never green unless verified. */
+  function ttPresBox() {
+    var t = S.tt, p = t.presence || {}, last = p.last || {}, es = ttL() === "es", now = S.ttPres || null, reason = (now && now.reason) || last.reason || "";
+    var dist = (now && now.dist != null ? now.dist : last.dist), far = dist != null ? (dist >= 1000 ? Math.round(dist / 100) / 10 + " km" : dist + " m") : "";
+    if (p.status === "queued") return '<div class="tts-pres pend"><b>⏳ ' + tx("pend_t") + "</b><p>" + tx("queued_office") + "</p></div>";
+    if (p.status === "verified") return '<div class="tts-pres ok"><b>✓ ' + tx("ok_in") + "</b><small>" + tx("ok_loc") + (far ? " · " + (es ? "a " : "") + far + (es ? "" : " away") : "") + "</small></div>";
+    var outside = (now ? now.result : last.presence) === "outside", devR = /^(other_device|new_device|no_device|blocked_device)$/.test(reason);
+    var head = p.status === "verified_later" ? '<b>⚠ ' + tx("later_t") + ttHm(p.verified_at) + "</b><p>" + tx("later_m") + "</p>"
+      : devR ? "<b>⚠ " + tx("pend_t") + "</b><p>" + esc(tx("rs_" + reason)) + " " + (es ? "La oficina recibirá un aviso." : "The office will be notified.") + "</p>"
+      : outside ? "<b>⚠ " + tx("out_t") + (far ? " (" + (es ? "a " : "") + far + (es ? "" : " away") + ")" : "") + "</b><p>" + tx("out_m") + " " + (es ? "La oficina recibirá un aviso." : "The office will be notified.") + "</p>"
+      : "<b>⚠ " + tx("pend_t") + "</b><p>" + tx("pend_m") + "</p>" + (tx("rs_" + reason) && tx("rs_" + reason) !== "rs_" + reason ? '<small class="tts-why">' + esc(tx("rs_" + reason)) + "</small>" : "");
+    var later = p.status === "verified_later" || devR;                                   // retrying the location doesn't fix a phone problem
+    return '<div class="tts-pres pend">' + head + '<div class="tts-pres-b">' + (later ? "" : '<button class="btn" data-a="ttsRetry"' + (S.ttWorking ? " disabled" : "") + ">" + tx("retry_loc") + "</button>") + '<button class="btn ghost" data-a="ttsExplain">' + tx("explain_btn") + "</button>" + (later ? "" : '<button class="btn ghost" data-a="ttsChange">' + tx("change_site") + "</button>") + "</div>" +
+      "<small>" + (S.ttExplained ? tx("explained") + " " : p.explained ? tx("explained") + " " : "") + tx("sent_office") + "</small></div>";
+  }
   function ttSimpleCard() {
     var t = S.tt, m = t.mode || "off", sh = t.shift, es = ttL() === "es", busy = S.ttWorking, places = ttPlaces(), working = m !== "off";
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
-    var showPlaces = !working || S.ttsChange, max = S.ttsMore ? 99 : 6;
-    var tiles = places.slice(0, max).map(function (o) { var k = o.ref_type + "|" + o.ref_id, on = working ? sh && sh.job && sh.job.ref_type + "|" + sh.job.ref_id === k : S.ttsPick === k;
-      return '<button class="tts-place' + (on ? " on" : "") + '" data-a="' + (working ? "ttsSwitch" : "ttsPlace") + '" data-k="' + esc(k) + '" aria-pressed="' + !!on + '"><b>' + esc(o.name) + "</b>" + (o.sub ? "<small>" + esc(o.route ? (es ? "Hoy en tu ruta · " : "On today's route · ") + o.sub.replace(/ · stop \d+$/, "") : o.sub) + "</small>" : "") + (on ? '<i class="tts-check">✓</i>' : "") + "</button>"; }).join("");
-    var more = places.length > 6 ? '<button class="link small" data-a="ttsMore">' + (S.ttsMore ? (es ? "Ver menos" : "Show fewer") : (es ? "Ver más lugares (" : "More places (") + (places.length - 6) + ")") + "</button>" : "";
-    var placeBox = places.length ? '<div class="tts-places">' + tiles + "</div>" + more : '<p class="muted">' + (es ? "No tienes proyectos asignados todavía. Avísale a la oficina." : "No projects assigned yet. Tell the office.") + "</p>";
-    var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick;
-    var clock = '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
+    var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified";
+    var crewUI = ttCrewUI(), preview = !!t.preview;
+    var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el crew. Tocar el reloj no guarda nada." : "Preview: this is what the crew sees. Tapping the clock saves nothing.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
-      '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>";
-    var head = working ? '<div class="tts-now"><span class="tt-dot"></span><div><b>' + (es ? "Trabajando en " : "Working at ") + esc(ttJobName(sh && sh.job) || "—") + "</b><small>" + (es ? "Entraste " : "Started ") + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small></div></div>" +
-        '<button class="link small" data-a="ttsChange">' + (S.ttsChange ? (es ? "Cerrar" : "Close") : (es ? "¿Te cambiaste de lugar?" : "Moved to another place?")) + "</button>" + (S.ttsChange ? '<div class="tts-q">' + (es ? "Toca el nuevo lugar:" : "Tap the new place:") + "</div>" + placeBox : "")
-      : (S.ttLast ? '<div class="tts-done">✓ ' + (es ? "Salida guardada " : "Check-out saved ") + ttHm(S.ttLast.at) + " · " + (es ? "hoy trabajaste " : "today: ") + ttDur(S.ttLast.min) + "</div>" + ttMealBox() : "") +
-        '<div class="tts-q"><span class="tts-n">1</span>' + (es ? "¿Dónde vas a trabajar?" : "Where are you working?") + "</div>" + placeBox;
-    return '<div class="card tts tt-' + m + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + head +
-      (working ? "" : '<div class="tts-q"><span class="tts-n">2</span>' + (es ? "Toca el reloj para marcar tu entrada" : "Tap the clock to check in") + "</div>") + clock +
-      '<div class="tt-foot">' + ttSyncLine() + '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span></div></div>";
+      (crewUI ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
+    var body;
+    if (working) {
+      var curK = sh && sh.job ? sh.job.ref_type + "|" + sh.job.ref_id : "", actN = ttActName(sh && sh.job);
+      body = ttPresBox() + '<div class="tts-now"><span class="tt-dot"></span><div><b>' + tx("working_at") + esc((sh && sh.job && sh.job.ref_name) || "—") + "</b><small>" + (actN ? esc(actN) + " · " : "") + (es ? "Entraste " : "Started ") + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small></div></div>" +
+        '<div class="tts-links2"><button class="link small" data-a="ttsActTog">' + tx("change_act") + '</button> · <button class="link small" data-a="ttsChange">' + (S.ttsChange ? (es ? "Cerrar" : "Close") : tx("moved_q")) + "</button></div>" +
+        (S.ttsActOpen ? ttActChips("ttsActNow", "", true, curK) + (S.ttsActNow === "other" ? '<button class="btn sm" data-a="ttsActSave">' + (es ? "Guardar actividad" : "Save activity") + "</button>" : "") : "") +
+        (S.ttsChange ? '<div class="tts-q">' + tx("tap_new") + "</div>" + ttTiles(places, "ttsSwitch", curK) : "");
+    } else {
+      body = (S.ttLast ? '<div class="tts-done">✓ ' + (es ? "Salida guardada " : "Check-out saved ") + ttHm(S.ttLast.at) + " · " + (es ? "hoy trabajaste " : "today: ") + ttDur(S.ttLast.min) + "</div>" + ttMealBox() : "") +
+        '<div class="tts-q"><span class="tts-n">1</span>' + tx("q_site") + "</div>" + ttTiles(places, "ttsPlace", S.ttsPick) +
+        '<div class="tts-q"><span class="tts-n">2</span>' + tx("q_act") + ' <small class="muted">' + tx("opt") + "</small></div>" + ttActChips("ttsAct", S.ttsAct || "", false, S.ttsPick) +
+        '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>";
+    }
+    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock +
+      '<div class="tt-foot">' + ttSyncLine() + (crewUI ? "" : '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span>") + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
+  }
+  /* The crew's own records: day, jobsite, in → out, hours. */
+  function ttRecentHtml() {
+    var l = (S.tt && S.tt.recent) || [], es = ttL() === "es";
+    return '<div class="tts-rec"><div class="eyebrow">' + (es ? "Mis registros" : "My records") + "</div>" + (l.length ? l.map(function (r) {
+      return '<div class="tts-rec-row"><div><b>' + esc(ttDayName(r.day)) + "</b> · " + esc(r.place || "—") + "<small>" + ttHm(r.start) + " → " + (r.end ? ttHm(r.end) : (es ? "sin salida" : "no check-out")) + (r.presence && r.presence !== "verified" && r.presence !== "accepted" ? ' · <span class="warn-t">' + (es ? "pendiente de validación" : "pending validation") + "</span>" : "") + "</small></div><span>" + (r.paid_min != null ? ttDur(r.paid_min) : "—") + "</span></div>";
+    }).join("") : '<p class="muted small">' + (es ? "Todavía no tienes registros." : "No records yet.") + "</p>") +
+      '<p class="muted tts-privacy">' + (es ? "Tu ubicación se toma solo cuando marcas. La ven la oficina y accounting." : "Your location is taken only when you clock. The office and accounting see it.") + "</p></div>";
   }
   function ttMealBox() {
     var L0 = S.ttLast, es = ttL() === "es"; if (!L0 || !L0.ask) return "";
@@ -5061,16 +5163,17 @@
     if (e.source === "supervisor") out.push('<span class="pill">' + (ttL() === "es" ? "Registrado por " : "Recorded by ") + esc(e.actor) + "</span>");
     if (e.offline) out.push('<span class="pill">' + tx("offline") + "</span>");
     if (e.loc_status === "declared") out.push('<span class="pill">' + tx("declared") + ": " + esc(e.zone_name) + "</span>");
-    else if (ttSimple()) { /* location stays internal for the office */ }
-    else if (["denied", "timeout", "unavailable", "unsupported", "none"].indexOf(e.loc_status) > -1) { if (e.source !== "correction") out.push('<span class="pill">' + tx("loc_off") + "</span>"); }
-    else if (tx("l_" + e.zone)) out.push('<span class="pill' + (e.zone === "outside" ? " bad" : "") + '">📍 ' + tx("l_" + e.zone) + (e.acc ? " ±" + Math.round(e.acc) + " m" : "") + "</span>");
+    else if (e.presence === "verified") out.push('<span class="pill ok-p">✓ ' + tx("p_verified") + "</span>");
+    else if (e.presence === "outside") out.push('<span class="pill bad">⚠ ' + tx("p_outside") + (e.zone_m != null ? " · " + (e.zone_m >= 1000 ? Math.round(e.zone_m / 100) / 10 + " km" : e.zone_m + " m") : "") + "</span>");
+    else if (e.presence === "unverified") out.push('<span class="pill warn-p">⚠ ' + tx("p_pending") + (e.presence_reason && tx("rs_" + e.presence_reason) ? ": " + esc(tx("rs_" + e.presence_reason)) : "") + "</span>");
     if (e.status === "conflict") out.push('<span class="pill bad">' + (ttL() === "es" ? "no cuadró" : "didn't fit") + "</span>");
     return out.join("");
   }
+  function ttAddrLine(e) { return e && e.addr && !ttCrewUI() ? '<small class="tt-addr-l">📍 ' + (ttL() === "es" ? "Cerca de " : "Near ") + esc(e.addr) + (e.acc ? " (±" + Math.round(e.acc) + " m)" : "") + "</small>" : ""; }
   function ttShiftHtml(s, rev) {
     var evs = s.events.filter(function (e) { return e.kind !== "in" && e.kind !== "out"; }), first = s.events.filter(function (e) { return e.kind === "in"; })[0], last = s.events.filter(function (e) { return e.kind === "out"; })[0];
     return '<div class="tt-shift' + (s.open ? " open" : "") + (s.voided ? " void" : "") + '"><div class="tt-sh-h"><b>' + ttHm(s.start) + " → " + (s.end ? ttHm(s.end) : '<span class="bad-t">' + tx("open") + "</span>") + "</b><span>" + (s.voided ? "Voided" : ttDur(s.paid_min)) + "</span></div>" +
-      ttSegs(s) + '<div class="tt-evs">' + (first ? "<span>" + tx("in") + " " + ttHm(first.at) + " " + ttEvBadge(first) + "</span>" : "") + evs.map(function (e) { return "<span>" + tx(e.kind) + " " + ttHm(e.at) + " " + ttEvBadge(e) + "</span>"; }).join("") + (last ? "<span>" + tx("out") + " " + ttHm(last.at) + " " + ttEvBadge(last) + "</span>" : "") + "</div>" +
+      ttSegs(s) + '<div class="tt-evs">' + (first ? "<span>" + tx("in") + " " + ttHm(first.at) + " " + ttEvBadge(first) + ttAddrLine(first) + "</span>" : "") + evs.map(function (e) { return "<span>" + tx(e.kind) + " " + ttHm(e.at) + " " + ttEvBadge(e) + ttAddrLine(e) + "</span>"; }).join("") + (last ? "<span>" + tx("out") + " " + ttHm(last.at) + " " + ttEvBadge(last) + ttAddrLine(last) + "</span>" : "") + "</div>" +
       (rev ? '<button class="link small" data-a="ttOfficeFix" data-sid="' + esc(s.id) + '" data-day="' + esc(s.day) + '">Office correction</button>' : "") + "</div>";
   }
   function ttWeekLoad() { var w = S.ttWeekQ || {}; S.ttW = { loading: 1 }; call("ttMyWeek", w).then(function (r) { S.ttW = r; if (r.me && S.tt && (S.tt.news || []).length) { call("ttSeen", {}).catch(function () {}); S.tt.news = []; } }).catch(function (e) { S.ttW = { err: e.message }; }).then(function () { keepScroll(render); }); }
@@ -5107,6 +5210,29 @@
       return '<tr><td><button class="link" data-a="ttPerson" data-emp="' + esc(p.emp) + '">' + esc(p.name) + "</button>" + (p.pay_type ? ' <small class="muted">' + esc(p.pay_type) + "</small>" : "") + "</td><td>" + ttDur(p.paid_min) + "</td><td>" + ttDur(p.reg) + "</td><td>" + ttDur(p.ot) + "</td><td>" + ttDur(p.dt) + "</td><td>" + ttLocSum(p.loc) + "</td><td>" + (p.exceptions ? '<span class="pill">' + p.exceptions + "</span>" : "—") + (p.pending ? ' <span class="pill gold">' + p.pending + " to decide</span>" : "") + (p.open_shifts ? ' <span class="pill bad">open</span>' : "") +
         "</td><td>" + (p.confirm ? (p.confirm.status === "ok" ? "✓ confirmed" : "says something's off") : '<span class="muted">—</span>') + "</td><td>" + (p.approval ? (p.approval.valid ? "✓ " + esc(p.approval.by) : '<span class="bad-t">changed</span>') : p.self ? '<span class="muted">another reviewer</span>' : '<button class="link small" data-a="ttApprove" data-emp="' + esc(p.emp) + '">Approve</button>') + "</td></tr>";
     }).join("") + "</tbody></table></div>" : '<div class="empty">No hours recorded for this week by the people you review.</div>';
+    var ttDevCell = function (a, c, i) {
+      var lab = esc(a.device_label || "phone"), ip = a.ip ? '<br><small class="muted">IP ' + esc(a.ip) + "</small>" : "";
+      if (a.device_flag === "other_person") return '<b class="bad-t">' + esc(a.device_owner) + "'s phone</b> (" + lab + ")" + ip;
+      if (a.device_flag === "new_device") return "New phone, not approved (" + lab + ")" + (a.device_status === "pending" && c.can_decide ? ' <button class="link small" data-a="ttDevTrust" data-i="' + i + '" data-dev="' + esc(a.device) + '">Approve this phone</button>' : a.device_status === "trusted" ? " · approved since" : "") + ip;
+      if (a.device_flag === "no_device") return '<span class="bad-t">Phone didn\'t identify itself</span>' + ip;
+      if (a.device_flag === "blocked") return '<b class="bad-t">Blocked phone</b>' + ip;
+      return a.device_flag === "ok" ? "Their usual phone (" + lab + ")" + ip : "—";
+    };
+    var RSN = { other_device: "another person's phone", new_device: "phone not approved yet", no_device: "phone didn't identify itself", blocked_device: "blocked phone", denied: "location permission off", timeout: "phone too slow to locate", unavailable: "no location from the phone", unsupported: "device doesn't share location", none: "no location sent", stale: "old location", imprecise: "not precise enough", uncertain: "too close to the edge to tell", outside: "away from the jobsite", no_geocode: "jobsite has no map point", no_place: "no jobsite picked" };
+    var ST = { pending: ["Pending validation", "bad"], verified_later: ["Verified late", "gold"], accepted: ["Accepted", ""], rejected: ["Rejected", ""] };
+    var caseCard = function (c, i) {
+      var att = c.attempts.map(function (a) { return "<tr><td>" + esc(a.kind === "presence" ? "Retry" : a.kind === "in" ? "Check-in" : "Moved jobsite") + "</td><td>" + ttHm(a.at) + (a.offline ? " (offline)" : "") + "</td><td>" + esc(a.presence === "verified" ? "✓ verified" : a.presence === "outside" ? "✕ away" : "? " + (RSN[a.reason] || a.reason || "")) + "</td><td>" + (a.dist != null ? (a.dist >= 1000 ? Math.round(a.dist / 100) / 10 + " km" : a.dist + " m") : "—") + "</td><td>" + (a.acc != null ? "±" + a.acc + " m" : "—") + "</td><td>" + (a.loc_at ? ttHm(a.loc_at) : "—") + '</td><td class="tt-addr">' + (a.addr ? "Near " + esc(a.addr) : a.dist != null ? '<span class="muted">no address found</span>' : "—") + '</td><td class="tt-addr">' + ttDevCell(a, c, i) + "</td></tr>"; }).join("");
+      return '<div class="card tt-case' + (c.open ? "" : " closed") + '"><div class="tt-dec-h"><b>' + esc(c.name) + "</b> · " + esc(c.place || "No jobsite") + (c.place_addr ? ' <small class="muted">(' + esc(c.place_addr) + ")</small>" : "") + " · " + ttDayName(c.first_at.slice(0, 10)) + " " + ttHm(c.first_at) + ' <span class="pill ' + ST[c.status][1] + '">' + ST[c.status][0] + "</span>" + (c.status === "verified_later" ? ' <small class="muted">verified from ' + ttHm(c.verified_at) + "; the time before is what you decide</small>" : "") + "</div>" +
+        '<div class="tt-side"><div><table class="tt-att"><thead><tr><th></th><th>Time (server)</th><th>Result</th><th>Distance</th><th>Accuracy</th><th>Captured</th><th>Phone was near (approx. address)</th><th>Which phone</th></tr></thead><tbody>' + att + "</tbody></table>" +
+        (c.explain.length ? c.explain.map(function (x) { return '<p class="small">“' + esc(x.text) + '” <span class="muted">' + ttHm(x.at) + "</span></p>"; }).join("") : '<p class="muted small">No explanation yet.</p>') +
+        (c.decision ? '<p class="small"><b>' + esc(c.decision === "accept" ? "Accepted" : "Rejected") + "</b> by " + esc(c.decided_by) + ": “" + esc(c.decision_note) + "”</p>" : "") + "</div>" +
+        '<div><div class="tt-cmap" data-case="' + i + '"></div><small class="muted">Jobsite (dashed = allowed radius) and the last location recorded by the phone at each try, with its accuracy. Not a live position.</small></div></div>' +
+        (c.can_decide ? '<div class="tt-dec-a"><input class="tt-cnote" data-i="' + i + '" placeholder="Reason for the decision (required)"><button class="btn" data-a="ttCase" data-i="' + i + '" data-d="accept">Accept the time</button><button class="btn ghost" data-a="ttCase" data-i="' + i + '" data-d="reject">Reject</button></div><p class="muted small">Rejecting doesn\'t delete hours; if they shouldn\'t count, record an office correction.</p>' : c.open ? '<p class="muted small">Another reviewer has to decide this one.</p>' : "") + "</div>";
+    };
+    var openCases = (r.cases || []).filter(function (c) { return c.open; }), doneCases = (r.cases || []).filter(function (c) { return !c.open; });
+    S.ttCases = r.cases || [];
+    var casesHtml = (openCases.length ? '<h3 class="tt-h3">Check-ins pending validation (' + openCases.length + ")</h3>" + openCases.map(function (c) { return caseCard(c, S.ttCases.indexOf(c)); }).join("") : "") +
+      (doneCases.length ? '<details class="tt-rep"><summary>Decided this week (' + doneCases.length + ")</summary>" + doneCases.map(function (c) { return caseCard(c, S.ttCases.indexOf(c)); }).join("") + "</details>" : "");
     var cors = r.corrections.length ? '<h3 class="tt-h3">Corrections to decide</h3>' + r.corrections.map(function (k, i) {
       var ch = k.changes.map(function (c) { return "<li>" + esc(c.op === "add" ? "Add " + c.kind + " at " + c.at_local : c.op === "move" ? "Change " + (c.orig_kind ? TTX.en[c.orig_kind] + " " + ttHm(c.orig_at) : "the record") + " → " + c.at_local.slice(11) + (c.orig_local && c.orig_local.slice(0, 10) !== c.at_local.slice(0, 10) ? " on " + c.at_local.slice(0, 10) : "") : c.op === "retag" ? "Change the job" + (c.orig_job ? " from " + ttJobName(c.orig_job) : "") + " to " + ttJobName(c.job) : c.op + " the shift") + (c.job && c.op === "add" ? " · " + esc(ttJobName(c.job)) : "") + "</li>"; }).join("");
       return '<div class="card tt-dec"><div class="tt-dec-h"><b>' + esc(k.name) + "</b> · " + esc(k.date) + " · " + esc(TTX.en["r_" + k.reason] || "Office correction") + ' <span class="pill' + (k.delta_min > 0 ? " gold" : "") + '">' + (k.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(k.delta_min)) + "</span>" + (k.after_close ? ' <span class="pill bad">closed week</span>' : "") + (k.status === "needs_info" ? ' <span class="pill">waiting on their answer</span>' : "") + "</div>" +
@@ -5117,7 +5243,7 @@
     }).join("") : "";
     var close = w.status === "closed" ? (w.history.filter(function (h) { return h.what === "adjustment after close"; }).length ? '<div class="card"><div class="eyebrow">Adjustments after close</div>' + w.history.filter(function (h) { return h.what === "adjustment after close"; }).map(function (h) { return '<p class="small">v' + h.version + ": " + esc(h.emp) + " " + (h.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(h.delta_min)) + " (correction " + esc(h.corr) + ") · treat in the next payroll</p>"; }).join("") + "</div>" : "")
       : r.can_close ? '<div class="card"><div class="eyebrow">Close the week for payroll</div>' + (r.blockers.length ? '<ul class="small">' + r.blockers.map(function (b) { return "<li>" + esc(b) + "</li>"; }).join("") + "</ul>" : '<p class="small">Every week is approved. Closing keeps a snapshot; later changes become numbered adjustments.</p>') + '<button class="btn" data-a="ttClose"' + (r.blockers.length ? " disabled" : "") + ">Close week</button></div>" : "";
-    return head + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
+    return head + casesHtml + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
   }
   function ttLocSum(l) {
     if (!l) return "—"; var out = [];
@@ -5128,12 +5254,24 @@
     return out.join(" ") || "—";
   }
   function ttView() {
+    if (ttCrewUI()) return ttCard() || '<div class="loading" style="min-height:30vh">' + (ttL() === "es" ? "Cargando tu reloj…" : "Loading your clock…") + "</div>";   // crew: just the clock screen
     if (!S.tt) { if (!S.ttErr) ttLoad(); return '<div class="loading">' + tx("my") + "…</div>"; }
-    var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", "Team review"]] : [], adm ? [["set", "Settings"]] : []);
+    var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", "Team review"]] : [], staff() ? [["gps", "Test GPS"]] : [], adm ? [["set", "Settings"]] : []);
     if (!list.length) return '<div class="empty">' + (ttL() === "es" ? "El reloj todavía no está activado para ti." : "The clock isn't turned on for you yet.") + "</div>";
     var tab = list.some(function (o) { return o[0] === S.ttTab; }) ? S.ttTab : list[0][0];
     var tabs = list.length > 1 ? '<div class="chips tt-tabs">' + list.map(function (o) { return '<button class="chip' + (tab === o[0] ? " on" : "") + '" data-a="ttTab" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" : "";
-    return ttCard() + tabs + (tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
+    return ttCard() + tabs + (tab === "gps" ? ttGpsView() : tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
+  }
+  /* Test GPS: on a real phone, at a jobsite, run the same server check as a check-in. Nothing is saved. */
+  function ttGpsView() {
+    var g = (S.tt && S.tt.suggest) || {}, list = (g.visits || []).concat(g.projects || [], g.properties || [], g.zones || []), r = S.ttGps, sel = S.ttGpsK || (list[0] ? list[0].ref_type + "|" + list[0].ref_id : "");
+    var RS = { denied: "Location permission is off for this site/browser", timeout: "The phone didn't answer in 12 s", unavailable: "The phone couldn't get a location", unsupported: "This browser/device doesn't share location", none: "No location", stale: "The reading was old (over 2 min)", imprecise: "Not precise enough (over ±100 m): check Precise Location", uncertain: "The accuracy circle crosses the jobsite edge", outside: "Away from the jobsite", no_geocode: "This jobsite has no map point", no_place: "No jobsite" };
+    var res = !r ? "" : r.err ? '<div class="card ls-incomplete">' + esc(r.err) + "</div>" : '<div class="card tt-gps-r ' + (r.result === "verified" ? "ok" : "bad") + '"><b>' + (r.result === "verified" ? "✓ Verified: a check-in here would be confirmed" : r.result === "outside" ? "✕ Away from the jobsite: a check-in would be pending" : "? Not verified: a check-in would be pending") + "</b>" +
+      (r.reason ? "<p>" + esc(RS[r.reason] || r.reason) + "</p>" : "") +
+      '<table class="tt-att tt-wrap"><tbody><tr><td>Jobsite</td><td><b>' + esc(r.place) + "</b>" + (r.place_addr ? "<br>" + esc(r.place_addr) : "") + "</td></tr><tr><td>Phone reading</td><td>" + (r.lat != null ? (r.addr ? "<b>Near " + esc(r.addr) + "</b><br>" : '<span class="muted">No street address found</span><br>') + '<small class="muted">' + r.lat.toFixed(6) + ", " + r.lon.toFixed(6) + " · the address is the nearest one to the phone's point, within ±" + r.acc + " m</small>" : "—") + "</td></tr><tr><td>Accuracy</td><td>" + (r.acc != null ? "±" + r.acc + " m (needs ±" + r.acc_ok + " m or better)" : "—") + "</td></tr><tr><td>Distance to the jobsite point</td><td>" + (r.dist != null ? r.dist + " m (radius " + r.radius + " m)" : "—") + "</td></tr><tr><td>Captured</td><td>" + (r.loc_at ? ttHm(r.loc_at) + " · " + Math.round((new Date(r.server_now) - new Date(r.loc_at)) / 1000) + " s before the server check" : "—") + "</td></tr><tr><td>Readings taken</td><td>" + (r.samples || "—") + "</td></tr></tbody></table>" +
+      '<div class="tt-cmap" id="tt-gps-map"></div></div>';
+    return '<div class="card"><b>Test the location on this phone</b><p class="muted small">Stand at a jobsite with your phone, pick it and tap Test. It runs exactly the same check as a crew check-in (fresh, ±100 m or better, inside the 150 m radius counting the error) and saves nothing.</p>' +
+      '<div class="row2"><select data-tt-gps>' + list.map(function (o) { var k = o.ref_type + "|" + o.ref_id; return '<option value="' + esc(k) + '"' + (k === sel ? " selected" : "") + ">" + esc(o.name) + (o.geo === false ? " (no map point)" : "") + "</option>"; }).join("") + '</select><button class="btn" data-a="ttGpsGo"' + (S.ttGpsBusy ? " disabled" : "") + ">" + (S.ttGpsBusy ? "Reading the phone's location…" : "Test") + "</button></div></div>" + res;
   }
   /* Jesús turns the clock on per person (start with a pilot) and sets explicit permissions. */
   var TT_PERM_TXT = { time_review: ["Reviews", "Reviews and decides the people they supervise or whose crew they lead"], accounting: ["Accounting", "Sees and reviews everyone's hours"], period_close: ["Closes week", "Closes the week for payroll (with Accounting)"], clock_others: ["Clocks for others", "Can check someone in or out; it's recorded as done by them"] };
@@ -5142,12 +5280,15 @@
     var r = S.ttSet; if (!r) { ttSetLoad(); return '<div class="loading">Loading settings…</div>'; } if (r.loading) return '<div class="loading">Loading settings…</div>'; if (r.err) return '<div class="card ls-incomplete">' + esc(r.err) + "</div>";
     var on = r.people.filter(function (p) { return p.clock; }).length, people = r.people.slice().sort(function (a, b) { return (a.role === "crew") - (b.role === "crew") || a.name.localeCompare(b.name); });
     var sup = function (p) { return '<select data-tt-set="supervisor" data-email="' + esc(p.email) + '"><option value="">—</option>' + r.people.filter(function (x) { return x.email !== p.email && x.role !== "crew"; }).map(function (x) { return '<option value="' + esc(x.email) + '"' + (p.supervisor === x.email ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + "</select>"; };
-    return '<div class="card tt-set-top"><div><b>Who sees the clock</b><p class="muted small">' + (r.all ? "Everyone on the team sees it." : on ? on + (on === 1 ? " person sees it (pilot)." : " people see it (pilot).") : "Nobody yet. Turn it on for one person to start the pilot.") + " Workweek starts " + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][r.week_start] + ".</p></div>" +
-      '<button class="btn ' + (r.all ? "ghost" : "") + '" data-a="ttSetAll" data-v="' + (r.all ? "" : "1") + '">' + (r.all ? "Back to pilot only" : "Turn on for everyone") + "</button></div>" +
+    return '<div class="tt-add-crew"><button class="btn" data-a="ttAccess">＋ Add a crew member by phone</button><span class="muted small">They log in with their phone number and a 6-digit PIN you give them. No email needed.</span></div>' +
+      '<p class="muted small">Crew always have the clock (uncheck to turn it off for someone). Team members get it when you check Clock. Workweek starts ' + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][r.week_start] + ".</p>" +
       '<div class="card tt-tbl"><table><thead><tr><th>Person</th><th>Clock</th>' + Object.keys(TT_PERM_TXT).map(function (k) { return '<th title="' + esc(TT_PERM_TXT[k][1]) + '">' + TT_PERM_TXT[k][0] + "</th>"; }).join("") + "<th>Supervisor</th><th>Pay</th></tr></thead><tbody>" +
       people.map(function (p) {
+        var devs = (p.devices || []).map(function (d) { return '<span class="tt-dev ' + d.status + '">' + esc(d.label) + " · " + esc(d.status === "trusted" ? "approved" : d.status) + (d.shared_with.length ? " · also used by " + esc(d.shared_with.join(", ")) : "") +
+          (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
+        var access = '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button></div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
-        return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small></td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
+        return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
           Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
           "<td>" + (p.admin ? "—" : sup(p)) + '</td><td><select data-tt-set="pay_type" data-email="' + esc(p.email) + '"><option value="">' + (p.role === "crew" ? "hourly (default)" : "—") + '</option><option value="hourly"' + (p.pay_type === "hourly" ? " selected" : "") + '>hourly</option><option value="exempt"' + (p.pay_type === "exempt" ? " selected" : "") + ">exempt</option></select></td></tr>";
       }).join("") + "</tbody></table></div>" +
@@ -5177,23 +5318,39 @@
   }
   function ttLocalVal(v) { return String(v || "").replace("T", " ").slice(0, 16); }
   function ttJobVal(v) { var p = String(v || "unassigned||").split("|"); return { act: p[0], ref_type: p[1] || "", ref_id: p[2] || "" }; }
-  function ttMapInit() {
-    var el = document.getElementById("tt-map"), w = S.ttW; if (!el || !w || !w.days || el._map) return;
-    var go2 = function () {
-      var map = el._map = L.map(el, { scrollWheelZoom: false }), pts = [];
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(map);
-      w.days.forEach(function (d) { d.shifts.forEach(function (s) { s.events.forEach(function (e) {
-        if (e.lat == null) return; var col = e.zone === "inside" ? "#2e7d4f" : e.zone === "outside" ? "#b3412e" : "#7d8794", ll = [e.lat, e.lon]; pts.push(ll);
-        L.circle(ll, { radius: e.acc || 20, color: col, weight: 1, fillOpacity: .12 }).addTo(map);
-        L.circleMarker(ll, { radius: 6, color: "#fff", weight: 2, fillColor: col, fillOpacity: 1 }).addTo(map).bindPopup("<b>" + esc(tx(e.kind)) + " " + esc(ttHm(e.at)) + "</b><br>" + esc(ttDayName(d.date)) + "<br>±" + Math.round(e.acc) + " m · " + esc(e.zone_name || "") + " (" + esc(e.zone) + ")");
-      }); }); });
-      if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 16 }); else map.setView([37.5, -122.25], 9);
-    };
+  function ttLeaflet(go2) {
     if (window.L) return go2();
-    var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l);
-    var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = go2; document.head.appendChild(sc);
+    if (!document.getElementById("leaf-css")) { var l = document.createElement("link"); l.id = "leaf-css"; l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l); }
+    if (S.ttLeafLoading) return (S.ttLeafQ = (S.ttLeafQ || []).concat(go2)); S.ttLeafLoading = 1; S.ttLeafQ = [go2];
+    var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = function () { (S.ttLeafQ || []).forEach(function (f) { f(); }); S.ttLeafQ = []; }; document.head.appendChild(sc);
   }
-  new MutationObserver(function () { if (S.ttMapOn) ttMapInit(); }).observe(root, { childList: true, subtree: true });
+  /* Jobsite point with its allowed radius, each recorded phone point with its accuracy, and a line between them. */
+  function ttDrawMap(el, evs, who) {
+    if (!el) return;
+    if (el._map && el.querySelector(".leaflet-pane")) return;                             // already drawn
+    if (el._map) { try { el._map.remove(); } catch (e) {} el._map = null; }              // the page re-rendered and emptied it: draw again
+    ttLeaflet(function () {
+      if (el._map) return; var map = el._map = L.map(el, { scrollWheelZoom: false }), pts = [], sites = {};
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(map);
+      evs.forEach(function (e) {
+        if (e.tgt_lat != null && !sites[e.tgt_lat + "," + e.tgt_lon]) { var tl = [e.tgt_lat, e.tgt_lon]; sites[e.tgt_lat + "," + e.tgt_lon] = 1; pts.push(tl);
+          L.circle(tl, { radius: e.radius_m || 150, color: "#1d3b5c", weight: 2, dashArray: "6 6", fillOpacity: .04 }).addTo(map);
+          L.marker(tl, { icon: L.divIcon({ className: "tt-site-pin", html: "<span>⌂</span>", iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map).bindPopup("<b>" + esc(e.ref_name || e.zone_name || "Jobsite") + "</b><br>Allowed radius " + (e.radius_m || 150) + " m"); }
+        if (e.lat == null) return; var ll = [e.lat, e.lon], col = e.presence === "verified" ? "#2e7d4f" : e.presence === "outside" ? "#b3412e" : "#c58a1a"; pts.push(ll);
+        L.circle(ll, { radius: e.acc || 20, color: col, weight: 1, fillOpacity: .12 }).addTo(map);
+        if (e.tgt_lat != null) L.polyline([ll, [e.tgt_lat, e.tgt_lon]], { color: col, weight: 2, opacity: .6 }).addTo(map);
+        L.circleMarker(ll, { radius: 6, color: "#fff", weight: 2, fillColor: col, fillOpacity: 1 }).addTo(map).bindPopup("<b>" + esc(TTX.en[e.kind] || (e.kind === "presence" ? "Retry" : e.kind)) + " " + esc(ttHm(e.at)) + "</b>" + (who ? "<br>" + esc(who) : "") + (e.addr ? "<br>Near " + esc(e.addr) : "") + "<br>Recorded location ±" + Math.round(e.acc || 0) + " m" + (e.zone_m != null ? " · " + e.zone_m + " m from the jobsite" : "") + "<br>" + esc(e.presence === "verified" ? "Verified" : e.presence === "outside" ? "Away from the jobsite" : e.presence ? "Not verified: " + (e.presence_reason || "") : "Evidence only") + (e.loc_at ? "<br>Captured " + esc(ttHm(e.loc_at)) : ""));
+      });
+      if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 17 }); else { map.setView([37.5, -122.25], 9); L.marker([37.5, -122.25], { opacity: 0 }).addTo(map).bindTooltip("No location was recorded", { permanent: true, direction: "center" }); }
+    });
+  }
+  function ttMapInit() {
+    var el = document.getElementById("tt-map"), w = S.ttW; if (!el || !w || !w.days || (el._map && el.querySelector(".leaflet-pane"))) return;
+    var evs = []; w.days.forEach(function (d) { d.shifts.forEach(function (s) { evs = evs.concat(s.events); }); }); ttDrawMap(el, evs, w.name);
+  }
+  new MutationObserver(function () { var gm = document.getElementById("tt-gps-map"); if (gm && S.ttGps && gm.dataset.k !== S.ttGps.server_now && gm._map) { gm._map.remove(); gm._map = null; }
+    if (gm && S.ttGps && !(gm._map && gm.querySelector(".leaflet-pane")) && S.ttGps.tgt_lat != null && (gm.dataset.k = S.ttGps.server_now)) ttDrawMap(gm, [{ kind: "in", at: S.ttGps.server_now, lat: S.ttGps.lat, lon: S.ttGps.lon, acc: S.ttGps.acc, tgt_lat: S.ttGps.tgt_lat, tgt_lon: S.ttGps.tgt_lon, radius_m: S.ttGps.radius, ref_name: S.ttGps.place, zone_m: S.ttGps.dist, presence: S.ttGps.result, presence_reason: S.ttGps.reason, loc_at: S.ttGps.loc_at, addr: S.ttGps.addr }], "Test");
+    if (S.ttMapOn) ttMapInit(); document.querySelectorAll(".tt-cmap").forEach(function (el) { var c = (S.ttCases || [])[+el.dataset.case]; if (c && !(el._map && el.querySelector(".leaflet-pane"))) ttDrawMap(el, c.evidence || [], c.name); }); }).observe(root, { childList: true, subtree: true });
   function ttWeekShift(d, n) { var x = new Date((d || new Date().toISOString().slice(0, 10)) + "T12:00:00"); x.setDate(x.getDate() + n); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
   root.addEventListener("click", function (e) {
     var b = e.target.closest("[data-a]"); if (!b || !/^tts?[A-Z]/.test(b.dataset.a)) return; e.preventDefault(); e.stopImmediatePropagation();
@@ -5202,11 +5359,24 @@
     if (a === "ttFlush") return ttFlush();
     if (a === "ttsMeal") { var mv = b.dataset.v; if (mv === "yes") { S.ttMealYes = 1; return keepScroll(render); } if (mv === "back") { S.ttMealYes = 0; return keepScroll(render); } return ttMealSend(b, { answer: mv }); }
     if (a === "ttsMealGo") { var mt = (root.querySelector("[data-tts-meal]") || {}).value || ""; if (!/^\d\d:\d\d$/.test(mt)) return toast(ttL() === "es" ? "Pon la hora." : "Set the time."); return ttMealSend(b, { answer: "took", start: mt, minutes: +b.dataset.m }); }
-    if (a === "ttsPlace") { S.ttsPick = b.dataset.k; return keepScroll(render); }
+    if (a === "ttsPlace") { if (S.ttsPick !== b.dataset.k) { S.ttsAct = ""; S.ttsActNote = ""; } S.ttsPick = b.dataset.k; return keepScroll(render); }
     if (a === "ttsMore") { S.ttsMore = !S.ttsMore; return keepScroll(render); }
     if (a === "ttsChange") { S.ttsChange = !S.ttsChange; return keepScroll(render); }
     if (a === "ttsOther") { S.ttsOther = !S.ttsOther; S.ttsOtherV = ""; return keepScroll(render); }
-    if (a === "ttsSwitch") { var ks = b.dataset.k.split("|"); S.ttsChange = 0; return ttDo("switch", { act: "work", ref_type: ks[0], ref_id: ks[1] }); }
+    if (a === "ttsSwitch") { var ks = b.dataset.k.split("|"), cj = (S.tt.shift && S.tt.shift.job) || {}; S.ttsChange = 0; return ttDo("switch", { act: cj.act || "general", act_note: cj.act_note || "", ref_type: ks[0], ref_id: ks[1] }); }
+    if (a === "ttsAct") { S.ttsAct = S.ttsAct === b.dataset.v ? "" : b.dataset.v; return keepScroll(render); }
+    if (a === "ttsActTog") { S.ttsActOpen = !S.ttsActOpen; S.ttsActNow = ""; return keepScroll(render); }
+    if (a === "ttsActNow") { if (b.dataset.v === "other") { S.ttsActNow = "other"; return keepScroll(render); } S.ttsActOpen = 0; var av = b.dataset.v; return ttDo("switch", /^scope:/.test(av) ? { act: "scope", scope_id: av.slice(6) } : { act: av }); }
+    if (a === "ttsActSave") { var nn = (S.ttsActNote || "").trim(); if (nn.length < 2) return toast(ttL() === "es" ? "Escribe la actividad." : "Write the activity."); S.ttsActOpen = 0; return ttDo("switch", { act: "other", act_note: nn }); }
+    if (a === "ttsRetry") return ttDo("presence", null);
+    if (a === "ttDevTrust") { var dc = S.ttCases[i]; return run(b, async function () { await call("ttDevice", { emp: dc.emp, dev: b.dataset.dev, decision: "trust" }); S.ttR = null; toast("Phone approved for " + dc.name + ". Next check-ins from it count normally."); keepScroll(render); }); }
+    if (a === "ttDevSet") return run(b, async function () { await call("ttDevice", { emp: b.dataset.emp, dev: b.dataset.dev, decision: b.dataset.d }); ttSetLoad(); toast({ trust: "Phone approved", block: "Phone blocked", remove: "Phone removed" }[b.dataset.d]); });
+    if (a === "ttAccess") { S.modal = { type: "lsxTtAccess", email: b.dataset.emp || "", name: b.dataset.name || "", phone: b.dataset.phone || "" }; return keepScroll(render); }
+    if (a === "ttGpsGo") { var gk2 = ((root.querySelector("[data-tt-gps]") || {}).value || "").split("|"); S.ttGpsBusy = 1; S.ttGps = null; keepScroll(render);
+      return ttLoc().then(function (loc) { return call("ttGeoTest", { ref_type: gk2[0], ref_id: gk2[1], loc: loc, device_at: new Date().toISOString() }).then(function (r) { r.samples = loc.samples; S.ttGps = r; }); }).catch(function (e) { S.ttGps = { err: e.message }; }).then(function () { S.ttGpsBusy = 0; keepScroll(render); }); }
+    if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
+      return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); S.ttR = null; S.tt = null; toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
+    if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
     if (a === "ttsGo") {
       var gk = b.dataset.k, dec = "", es1 = ttL() === "es";
       if (S.ttsOther) {
@@ -5218,7 +5388,9 @@
       }
       S.ttsOther = 0; if (gk === "out") S.ttsChange = 0; else S.ttLast = null;
       var pk = (S.ttsPick || "").split("|");
-      return ttDo(gk, gk === "in" ? { act: "work", ref_type: pk[0], ref_id: pk[1] } : null, dec);
+      if (gk === "in" && S.ttsAct === "other" && (S.ttsActNote || "").trim().length < 2) return toast(es1 ? "Escribe la actividad o elige otra." : "Write the activity or pick another.");
+      var sa = S.ttsAct || "", actBody = /^scope:/.test(sa) ? { act: "scope", scope_id: sa.slice(6) } : { act: sa || "general", act_note: sa === "other" ? (S.ttsActNote || "").trim() : "" };
+      return ttDo(gk, gk === "in" ? Object.assign(actBody, { ref_type: pk[0], ref_id: pk[1] }) : null, dec);
     }
     if (a === "ttTap") { var k = b.dataset.k; if (k === "in" || k === "switch") { S.modal = { type: "lsxTtPick", kind: k }; return keepScroll(render); } return ttDo(k); }
     if (a === "ttPick") return ttDo(b.dataset.kind, { act: b.dataset.act, ref_type: b.dataset.rt, ref_id: b.dataset.ri });
@@ -5256,13 +5428,17 @@
       return;
     }
     if (t.matches("[data-tts-time]")) { S.ttsOtherV = t.value; return; }
+    if (t.matches("[data-tts-actnote]")) { S.ttsActNote = t.value; return; }
+    if (t.matches("[data-tt-gps]")) { S.ttGpsK = t.value; return; }
     if (t.matches("[data-tts-meal]")) { S.ttMealAt = t.value; return; }
     if (t.matches("[data-tt-reason]")) { e.stopImmediatePropagation(); S.modal.reason = t.value; return keepScroll(render); }
     if (t.matches("form[data-form=ttCor] select[name=op]")) { e.stopImmediatePropagation(); S.modal.op = t.value; return keepScroll(render); }
   }, true);
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone") }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
+    if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
     if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
     if (f.dataset.form === "ttReply") return run(btn, async function () {
       if (m.mode === "discrepancy") await call("ttConfirmWeek", { week: S.ttW.week.start, status: "discrepancy", note: g("note") });
@@ -5287,6 +5463,13 @@
   lsModal = function (m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.type === "lsxTtPick") return ttPicker(m.kind);
+    if (m.type === "lsxTtAccess") {
+      if (m.pin) return "<h2>Give this to " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">This PIN is shown only once. They log in at the portal with their phone number and this PIN; they stay logged in on their phone. The first phone they use becomes theirs; any other phone waits for your approval.</p><div class="actions"><button class="btn" data-a="close">Done</button></div>';
+      return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label>') +
+        '<label class="f">Phone number<input name="phone" type="tel" inputmode="tel" required value="' + esc(m.phone ? phoneFmt(m.phone) : "") + '" placeholder="(408) 555-0199"></label><p class="muted small">' + (m.phone ? "A new PIN replaces the old one." : "We'll create a 6-digit PIN for them.") + "</p>" +
+        '<div class="actions">' + cancel + '<button class="btn" type="submit">' + (m.phone ? "Make a new PIN" : "Create the PIN") + "</button></div></form>";
+    }
+    if (m.type === "lsxTtExplain") return "<h2>" + tx("explain_btn") + '</h2><p class="muted small">' + (es ? "La oficina la verá junto a tu entrada. Explicar no aprueba la entrada." : "The office sees it next to your check-in. Explaining doesn't approve it.") + '</p><form class="form" data-form="ttExplain"><label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + '<textarea name="text" rows="3" required maxlength="600" placeholder="' + (es ? "Ej. el GPS no funcionaba dentro del edificio" : "e.g. GPS didn't work inside the building") + '"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>";
     if (m.type === "lsxTtCor") return ttCorForm(m);
     if (m.type === "lsxTtSum") { var s = m.s; return "<h2>✓ " + tx("sumT") + "</h2><p><b>" + ttHm(s.start) + " → " + ttHm(s.end) + "</b> · " + tx("total") + " " + ttDur(s.paid_min) + (s.meal_min ? " · " + tx("mealt") + " " + ttDur(s.meal_min) : "") + "</p>" + ttSegs(s) +
       "<p>" + tx("sumQ") + '</p><div class="actions"><button class="btn ghost" data-a="ttFix">' + tx("fix") + '</button><button class="btn" data-a="close">' + tx("allgood") + "</button></div>"; }

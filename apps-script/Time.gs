@@ -9,9 +9,12 @@
    - Permissions are explicit columns set by the admin (People.perms). A hashtag in a message never grants access.
    Deployed concatenated after Today.gs.
    ====================================================================================================== */
-TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock"]);   // clock: "yes" = this person sees the clock (pilot)
+TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock", "phone"]);   // phone: crew log in with it + their PIN   // clock: "yes" = this person sees the clock (pilot)
 TABLES.TtEvents = ["id", "emp", "actor", "kind", "at", "device_at", "recv_at", "tz", "act", "ref_type", "ref_id", "ref_name", "lat", "lon", "acc", "loc_at", "loc_status",
-  "zone", "zone_name", "zone_m", "source", "offline", "seq", "client_key", "device", "shift_id", "supersedes", "corr_id", "note", "status"];
+  "zone", "zone_name", "zone_m", "source", "offline", "seq", "client_key", "device", "shift_id", "supersedes", "corr_id", "note", "status",
+  "act_note", "tgt_lat", "tgt_lon", "radius_m", "presence", "presence_reason", "case_id", "scope_id", "loc_addr", "device_hash", "device_flag", "device_owner", "ip"];   // loc_addr: approximate street address of the phone's point      // presence: verified / outside / unverified, judged by the server for each check-in
+/* One case per shift whose check-in (or move to another jobsite) couldn't be verified. Retries join the same case. */
+TABLES.TtPresence = ["id", "emp", "shift_id", "status", "place", "ref_type", "ref_id", "first_at", "first_reason", "attempts", "explain", "verified_at", "decided_by", "decided_at", "decision", "decision_note", "created_at", "updated_at"];
 TABLES.TtCorrections = ["id", "emp", "shift_id", "date", "reason", "explain", "changes", "before", "delta_min", "declared_place", "evidence_id", "requested_by", "requested_at",
   "status", "decided_by", "decided_at", "decision_note", "applied", "period_id", "after_close", "dispute", "dispute_at", "history", "seen_at"];
 TABLES.TtWeeks = ["key", "period_id", "emp", "emp_status", "emp_note", "emp_at", "approved_by", "approved_at", "approved_hash", "history"];
@@ -19,13 +22,19 @@ TABLES.TtPeriods = ["id", "start", "end", "status", "version", "closed_by", "clo
 TABLES.TtAbsence = ["id", "emp", "from", "to", "kind", "note", "by", "at"];
 TABLES.TtZones = ["id", "name", "kind", "lat", "lon", "radius_m", "active", "updated_by", "updated_at"];
 TABLES.TtMeals = ["id", "emp", "shift_id", "day", "answer", "start", "minutes", "corr_id", "at"];   // what the person answered at check-out: took / none / interrupted
+/* The phones each person uses, learned by the system. A phone is identified by a random id it keeps (stored here only as a hash).
+   First phone of a person: trusted. Any other phone: pending until the office approves it. A phone already used by someone else
+   is flagged on every check-in made from it for another person. */
+TABLES.TtDevices = ["key", "dev", "emp", "label", "first_seen", "last_seen", "uses", "status", "by", "at"];
 TABLES.TtAudit = ["id", "at", "by", "emp", "kind", "ref", "before", "after", "note"];
-var TT_T = ["TtEvents", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals"];
+var TT_T = ["TtEvents", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals", "TtPresence", "TtDevices"];
 var TT_READ = ["People", "LsCrews", "LsVisits", "LsProps", "Projects"].concat(TT_T);
 var TT_NOW = 0;                                                                     // tests set a fixed clock; production uses the real one
 function ttNow() { return TT_NOW || Date.now(); }
 var TT_PERMS = ["time_review", "accounting", "pay_view", "pay_rates", "period_close", "time_export", "clock_others"];
-var TT_ACTS = { work: 1, load: 1, travel: 1, materials: 1, disposal: 1, office: 1, unassigned: 1 };
+/* Activity is separate from the place. Main ones for landscaping / hardscape; load, travel, materials, dump runs are secondary. */
+var TT_ACTS = { scope: 1, general: 1, maint: 1, prune: 1, irrig: 1, pavers: 1, concrete: 1, walls: 1, other: 1, load: 1, travel: 1, materials: 1, disposal: 1, office: 1 };
+var TT_OPEN_CASE = { pending: 1, verified_later: 1 };
 var TT_REASONS = { missed_in: 1, missed_out: 1, wrong_job: 1, meal: 1, tech: 1, other: 1, office_fix: 1, declared: 1 };   // declared: a time typed on the clock screen instead of "now"
 var TT_ORDER = { "in": 0, meal_end: 1, rest_end: 1, "switch": 2, meal_start: 3, rest_start: 3, out: 4 };
 /* California rules as the starting point (DLSE FAQ: daily over 8 h and weekly over 40 h = 1.5x, over 12 h = 2x, 7th consecutive day
@@ -68,7 +77,7 @@ function ttLang(me) { var p = ttRow(me); return p.lang === "en" || p.lang === "e
 function ttErr(me, es, en) { return new Error(ttLang(me) === "es" ? es : en); }
 /* Rollout: nobody sees the clock until Jesús turns it on, per person (People.clock) or for everyone (TT_ALL). */
 function ttAll() { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }
-function ttEnabled(p) { return !!p && isTeam(p) && isTrue(p.active) && (ttAll() || isTrue(p.clock)); }
+function ttEnabled(p) { if (!p || !isTeam(p) || !isTrue(p.active) || p.clock === "no") return false; return p.role === "crew" || ttAll() || isTrue(p.clock); }   // crew: on unless turned off; team: when turned on
 function ttClocker(me) { if (!me || me.preview || !isTeam(me)) throw new Error("My hours is for the Blue Sierra team."); return me; }
 function ttCrewsOf(emp) { return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(emp) > -1; }); }
 /* A reviewer sees: everyone (accounting / admin), or the people they supervise (People.supervisor) and the crews they lead. Never their own decisions. */
@@ -100,12 +109,12 @@ function ttShifts(evs, nowMs) {
   live.forEach(function (e) { if (e.kind !== "void" && e.kind !== "restore") (by[e.shift_id] = by[e.shift_id] || []).push(e); });
   return Object.keys(by).map(function (sid) { return ttBuild(sid, by[sid].sort(ttSort), voided[sid] || null, nowMs); }).sort(function (a, b) { return a.start - b.start; });
 }
-function ttJobOf(e) { return { act: e.act || "unassigned", ref_type: e.ref_type || "", ref_id: e.ref_id || "", ref_name: e.ref_name || "" }; }
+function ttJobOf(e) { return { act: e.act || "general", act_note: e.act_note || "", scope_id: e.scope_id || "", ref_type: e.ref_type || "", ref_id: e.ref_id || "", ref_name: e.ref_name || "" }; }
 function ttBuild(sid, evs, voidEv, nowMs) {
   var inE = evs.filter(function (e) { return e.kind === "in"; })[0];
   if (!inE) return { id: sid, broken: true, start: ttMs(evs[0].at), end: null, open: false, voided: !!voidEv, events: evs, segs: [], meals: [], paid: 0, meal: 0, rest: 0, unassigned: 0, day: ttDayOf(ttMs(evs[0].at)), mode: "off" };
   var t = ttMs(inE.at), cur = ttJobOf(inE), mode = "work", segs = [], meals = [], mealFrom = 0, end = null, after = 0;
-  var close = function (to) { if (to > t) segs.push({ from: t, to: to, kind: mode === "rest" ? "rest" : "work", act: cur.act, ref_type: cur.ref_type, ref_id: cur.ref_id, ref_name: cur.ref_name }); t = Math.max(t, to); };
+  var close = function (to) { if (to > t) segs.push({ from: t, to: to, kind: mode === "rest" ? "rest" : "work", act: cur.act, act_note: cur.act_note, ref_type: cur.ref_type, ref_id: cur.ref_id, ref_name: cur.ref_name }); t = Math.max(t, to); };
   evs.forEach(function (e) {
     if (e === inE) return; var ms = ttMs(e.at); if (end != null || ms < ttMs(inE.at)) { after++; return; }
     if (e.kind === "switch") { if (mode !== "meal") close(ms); cur = ttJobOf(e); }
@@ -119,7 +128,7 @@ function ttBuild(sid, evs, voidEv, nowMs) {
   if (open) { if (mode === "meal") meals.push({ from: mealFrom, to: upto, open: true }); else { var m0 = mode; close(upto); mode = m0; } }
   var sum = function (l, f) { return l.reduce(function (a, s) { return a + (f ? (f(s) ? s.to - s.from : 0) : s.to - s.from); }, 0); };
   return { id: sid, start: ttMs(inE.at), end: end, open: open, voided: !!voidEv, void_ev: voidEv, mode: open ? mode : "off", job: cur, events: evs, segs: segs, meals: meals,
-    paid: sum(segs), meal: sum(meals), rest: sum(segs, function (s) { return s.kind === "rest"; }), unassigned: sum(segs, function (s) { return s.act === "unassigned"; }),
+    paid: sum(segs), meal: sum(meals), rest: sum(segs, function (s) { return s.kind === "rest"; }), unassigned: sum(segs, function (s) { return !s.ref_id; }),
     span: upto - ttMs(inE.at), day: ttDayOf(ttMs(inE.at)), stray: after };
 }
 /* Paid time per company-time-zone calendar day (a shift past midnight counts on each day it touches).
@@ -152,62 +161,226 @@ function ttCalcWeek(days, payType) {
   return { days: res, reg: t.reg, ot: t.ot, dt: t.dt, seventh: worked === 7, rules: TT_RULES };
 }
 
-/* ---- where the tap happened: kept as evidence, never as proof ---- */
+/* ---- where the phone was when someone tapped: the server decides, never the phone ----
+   The jobsite's point comes from office records (property, project, or a yard/office zone set up by the office).
+   Employees can't change those points or the radius. A location only VERIFIES presence when it is real (permission
+   given), fresh (captured within 2 minutes of the tap), precise enough (accuracy within TT_ACC_OK_M) and, counting its
+   accuracy, entirely inside the radius. Anything else is "outside" (certainly away) or "unverified" (can't tell). */
+function ttZones() {
+  var cfg = ttCfg(), z = rows("TtZones").filter(function (x) { return isTrue(x.active) && x.lat !== "" && x.lon !== ""; }).map(function (x) { return { id: x.id, name: x.name, kind: x.kind, lat: num(x.lat), lon: num(x.lon), r: num(x.radius_m) || cfg.radius }; });
+  if (!z.some(function (x) { return x.kind === "yard"; }) && typeof lsCfg === "function") { var y = lsCfg().yard; if (y && y.lat != null && y.lon != null) z.push({ id: "yard", name: "Yard", kind: "yard", lat: num(y.lat), lon: num(y.lon), r: cfg.radius }); }
+  return z;
+}
 function ttTarget(job) {
-  var t = job.ref_type, id = job.ref_id, p = null, cfg = ttCfg();
+  var t = job.ref_type, id = job.ref_id, cfg = ttCfg(), p = null;
+  var pt = function (name, lat, lon, r) { return lat !== "" && lat != null && lon !== "" && lon != null && isFinite(num(lat)) && isFinite(num(lon)) && (num(lat) || num(lon)) ? { name: name, lat: num(lat), lon: num(lon), r: r || cfg.radius } : { name: name }; };
   if (t === "visit") { var v = findBy("LsVisits", "id", id); p = v ? findBy("LsProps", "id", v.property_id) : null; }
   else if (t === "property") p = findBy("LsProps", "id", id);
-  else if (t === "project") { var pj = findBy("Projects", "id", id); if (pj && pj.lat !== "" && pj.lon !== "") return { name: pj.name, lat: num(pj.lat), lon: num(pj.lon), r: cfg.radius }; return pj ? { name: pj.name } : null; }
-  if (p) return p.lat !== "" && p.lon !== "" ? { name: p.name, lat: num(p.lat), lon: num(p.lon), r: cfg.radius } : { name: p.name };
-  if (job.act === "load" || job.act === "office") {
-    var z = rows("TtZones").filter(function (z) { return isTrue(z.active) && (z.kind === "yard" || z.kind === "office"); });
-    if (!z.length && typeof lsCfg === "function") { var y = lsCfg().yard; if (y && y.lat != null) return [{ name: "Yard", lat: num(y.lat), lon: num(y.lon), r: cfg.radius }]; }   // the maintenance yard already set up
-    return z.length ? z.map(function (z) { return { name: z.name, lat: num(z.lat), lon: num(z.lon), r: num(z.radius_m) || cfg.radius }; }) : null;
-  }
-  return null;                                                                          // travel, materials, dump runs: no fixed place to compare with
+  else if (t === "project") { var pj = findBy("Projects", "id", id); return pj ? pt(pj.name, pj.lat, pj.lon) : null; }
+  else if (t === "zone") { var z = ttZones().filter(function (x) { return x.id === id; })[0]; return z ? pt(z.name, z.lat, z.lon, z.r) : null; }
+  return p ? pt(p.name, p.lat, p.lon) : null;
 }
-function ttLocate(loc, job, atMs) {
-  loc = loc || {}; var cfg = ttCfg(), st = String(loc.status || "none"), o = { lat: "", lon: "", acc: "", loc_at: "", loc_status: "none", zone: "none", zone_name: "", zone_m: "" };
+function ttLocate(loc, job, refMs) {
+  loc = loc || {}; var cfg = ttCfg(), st = String(loc.status || "none"), o = { lat: "", lon: "", acc: "", loc_at: "", loc_status: "none", zone: "none", zone_name: "", zone_m: "", tgt_lat: "", tgt_lon: "", radius_m: "", presence: "unverified", presence_reason: "" };
   if (["ok", "denied", "timeout", "unavailable", "unsupported"].indexOf(st) < 0) st = "none";
   var lat = Number(loc.lat), lon = Number(loc.lon), acc = Number(loc.acc), lt = ttMs(loc.at);
   if (st === "ok" && !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && isFinite(acc) && acc > 0 && lt)) st = "unavailable";
   o.loc_status = st;
   if (st === "ok") {
     o.lat = String(Math.round(lat * 1e6) / 1e6); o.lon = String(Math.round(lon * 1e6) / 1e6); o.acc = String(Math.round(acc)); o.loc_at = ttIso(lt);
-    if (acc > cfg.acc_ok) o.loc_status = "imprecise"; if (Math.abs(lt - atMs) > 120000) o.loc_status = "stale";
+    if (Math.abs(lt - refMs) > 120000) o.loc_status = "stale"; else if (acc > cfg.acc_ok) o.loc_status = "imprecise";
   }
-  var tg = ttTarget(job); if (!tg) return o;
-  var list = [].concat(tg).filter(function (z) { return z.lat != null; }); o.zone_name = [].concat(tg)[0].name || "";
-  if (!list.length) { o.zone = "nozone"; return o; }                                     // the place has no map point yet
-  if (!o.lat) { o.zone = "unknown"; o.zone_name = list[0].name; return o; }
-  var best = null; list.forEach(function (z) { var d = ttKm({ lat: lat, lon: lon }, z); if (!best || d - z.r < best.d - best.z.r) best = { d: d, z: z }; });
-  o.zone_name = best.z.name; o.zone_m = String(Math.round(best.d));
-  o.zone = best.d <= best.z.r && acc <= best.z.r ? "inside" : best.d - acc > best.z.r ? "outside" : "unknown";
-  return o;
+  var tg = job && job.ref_id ? ttTarget(job) : null;
+  if (!tg) { o.presence_reason = "no_place"; return o; }
+  o.zone_name = tg.name || "";
+  if (tg.lat == null) { o.zone = "nozone"; o.presence_reason = "no_geocode"; return o; }
+  o.tgt_lat = String(tg.lat); o.tgt_lon = String(tg.lon); o.radius_m = String(Math.round(tg.r));
+  if (!o.lat) { o.zone = "unknown"; o.presence_reason = st; return o; }                    // denied, timeout, unavailable, unsupported, none
+  var d = ttKm({ lat: lat, lon: lon }, tg); o.zone_m = String(Math.round(d));
+  if (o.loc_status === "stale") { o.zone = "unknown"; o.presence_reason = "stale"; return o; }   // an old position says nothing about now, near or far
+  if (d - acc > tg.r) { o.zone = "outside"; o.presence = "outside"; o.presence_reason = "outside"; return o; }   // away even counting the phone's error
+  if (o.loc_status === "imprecise") { o.zone = "unknown"; o.presence_reason = "imprecise"; return o; }
+  if (d + acc <= tg.r) { o.zone = "inside"; o.presence = "verified"; return o; }               // inside even counting the phone's error
+  o.zone = "unknown"; o.presence_reason = "uncertain"; return o;                                  // the error circle crosses the edge: can't decide
 }
 
-/* ---- the job someone is working on ---- */
-function ttJob(me, emp, b) {
-  var act = String(b.act || ""), t = String(b.ref_type || ""), id = String(b.ref_id || ""), name = "";
-  if (!TT_ACTS[act]) throw ttErr(me, "Elige qué vas a hacer.", "Pick what you're working on.");
-  if (act !== "work") { t = ""; id = ""; }
-  else {
-    if (t === "visit") { var v = findBy("LsVisits", "id", id); var p = v && findBy("LsProps", "id", v.property_id); if (!p) throw ttErr(me, "No encontré esa visita.", "Visit not found."); name = p.name; }
-    else if (t === "property") { var pp = findBy("LsProps", "id", id); if (!pp || pp.status === "deleted") throw ttErr(me, "No encontré esa propiedad.", "Property not found."); name = pp.name; }
-    else if (t === "project") {
-      var pj = findBy("Projects", "id", id), who = findPerson(emp) || {};
-      if (!pj || pj.status === "deleted" || !(isStaff(who) || splitIds(who.project_ids).indexOf(id) > -1)) throw ttErr(me, "No encontré ese proyecto.", "Project not found."); name = pj.name;
-    } else throw ttErr(me, "Elige el proyecto o la propiedad.", "Pick the project or property.");
+/* ---- what they can be doing there: the jobsite's own scope of work ----
+   Project → its schedule tasks that aren't done (the ones happening now first). Maintenance visit → that visit's checklist.
+   Property → its maintenance checklist. Yard / office → none (they can still write one). */
+function ttScopeOf(t, id) {
+  var today = ttDayOf(ttNow()), out = [];
+  if (t === "project") {
+    out = rows("Schedule").filter(function (x) { return x.project_id === id && (x.kind === "task" || !x.kind) && x.title && !/^(done|complete|completed|canceled|cancelled)$/i.test(String(x.status || "")); })
+      .sort(function (a, b) { var na = a.start <= today && (!a.end || a.end >= today) ? 0 : 1, nb = b.start <= today && (!b.end || b.end >= today) ? 0 : 1; return na - nb || String(a.start).localeCompare(String(b.start)) || num(a.sort) - num(b.sort); })
+      .map(function (x) { return { id: x.id, title: clean(x.title, 80) }; });
+  } else if (t === "visit") {
+    var v = findBy("LsVisits", "id", id);
+    if (v) { out = parseJson(v.checklist, []).map(function (c, i) { return { id: "v" + i, title: clean(c && c.t != null ? c.t : c, 80) }; }); if (!out.length && v.scope) out = [{ id: "vs", title: clean(String(v.scope).split("\n")[0], 80) }]; }
+  } else if (t === "property") {
+    var p = findBy("LsProps", "id", id); if (p) out = parseJson(p.checklist, []).map(function (c, i) { return { id: "p" + i, title: clean(c && c.t != null ? c.t : c, 80) }; });
   }
-  return { act: act, ref_type: t, ref_id: id, ref_name: name };
+  return out.filter(function (x) { return x.title; }).slice(0, 8);
+}
+
+/* ---- phones: who usually clocks from which phone ---- */
+function ttDevLabel(ua) {
+  ua = String(ua || ""); var os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Phone";
+  var br = /SamsungBrowser/.test(ua) ? "Samsung Internet" : /CriOS|Chrome/.test(ua) ? "Chrome" : /FxiOS|Firefox/.test(ua) ? "Firefox" : /Safari/.test(ua) ? "Safari" : "browser";
+  return os + " · " + br;
+}
+function ttDev(emp, devId, ua, where) {
+  if (!/^[A-Za-z0-9_-]{16,80}$/.test(String(devId || ""))) return { flag: "no_device", dev: "" };
+  var dev = sha("dev:" + devId).slice(0, 24), all = rows("TtDevices"), mine = all.filter(function (d) { return d.emp === emp && d.status !== "removed"; });
+  var here = all.filter(function (d) { return d.dev === dev && d.status !== "removed"; }), own = here.filter(function (d) { return d.emp === emp; })[0], others = here.filter(function (d) { return d.emp !== emp; }), t = ttIso(ttNow()), st;
+  if (own) { st = own.status; update("TtDevices", "key", own.key, { last_seen: t, uses: String(num(own.uses) + 1) }); }
+  else {
+    st = !mine.length && !others.length ? "trusted" : "pending";                          // the first phone someone uses is theirs; any later one waits for the office
+    insert("TtDevices", { key: dev + "|" + emp, dev: dev, emp: emp, label: ttDevLabel(ua), first_seen: t, last_seen: t, uses: "1", status: st, by: where, at: t });
+  }
+  if (st === "blocked") return { flag: "blocked", dev: dev };
+  if (others.length && st !== "trusted") return { flag: "other_person", dev: dev, owner: others[0].emp };
+  if (st !== "trusted") return { flag: "new_device", dev: dev };
+  return { flag: "ok", dev: dev };
+}
+function ttDevicesOf(emp) { return rows("TtDevices").filter(function (d) { return d.emp === emp && d.status !== "removed"; }).map(function (d) { return { dev: d.dev, label: d.label, status: d.status, first_seen: d.first_seen, last_seen: d.last_seen, uses: num(d.uses), shared_with: rows("TtDevices").filter(function (x) { return x.dev === d.dev && x.emp !== emp && x.status !== "removed"; }).map(function (x) { return personName(x.emp); }) }; }); }
+/* The office decides about a phone: it's this person's (trust), it shouldn't be used (block), or forget it (remove). */
+ACTIONS.ttDevice = function (me, b) {
+  var emp = normEmail(b.emp), dev = String(b.dev || ""), act = String(b.decision || "");   // not "action": that name is the request itself
+  if (!ttCanReview(me, emp) && me.role !== "admin") throw new Error("You can't manage this person's phones.");
+  if (emp === normEmail(me.email) && me.role !== "admin") throw new Error("Another reviewer has to approve your phone.");
+  var d = findBy("TtDevices", "key", dev + "|" + emp); if (!d) throw new Error("Phone not found.");
+  var st = { trust: "trusted", block: "blocked", remove: "removed" }[act]; if (!st) throw new Error("Trust, block or remove.");
+  update("TtDevices", "key", d.key, { status: st, by: normEmail(me.email), at: ttIso(ttNow()) }); ttAudit(me, emp, "device_" + act, dev, { status: d.status }, { status: st }, clean(b.note, 300));
+  return { devices: ttDevicesOf(emp) };
+};
+
+/* ---- crew log in with their phone number + a 6-digit PIN the office gives them ---- */
+function ttPhone(v) { var d = String(v || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); return d.length === 10 ? d : ""; }
+function ttByPhone(ph) { return ph ? rows("People").filter(function (p) { return ttPhone(p.phone) === ph && isTrue(p.active); })[0] || null : null; }
+PUBLIC.checkPhone = function (b) {
+  var ph = ttPhone(b.phone); if (!ph) throw new Error("Escribe tu número de 10 dígitos. / Type your 10-digit number.");
+  var p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
+  return { hasPin: !!p.pin_hash, name: first(p.name), lang: p.lang || (p.role === "crew" ? "es" : "en") };
+};
+PUBLIC.loginPhone = function (b) {
+  var ph = ttPhone(b.phone), p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
+  var r = PUBLIC.loginPin({ email: p.email, pin: b.pin });                                // same PIN check, same 5-tries lock
+  try { r.device = ttDev(normEmail(p.email), b.device_id, b.ua, "login").flag; } catch (e) {}
+  return r;
+};
+var ttLoginPin0 = PUBLIC.loginPin;
+PUBLIC.loginPin = function (b) { var r = ttLoginPin0(b); try { if (b.device_id) ttDev(normEmail(b.email), b.device_id, b.ua, "login"); } catch (e) {} return r; };
+/* Jesús adds a crew member by phone (no email needed) and gives them a PIN, or resets it. The PIN is shown once. */
+function ttNewPin() { var p; do { p = String(Math.floor(100000 + Math.random() * 900000)); } while (/^(\d)\1{5}$/.test(p) || "0123456789".indexOf(p) > -1 || "9876543210".indexOf(p) > -1); return p; }
+ACTIONS.ttCrewAccess = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús gives crew access.");
+  var ph = ttPhone(b.phone); if (!ph) throw new Error("Type a 10-digit phone number.");
+  var other = ttByPhone(ph), email = b.email ? normEmail(b.email) : "", p = email ? findPerson(email) : null;
+  if (other && (!p || normEmail(other.email) !== normEmail(p.email))) throw new Error("That phone is already used by " + other.name + ".");
+  if (!p) {
+    var name = clean(b.name, 80); if (name.length < 2) throw new Error("Write the person's name.");
+    email = "crew-" + ph + "@phone.invalid";                                              // an internal id, never emailed (.invalid can't receive mail)
+    p = findPerson(email);
+    if (!p) insert("People", { email: email, name: name, role: "crew", project_ids: [].concat(b.project_ids || []).join(","), active: "yes", created_at: now(), avatar: "", phone: ph, lang: "es", pay_type: "hourly" });
+    else update("People", "email", email, { active: "yes", phone: ph, name: name });
+  } else update("People", "email", email, { phone: ph });
+  var pin = ttNewPin(), salt = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
+  update("People", "email", email, { pin_salt: salt, pin_hash: sha(salt + ":" + pin), pin_fails: "0", pin_lock: "" });
+  ttAudit(me, email, "crew_access", email, null, { phone: "***" + ph.slice(-4) }, "PIN issued");
+  try { CacheService.getScriptCache().remove("who:" + email); } catch (e) {}
+  return { email: email, phone: ph, pin: pin, name: (findPerson(email) || {}).name };
+};
+
+/* ---- addresses for the office: the approximate street address of a phone reading (Google's reverse geocoder,
+   the same Maps service the routes use), and the jobsite's own address. A phone point's address is "near", never exact. ---- */
+function ttAddr(lat, lon) {
+  if (lat == null || lon == null || lat === "" || lon === "") return "";
+  var la = num(lat), lo = num(lon); if (!isFinite(la) || !isFinite(lo) || (!la && !lo)) return "";
+  try {
+    var v = lsCacheJson("ttgeo:" + la.toFixed(4) + "," + lo.toFixed(4), 21600, function () {
+      var r = Maps.newGeocoder().reverseGeocode(la, lo), x = r && r.results && r.results[0];
+      return x && x.formatted_address ? { a: String(x.formatted_address).replace(/, USA$/, "") } : null;
+    });
+    return v ? v.a : "";
+  } catch (e) { return ""; }                                                               // no address is fine: the coordinates stay
+}
+function ttFillAddr(evs, cap) {                                                           // older records saved before addresses: look them up (cached), never rewrite the record
+  var n = 0; (evs || []).forEach(function (e) { if (e && e.lat != null && !e.addr && n < (cap || 25)) { e.addr = ttAddr(e.lat, e.lon); n++; } }); return evs;
+}
+function ttPlaceAddr(t, id) {
+  var p = null;
+  if (t === "visit") { var v = findBy("LsVisits", "id", id); p = v ? findBy("LsProps", "id", v.property_id) : null; }
+  else if (t === "property") p = findBy("LsProps", "id", id);
+  else if (t === "project") p = findBy("Projects", "id", id);
+  else if (t === "zone") { var z = ttZones().filter(function (x) { return x.id === id; })[0]; return z ? (z.kind === "yard" && typeof lsCfg === "function" && lsCfg().yard && lsCfg().yard.address) || z.name : ""; }
+  return p ? [p.address, p.city].filter(Boolean).join(", ") : "";
+}
+
+/* ---- the jobsite (place) and the activity (what they're doing there) ---- */
+function ttAuthorized(emp, t, id) {
+  var who = findPerson(emp) || {}, staff = isStaff(who), crews = ttCrewsOf(emp).map(function (c) { return c.id; });
+  if (t === "visit") { var v = findBy("LsVisits", "id", id), p = v && findBy("LsProps", "id", v.property_id); return p && p.status !== "deleted" ? { ok: staff || crews.indexOf(v.crew_id) > -1 || crews.indexOf(p.crew_id) > -1, name: p.name } : null; }
+  if (t === "property") { var pp = findBy("LsProps", "id", id); return pp && pp.status !== "deleted" ? { ok: staff || crews.indexOf(pp.crew_id) > -1, name: pp.name } : null; }
+  if (t === "project") { var pj = findBy("Projects", "id", id); return pj && pj.status !== "deleted" ? { ok: staff || splitIds(who.project_ids).indexOf(id) > -1, name: pj.name } : null; }
+  if (t === "zone") { var z = ttZones().filter(function (x) { return x.id === id; })[0]; return z ? { ok: true, name: z.name } : null; }   // only zones the office set up
+  return null;
+}
+function ttJob(me, emp, b) {
+  var act = String(b.act || "general"); if (act === "work" || act === "unassigned") act = "general";        // older screens: no shortcut around the jobsite
+  if (!TT_ACTS[act]) throw ttErr(me, "Elige qué vas a hacer.", "Pick what you're working on.");
+  var note = act === "other" ? clean(b.act_note, 80) : "", scopeId = "";
+  if (act === "other" && note.length < 2) throw ttErr(me, "Escribe la actividad.", "Write the activity.");
+  var t = String(b.ref_type || ""), id = String(b.ref_id || ""), name = "";
+  if (act === "scope") {                                                                // must be an item of this jobsite's own scope
+    var it = ttScopeOf(b.scope_ref_type || t, b.scope_ref_id || id).filter(function (x) { return x.id === String(b.scope_id || ""); })[0];
+    if (!it) throw ttErr(me, "Esa actividad no está en el alcance de este jobsite. Elige otra o escríbela.", "That activity isn't in this jobsite's scope. Pick another or write it.");
+    note = it.title; scopeId = it.id;
+  }
+  if (t || id) {
+    var a = ttAuthorized(emp, t, id); if (!a) throw ttErr(me, "No encontré ese jobsite.", "Jobsite not found.");
+    if (!a.ok) throw ttErr(me, "Ese jobsite no está asignado a ti. Elige uno de tu lista o avisa a la oficina.", "That jobsite isn't assigned to you. Pick one from your list or tell the office.");
+    name = a.name;
+  }
+  return { act: act, act_note: note, scope_id: scopeId, ref_type: t, ref_id: id, ref_name: name };
+}
+/* The case for a shift: created by the first check-in that can't be verified, joined by every retry. */
+function ttCaseOf(emp, sid) { return rows("TtPresence").filter(function (c) { return c.emp === emp && c.shift_id === sid; })[0] || null; }
+function ttCaseTrack(ev, c) {
+  var att = { ev: ev.id, kind: ev.kind, at: ev.at, presence: ev.presence, reason: ev.presence_reason, dist: ev.zone_m ? num(ev.zone_m) : null, acc: ev.acc ? num(ev.acc) : null, loc_at: ev.loc_at, place: ev.ref_name, offline: ev.offline === "yes",
+    device_flag: ev.device_flag || "", device_owner: ev.device_owner ? personName(ev.device_owner) : "", device: ev.device_hash || "", ip: ev.ip || "" };
+  if (!c) {
+    if (ev.presence === "verified") return null;
+    var row = { id: ev.case_id, emp: ev.emp, shift_id: ev.shift_id, status: "pending", place: ev.ref_name, ref_type: ev.ref_type, ref_id: ev.ref_id, first_at: ev.at, first_reason: ev.presence_reason || ev.presence,
+      attempts: JSON.stringify([att]), explain: "[]", verified_at: "", decided_by: "", decided_at: "", decision: "", decision_note: "", created_at: ttIso(ttNow()), updated_at: ttIso(ttNow()) };
+    insert("TtPresence", row); return row;
+  }
+  var atts = parseJson(c.attempts, []); atts.push(att); var patch = { attempts: JSON.stringify(atts), updated_at: ttIso(ttNow()) };
+  if (ev.presence === "verified") { if (c.status === "pending") { patch.status = "verified_later"; patch.verified_at = ev.at; } }   // confirmed from THIS moment; the time before stays to review
+  else if (!TT_OPEN_CASE[c.status]) { atts[atts.length - 1].reopened_after = c.decision; patch.attempts = JSON.stringify(atts); patch.status = "pending"; }   // a new failure in the same shift reopens it
+  else if (c.status === "verified_later" && ev.kind === "switch") patch.status = "pending";
+  update("TtPresence", "id", c.id, patch); return findBy("TtPresence", "id", c.id);
+}
+function ttCaseOut(c, withEvidence) {
+  if (!c) return null;
+  var o = { id: c.id, emp: c.emp, name: personName(c.emp), shift_id: c.shift_id, status: c.status, open: !!TT_OPEN_CASE[c.status], place: c.place, first_at: c.first_at, first_reason: c.first_reason,
+    attempts: parseJson(c.attempts, []), explain: parseJson(c.explain, []), verified_at: c.verified_at, decided_by: c.decided_by ? personName(c.decided_by) : "", decided_at: c.decided_at, decision: c.decision, decision_note: c.decision_note };
+  if (withEvidence) {
+    var ids = {}; o.attempts.forEach(function (a) { ids[a.ev] = 1; });
+    o.evidence = ttFillAddr(rows("TtEvents").filter(function (e) { return ids[e.id]; }).map(function (e) { return ttEvOut(e, true); }));   // the original records, never rewritten
+    var byEv = {}; o.evidence.forEach(function (e) { byEv[e.id] = e; }); o.attempts.forEach(function (a) { a.addr = (byEv[a.ev] || {}).addr || ""; });
+    o.place_addr = ttPlaceAddr(c.ref_type, c.ref_id);
+    var devs = rows("TtDevices"); o.attempts.forEach(function (a) { var d = devs.filter(function (x) { return x.dev === a.device && x.emp === c.emp; })[0]; a.device_label = d ? d.label : ""; a.device_status = d ? d.status : ""; });
+  }
+  return o;
 }
 
 /* ---- state for the card ---- */
 function ttEvOut(e, withLoc) {
   var o = { id: e.id, kind: e.kind, at: e.at, recv_at: e.recv_at, device_at: e.device_at, source: e.source, offline: isTrue(e.offline), actor: e.actor !== e.emp ? personName(e.actor) : "",
     act: e.act, ref_type: e.ref_type, ref_id: e.ref_id, ref_name: e.ref_name, loc_status: e.loc_status, zone: e.zone, zone_name: e.zone_name, zone_m: e.zone_m ? num(e.zone_m) : null,
-    corr_id: e.corr_id, supersedes: e.supersedes, note: e.note, status: e.status, shift_id: e.shift_id };
-  if (withLoc && e.lat !== "") { o.lat = num(e.lat); o.lon = num(e.lon); o.acc = num(e.acc); o.loc_at = e.loc_at; }
+    corr_id: e.corr_id, supersedes: e.supersedes, note: e.note, status: e.status, shift_id: e.shift_id, act_note: e.act_note || "", device_flag: e.device_flag || "", device_owner: e.device_owner ? personName(e.device_owner) : "", ip: withLoc ? e.ip || "" : "", presence: e.presence || "", presence_reason: e.presence_reason || "", case_id: e.case_id || "", radius_m: e.radius_m ? num(e.radius_m) : null };
+  if (withLoc && e.lat !== "") { o.lat = num(e.lat); o.lon = num(e.lon); o.acc = num(e.acc); o.loc_at = e.loc_at; o.addr = e.loc_addr || ""; }
+  if (withLoc && e.tgt_lat) { o.tgt_lat = num(e.tgt_lat); o.tgt_lon = num(e.tgt_lon); }
   return o;
 }
 function ttShiftOut(s, withLoc) {
@@ -219,25 +392,50 @@ function ttShiftOut(s, withLoc) {
 function ttStateOf(emp) {
   var sh = ttShifts(ttEvents(emp)), open = sh.filter(function (s) { return s.open && !s.voided && !s.broken; }).pop() || null, today = ttDayOf(ttNow());
   var todayMs = ttPerDay(sh)[today] || 0;
-  return { mode: open ? open.mode : "off", shift: open ? ttShiftOut(open, true) : null, today_min: ttMin(todayMs), server_now: ttIso(ttNow()), today: today };
+  var pres = null;
+  if (open) {
+    var lastP = open.events.filter(function (e) { return e.kind === "in" || e.kind === "presence" || (e.kind === "switch" && e.presence); }).pop(), c = ttCaseOf(emp, open.id);
+    pres = { status: c ? c.status : lastP && lastP.presence === "verified" ? "verified" : "pending", last: lastP ? { presence: lastP.presence, reason: lastP.presence_reason, dist: lastP.zone_m ? num(lastP.zone_m) : null, acc: lastP.acc ? num(lastP.acc) : null, radius: lastP.radius_m ? num(lastP.radius_m) : null, at: lastP.at, place: lastP.ref_name || (open.job && open.job.ref_name) } : null,
+      case_id: c ? c.id : "", verified_at: c ? c.verified_at : "", explained: c ? parseJson(c.explain, []).length : 0 };
+  }
+  return { mode: open ? open.mode : "off", shift: open ? ttShiftOut(open, true) : null, presence: pres, today_min: ttMin(todayMs), server_now: ttIso(ttNow()), today: today, recent: ttRecent(emp) };
 }
-function ttSuggest(emp) {
-  var today = ttDayOf(ttNow()), crews = ttCrewsOf(emp).map(function (c) { return c.id; }), who = findPerson(emp) || {};
+function ttSuggest(emp, who0, crews0) {
+  var today = ttDayOf(ttNow()), crews = crews0 || ttCrewsOf(emp).map(function (c) { return c.id; }), who = who0 || findPerson(emp) || {}, staff = isStaff(who);
+  var addr = function (p) { return [p.address, p.city].filter(Boolean).join(", "); }, geo = function (o) { var t = ttTarget(o); return !!(t && t.lat != null); };
+  var withScope = function (o) { o.scope = ttScopeOf(o.ref_type, o.ref_id); o.geo = geo(o); return o; };
   var visits = rows("LsVisits").filter(function (v) { return v.date === today && crews.indexOf(v.crew_id) > -1 && ["canceled", "skipped"].indexOf(v.status) < 0; })
-    .sort(function (a, b) { return num(a.stop) - num(b.stop); }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return { ref_type: "visit", ref_id: v.id, name: p.name || "Visit", sub: (p.address || "") + (v.stop ? " · stop " + v.stop : ""), status: v.status }; });
-  var props = rows("LsProps").filter(function (p) { return p.status !== "deleted" && (crews.indexOf(p.crew_id) > -1 || isStaff(who)) && !isTrue(p.sample); }).slice(0, 40).map(function (p) { return { ref_type: "property", ref_id: p.id, name: p.name, sub: p.city || "" }; });
-  var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (isStaff(who) || splitIds(who.project_ids).indexOf(p.id) > -1); }).map(function (p) { return { ref_type: "project", ref_id: p.id, name: p.name, sub: p.city || "" }; });
-  return { visits: visits, properties: props, projects: projs };
+    .sort(function (a, b) { return num(a.stop) - num(b.stop); }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return withScope({ ref_type: "visit", ref_id: v.id, name: p.name || "Visit", sub: addr(p), route: true }); });
+  var props = rows("LsProps").filter(function (p) { return p.status !== "deleted" && (crews.indexOf(p.crew_id) > -1 || staff) && !isTrue(p.sample); }).slice(0, 60).map(function (p) { return withScope({ ref_type: "property", ref_id: p.id, name: p.name, sub: addr(p) }); });
+  var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (staff || splitIds(who.project_ids).indexOf(p.id) > -1); }).map(function (p) { return withScope({ ref_type: "project", ref_id: p.id, name: p.name, sub: addr(p) }); });
+  var zones = ttZones().map(function (z) { return { ref_type: "zone", ref_id: z.id, name: z.name, sub: z.kind === "yard" ? "Yard" : "Office", geo: true, scope: [] }; });
+  return { visits: visits, properties: props, projects: projs, zones: zones };
+}
+/* My last records, for the bottom of the crew screen: day, jobsite, in, out, hours. */
+function ttRecent(emp) {
+  var since = ttAddDays(ttDayOf(ttNow()), -13);
+  return ttShifts(ttEvents(emp)).filter(function (s) { return !s.broken && !s.voided && s.day >= since; }).sort(function (a, b) { return b.start - a.start; }).slice(0, 10).map(function (s) {
+    var first = s.events.filter(function (e) { return e.kind === "in"; })[0] || {}, c = ttCaseOf(emp, s.id);
+    return { day: s.day, place: first.ref_name || (s.job && s.job.ref_name) || "", start: ttIso(s.start), end: s.end != null ? ttIso(s.end) : null, open: s.open, paid_min: ttCounts(s) ? ttMin(s.paid) : null,
+      presence: c ? c.status : first.presence === "verified" ? "verified" : first.presence ? "pending" : "" };
+  });
 }
 
+function ttOfficePending(me) { var sc = ttScope(me), self = normEmail(me.email); return rows("TtPresence").filter(function (c) { return TT_OPEN_CASE[c.status] && sc.indexOf(c.emp) > -1 && c.emp !== self; }).length; }
 /* ====================================== actions: the employee ====================================== */
 ACTIONS.ttState = function (me, b) {
+  if (me && me.preview === "crew") {                                                    // Jesús previewing the portal as #crew: what a crew member sees, nothing saves
+    var pcrews = typeof lsCrewsOf === "function" ? lsCrewsOf(me).map(function (c) { return c.id; }) : [];
+    return { enabled: true, preview: true, mode: "off", shift: null, presence: null, today_min: 0, today: ttDayOf(ttNow()), server_now: ttIso(ttNow()), lang: "es", perms: {}, recent: [], news: [], pending: 0, reviewer: false, admin: false,
+      suggest: ttSuggest(normEmail(me.email), me, pcrews), privacy: { retention: ttCfg().retention, radius: ttCfg().radius } };
+  }
   ttClocker(me); var emp = normEmail(me.email), pm = ttPerms(me), row = ttRow(me), cfg = ttCfg();
-  if (!ttEnabled(row)) return { enabled: false, reviewer: !!pm.time_review, perms: pm, lang: ttLang(me), admin: me.role === "admin" };
+  if (!ttEnabled(row)) return { enabled: false, reviewer: !!pm.time_review, perms: pm, lang: ttLang(me), admin: me.role === "admin", office_pending: pm.time_review ? ttOfficePending(me) : 0,
+    suggest: isStaff(row) ? ttSuggest(emp) : null };                                    // the office's GPS test still needs the jobsites
   var mine = rows("TtCorrections").filter(function (c) { return c.emp === emp; });
   var news = mine.filter(function (c) { return c.decided_at && (!c.seen_at || c.seen_at < c.decided_at); }).map(function (c) { return { id: c.id, status: c.status, date: c.date, note: c.decision_note }; });
   return Object.assign(ttStateOf(emp), { lang: ttLang(me), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
-    privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
+    privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, office_pending: pm.time_review ? ttOfficePending(me) : 0, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
 };
 ACTIONS.ttPunch = function (me, b) {
   ttClocker(me); var emp = normEmail(me.email), src = "employee";
@@ -249,14 +447,14 @@ ACTIONS.ttPunch = function (me, b) {
   var key = String(b.client_key || ""); if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw ttErr(me, "Recarga el portal e intenta otra vez.", "Reload the portal and try again.");
   var dup = findBy("TtEvents", "client_key", key);
   if (dup) return { dup: true, status: dup.status, event: ttEvOut(dup), state: ttStateOf(dup.emp) };   // a double tap or a retry of the same tap: nothing new is saved
-  var kind = String(b.kind || ""); if (["in", "out", "meal_start", "meal_end", "rest_start", "rest_end", "switch"].indexOf(kind) < 0) throw new Error("Unknown action.");
+  var kind = String(b.kind || ""); if (["in", "out", "meal_start", "meal_end", "rest_start", "rest_end", "switch", "presence"].indexOf(kind) < 0) throw new Error("Unknown action.");
   var nowMs = ttNow(), offline = !!b.offline, dev = ttMs(b.device_at), at = nowMs, notes = [], status = "ok";
   if (offline) {                                                                        // saved on the phone without signal: its own clock is all we have, and it says so
     if (dev == null) throw new Error("Missing the time of the offline record.");
     if (dev > nowMs + 120000) { notes.push("device clock was ahead of the server"); at = nowMs; } else at = dev;
     if (nowMs - at > 7 * 864e5) { status = "conflict"; notes.push("arrived more than 7 days late"); }
   } else if (dev != null && Math.abs(dev - nowMs) > 5 * 60000) notes.push("device clock off by " + Math.round((dev - nowMs) / 60000) + " min");
-  var shifts = ttShifts(ttEvents(emp), nowMs).filter(function (s) { return !s.voided && !s.broken; }), open = shifts.filter(function (s) { return s.open; }).pop(), id = newId("te"), sid = id, job = null;
+  var shifts = ttShifts(ttEvents(emp), nowMs).filter(function (s) { return !s.voided && !s.broken; }), open = shifts.filter(function (s) { return s.open; }).pop(), id = newId("te"), sid = id, job = null, placeEv = false;
   var per = findBy("TtPeriods", "id", ttWeekStart(ttDayOf(at))); if (per && per.status === "closed") { status = "conflict"; notes.push("that week is already closed"); }
   if (kind === "in") {
     if (open) { if (!offline) throw ttErr(me, "Ya tienes entrada desde las " + ttHm(open.start) + ".", "You're already checked in since " + ttHm(open.start) + "."); status = "conflict"; notes.push("another shift was open"); }
@@ -267,23 +465,72 @@ ACTIONS.ttPunch = function (me, b) {
     if (!tg) { if (!offline) throw ttErr(me, "No tienes entrada registrada.", "You're not checked in."); status = "conflict"; notes.push("no open shift for it"); }
     else {
       sid = tg.id; var m = tg.mode;
-      var okk = { work: ["meal_start", "rest_start", "switch", "out"], meal: ["meal_end", "out"], rest: ["rest_end", "out"] }[m] || [];
+      var okk = { work: ["meal_start", "rest_start", "switch", "out", "presence"], meal: ["meal_end", "out", "presence"], rest: ["rest_end", "out", "presence"] }[m] || [];
       if (!offline && okk.indexOf(kind) < 0) throw ttErr(me, "Esa acción no aplica ahora.", "That doesn't apply right now.");
       if (at < tg.start) { status = "conflict"; notes.push("earlier than the check-in"); }
       if (offline && tg.end != null && at > tg.end) { status = "conflict"; notes.push("after the check-out"); }
-      job = kind === "switch" ? ttJob(me, emp, b) : tg.job;
+      if (kind === "switch") {
+        var cur = tg.job || {}, moving = !!b.ref_id && (String(b.ref_type) + "|" + String(b.ref_id)) !== (cur.ref_type + "|" + cur.ref_id);
+        job = moving ? ttJob(me, emp, b) : Object.assign(ttJob(me, emp, { act: b.act, act_note: b.act_note, scope_id: b.scope_id, scope_ref_type: cur.ref_type, scope_ref_id: cur.ref_id }), { ref_type: cur.ref_type || "", ref_id: cur.ref_id || "", ref_name: cur.ref_name || "" });
+        placeEv = moving;                                                                   // moving to another jobsite is checked like a check-in; changing activity is not
+      } else job = tg.job;
     }
   }
-  if (!job) job = { act: "", ref_type: "", ref_id: "", ref_name: "" };
-  var loc = ttLocate(b.loc, job, at);
+  if (!job) job = { act: "", act_note: "", ref_type: "", ref_id: "", ref_name: "" };
+  if (kind === "in" || kind === "presence") placeEv = true;
+  var loc = ttLocate(b.loc, job, dev != null ? dev : at);
+  if (!placeEv) { loc.presence = ""; loc.presence_reason = ""; }                         // out / meals / activity changes: the location is kept as evidence only
   var ev = Object.assign({ id: id, emp: emp, actor: me.email, kind: kind, at: ttIso(at), device_at: dev != null ? ttIso(dev) : "", recv_at: ttIso(nowMs), tz: CONFIG.TZ,
-    act: kind === "in" || kind === "switch" ? job.act : "", ref_type: kind === "in" || kind === "switch" ? job.ref_type : "", ref_id: kind === "in" || kind === "switch" ? job.ref_id : "", ref_name: kind === "in" || kind === "switch" ? job.ref_name : "",
-    source: src, offline: offline ? "yes" : "", seq: String(num(b.seq) || ""), client_key: key, device: clean(b.device, 80), shift_id: sid, supersedes: "", corr_id: "", note: notes.join("; "), status: status }, loc);
+    act: kind === "in" || kind === "switch" ? job.act : "", act_note: kind === "in" || kind === "switch" ? job.act_note || "" : "", ref_type: job.ref_type || "", ref_id: job.ref_id || "", ref_name: job.ref_name || "",
+    source: src, offline: offline ? "yes" : "", seq: String(num(b.seq) || ""), client_key: key, device: clean(b.device, 200), shift_id: sid, supersedes: "", corr_id: "", note: notes.join("; "), status: status, case_id: "", scope_id: kind === "in" || kind === "switch" ? job.scope_id || "" : "" }, loc);
+  if (ev.lat) ev.loc_addr = ttAddr(ev.lat, ev.lon);
+  if (src !== "supervisor") {                                                             // a supervisor clocking for someone uses their own phone on purpose
+    var dv = ttDev(emp, b.device_id, b.device, "punch"); ev.device_hash = dv.dev || ""; ev.device_flag = dv.flag; ev.device_owner = dv.owner || "";
+    if (placeEv && dv.flag !== "ok" && ev.presence === "verified") { ev.presence = "unverified"; ev.presence_reason = dv.flag === "other_person" ? "other_device" : dv.flag === "no_device" ? "no_device" : dv.flag === "blocked" ? "blocked_device" : "new_device"; }
+  }
+  var ipv = String(b.ip || ""); if (/^[0-9a-fA-F:.]{3,45}$/.test(ipv)) ev.ip = ipv;     // as reported by the phone itself: supporting detail only
+  var cs = placeEv && status === "ok" ? ttCaseOf(emp, sid) : null;
+  if (placeEv && status === "ok" && (cs || ev.presence !== "verified")) ev.case_id = cs ? cs.id : newId("tp");
   insert("TtEvents", ev);
+  if (ev.case_id) cs = ttCaseTrack(ev, cs);
   if (src === "supervisor") ttAudit(me, emp, "clock_for", ev.id, null, { kind: kind, at: ev.at }, "clocked by a supervisor");
-  var out = { status: status, event: ttEvOut(ev, true), state: ttStateOf(emp) };
+  var out = { status: status, event: ttEvOut(ev, true), state: ttStateOf(emp), presence: placeEv ? { result: ev.presence, reason: ev.presence_reason, dist: ev.zone_m ? num(ev.zone_m) : null, acc: ev.acc ? num(ev.acc) : null, radius: ev.radius_m ? num(ev.radius_m) : null, place: ev.ref_name, case: cs ? cs.status : "" } : null };
   if (kind === "out" && status === "ok") { var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === sid; })[0]; if (s) { out.summary = ttShiftOut(s, false); out.summary.ask_meal = s.paid > 300 * 6e4 && !s.meals.length; } }
   return out;
+};
+/* "Test my location" for the office: runs the exact same server check against a jobsite, saves nothing. */
+ACTIONS.ttGeoTest = function (me, b) {
+  if (!me || me.preview || !isStaff(me)) throw new Error("Only the office can run the location test.");
+  var job = { ref_type: String(b.ref_type || ""), ref_id: String(b.ref_id || ""), ref_name: "" }, a = ttAuthorized(normEmail(me.email), job.ref_type, job.ref_id);
+  if (!a) throw new Error("Pick a jobsite."); job.ref_name = a.name;
+  var dev = ttMs(b.device_at), r = ttLocate(b.loc, job, dev != null ? dev : ttNow());
+  return { result: r.presence, reason: r.presence_reason, dist: r.zone_m ? num(r.zone_m) : null, acc: r.acc ? num(r.acc) : null, radius: r.radius_m ? num(r.radius_m) : null, loc_status: r.loc_status,
+    lat: r.lat ? num(r.lat) : null, lon: r.lon ? num(r.lon) : null, loc_at: r.loc_at, tgt_lat: r.tgt_lat ? num(r.tgt_lat) : null, tgt_lon: r.tgt_lon ? num(r.tgt_lon) : null, place: a.name, server_now: ttIso(ttNow()), acc_ok: ttCfg().acc_ok,
+    addr: r.lat ? ttAddr(r.lat, r.lon) : "", place_addr: ttPlaceAddr(job.ref_type, job.ref_id) };
+};
+/* The employee explains a pending check-in. Writing an explanation never approves it. */
+ACTIONS.ttPresenceExplain = function (me, b) {
+  ttClocker(me); var emp = normEmail(me.email), txt = clean(b.text, 600);
+  if (txt.length < 3) throw ttErr(me, "Escribe qué pasó.", "Write what happened.");
+  var c = b.id ? findBy("TtPresence", "id", String(b.id)) : null;
+  if (!c) { var open = ttShifts(ttEvents(emp)).filter(function (s) { return s.open && !s.voided; }).pop(); c = open ? ttCaseOf(emp, open.id) : null; }
+  if (!c || c.emp !== emp) throw ttErr(me, "No hay una entrada pendiente que explicar.", "There's no pending check-in to explain.");
+  var ex = parseJson(c.explain, []); ex.push({ at: ttIso(ttNow()), text: txt }); update("TtPresence", "id", c.id, { explain: JSON.stringify(ex), updated_at: ttIso(ttNow()) });
+  ttAudit(me, emp, "presence_explained", c.id, null, null, txt); return { ok: true, status: c.status };
+};
+/* The office decides: accept or reject the unverified time, always with a reason. Nothing is deleted either way:
+   if the hours shouldn't count, that is a separate office correction with its own history. */
+ACTIONS.ttPresenceDecide = function (me, b) {
+  var c = findBy("TtPresence", "id", String(b.id || "")); if (!c) throw new Error("Case not found.");
+  if (!TT_OPEN_CASE[c.status]) throw new Error("This case was already decided.");
+  if (normEmail(me.email) === c.emp) throw new Error("Nobody decides their own case. Another reviewer has to.");
+  if (!ttCanReview(me, c.emp)) throw new Error("You can't review this person's hours.");
+  var dec = String(b.decision || ""), note = clean(b.note, 600);
+  if (["accept", "reject"].indexOf(dec) < 0) throw new Error("Accept or reject.");
+  if (note.length < 3) throw new Error("Write the reason for the decision.");
+  update("TtPresence", "id", c.id, { status: dec === "accept" ? "accepted" : "rejected", decision: dec, decision_note: note, decided_by: normEmail(me.email), decided_at: ttIso(ttNow()), updated_at: ttIso(ttNow()) });
+  ttAudit(me, c.emp, "presence_" + dec, c.id, { status: c.status }, { status: dec === "accept" ? "accepted" : "rejected" }, note);
+  return { case: ttCaseOut(findBy("TtPresence", "id", c.id), true) };
 };
 ACTIONS.ttSetLang = function (me, b) { ttClocker(me); var l = b.lang === "en" ? "en" : "es"; update("People", "email", normEmail(me.email), { lang: l }); return { lang: l }; };
 
@@ -312,7 +559,9 @@ ACTIONS.ttMyWeek = function (me, b) {
   ttClocker(me); var emp = normEmail(b.emp || me.email);
   if (emp !== normEmail(me.email) && !ttCanReview(me, emp)) throw ttErr(me, "No puedes ver las horas de esa persona.", "You can't see that person's hours.");
   var d = /^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow());
-  var out = ttWeekOf(emp, ttWeekStart(d), emp !== normEmail(me.email)); out.today = ttDayOf(ttNow()); out.me = emp === normEmail(me.email); return out;
+  var out = ttWeekOf(emp, ttWeekStart(d), emp !== normEmail(me.email)); out.today = ttDayOf(ttNow()); out.me = emp === normEmail(me.email);
+  if (isStaff(ttRow(me))) { var all = []; out.days.forEach(function (dd) { dd.shifts.forEach(function (s) { all = all.concat(s.events); }); }); ttFillAddr(all.concat(out.replaced || []), 40); }
+  return out;
 };
 ACTIONS.ttConfirmWeek = function (me, b) {
   ttClocker(me); var emp = normEmail(me.email), ws = ttWeekStart(String(b.week || "")), st = b.status === "discrepancy" ? "discrepancy" : "ok", note = clean(b.note, 1000);
@@ -481,8 +730,6 @@ function ttExc(emp, shifts, from, to, evs) {
     else if (!s.open && paid > 600 && s.meals.length < 2) add({ key: "meal2:" + s.id, kind: "meal", day: s.day, shift_id: s.id, priority: 2, title: "Second meal period to review", why: Math.round(paid / 6) / 10 + " h with " + s.meals.length + " meal recorded", next: "Review with accounting" });
     s.events.forEach(function (e) {
       if (e.source === "correction") return;
-      if (["denied", "timeout", "unavailable", "unsupported", "none"].indexOf(e.loc_status) > -1 && (e.kind === "in" || e.kind === "out")) add({ key: "loc:" + e.id, kind: "no_location", day: s.day, shift_id: s.id, priority: 3, title: "No location on " + (e.kind === "in" ? "check-in" : "check-out"), why: { denied: "Location permission was off", timeout: "The phone took too long", unavailable: "The phone couldn't get a location", unsupported: "This device doesn't share location", none: "No location was sent" }[e.loc_status], next: "Nothing needed if the time is right" });
-      else if (e.zone === "outside") add({ key: "zone:" + e.id, kind: "outside", day: s.day, shift_id: s.id, priority: 3, title: "Recorded away from " + (e.zone_name || "the job"), why: "About " + (num(e.zone_m) >= 1000 ? Math.round(num(e.zone_m) / 100) / 10 + " km" : num(e.zone_m) + " m") + " away (phone accuracy ±" + e.acc + " m)", next: "Check if they were on another job or traveling" });
       if (isTrue(e.offline)) add({ key: "off:" + e.id, kind: "offline", day: s.day, shift_id: s.id, priority: 3, title: "Recorded without signal", why: "Time comes from the phone's clock; it reached the server " + ttHuman(ttMs(e.recv_at)), next: "Confirm the time looks right" });
     });
   });
@@ -497,6 +744,21 @@ function ttExc(emp, shifts, from, to, evs) {
     var days = {}; rows("LsVisits").forEach(function (v) { if (crews.indexOf(v.crew_id) > -1 && v.date >= from && v.date >= firstDay && v.date <= to && v.date < today && ["canceled", "skipped"].indexOf(v.status) < 0) days[v.date] = 1; });
     Object.keys(days).forEach(function (d) { if (!live.some(function (s) { return s.day === d; }) && !ttAbsentOn(emp, d)) add({ key: "noin:" + d + ":" + pkey(emp), kind: "no_checkin", day: d, priority: 2, title: "No check-in on a scheduled day", why: "Their crew had visits on " + d, next: "Ask if they worked, or record the absence" }); });
   }
+  // taps from another person's phone that aren't already in a check-in case (e.g. a check-out made for someone)
+  (evs || []).forEach(function (e) {
+    if (e.device_flag !== "other_person" || e.case_id || e.source === "correction") return; var d = ttDayOf(ttMs(e.at)); if (d < from || d > to) return;
+    add({ key: "dev:" + e.id, kind: "device", day: d, shift_id: e.shift_id, priority: 1, title: (e.kind === "out" ? "Check-out" : "Clock tap") + " made from " + personName(e.device_owner) + "'s phone", why: ttHm(ttMs(e.at)) + " · " + (e.ref_name || "") + " · the phone is registered to " + personName(e.device_owner), next: "Ask both people; correct the time if needed" });
+  });
+  // check-ins that couldn't be verified: one item per shift, whatever the number of retries
+  var RS = { denied: "location permission was off", timeout: "the phone took too long to locate", unavailable: "the phone couldn't get a location", unsupported: "the device doesn't share location", none: "no location was sent", stale: "the location was old", imprecise: "the location wasn't precise enough", uncertain: "too close to the edge to tell", outside: "the phone was away from the jobsite", other_device: "made from another person's phone", new_device: "from a phone not approved yet", no_device: "the phone didn't identify itself", blocked_device: "from a blocked phone", no_geocode: "the jobsite has no map point", no_place: "no jobsite was picked" };
+  rows("TtPresence").forEach(function (c) {
+    if (c.emp !== emp || !TT_OPEN_CASE[c.status]) return; var d = ttDayOf(ttMs(c.first_at)); if (d < from || d > to) return;
+    var atts = parseJson(c.attempts, []), last = atts[atts.length - 1] || {};
+    add({ key: "pres:" + c.id, kind: "presence", day: d, shift_id: c.shift_id, priority: 1, case_id: c.id,
+      title: c.status === "verified_later" ? "Check-in verified late" : last.presence === "outside" ? "Check-in away from the jobsite" : "Check-in pending validation",
+      why: (c.place || "No jobsite") + " · " + ttHm(ttMs(c.first_at)) + " · " + (RS[c.first_reason] || c.first_reason) + (last.dist != null ? " (" + last.dist + " m away, ±" + last.acc + " m)" : "") + (atts.length > 1 ? " · " + atts.length + " tries" : "") + (c.status === "verified_later" ? " · verified from " + ttHm(ttMs(c.verified_at)) : "") + (parseJson(c.explain, []).length ? " · explained" : ""),
+      next: "Look at the evidence, then accept or reject with a reason" });
+  });
   rows("TtCorrections").forEach(function (c) {
     if (c.emp !== emp) return;
     if (c.status === "pending" || c.status === "needs_info") add({ key: "cor:" + c.id, kind: "correction", day: c.date, priority: c.status === "pending" ? 1 : 3, title: c.status === "pending" ? "Correction to decide" : "Waiting on " + nm + "'s answer", why: (c.delta_min > 0 ? "+" : "") + num(c.delta_min) + " min · " + c.explain.slice(0, 80), next: c.status === "pending" ? "Approve, reject or ask" : "Wait for the reply" });
@@ -512,11 +774,12 @@ ACTIONS.ttReview = function (me, b) {
     var w = ttWeekOf(emp, ws, true), has = w.totals.paid_min > 0 || w.exceptions.length || w.corrections.length || w.conflicts.length;
     var loc = { inside: 0, outside: 0, unknown: 0, nogps: 0 };                          // where the taps happened vs the place they picked (office only)
     w.days.forEach(function (d) { d.shifts.forEach(function (s) { s.events.forEach(function (e) {
-      if (e.source === "correction" || ["in", "out", "switch"].indexOf(e.kind) < 0) return;
-      if (["ok", "imprecise", "stale"].indexOf(e.loc_status) < 0) loc.nogps++; else if (e.zone === "inside") loc.inside++; else if (e.zone === "outside") loc.outside++; else if (e.zone === "unknown") loc.unknown++;
+      if (e.source === "correction" || !e.presence) return;                                // check-ins, jobsite moves and retries
+      if (e.presence === "verified") loc.inside++; else if (e.presence === "outside") loc.outside++; else if (e.lat == null) loc.nogps++; else loc.unknown++;
     }); }); });
     return has ? { emp: emp, name: w.name, pay_type: w.pay_type, paid_min: w.totals.paid_min, reg: w.calc.reg, ot: w.calc.ot, dt: w.calc.dt, exceptions: w.exceptions.length, open_shifts: w.open_shifts,
-      pending: w.corrections.filter(function (c) { return c.status === "pending"; }).length, confirm: w.confirm, approval: w.approval, self: emp === self, loc: loc } : null;
+      pending: w.corrections.filter(function (c) { return c.status === "pending"; }).length, confirm: w.confirm, approval: w.approval, self: emp === self, loc: loc,
+      presence_open: w.exceptions.filter(function (x) { return x.kind === "presence"; }).length } : null;
   }).filter(Boolean);
   var cors = rows("TtCorrections").filter(function (c) { return scope.indexOf(c.emp) > -1 && (c.status === "pending" || c.status === "needs_info"); }).map(function (c) {
     var o = ttCorOut(c), sh = ttShifts(ttEvents(c.emp)); o.can_decide = c.emp !== self && c.requested_by !== self && (!(per.id === c.period_id && per.status === "closed") || !!pm.accounting);
@@ -524,13 +787,16 @@ ACTIONS.ttReview = function (me, b) {
     var crews = ttCrewsOf(c.emp).map(function (x) { return x.id; }); o.assigned = rows("LsVisits").filter(function (v) { return v.date === c.date && crews.indexOf(v.crew_id) > -1; }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return { name: p.name || "Visit", status: v.status, stop: v.stop }; });
     return o;
   });
+  var cases = rows("TtPresence").filter(function (c) { if (scope.indexOf(c.emp) < 0) return false; var d = ttDayOf(ttMs(c.first_at)); return TT_OPEN_CASE[c.status] || (d >= ws && d <= we); })
+    .map(function (c) { var o = ttCaseOut(c, true); o.can_decide = o.open && c.emp !== self; return o; }).sort(function (a, b) { return (b.open - a.open) || String(a.first_at).localeCompare(String(b.first_at)); });
   var blockers = ttCloseBlockers(people); if (we >= ttDayOf(ttNow())) blockers.unshift("The week isn't over yet (it ends " + we + ")");
   return { week: { start: ws, end: we, status: per.status, version: num(per.version), closed_by: per.closed_by ? personName(per.closed_by) : "", closed_at: per.closed_at || "", history: parseJson(per.history, []) },
-    people: people, corrections: cors, can_close: !!(pm.accounting && pm.period_close), blockers: blockers, rules: TT_RULES, today: ttDayOf(ttNow()), perms: pm };
+    people: people, corrections: cors, cases: cases, can_close: !!(pm.accounting && pm.period_close), blockers: blockers, rules: TT_RULES, today: ttDayOf(ttNow()), perms: pm };
 }
 function ttCloseBlockers(people) {
   var out = []; people.forEach(function (p) {
     if (p.open_shifts) out.push(p.name + ": a shift is still open"); if (p.pending) out.push(p.name + ": " + p.pending + " correction(s) to decide");
+    if (p.presence_open) out.push(p.name + ": " + p.presence_open + " check-in(s) pending validation");
     if (!p.approval || !p.approval.valid) out.push(p.name + ": hours not approved" + (p.approval && !p.approval.valid ? " (changed after approval)" : ""));
   }); return out;
 }
@@ -540,6 +806,7 @@ ACTIONS.ttApprove = function (me, b) {
   var w = ttWeekOf(emp, ws, true); if (w.week.status === "closed") throw new Error("That week is already closed.");
   if (w.open_shifts) throw new Error("A shift is still open. Resolve the check-out first.");
   if (w.corrections.some(function (c) { return c.period_id === ws && (c.status === "pending" || c.status === "needs_info"); })) throw new Error("Decide the corrections first.");
+  if (w.exceptions.some(function (x) { return x.kind === "presence"; })) throw new Error("Decide the check-ins pending validation first.");
   if (ttWeekStart(ttDayOf(ttNow())) === ws && !b.mid_week) throw new Error("The week isn't over yet.");
   var all = ttShifts(ttEvents(emp)), inWeek = all.filter(function (s) { return s.day >= ws && s.day <= w.week.end; }), hash = ttHash(w.days, inWeek), k = ws + "|" + emp, wk = findBy("TtWeeks", "key", k);
   var h = parseJson(wk && wk.history, []); h.push({ at: ttIso(ttNow()), by: self, what: "approved", paid_min: w.totals.paid_min });
@@ -567,7 +834,7 @@ ACTIONS.ttSetPerson = function (me, b) {
   if (b.perms != null) patch.perms = [].concat(b.perms).filter(function (k) { return TT_PERMS.indexOf(k) > -1; }).join(",");
   if (b.supervisor != null) { var s = normEmail(b.supervisor); if (s && (!findPerson(s) || s === e)) throw new Error("Pick a different supervisor."); patch.supervisor = s; }
   if (b.pay_type != null) { if (["hourly", "exempt", ""].indexOf(b.pay_type) < 0) throw new Error("Pay type: hourly or exempt."); patch.pay_type = b.pay_type; }
-  if (b.clock != null) patch.clock = b.clock ? "yes" : "";
+  if (b.clock != null) patch.clock = b.clock ? "yes" : "no";
   ttAudit(me, e, "person_settings", e, { perms: p.perms, supervisor: p.supervisor, pay_type: p.pay_type, clock: p.clock }, patch, ""); update("People", "email", e, patch);
   try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
   return { ok: true };
@@ -577,8 +844,8 @@ ACTIONS.ttSettings = function (me, b) {
   if (me.role !== "admin" || me.preview) throw new Error("Only Jesús changes time settings.");
   if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
   return { all: ttAll(), week_start: ttCfg().week_start, perms: TT_PERMS, people: ttTeam().map(function (p) {
-    return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: isTrue(p.clock), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
-      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }) };
+    return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: ttEnabled(p), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
+      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };
   }) };
 };
 ACTIONS.ttSetAbsence = function (me, b) {
@@ -592,12 +859,12 @@ function ttTodayItems(me) {
   if (!ttPerms(me).time_review) return [];
   var to = ttDayOf(ttNow()), from = ttAddDays(to, -14), out = [];
   ttScope(me).forEach(function (emp) { var evs = ttEvents(emp); ttExc(emp, ttShifts(evs), from, to, evs).forEach(function (x) {
-    if (x.kind === "overtime" || x.kind === "no_location") return;                        // shown in the weekly review, not in the daily queue
-    out.push({ key: "tt:" + x.key, kind: "time", area: "time", priority: x.priority, title: x.title + " · " + x.name, sub: "Hours · " + x.day, why: x.why, next: x.next, owner: x.owner, since: x.day + " 00:00", link: { type: "time", emp: emp, week: ttWeekStart(x.day) } });
+    if (x.kind === "overtime") return;                        // shown in the weekly review, not in the daily queue
+    out.push({ key: "tt:" + x.key, kind: "time", area: "time", priority: x.priority, title: x.title + " · " + x.name, sub: "Hours · " + x.day, why: x.why, next: x.next, owner: x.owner, since: x.day + " 00:00", link: { type: "time", emp: emp, week: ttWeekStart(x.day), case_id: x.case_id || "" } });
   }); });
   return out;
 }
 if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
 if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
-["ttState", "ttSettings", "ttPunch", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
-NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1;
+["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
+NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTest = 1; READ_ONLY.ttState = 1;   // read-only: also what lets Jesús preview the crew screen

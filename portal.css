@@ -1966,3 +1966,38 @@
 .tts-meal.done { background: var(--ok-soft); color: var(--ok); font-weight: 500; }
 .tts-meal-b { display: flex; flex-wrap: wrap; gap: 8px; } .tts-meal-b .btn { flex: 1 1 auto; min-height: 48px; font-size: 16px; }
 .tts-meal input { font-size: 22px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; }
+
+/* ---- check-in result: green only when the server verified the location ---- */
+.tts.tt-pend { border-left: 4px solid #c58a1a; }
+.tts-pres { margin: 8px 0 10px; padding: 12px 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 6px; }
+.tts-pres.ok { background: var(--ok-soft); color: var(--ok); } .tts-pres.ok small { color: var(--ok); }
+.tts-pres.pend { background: #fbf0dc; color: #6b4a0f; } .tts-pres.pend p { margin: 0; color: #4a3a1a; font-size: 15px; line-height: 1.4; }
+.tts-pres b { font-size: 17px; } .tts-why { font-weight: 600; }
+.tts-pres-b { display: flex; flex-wrap: wrap; gap: 8px; } .tts-pres-b .btn { flex: 1 1 auto; min-height: 46px; }
+.tts-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; } .tts-acts .chip { min-height: 40px; font-size: 15px; }
+.tts-actnote { width: 100%; font-size: 17px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; margin: 4px 0 6px; box-sizing: border-box; }
+.tts-route { color: var(--ok) !important; font-weight: 600; } .tts-nogeo { color: #8a5a00 !important; }
+.tts-links2 { margin: 4px 0 6px; font-size: 14px; }
+.pill.ok-p { background: var(--ok-soft); color: var(--ok); } .pill.warn-p { background: #fbf0dc; color: #6b4a0f; }
+.tt-case { margin-bottom: 12px; border-left: 4px solid #c58a1a; } .tt-case.closed { border-left-color: var(--line); opacity: .85; }
+.tt-cmap { height: 240px; border-radius: 10px; overflow: hidden; margin-bottom: 4px; }
+.tt-att { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; } .tt-att th, .tt-att td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tt-site-pin span { display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 50%; background: #1d3b5c; color: #fff; font-size: 15px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+@media (max-width: 640px) { .tt-att { display: block; overflow-x: auto; } }
+.tt-case .tt-side > div:first-child { overflow-x: auto; }
+.tts-rec { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.tts-rec-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px; } .tts-rec-row small { display: block; color: var(--muted); font-size: 13px; } .tts-rec-row > span { font-weight: 600; white-space: nowrap; }
+.warn-t { color: #8a5a00; font-weight: 600; } .tts-privacy { font-size: 12px; margin-top: 8px; } .tts-prev { margin: 8px 0 0; }
+.tt-gps-r { margin-top: 12px; } .tt-gps-r.ok { border-left: 4px solid var(--ok); } .tt-gps-r.bad { border-left: 4px solid #c58a1a; } .tt-gps-r b { font-size: 17px; }
+#bs-portal .chips.tts-acts { background: none; border: 0; padding: 0; box-shadow: none; border-radius: 0; flex-wrap: wrap; gap: 8px; overflow: visible; }
+#bs-portal .tts-acts .chip { border: 1.5px solid var(--line); background: var(--card); min-height: 42px; padding: 8px 14px; border-radius: 99px; }
+#bs-portal .tts-acts .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.tt-addr-l { display: block; color: var(--muted); font-size: 12px; margin: 1px 0 3px 2px; }
+.tt-att td.tt-addr { white-space: normal; min-width: 180px; } .tt-att.tt-wrap td { white-space: normal; }
+.tt-acc-row { font-size: 12px; margin-top: 4px; } .tt-devs { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+.tt-dev { font-size: 12px; color: var(--muted); } .tt-dev.pending { color: #8a5a00; } .tt-dev.blocked { color: var(--bad); text-decoration: line-through; }
+.tt-add-crew { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.tt-pin-show { text-align: center; padding: 16px; background: var(--paper); border-radius: 12px; margin: 8px 0; } .tt-pin { font-size: 40px; letter-spacing: 10px; font-weight: 700; margin-top: 6px; }
+.tt-tbl td { vertical-align: top; }
+.tt-case .tt-side { grid-template-columns: 1fr; } .tt-case .tt-cmap { height: 260px; }
+.tt-case .tt-att td, .tt-case .tt-att th { white-space: normal; } .tt-case .tt-att td.tt-addr { min-width: 130px; }
