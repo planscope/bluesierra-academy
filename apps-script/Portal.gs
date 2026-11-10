@@ -50,7 +50,7 @@ var TABLES = {
   // "Start over": a project's rows are moved here (as JSON) so the admin can bring them back.
   Wipes: ["wipe_id", "project_id", "at", "by", "tbl", "part", "data"],
   // The contract: "base" lines are the schedule of values (they add up to the contract sum); "change" lines are change orders.
-  Reads: ["email", "project_id", "channel", "at"],
+  Reads: ["email", "project_id", "channel", "at", "last_id"],
   // Plan sets: one row per uploaded revision. "sheets" is JSON: [{n, sheet, title, img, w, h, status, score, boxes}]
   Plans: ["id", "project_id", "set", "rev", "date", "notes", "visible", "pdf_file_id", "pdf_name", "pages", "sheets", "status", "by", "at", "text_file_id"],      // when each person last looked at each channel (unread counts)
   ContractLines: ["id", "project_id", "kind", "number", "title", "amount", "status", "date", "notes", "sort"],
@@ -64,9 +64,9 @@ var KINDS = ["task", "inspection", "payment", "decision", "meeting", "milestone"
 var PREFETCH = {
   getProject: ["Projects", "People", "Timeline", "Photos", "Messages", "Reads", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "QbLog"],
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule", "LsCrews", "LsProps"],
-  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People", "LsCrews", "LsProps"], markRead: ["People", "Projects", "Reads"]
+  activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People", "LsCrews", "LsProps"], markRead: ["People", "Projects", "Reads"], callDecline: ["Projects", "People", "Messages", "Reads"], callInvite: ["Projects", "People", "Messages"]
 };
-var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
+var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, callInvite: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
@@ -315,7 +315,7 @@ var ACTIONS = {
       billing: bill,
       // Clients never receive other people's email addresses.
       messages: messagesOut(by("Messages"), me),
-      reads: readsFor(me, id),
+      reads: readsFor(me, id), seen: seenFor(me, p),
       members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }),
       channels: channelsFor(me),
       invoices: !bill ? [] : by("Invoices").filter(function (i) { return staff || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invoiceOut(i, staff, ppl); }),
@@ -510,7 +510,7 @@ var ACTIONS = {
         "Saved, but the email couldn't be sent.");
     } else if (!isTeam(me) && shouldEmail(CONFIG.NOTIFY_EMAIL, p.id, important)) notifyJesus(me.email, "New message from " + me.name + " · " + p.name, "<p>" + nl2br(esc(text)) + "</p>" + button("Open the portal", deep(p.id, "messages", channel)));
     if (!dmTo) notifyMentions(p, me, text, channel, emailed, important);
-    markReadNow(me, p.id, channel);
+    markReadNow(me, p.id, channel, id);
     return { id: id, emailed: Object.keys(emailed).length };
   },
 
@@ -539,7 +539,7 @@ var ACTIONS = {
   markRead: function (me, b) {
     var p = needProject(me, b.projectId), ch = b.channel || "client";
     if (!canRead(me, ch)) return {};
-    markReadNow(me, p.id, ch); return {};
+    markReadNow(me, p.id, ch, b.last); return {};
   },
   /* Everything new across the projects and channels this person can see, newest first. */
   activity: function (me, b) {
@@ -1854,7 +1854,12 @@ ACTIONS.tick = function (me, b) {
     var t = JSON.parse(CacheService.getScriptCache().get(typingKey(b.pid, b.ch)) || "{}"), nowT = Date.now();
     Object.keys(t).forEach(function (k) { if (k !== pkey(me.email) && nowT - t[k].t < 6000) typing.push(t[k].n); });
   } catch (e) {}
-  return { vers: vers, typing: typing, t: Date.now() };
+  var seen = null;
+  if (b.pid && b.ch && canSee(me, b.pid) && canRead(me, String(b.ch))) try {
+    var rd = JSON.parse(CacheService.getScriptCache().get("rd:" + b.pid + ":" + b.ch) || "{}"), mk = pkey(me.email);
+    seen = Object.keys(rd).filter(function (k) { return k !== mk; }).map(function (k) { return rd[k]; });
+  } catch (e) {}
+  return { vers: vers, typing: typing, seen: seen, t: Date.now() };
 };
 ACTIONS.typing = function (me, b) {
   var pid = String(b.pid || ""), ch = String(b.ch || ""); if (!canSee(me, pid) || !canRead(me, ch)) return {};
@@ -1866,7 +1871,7 @@ ACTIONS.typing = function (me, b) {
 /* Just the chat of one project: much lighter than reloading the whole project. */
 ACTIONS.chatFeed = function (me, b) {
   var p = needProject(me, b.projectId);
-  return { pid: p.id, name: p.name, messages: messagesOut(rows("Messages").filter(function (m) { return m.project_id === p.id; }), me), reads: readsFor(me, p.id), channels: channelsFor(me),
+  return { pid: p.id, name: p.name, messages: messagesOut(rows("Messages").filter(function (m) { return m.project_id === p.id; }), me), reads: readsFor(me, p.id), seen: seenFor(me, p), channels: channelsFor(me),
     members: membersOf(p).map(function (x) { return { name: x.name, role: x.role, key: pkey(x.email), avatar: x.avatar || "" }; }), ver: versionOf(p.id), rt: (function () { try { return rtProject(me, p); } catch (e) { return null; } })() };
 };
 /* Chat email rule: no email for every message. People who are in the portal right now get it live; someone who isn't
@@ -2000,21 +2005,53 @@ function dailyCall(me, p, ch, who) {
     postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
       "Video call inside the portal. Tap Join; it works for the next 2 hours.", "call:" + room.name, ch);
   });
-  who.forEach(function (x) {
-    var link = room.url + "?t=" + dailyTicket(room.name, x, false, exp);
-    try { rtQueue("rt/u/" + rtUser(x.email) + "/call", "put", { id: newId("c"), pid: p.id, project: p.name, channel: ch, from: me.name, akey: pkey(me.email), avatar: me.avatar || "", url: link, embed: true, room: room.name, ts: Date.now() }); } catch (e) {}
-    if (!isLive(x.email)) safeMail(function () { sendMail(x.email, "📹 " + me.name + " is calling you · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> started a video call about <b>" + esc(p.name) + "</b> and is waiting for you.</p>" +
-      "<p><a href='" + link + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p><p style='color:#555'>The link is just for you and works for 2 hours.</p>"); }, "");
-  });
+  who.forEach(function (x) { dailyRing(me, p, ch, room, exp, x); });
   try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
   bumpVersion(p.id);
   return { url: mine, code: room.name, embed: true };
 }
+function dailyRing(me, p, ch, room, exp, x) {
+  var link = room.url + "?t=" + dailyTicket(room.name, x, false, exp);
+  try { CacheService.getScriptCache().put("callok:" + room.name + ":" + pkey(x.email), "1", 2 * 3600); } catch (e) {}   // asked in, even from outside that channel
+  try { rtQueue("rt/u/" + rtUser(x.email) + "/call", "put", { id: newId("c"), pid: p.id, project: p.name, channel: ch, from: me.name, akey: pkey(me.email), avatar: me.avatar || "", url: link, embed: true, room: room.name, ts: Date.now() }); } catch (e) {}
+  if (!isLive(x.email)) safeMail(function () { sendMail(x.email, "📹 " + me.name + " is calling you · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> started a video call about <b>" + esc(p.name) + "</b> and is waiting for you.</p>" +
+    "<p><a href='" + link + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p><p style='color:#555'>The link is just for you and works for 2 hours.</p>"); }, "");
+}
+function callEvent(p, room) { return rows("Messages").filter(function (m) { return m.project_id === p.id && m.kind === "event" && m.ref === "call:" + room; })[0]; }
+function callAsked(room, me) { try { return !!CacheService.getScriptCache().get("callok:" + room + ":" + pkey(me.email)); } catch (e) { return false; } }
+/* Add people to a call that's already going: each gets a ring and their own ticket to the same room. */
+ACTIONS.callInvite = function (me, b) {
+  var p = needProject(me, b.projectId), room = String(b.room || ""); if (!/^[A-Za-z0-9_-]{1,80}$/.test(room)) throw new Error("That call isn't here anymore.");
+  var ev = callEvent(p, room); if (!ev || !(canRead(me, chOf(ev)) || callAsked(room, me))) throw new Error("That call isn't here anymore.");
+  if (!dailyOn()) throw new Error("Calls inside the portal are off.");
+  var ch = chOf(ev), keys = [].concat(b.invite || []).map(String);
+  var who = membersOf(p).filter(function (x) { return x.email !== me.email && keys.indexOf(pkey(x.email)) > -1 && (isStaff(me) || canRead(x, ch)); });
+  if (!who.length) throw new Error("Pick at least one person to add.");
+  var c = CacheService.getScriptCache(), k = "calls:" + normEmail(me.email), n = Number(c.get(k) || 0);
+  if (n >= 40) throw new Error("That's a lot of calls in an hour. Try again later."); c.put(k, String(n + 1), 3600);
+  var info = dailyApi("get", "/rooms/" + room), exp = (info.config && info.config.exp) || Math.floor(Date.now() / 1000) + 3600;
+  if (exp * 1000 < Date.now()) throw new Error("That call ended.");
+  var names = who.map(function (x) { return x.name; });
+  who.forEach(function (x) { dailyRing(me, p, ch, { name: room, url: info.url }, exp, x); });
+  withLock(function () { _ROWS = {}; prefetch(["People", "Projects", "Messages"]);
+    postEvent(p, me, "call", "added " + names.join(", ").replace(/, ([^,]*)$/, " and $1") + " to the call", "Tap Join to come in too.", "call:" + room, ch); });
+  bumpVersion(p.id);
+  return { added: names };
+};
+/* "I can't take it": the caller's call window hears it right away, and a short private note stays in the chat. */
+ACTIONS.callDecline = function (me, b) {
+  var p = needProject(me, b.projectId), to = membersOf(p).filter(function (x) { return pkey(x.email) === String(b.to || ""); })[0];
+  if (!to || to.email === me.email) return {};
+  try { rtQueue("rt/u/" + rtUser(to.email) + "/callx", "put", { room: String(b.room || "").slice(0, 80), from: me.name, k: pkey(me.email), ts: Date.now() }); } catch (e) {}
+  var dm = "dm:" + [pkey(me.email), pkey(to.email)].sort().join("-");
+  try { ACTIONS.sendMessage(me, { projectId: p.id, channel: dm, text: "📵 I can't take the call right now. I'll call you back." }); } catch (e) {}
+  return {};
+};
 /* Join from the chat card: only someone on the project who can read that channel gets a ticket. */
 ACTIONS.joinCall = function (me, b) {
   var p = needProject(me, b.projectId), room = String(b.room || ""); if (!/^[A-Za-z0-9_-]{1,80}$/.test(room)) throw new Error("That call isn't here anymore.");
-  var ev = rows("Messages").filter(function (m) { return m.project_id === p.id && m.kind === "event" && m.ref === "call:" + room; })[0];
-  if (!ev || !canRead(me, chOf(ev))) throw new Error("That call isn't here anymore.");
+  var ev = callEvent(p, room);
+  if (!ev || !(canRead(me, chOf(ev)) || callAsked(room, me))) throw new Error("That call isn't here anymore.");
   if (!dailyOn()) throw new Error("Calls inside the portal are off.");
   var exp = Math.floor(Date.now() / 1000) + 2 * 3600, info = dailyApi("get", "/rooms/" + room);
   if (info.config && info.config.exp && info.config.exp * 1000 < Date.now()) throw new Error("That call ended.");
@@ -2361,12 +2398,33 @@ function saveAttachments(p, list) {
 }
 function readsAll(me) { var o = {}; rows("Reads").forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
 function readsFor(me, pid) { var all = readsAll(me), o = {}; Object.keys(all).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === pid) o[k.slice(i + 1)] = all[k]; }); return o; }
-function markReadNow(me, pid, ch) {
-  var list = rows("Reads");
+function markReadNow(me, pid, ch, last) {
+  last = /^[A-Za-z0-9_-]{1,40}$/.test(String(last || "")) ? String(last) : "";
+  var list = rows("Reads"), at = now(), h = TABLES.Reads, done = false;
   for (var i = 0; i < list.length; i++) if (list[i].email === me.email && list[i].project_id === pid && list[i].channel === ch) {
-    tableSheet("Reads").getRange(i + 2, 4).setValue(now()); list[i].at = now(); return;
+    var sh = tableSheet("Reads"); sh.getRange(i + 2, h.indexOf("at") + 1).setValue(at); list[i].at = at;
+    if (last) { sh.getRange(i + 2, h.indexOf("last_id") + 1).setValue(last); list[i].last_id = last; }
+    done = true; break;
   }
-  insert("Reads", { email: me.email, project_id: pid, channel: ch, at: now() });
+  if (!done) insert("Reads", { email: me.email, project_id: pid, channel: ch, at: at, last_id: last });
+  readTell(me, pid, ch, at, last);
+}
+/* Read receipts: the others in that conversation learn how far you've read (live, and from the cache on the next tick). */
+function readTell(me, pid, ch, at, last) {
+  var mk = pkey(me.email), r = { k: mk, n: first(me.name), at: at, last: last || "" };
+  try { var c = CacheService.getScriptCache(), key = "rd:" + pid + ":" + ch, o = JSON.parse(c.get(key) || "{}"); o[mk] = r; c.put(key, JSON.stringify(o), 21600); } catch (e) {}
+  try { if (!rtOn()) return; var p = findBy("Projects", "id", pid); if (!p) return;
+    membersOf(p).forEach(function (x) { if (x.email !== me.email && canRead(x, ch)) rtQueue("rt/u/" + rtUser(x.email) + "/rd", "put", { pid: pid, ch: ch, r: r, ts: Date.now() }); }); } catch (e) {}
+}
+/* How far everyone else has read, per conversation you're in (no email addresses: just a key and a first name). */
+function seenFor(me, p) {
+  var byEmail = {}, out = {}; membersOf(p).forEach(function (x) { byEmail[x.email] = x; });
+  rows("Reads").forEach(function (r) {
+    if (r.project_id !== p.id || r.email === me.email) return; var x = byEmail[r.email];
+    if (!x || !canRead(me, r.channel) || !canRead(x, r.channel)) return;
+    (out[r.channel] = out[r.channel] || []).push({ k: pkey(x.email), n: first(x.name), at: r.at, last: r.last_id || "" });
+  });
+  return out;
 }
 function unreadOf(me, msgs, reads) {
   return msgs.filter(function (m) { var c = chOf(m); return seesMsg(me, m) && m.author_email !== me.email && m.at > (reads[m.project_id + "|" + c] || ""); }).length;

@@ -172,7 +172,8 @@
   function chOf(m) { return m.channel || "client"; }
   function readKey(me, pid, ch) { return me.email + "|" + pid + "|" + ch; }
   function readsOf(db, me) { var o = {}; db.reads.forEach(function (r) { if (r.email === me.email) o[r.project_id + "|" + r.channel] = r.at; }); return o; }
-  function markR(db, me, pid, ch) { var r = db.reads.filter(function (x) { return x.email === me.email && x.project_id === pid && x.channel === ch; })[0]; if (r) r.at = now(); else db.reads.push({ email: me.email, project_id: pid, channel: ch, at: now() }); }
+  function markR(db, me, pid, ch, last) { var r = db.reads.filter(function (x) { return x.email === me.email && x.project_id === pid && x.channel === ch; })[0]; if (r) { r.at = now(); if (last) r.last_id = last; } else db.reads.push({ email: me.email, project_id: pid, channel: ch, at: now(), last_id: last || "" }); }
+  function seenM(db, me, p) { var out = {}, mem = {}; members(db, p).forEach(function (x) { mem[x.email] = x; }); db.reads.forEach(function (r) { var x = mem[r.email]; if (r.project_id !== p.id || r.email === me.email || !x || !canRead(me, r.channel) || !canRead(x, r.channel)) return; (out[r.channel] = out[r.channel] || []).push({ k: pk(x.email), n: String(x.name).split(" ")[0], at: r.at, last: r.last_id || "" }); }); return out; }
   function members(db, p) { return db.people.filter(function (x) { return x.active === "yes" && (isStaff(x) || ids(x.project_ids).indexOf(p.id) > -1); }); }
   function ment(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + name.toLowerCase()) > -1; }
   function msgOut(db, m, me) {
@@ -214,7 +215,7 @@
       var out = { project: projOut(db, p), timeline: by(db.timeline).slice().reverse(), photos: by(db.photos).slice().reverse().map(photoOut),
         messages: by(db.messages).filter(function (m) { return canRead(me, chOf(m)); }).map(function (m) { return msgOut(db, m, me); }),
         reads: (function () { var rd = readsOf(db, me), o = {}; Object.keys(rd).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === p.id) o[k.slice(i + 1)] = rd[k]; }); return o; })(),
-        members: members(db, p).map(function (x) { return { name: x.name, role: x.role, key: pk(x.email), avatar: x.avatar || "" }; }), channels: chansFor(me),
+        members: members(db, p).map(function (x) { return { name: x.name, role: x.role, key: pk(x.email), avatar: x.avatar || "" }; }), channels: chansFor(me), seen: seenM(db, me, p),
         plans: db.plans.filter(function (d) { return d.project_id === p.id && (isTeam(me) || d.visible === "all" || (d.visible === "architect" && me.role === "architect")) && (d.status === "ready" || isStaff(me)); })
           .map(function (d) { return Object.assign({}, d, { pdf: d.status === "ready" ? "#preview-pdf" : "", sheets: d.sheets.map(function (x) { return Object.assign({}, x, { thumb: x.src, full: x.src }); }) }); }),
         invoices: by(db.invoices).filter(function (i) { return isStaff(me) || (i.status !== "draft" && i.status !== "void"); }).map(function (i) { return invOut(i, isStaff(me)); }),
@@ -307,7 +308,7 @@
       else if (isStaff(me) && ch !== "team") members(db, p).filter(function (x) { return (x.role === "client" && ch === "client") || x.role === "architect"; }).forEach(function (x) { mail(db, x.email, "Message about " + p.name); });
       else if (!isTeam(me)) mail(db, "jesus@example.com", "New message from " + me.name);
       members(db, p).forEach(function (x) { if (x.email !== me.email && ment(text, x.name) && chansFor(x).indexOf(ch) > -1) mail(db, x.email, me.name + " mentioned you"); });
-      markR(db, me, p.id, ch); return { id: mid };
+      markR(db, me, p.id, ch, mid); return { id: mid };
     },
     react: function (db, me, b) {
       var m = db.messages.filter(function (x) { return x.id === b.messageId; })[0]; if (!m) throw new Error("Message not found.");
@@ -319,7 +320,7 @@
       if (m.author_email !== me.email && me.role !== "admin") throw new Error("Only the person who wrote it can delete it.");
       db.messages = db.messages.filter(function (x) { return !(x.id === m.id || (!m.thread_id && x.thread_id === m.id) || (m.kind === "question" && x.question_id === m.id)); }); return {};
     },
-    markRead: function (db, me, b) { var p = needProject(db, me, b.projectId); if (canRead(me, b.channel)) markR(db, me, p.id, b.channel); return {}; },
+    markRead: function (db, me, b) { var p = needProject(db, me, b.projectId); if (canRead(me, b.channel)) markR(db, me, p.id, b.channel, b.last); return {}; },
     activity: function (db, me, b) {
       var seen = {}; db.projects.forEach(function (p) { if (canSee(me, p.id) && (isStaff(me) || p.status !== "archived") && p.status !== "deleted") seen[p.id] = p; });
       var rd = readsOf(db, me);
@@ -628,17 +629,24 @@
     var r = spSeed(db).filter(function (x) { return x.type === l.type && x.id === l.txn; })[0]; Object.assign(r, l.before); l.undone = 1; return {}; };
   // Live chat in the preview: a version per project (bumped by every save), typing, the chat feed and beta feedback.
   ACTIONS.tick = function (db, me, b) { var v = {}; (b.pids || []).forEach(function (id) { v[id] = (db.vers || {})[id] || 1; }); var t = (db.typing || {})[b.pid + ":" + b.ch] || {}, out = [];
-    Object.keys(t).forEach(function (k) { if (k !== me.email && Date.now() - t[k].t < 6000) out.push(t[k].n); }); return { vers: v, typing: out }; };
+    Object.keys(t).forEach(function (k) { if (k !== me.email && Date.now() - t[k].t < 6000) out.push(t[k].n); });
+    var pr = b.pid && db.projects.filter(function (x) { return x.id === b.pid; })[0], seen = pr ? (seenM(db, me, pr)[b.ch] || []) : null; return { vers: v, typing: out, seen: seen }; };
   ACTIONS.typing = function (db, me, b) { db.typing = db.typing || {}; var k = b.pid + ":" + b.ch; db.typing[k] = db.typing[k] || {}; db.typing[k][me.email] = { n: String(me.name).split(" ")[0], t: Date.now() }; return {}; };
-  ACTIONS.chatFeed = function (db, me, b) { var d = ACTIONS.getProject(db, me, { projectId: b.projectId }); return { pid: b.projectId, messages: d.messages, reads: d.reads, channels: d.channels, members: d.members, ver: (db.vers || {})[b.projectId] || 1 }; };
+  ACTIONS.chatFeed = function (db, me, b) { var d = ACTIONS.getProject(db, me, { projectId: b.projectId }); return { pid: b.projectId, messages: d.messages, reads: d.reads, seen: d.seen, channels: d.channels, members: d.members, ver: (db.vers || {})[b.projectId] || 1 }; };
   ACTIONS.feedback = function (db, me, b) { (db.feedback = db.feedback || []).unshift({ id: "f" + Date.now(), at: now(), name: me.name, role: me.role, project: "", tab: (b.meta || {}).tab || "", text: b.text, status: "open", shot: b.image || "", link: b.image || "" }); db.feedback = db.feedback.slice(0, 20); return { id: db.feedback[0].id }; };
   ACTIONS.listFeedback = function (db) { return { items: db.feedback || [] }; };
   ACTIONS.setFeedback = function (db, me, b) { (db.feedback || []).forEach(function (f) { if (f.id === b.id) f.status = b.status; }); return {}; };
   ACTIONS.callSave = function (db, me, b) { db.daily = !b.off; return { on: db.daily }; };
   var _mCall = ACTIONS.startCall;
   ACTIONS.startCall = function (db, me, b) { var r = _mCall(db, me, b); if (!db.daily) return r;
-    var ev = db.messages[db.messages.length - 1]; if (ev && ev.kind === "event") ev.ref = "call:room" + Date.now();
-    return { url: "about:blank#preview-call", code: "preview", embed: true }; };
+    var ev = db.messages[db.messages.length - 1], room = "room" + Date.now(); if (ev && ev.kind === "event") ev.ref = "call:" + room;
+    return { url: "about:blank#preview-call", code: room, embed: true }; };
+  ACTIONS.callInvite = function (db, me, b) { var p = needProject(db, me, b.projectId), ev = db.messages.filter(function (m) { return m.ref === "call:" + b.room; })[0]; if (!ev) throw new Error("That call isn't here anymore.");
+    var who = members(db, p).filter(function (x) { return x.email !== me.email && (b.invite || []).indexOf(pk(x.email)) > -1; }); if (!who.length) throw new Error("Pick at least one person to add.");
+    var names = who.map(function (x) { return x.name; });
+    db.messages.push({ id: "e" + id(), project_id: p.id, at: now(), author: me.name, author_email: me.email, role: me.role, kind: "event", text: "added " + names.join(", ").replace(/, ([^,]*)$/, " and $1") + " to the call\nTap Join to come in too.", status: "call", via: "portal", channel: chOf(ev), thread_id: "", ref: ev.ref });
+    return { added: names }; };
+  ACTIONS.callDecline = function () { return {}; };
   ACTIONS.joinCall = function () { return { url: "about:blank#preview-call", embed: true }; };
   ACTIONS.deleteMessages = function (db, me, b) { var ids = b.ids || []; var bad = db.messages.filter(function (m) { return ids.indexOf(m.id) > -1 && m.author_email !== me.email && me.role !== "admin"; }); if (bad.length) throw new Error("You can only delete your own messages.");
     var n = db.messages.length; db.messages = db.messages.filter(function (m) { return ids.indexOf(m.id) < 0; }); return { deleted: n - db.messages.length }; };

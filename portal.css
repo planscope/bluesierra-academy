@@ -1411,7 +1411,7 @@
 #bs-portal .dk-chan.add.on{color:#fff}
 #bs-portal #bsp-dock .pres:not(.dk-who .pres){max-width:12px;max-height:12px}
 /* Incoming call */
-#bs-portal .inc-call{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:100;animation:icIn .25s ease-out}
+#bs-portal .inc-call{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:9995;animation:icIn .25s ease-out}
 @keyframes icIn{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
 #bs-portal .ic-card{display:flex;align-items:center;gap:16px;background:#111;color:#fff;border-radius:22px;padding:14px 16px 14px 14px;box-shadow:0 24px 60px rgba(0,0,0,.35);min-width:min(420px,calc(100vw - 24px))}
 #bs-portal .ic-ring{position:relative;flex:none}
@@ -1430,18 +1430,6 @@
 @keyframes icShake{0%,100%{transform:rotate(0)}10%,30%{transform:rotate(-12deg)}20%,40%{transform:rotate(12deg)}50%{transform:rotate(0)}}
 @media (max-width:640px){#bs-portal .inc-call{top:10px;left:10px;right:10px;transform:none}@keyframes icIn{from{opacity:0}to{opacity:1}}#bs-portal .ic-card{min-width:0}}
 /* Call window inside the portal */
-#bs-portal .call-win{position:fixed;right:20px;top:84px;width:min(760px,calc(100vw - 40px));height:min(520px,calc(100vh - 110px));z-index:95;background:#111;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;animation:icIn .2s ease-out}
-#bs-portal .call-win iframe{flex:1;border:0;width:100%;background:#111}
-#bs-portal .cw-head{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;color:#fff;cursor:grab;user-select:none}
-#bs-portal .call-win.drag .cw-head{cursor:grabbing}
-#bs-portal .cw-head b{flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#bs-portal .cw-dot{width:9px;height:9px;border-radius:50%;background:#34c759;box-shadow:0 0 0 4px rgba(52,199,89,.25)}
-#bs-portal .cw-time{font-size:12px;opacity:.7;font-variant-numeric:tabular-nums}
-#bs-portal .cw-head button{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;height:28px;min-width:30px;padding:0 10px;font:inherit;font-size:13px;cursor:pointer}
-#bs-portal .cw-head .cw-end{background:#e5322d;font-weight:600}
-#bs-portal .call-win.min{height:44px;width:300px}
-#bs-portal .call-win.min iframe{height:0;flex:0}
-@media (max-width:640px){#bs-portal .call-win{inset:0!important;width:auto;height:auto;border-radius:0}#bs-portal .call-win.min{inset:auto 10px 10px 10px!important;height:44px;width:auto;border-radius:14px}}
 /* Select & clear */
 #bs-portal .ch-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #bs-portal .sel-bar{position:sticky;top:76px;z-index:5;display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:14px;padding:10px 14px;margin:8px 0 12px}
@@ -2051,3 +2039,82 @@
 #bs-portal .jc-match { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; } #bs-portal .jc-m-row { text-align: left; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
 #bs-portal .jc-m-row:hover:not([disabled]) { border-color: var(--ink); } #bs-portal .jc-m-row[disabled] { opacity: .5; cursor: not-allowed; }
 @media (max-width: 640px) { #bs-portal .jc-tbl th, #bs-portal .jc-tbl td { padding: 8px 4px; font-size: 13px; } }
+
+/* The call window: it sits outside the portal's page so a redraw never touches it. No pop-out, no full screen. */
+#bsp-call{position:fixed;right:20px;top:84px;width:min(760px,calc(100vw - 40px));height:min(540px,calc(100vh - 110px));z-index:9990;background:#111;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;animation:cwIn .2s ease-out;font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;-webkit-font-smoothing:antialiased;line-height:1.4}
+@keyframes cwIn{from{transform:translateY(10px)}to{transform:none}}
+#bsp-call *{box-sizing:border-box}
+#bsp-call .cw-stage{flex:1;position:relative;min-height:0;background:#111;overflow:hidden}
+#bsp-call .cw-stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#111}
+#bsp-call .cw-head{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 14px;cursor:grab;user-select:none;-webkit-user-select:none;flex:none}
+#bsp-call.drag .cw-head{cursor:grabbing}
+#bsp-call .cw-t{flex:1;min-width:0;display:flex;flex-direction:column}
+#bsp-call .cw-t b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bsp-call .cw-st{font-size:11.5px;opacity:.65}
+#bsp-call .cw-dot{width:9px;height:9px;border-radius:50%;background:#34c759;box-shadow:0 0 0 4px rgba(52,199,89,.25);flex:none}
+#bsp-call.ringing .cw-dot{background:#f5b301;box-shadow:0 0 0 4px rgba(245,179,1,.25);animation:cwPulse 1.2s ease-in-out infinite}
+@keyframes cwPulse{50%{box-shadow:0 0 0 7px rgba(245,179,1,.08)}}
+#bsp-call .cw-time{font-size:12px;opacity:.7;font-variant-numeric:tabular-nums}
+#bsp-call .cw-head button{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;height:30px;min-width:32px;padding:0 10px;font:inherit;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;flex:none}
+#bsp-call .cw-head button:hover{background:rgba(255,255,255,.2)}
+#bsp-call .cw-head button svg{width:17px;height:17px}
+#bsp-call .cw-head .cw-end{background:#e5322d;font-weight:600}
+#bsp-call .cw-note{position:absolute;left:50%;top:56px;transform:translate(-50%,-6px);background:rgba(0,0,0,.78);color:#fff;font-size:13px;padding:7px 14px;border-radius:999px;opacity:0;transition:all .2s;pointer-events:none;white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;z-index:3}
+#bsp-call .cw-note.on{opacity:1;transform:translate(-50%,0)}
+#bsp-call .cw-over{position:absolute;inset:46px 0 0;display:none;align-items:center;justify-content:center;background:rgba(10,10,10,.86);padding:16px;z-index:4}
+#bsp-call .cw-over.on{display:flex}
+#bsp-call .cw-pop{background:#1d1d1f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 20px 16px;width:min(380px,100%);max-height:100%;overflow:auto;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#bsp-call .cw-pop-ico{font-size:30px;line-height:1;margin-bottom:8px}
+#bsp-call .cw-pop b{display:block;font-size:17px;font-weight:600;margin-bottom:4px}
+#bsp-call .cw-pop p{margin:0 0 14px;font-size:14px;opacity:.75}
+#bsp-call .cw-pop-acts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#bsp-call .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #fff;background:#fff;color:#111;padding:9px 16px;border-radius:999px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+#bsp-call .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+#bsp-call .btn:disabled{opacity:.5;cursor:default}
+#bsp-call .btn svg{width:16px;height:16px}
+#bsp-call .cw-add{text-align:left}
+#bsp-call .cw-list{display:flex;flex-direction:column;gap:4px;margin:0 0 14px;max-height:260px;overflow:auto}
+#bsp-call .cw-who{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer}
+#bsp-call .cw-who:hover{background:rgba(255,255,255,.06)}
+#bsp-call .cw-who.in{opacity:.55;cursor:default}
+#bsp-call .cw-who input{width:17px;height:17px;accent-color:#34c759;flex:none}
+#bsp-call .cw-who span{display:flex;flex-direction:column;min-width:0}
+#bsp-call .cw-who b{font-size:14px;margin:0}
+#bsp-call .cw-who small{font-size:12px;opacity:.6}
+#bsp-call .cw-who .avatar{position:relative;width:32px;height:32px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#111;overflow:hidden}
+#bsp-call .cw-who .avatar img{width:100%;height:100%;object-fit:cover}
+#bsp-call .cw-who .avatar>:not(img):not(.ini){display:none}
+#bsp-call .cw-empty{opacity:.6}
+#bsp-call .cw-sim{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#bbb;font-size:14px;text-align:center;padding:20px}
+#bsp-call .cw-sim svg{width:40px;height:40px;opacity:.6}
+#bsp-call .cw-sim b{color:#fff;font-size:16px}
+#bsp-call.min{height:50px;width:340px}
+#bsp-call.min .cw-stage{flex:0 0 0;height:0}
+#bsp-call.min .cw-note,#bsp-call.min .cw-over{display:none}
+#bsp-call.min [data-cw=add] span{display:none}
+@media (max-width:640px){
+  #bsp-call{inset:0!important;width:auto;height:auto;border-radius:0;padding-top:env(safe-area-inset-top)}
+  #bsp-call.min{inset:auto 10px calc(10px + env(safe-area-inset-bottom)) 10px!important;height:54px;width:auto;border-radius:14px;padding-top:0}
+  #bsp-call [data-cw=add] span{display:none}
+  #bsp-call .cw-time{display:none}
+}/* Read receipts: ✓ unread, ✓✓ read (blue). A line under your latest message says who read it and when. */
+#bs-portal .rcpt{font-size:12px;letter-spacing:-2px;color:var(--muted);font-weight:600;margin-left:2px;cursor:default}
+#bs-portal .rcpt.read{color:#2f7fd8}
+#bs-portal .rcpt.wait{letter-spacing:0;font-size:11px;opacity:.7}
+#bs-portal .rcpt-line{text-align:right;font-size:12px;color:var(--muted);margin:-4px 6px 6px;font-weight:500}
+#bs-portal .rcpt-line.read{color:#2f7fd8}
+#bs-portal #bsp-dock .rcpt-line{margin:-2px 4px 4px}
+#bs-portal .thread .rcpt-line{text-align:left;margin:-6px 0 8px 58px}
+#bs-portal .typing-line:not(:empty){color:var(--ink-2)}
+/* Phone: the admin's top bar fits the screen (it used to push the page sideways). The chat bubble in the corner opens the chat. */
+@media (max-width:420px){
+  #bs-portal .topbar{gap:6px}
+  #bs-portal .topbar .brand{gap:8px;min-width:0}
+  #bs-portal .topbar .brand svg{width:88px;height:auto}
+  #bs-portal .topbar .who{gap:4px;min-width:0}
+  #bs-portal .who .chat-btn{display:none}
+  #bs-portal .me-btn{padding:3px 2px 3px 4px}
+}
+
+/* While a call is shrunk to a bar on a phone, the chat bubble sits above it. */
+@media (max-width:640px){body.bsp-oncall #bs-portal #bsp-dock{bottom:80px}}
