@@ -134,7 +134,7 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  var VIEWABLE = { jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
     if (S.viewAs) {
@@ -258,10 +258,22 @@
     window.scrollTo(0, 0); route();
   }
   function exitPreview() { S.viewAs = null; S.viewAsLs = null; S.tt = null; S.ttErr = ""; S.home = null; lsReset(); if (S.realMe) S.me = S.realMe; S.realMe = null; S.projects = null; S.data = null; S.notif = null; route(); ping(); }
+  /* The portal exactly as a phone shows it: the same page in a 390 px frame, opened straight into the preview of that role. */
+  function pvPhone(role) {
+    var old = document.querySelector(".pv-phone-bg"); if (old) old.remove();
+    var d = document.createElement("div"); d.className = "pv-phone-bg";
+    d.innerHTML = '<div class="pv-phone-wrap"><div class="pv-phone-top"><b>📱 #' + esc(role) + ' on a phone</b><button type="button" class="pv-x">Close ✕</button></div><div class="pv-phone"><iframe title="Phone preview" src="' + esc(location.href.split("#")[0] + "#pv=" + encodeURIComponent(role)) + '"></iframe></div></div>';
+    d.querySelector(".pv-x").onclick = function () { d.remove(); }; d.onclick = function (e) { if (e.target === d) d.remove(); }; document.body.appendChild(d);
+  }
+  (function () {                                                                          // opened as #pv=role inside that frame: go straight to the preview
+    var m = /[#&]pv=([a-z]+)/.exec(location.hash || ""); if (!m) return; var role = m[1], n = 0;
+    var iv = setInterval(function () { if (++n > 80) return clearInterval(iv); if (S.me && S.me.admin && S.projects) { clearInterval(iv); if (S.viewAs !== role) enterPreview(role); } }, 250);
+  })();
   function previewBar() {
     if (!S.viewAs) return "";
     return '<div class="viewas-bar"><span class="va-txt">' + ICON.eye + ' Previewing as <span class="tg tg-' + S.viewAs + '">#' + S.viewAs + "</span> · exactly what they see. Nothing saves.</span>" +
-      '<span class="va-btns">' + ["client", "architect", "crew"].filter(function (r) { return r !== S.viewAs; }).map(function (r) { return '<button class="chip" data-a="viewAs" data-v="' + r + '">#' + r + "</button>"; }).join("") +
+      '<span class="va-btns">' + PV_ROLES.filter(function (r) { return r !== S.viewAs; }).map(function (r) { return '<button class="chip" data-a="viewAs" data-v="' + r + '">#' + r + "</button>"; }).join("") +
+      (window.self === window.top ? '<button class="chip va-phone" data-a="pvPhone" data-v="' + esc(S.viewAs) + '">📱 Phone</button>' : "") +
       '<button class="btn sm light" data-a="exitPreview">Exit preview</button></span></div>';
   }
   async function reload(projectsToo) {
@@ -567,10 +579,11 @@
     var idx = PHASES.indexOf(p.phase);
     var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Chat", (function () { var n = 0; myChannels().forEach(function (c) { n += unreadIn(c); }); return n || oq; })()], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (team() || (d.plans || []).length) tabs.splice(2, 0, ["plans", "Plans", (d.plans || []).filter(function (x) { return x.status === "ready"; }).length ? 0 : 0]);
-    if (crew() || d.billing === false) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
+    if ((crew() && !d.billing) || d.billing === false) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
     if (S.me.money && !S.viewAs) tabs.splice(tabs.findIndex(function (t) { return t[0] === "checklist"; }), 0, ["money", "#money", 0]);
+    if (staff() || (crew() && !S.me.labor)) tabs.splice(Math.max(0, tabs.findIndex(function (t) { return t[0] === "checklist"; })), 0, ["costs", "Costs", 0]);
     if (staff()) tabs.push(["people", "People", 0]);
-    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, money: S.me.money && !S.viewAs ? tabMoney : tabOverview, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
+    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, costs: (staff() || (crew() && !S.me.labor)) ? tabCosts : tabOverview, money: S.me.money && !S.viewAs ? tabMoney : tabOverview, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead' + (p.lat != null ? " has-map" : "") + '" style="' + (p.lat != null ? "" : bg(p.cover)) + '">' + mapHtml(p) + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
@@ -593,7 +606,7 @@
       '<div class="grid g4">' +
       stat("Progress", Number(p.progress || 0) + "%", '<div class="bar" style="margin-top:10px"><i style="width:' + Number(p.progress || 0) + '%"></i></div>') +
       stat(!asClient() ? "Waiting on the client" : "Waiting on you", String(oq.length + todo.length), oq.length + " question" + (oq.length === 1 ? "" : "s") + " · " + todo.length + " checklist") +
-      (crew() || d.billing === false ? stat("Plans", String(planSets().length), planSets().length ? "Latest: " + esc(planSets()[0].latest.set + " " + planSets()[0].latest.rev) : "None yet") : stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue")) +
+      ((crew() && !d.billing) || d.billing === false ? stat("Plans", String(planSets().length), planSets().length ? "Latest: " + esc(planSets()[0].latest.set + " " + planSets()[0].latest.rev) : "None yet") : stat("Balance due", money(due), overdue ? '<span style="color:var(--bad)">' + overdue + " overdue</span>" : "Nothing overdue")) +
       stat("Target completion", p.target_date ? day(p.target_date) : "—", p.start_date ? "Started " + day(p.start_date) : "") + "</div>" +
       (cm.has ? '<div class="section-title"><h2>Contract</h2><button class="link" data-a="tab" data-t="invoices">Contract & billing</button></div><div class="card contract">' +
         '<div class="c-top"><div><div class="eyebrow">Contract total</div><div class="c-mid">' + money(cm.total) + '</div></div><div class="c-side"><div class="eyebrow">Paid so far</div><div class="c-mid">' + pctOf(cm.paid, cm.total) + "%</div></div></div>" + contractBar(cm, true) + "</div>" : "") +
@@ -664,8 +677,11 @@
     architect: ["architect", "Architect", "Only their project, like the client, plus the #architect chat and the plans you share with them."],
     crew: ["crew", "Field crew", "Only the projects you add them to: plans, schedule, photos and the #crew chat. No money, and they can't change the schedule."],
     staff: ["team", "Team", "Blue Sierra project manager or office: every project, the #team chat, contract and billing."],
-    admin: ["admin", "Admin", "Everything, plus permissions, #money, deleting projects and starting them over."]
+    admin: ["admin", "Admin", "Everything, plus permissions, #money, deleting projects and starting them over."],
+    pm: ["pm", "Crew · PM / supervisor", "Field crew who lead: the projects you add them to (plans, schedule, photos, #crew chat) and their clock. No money unless you share Contract & billing with #pm."],
+    labor: ["labor", "Crew · labor", "Only the clock: jobsite, activity, check in and out, and their own hours. No projects, chat, plans or routes."]
   };
+  var PV_ROLES = ["client", "architect", "pm", "labor"];                                      // the people outside the office, as they really see the portal
   function roleChip(role, money) { var r = ROLES[role] || ROLES.client; return '<span class="tg tg-' + r[0] + '" title="' + esc(r[1] + ": " + r[2]) + '">#' + r[0] + "</span>" + (money && role !== "admin" ? '<span class="tg tg-money" title="Sees #money: what each job costs and makes">#money</span>' : ""); }
   function rolePicker(sel, allowed, money) {
     var m = money !== undefined;
@@ -1984,9 +2000,10 @@
         '<label class="f">Retainage % held from each invoice (0 if none)<input type="number" name="retainage_pct" min="0" max="20" step="0.5" value="' + esc(p.retainage_pct || 0) + '"></label>' +
         '<div class="row2"><label class="f">Architect (firm)<input type="text" name="architect_name" value="' + esc(p.architect_name) + '" placeholder="e.g. Studio Name Architects"></label>' +
         '<span class="muted small" style="align-self:end">Home shows the job’s map until you pick a cover photo.</span></div>' +
-        (m.id && S.me.admin ? '<div class="f"><span>Who sees Contract & billing</span><input type="hidden" name="billing_set" value="1"><div class="tag-pick"><span class="tg tg-team">#team</span>' +
-          ["client", "architect"].map(function (a) { return '<label class="tg-opt o-' + a + '"><input type="checkbox" name="billing_aud" value="' + a + '"' + ((p.billing_aud || []).indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") +
-          '<span class="tg off">#crew never</span></div><span class="muted small">Blue Sierra always sees it. Tag #client and/or #architect to show it to them too.</span></div>' : "") +
+        (m.id && S.me.admin ? '<div class="f"><span>Who sees Contract & billing</span><input type="hidden" name="billing_set" value="1"><div class="tag-pick">' +
+          '<label class="tg-opt o-team"><input type="checkbox" name="billing_team" value="1"' + ((p.billing_aud || []).indexOf("noteam") < 0 ? " checked" : "") + "><span>#team</span></label>" +
+          ["client", "architect", "pm"].map(function (a) { return '<label class="tg-opt o-' + a + '"><input type="checkbox" name="billing_aud" value="' + a + '"' + ((p.billing_aud || []).indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") +
+          '<span class="tg off">#labor never</span></div><span class="muted small">You and #money (accounting) always see it. #pm = crew supervisors on this project. #labor never sees money.</span></div>' : "") +
         (m.id ? '<label class="f">Status<select name="status"><option value="active"' + (p.status !== "archived" ? " selected" : "") + '>Active</option><option value="archived"' + (p.status === "archived" ? " selected" : "") + ">Archived (hidden from the client)</option></select></label>" : "") +
         (m.id && S.me.admin ? '<details class="danger"><summary>Start this project over</summary><p class="muted small">Clears the chat, updates, photos list, invoices, contract, checklist, schedule, plans and the people added to it, so you can start from zero. Nothing is lost: you can restore it right here. Files stay in Google Drive.</p>' +
           (d && d.wipe ? '<div class="restore-box"><b>Saved copy from ' + day(String(d.wipe.at).slice(0, 10)) + "</b> · " + d.wipe.items + ' items<button type="button" class="btn sm" data-a="restoreWipe">Restore it</button></div>' : "") +
@@ -2123,7 +2140,8 @@
     }
     if (m.type === "viewAs") {
       body = '<h2>Preview the portal</h2><p class="muted">See exactly what the server sends to each role, on every project. Read-only: nothing you click here saves. Use it to check nothing private is leaking.</p>' +
-        '<div class="va-pick">' + ["client", "architect", "crew"].map(function (r) { return '<button class="va-opt" data-a="viewAs" data-v="' + r + '"><span class="tg tg-' + r + '">#' + r + "</span><small>" + esc(ROLES[r][2]) + "</small></button>"; }).join("") + "</div>" +
+        '<div class="va-pick">' + PV_ROLES.map(function (r) { return '<div class="va-row"><button class="va-opt" data-a="viewAs" data-v="' + r + '"><span class="tg tg-' + ROLES[r][0] + '">#' + r + "</span><small>" + esc(ROLES[r][2]) + "</small></button>" + (window.self === window.top ? '<button class="btn ghost sm va-ph" data-a="pvPhone" data-v="' + r + '" title="See it in a phone-size screen">📱</button>' : "") + "</div>"; }).join("") + "</div>" +
+        '<p class="muted small">#accounting, #closes week and #reviews are permissions you give team members in Hours → Settings, not separate logins.</p>' +
         '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div>';
     }
     if (m.type === "purge") {
@@ -2175,6 +2193,7 @@
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
       case "viewAs": enterPreview(b.dataset.v); return;
+      case "pvPhone": S.modal = null; render(); return pvPhone(b.dataset.v);
       case "exitPreview": exitPreview(); return;
       case "purgeProject":
         var pc = root.querySelector("[data-purge-confirm]");
@@ -2521,7 +2540,7 @@
       if (kind === "project") {
         var proj = { id: S.modal && S.modal.id || undefined };
         ["name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "status", "retainage_pct", "architect_name"].forEach(function (k) { if (fd.has(k)) proj[k] = v(k); });
-        if (fd.has("billing_set")) proj.billing_aud = fd.getAll("billing_aud");
+        if (fd.has("billing_set")) { proj.billing_aud = fd.getAll("billing_aud"); if (!fd.get("billing_team")) proj.billing_aud.push("noteam"); }
         var lf = f.querySelector("[name=logo]"); if (lf && lf.files && lf.files[0]) proj.logo = await resize(lf.files[0], 600);
         if (f.dataset.dropLogo) proj.logo = "";
         var r2 = await call("saveProject", { project: proj }); S.modal = null;
@@ -2577,7 +2596,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110120558";
+  var BUILD = "20261110132524";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4856,6 +4875,7 @@
     if (l.type === "project") { if (l.ch) S.wantChan = l.ch; return go(l.pid, l.tab || "overview"); }
     if (l.type === "opp") { S.home = "gr"; S.grId = l.id; S.grSub = l.sub || "overview"; S.grI = null; S.grE = null; S.grK = null; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "grtab") { S.home = "gr"; S.grId = null; S.grTab = l.tab; window.scrollTo(0, 0); return keepScroll(render); }
+    if (l.type === "costs") return go(l.projectId, "costs");
     if (l.type === "projects") { S.home = "projects"; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "time") { S.home = "tt"; S.ttTab = "team"; S.ttWeekQ = l.case_id ? {} : { emp: l.emp, week: l.week }; if (l.case_id) { S.ttRWeek = l.week; S.ttR = null; } S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
     S.home = "ls"; window.scrollTo(0, 0);
@@ -4907,7 +4927,7 @@
       day: "Día", tin: "Hora de entrada", tout: "Hora de salida", whichShift: "Jornada", which: "Registro", newTime: "Hora correcta", newJob: "Trabajo correcto", mstart: "Inicio de comida", mend: "Fin de comida", lang: "English",
       prevWeek: "Semana anterior", nextWeek: "Semana siguiente", nothing: "Sin registros esta semana.", reg: "Regular", ot: "Overtime", dt: "Doble", why: "Así funciona",
       x_missing_out: "Falta la hora de salida", x_open_long: "Jornada abierta mucho tiempo", x_unassigned: "Tiempo sin trabajo asignado", x_meal: "Comida por revisar", x_no_location: "Sin ubicación al marcar (tu hora cuenta igual)",
-      x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada", x_presence: "Entrada pendiente de validación",
+      x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada", x_presence: "Entrada pendiente de validación", presence: "Reintento de ubicación",
       a_general: "", a_maint: "Mantenimiento", a_prune: "Poda", a_irrig: "Riego / drenaje", a_pavers: "Pavers / piedra", a_concrete: "Concreto", a_walls: "Muros", a_other: "Otra",
       a_load: "Carga en el yard", a_travel: "Traslado", a_materials: "Compra de materiales", a_disposal: "Basura / disposición", a_office: "Oficina", a_work: "", a_unassigned: "",
       q_site: "¿En qué jobsite estás?", q_act: "¿Qué vas a hacer?", opt: "(opcional)", write_act: "Escribir otra actividad", act_ph: "Ej. instalar sod", q_clock: "Toca el reloj: pediremos tu ubicación",
@@ -4938,12 +4958,14 @@
       out_t: "Your location doesn't match this jobsite", out_m: "Check the place you picked or try again.", later_t: "Location confirmed from ", later_m: "The time before that stays pending for the office to review.",
       retry_loc: "Retry location", explain_btn: "Send an explanation", change_site: "Change jobsite", sent_office: "The office has the alert.", queued_office: "No signal: your check-in and the alert to the office will be sent when the connection is back.",
       explained: "Explanation sent. The office decides; explaining doesn't approve the check-in.", working_at: "Working at ", change_act: "Change activity", moved_q: "Moved to another jobsite?", tap_new: "Tap the new jobsite (your location is checked):",
-      rs_denied: "Location permission is off. iPhone: Settings › Privacy › Location Services › Safari (or your browser): \"While Using\" and \"Precise Location\". Android: tap the lock next to the address › Permissions › Location › Allow.", rs_timeout: "The phone took too long to find you.", rs_unavailable: "The phone couldn't get your location.", rs_unsupported: "This phone doesn't share location.", rs_none: "No location arrived.", rs_stale: "The phone's location was old.", rs_imprecise: "The location wasn't precise enough. Make sure \"Precise Location\" is on and try again outdoors.", rs_uncertain: "You're too close to the jobsite's edge to confirm.", rs_no_geocode: "This jobsite has no map point yet.", rs_no_place: "No jobsite was picked.", rs_outside: "", rs_other_device: "This phone is registered to someone else. Clock in with your own phone.", rs_new_device: "This is a new phone for you. The office has to approve it.", rs_no_device: "We couldn't identify this phone.", rs_blocked_device: "This phone is blocked. Talk to the office.",
+      rs_denied: "Location permission is off. iPhone: Settings › Privacy › Location Services › Safari (or your browser): \"While Using\" and \"Precise Location\". Android: tap the lock next to the address › Permissions › Location › Allow.", rs_timeout: "The phone took too long to find you.", rs_unavailable: "The phone couldn't get your location.", rs_unsupported: "This phone doesn't share location.", rs_none: "No location arrived.", rs_stale: "The phone's location was old.", rs_imprecise: "The location wasn't precise enough. Make sure \"Precise Location\" is on and try again outdoors.", rs_uncertain: "You're too close to the jobsite's edge to confirm.", rs_no_geocode: "This jobsite has no map point yet.", rs_no_place: "No jobsite was picked.", presence: "Location retry", rs_outside: "", rs_other_device: "This phone is registered to someone else. Clock in with your own phone.", rs_new_device: "This is a new phone for you. The office has to approve it.", rs_no_device: "We couldn't identify this phone.", rs_blocked_device: "This phone is blocked. Talk to the office.",
       p_verified: "location verified", p_pending: "pending validation", p_outside: "away from the jobsite" }
   };
+  var TT_RSHORT = { es: { denied: "ubicación apagada", timeout: "el teléfono no respondió", unavailable: "sin ubicación", unsupported: "sin ubicación", none: "sin ubicación", stale: "lectura vieja", imprecise: "imprecisa", uncertain: "en el límite", no_geocode: "jobsite sin mapa", no_place: "sin jobsite", other_device: "teléfono de otra persona", new_device: "teléfono nuevo", no_device: "teléfono sin identificar", blocked_device: "teléfono bloqueado" },
+    en: { denied: "location off", timeout: "phone didn't answer", unavailable: "no location", unsupported: "no location", none: "no location", stale: "old reading", imprecise: "imprecise", uncertain: "at the edge", no_geocode: "jobsite has no map point", no_place: "no jobsite", other_device: "another person's phone", new_device: "new phone", no_device: "unknown phone", blocked_device: "blocked phone" } };
   function ttL() { return (S.tt && S.tt.lang) || (S.me && S.me.crew ? "es" : "en"); }
   function tx(k) { var d = TTX[ttL()]; return d[k] != null ? d[k] : TTX.en[k] != null ? TTX.en[k] : k; }
-  function ttOn() { return !!(S.me && (S.me.crew || staff()) && (!S.viewAs || S.viewAs === "crew")); }
+  function ttOn() { return !!(S.me && (S.me.crew || staff()) && (!S.viewAs || /^(crew|pm|labor)$/.test(S.viewAs))); }
   function ttCrewUI() { return !!(S.me && S.me.crew && !staff()); }                      // crew: only the 3 steps and their own records
   function ttHm24(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Los_Angeles" }); }
   function ttHm(iso) { var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(ttL() === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" }); }
@@ -5182,7 +5204,7 @@
     if (e.loc_status === "declared") out.push('<span class="pill">' + tx("declared") + ": " + esc(e.zone_name) + "</span>");
     else if (e.presence === "verified") out.push('<span class="pill ok-p">✓ ' + tx("p_verified") + "</span>");
     else if (e.presence === "outside") out.push('<span class="pill bad">⚠ ' + tx("p_outside") + (e.zone_m != null ? " · " + (e.zone_m >= 1000 ? Math.round(e.zone_m / 100) / 10 + " km" : e.zone_m + " m") : "") + "</span>");
-    else if (e.presence === "unverified") out.push('<span class="pill warn-p">⚠ ' + tx("p_pending") + (e.presence_reason && tx("rs_" + e.presence_reason) ? ": " + esc(tx("rs_" + e.presence_reason)) : "") + "</span>");
+    else if (e.presence === "unverified") out.push('<span class="pill warn-p">⚠ ' + tx("p_pending") + (e.presence_reason && TT_RSHORT[ttL()][e.presence_reason] ? ": " + esc(TT_RSHORT[ttL()][e.presence_reason]) : "") + "</span>");
     if (e.status === "conflict") out.push('<span class="pill bad">' + (ttL() === "es" ? "no cuadró" : "didn't fit") + "</span>");
     return out.join("");
   }
@@ -5223,10 +5245,25 @@
     if (r.err) return '<div class="card ls-incomplete">' + esc(r.err) + ' <button class="link" data-a="ttRReload">Try again</button></div>';
     var w = r.week;
     var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttRGo" data-d="-7">‹</button><b>Week ' + ttDayName(w.start) + " – " + ttDayName(w.end) + '</b><button class="btn ghost sm" data-a="ttRGo" data-d="7">›</button><span class="pill' + (w.status === "closed" ? " gold" : "") + '">' + (w.status === "closed" ? "Closed v" + w.version + " · " + esc(w.closed_by) : "Open") + "</span></div>";
-    var tbl = r.people.length ? '<div class="card tt-tbl"><table><thead><tr><th>Person</th><th>Paid</th><th>Reg</th><th>OT</th><th>DT</th><th>GPS vs. place</th><th>Items</th><th>Employee</th><th>Approval</th></tr></thead><tbody>' + r.people.map(function (p) {
-      return '<tr><td><button class="link" data-a="ttPerson" data-emp="' + esc(p.emp) + '">' + esc(p.name) + "</button>" + (p.pay_type ? ' <small class="muted">' + esc(p.pay_type) + "</small>" : "") + "</td><td>" + ttDur(p.paid_min) + "</td><td>" + ttDur(p.reg) + "</td><td>" + ttDur(p.ot) + "</td><td>" + ttDur(p.dt) + "</td><td>" + ttLocSum(p.loc) + "</td><td>" + (p.exceptions ? '<span class="pill">' + p.exceptions + "</span>" : "—") + (p.pending ? ' <span class="pill gold">' + p.pending + " to decide</span>" : "") + (p.open_shifts ? ' <span class="pill bad">open</span>' : "") +
-        "</td><td>" + (p.confirm ? (p.confirm.status === "ok" ? "✓ confirmed" : "says something's off") : '<span class="muted">—</span>') + "</td><td>" + (p.approval ? (p.approval.valid ? "✓ " + esc(p.approval.by) : '<span class="bad-t">changed</span>') : p.self ? '<span class="muted">another reviewer</span>' : '<button class="link small" data-a="ttApprove" data-emp="' + esc(p.emp) + '">Approve</button>') + "</td></tr>";
-    }).join("") + "</tbody></table></div>" : '<div class="empty">No hours recorded for this week by the people you review.</div>';
+    var adminR = !!(S.tt && S.tt.admin), LVL = { labor: "#labor", pm: "#pm", team: "#team", admin: "#admin" };
+    var fmtD = function (m) { m = +m; return m >= 1000 ? Math.round(m / 100) / 10 + " km" : m + " m"; };
+    var RSS = { denied: "location off", timeout: "no answer from the phone", unavailable: "no location", unsupported: "no location", none: "no location", stale: "old reading", imprecise: "imprecise", uncertain: "at the edge", no_geocode: "jobsite has no map point", no_place: "no jobsite", other_device: "another person's phone", new_device: "new phone", no_device: "unknown phone", blocked_device: "blocked phone" };
+    var gpsTxt = function (g) { if (!g || !g.result) return '<span class="muted">📍 —</span>'; if (g.result === "verified") return '<span class="ok-t">📍 at the jobsite' + (g.dist != null ? " (" + fmtD(g.dist) + ")" : "") + "</span>"; if (g.result === "outside") return '<span class="bad-t">📍 ' + fmtD(g.dist) + " away</span>"; return '<span class="warn-t">📍 not verified · ' + esc(RSS[g.reason] || g.reason || "") + "</span>" + (g.last === "verified" ? ' <span class="ok-t">(verified later)</span>' : ""); };
+    var phTxt = function (ph) { return ph.flag === "ok" ? '<span class="ok-t">📱 own phone</span>' : ph.flag === "other_person" ? '<span class="bad-t">📱 ' + esc(ph.owner) + "'s phone</span>" : ph.flag === "new_device" ? '<span class="warn-t">📱 new phone</span>' : ph.flag ? '<span class="warn-t">📱 ' + esc(RSS[ph.flag] || ph.flag) + "</span>" : '<span class="muted">📱 —</span>'; };
+    S.ttDash = r.people;
+    var tbl = r.people.length ? '<div class="tt-emps">' + r.people.map(function (p, pi) {
+      var open = !!(S.ttOpenEmp || {})[p.emp], days = p.days.filter(function (d) { return d.shifts.length; });
+      var flags = (p.presence_open ? '<span class="pill bad">' + p.presence_open + " to validate</span>" : "") + (p.open_shifts ? '<span class="pill bad">open shift</span>' : "") + (p.pending ? '<span class="pill gold">' + p.pending + " request</span>" : "");
+      var appr = !p.paid_min ? "" : p.approval ? (p.approval.valid ? '<span class="ok-t">✓ approved</span>' : '<span class="bad-t">changed after approval</span>') : p.self ? "" : '<button class="link small" data-a="ttApprove" data-emp="' + esc(p.emp) + '">Approve week</button>';
+      var body = !open ? "" : '<div class="tt-emp-b">' + (days.length ? days.map(function (d) {
+        return '<div class="tt-emp-day"><div class="tt-ed-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + d.shifts.map(function (sh, si) {
+          return '<div class="tt-emp-sh' + (sh.voided ? " void" : "") + '"><div class="tt-es-t"><b>' + ttHm(sh.start) + " → " + (sh.end ? ttHm(sh.end) : '<span class="bad-t">no check-out</span>') + "</b> · " + ttDur(sh.paid_min) + "<small>" + esc(sh.places.join(", ")) + (sh.acts.length ? " · " + esc(sh.acts.join(", ")) : "") + "</small></div>" +
+            '<div class="tt-es-c">' + gpsTxt(sh.gps) + phTxt(sh.phone) + (sh.gps.addr ? '<small class="muted">Near ' + esc(sh.gps.addr) + "</small>" : "") + (sh.corrected ? '<span class="pill gold">edited</span>' : "") + (sh.case === "pending" || sh.case === "verified_later" ? '<span class="pill bad">to validate</span>' : sh.case ? '<span class="pill">' + esc(sh.case) + "</span>" : "") + "</div>" +
+            (adminR ? '<button class="link small" data-a="ttEdit" data-pi="' + pi + '" data-d="' + esc(d.date) + '" data-si="' + si + '">Edit</button>' : "") + "</div>";
+        }).join("") + "</div>";
+      }).join("") : '<p class="muted small">No check-ins this week.</p>') + '<div class="tt-emp-a">' + appr + ' <button class="link small" data-a="ttPerson" data-emp="' + esc(p.emp) + '">Week detail and map</button>' + (adminR ? ' <button class="link small" data-a="ttEdit" data-pi="' + pi + '" data-new="1">＋ Add a shift</button>' : "") + "</div></div>";
+      return '<div class="card tt-emp' + (open ? " open" : "") + '"><button class="tt-emp-h" data-a="ttEmp" data-emp="' + esc(p.emp) + '" aria-expanded="' + open + '"><span class="tt-chev">' + (open ? "▾" : "▸") + '</span><div class="tt-emp-n"><b>' + esc(p.name) + '</b> <span class="tg">' + (LVL[p.level] || "") + "</span><small>" + (p.now ? '<span class="ok-t">● Working now</span> · ' + esc(p.now.place || "") + " since " + ttHm(p.now.since) : "Off the clock") + '</small></div><div class="tt-emp-r"><b>' + ttDur(p.paid_min) + "</b><small>" + (p.ot || p.dt ? "OT " + ttDur(p.ot) + (p.dt ? " · DT " + ttDur(p.dt) : "") : "this week") + "</small></div>" + (flags ? '<div class="tt-emp-f">' + flags + "</div>" : "") + "</button>" + (open ? "" : '<div class="tt-emp-a0">' + appr + "</div>") + body + "</div>";
+    }).join("") + "</div>" : '<div class="empty">Nobody on the team yet.</div>';
     var ttDevCell = function (a, c, i) {
       var lab = esc(a.device_label || "phone"), ip = a.ip ? '<br><small class="muted">IP ' + esc(a.ip) + "</small>" : "";
       if (a.device_flag === "other_person") return '<b class="bad-t">' + esc(a.device_owner) + "'s phone</b> (" + lab + ")" + ip;
@@ -5273,11 +5310,11 @@
   function ttView() {
     if (ttCrewUI()) return ttCard() || '<div class="loading" style="min-height:30vh">' + (ttL() === "es" ? "Cargando tu reloj…" : "Loading your clock…") + "</div>";   // crew: just the clock screen
     if (!S.tt) { if (!S.ttErr) ttLoad(); return '<div class="loading">' + tx("my") + "…</div>"; }
-    var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", "Team review"]] : [], staff() ? [["gps", "Test GPS"]] : [], adm ? [["set", "Settings"]] : []);
+    var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", adm ? "Hours dashboard" : "Team review"]] : [], staff() ? [["gps", "Test GPS"]] : [], adm ? [["set", "Settings"]] : []);
     if (!list.length) return '<div class="empty">' + (ttL() === "es" ? "El reloj todavía no está activado para ti." : "The clock isn't turned on for you yet.") + "</div>";
     var tab = list.some(function (o) { return o[0] === S.ttTab; }) ? S.ttTab : list[0][0];
     var tabs = list.length > 1 ? '<div class="chips tt-tabs">' + list.map(function (o) { return '<button class="chip' + (tab === o[0] ? " on" : "") + '" data-a="ttTab" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" : "";
-    return ttCard() + tabs + (tab === "gps" ? ttGpsView() : tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
+    return (S.tt && S.tt.admin ? "" : ttCard()) + tabs + (tab === "gps" ? ttGpsView() : tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
   }
   /* Test GPS: on a real phone, at a jobsite, run the same server check as a check-in. Nothing is saved. */
   function ttGpsView() {
@@ -5334,6 +5371,7 @@
       fields + '<label class="f">' + tx("explain") + '<textarea name="explain" rows="3" required maxlength="1000"></textarea></label>' + (m.office ? "" : '<label class="f">' + tx("place") + '<input name="place" maxlength="120"></label>') +
       '<div class="actions"><button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + '</button><button class="btn" type="submit">' + tx("send") + "</button></div></form>";
   }
+  function ttLocalInput(iso) { if (!iso) return ""; var p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso)), g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value; }; return g("year") + "-" + g("month") + "-" + g("day") + "T" + g("hour") + ":" + g("minute"); }
   function ttLocalVal(v) { return String(v || "").replace("T", " ").slice(0, 16); }
   function ttJobVal(v) { var p = String(v || "unassigned||").split("|"); return { act: p[0], ref_type: p[1] || "", ref_id: p[2] || "" }; }
   function ttLeaflet(go2) {
@@ -5387,6 +5425,9 @@
     if (a === "ttsActNow") { if (b.dataset.v === "other") { S.ttsActNow = "other"; return keepScroll(render); } S.ttsActOpen = 0; var av = b.dataset.v; return ttDo("switch", /^scope:/.test(av) ? { act: "scope", scope_id: av.slice(6) } : { act: av }); }
     if (a === "ttsActSave") { var nn = (S.ttsActNote || "").trim(); if (nn.length < 2) return toast(ttL() === "es" ? "Escribe la actividad." : "Write the activity."); S.ttsActOpen = 0; return ttDo("switch", { act: "other", act_note: nn }); }
     if (a === "ttsRetry") return ttDo("presence", null);
+    if (a === "ttEmp") { S.ttOpenEmp = S.ttOpenEmp || {}; S.ttOpenEmp[b.dataset.emp] = !S.ttOpenEmp[b.dataset.emp]; return keepScroll(render); }
+    if (a === "ttEdit") { var pe = S.ttDash[+b.dataset.pi]; if (b.dataset.new) { S.modal = { type: "lsxTtEdit", emp: pe.emp, name: pe.name, isNew: 1 }; return keepScroll(render); }
+      var sh = pe.days.filter(function (d) { return d.date === b.dataset.d; })[0].shifts[+b.dataset.si]; S.modal = { type: "lsxTtEdit", emp: pe.emp, name: pe.name, sh: sh }; return keepScroll(render); }
     if (a === "ttDevTrust") { var dc = S.ttCases[i]; return run(b, async function () { await call("ttDevice", { emp: dc.emp, dev: b.dataset.dev, decision: "trust" }); S.ttR = null; toast("Phone approved for " + dc.name + ". Next check-ins from it count normally."); keepScroll(render); }); }
     if (a === "ttDevSet") return run(b, async function () { await call("ttDevice", { emp: b.dataset.emp, dev: b.dataset.dev, decision: b.dataset.d }); ttSetLoad(); toast({ trust: "Phone approved", block: "Phone blocked", remove: "Phone removed" }[b.dataset.d]); });
     if (a === "ttAccess") { S.modal = { type: "lsxTtAccess", email: b.dataset.emp || "", name: b.dataset.name || "", phone: b.dataset.phone || "" }; return keepScroll(render); }
@@ -5453,8 +5494,20 @@
     if (t.matches("form[data-form=ttCor] select[name=op]")) { e.stopImmediatePropagation(); S.modal.op = t.value; return keepScroll(render); }
   }, true);
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess|ttEdit)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "ttEdit") return run(btn, async function () {
+      var sh1 = m.sh || {}, ch2 = [], tin = ttLocalVal(g("tin")), tout = ttLocalVal(g("tout"));
+      if (fd.get("void")) ch2.push({ op: "void", shift_id: sh1.id });
+      else if (m.isNew) { var jb = g("job").split("|"); ch2.push({ op: "add", kind: "in", at: tin, act: "general", ref_type: jb[0], ref_id: jb[1] }); if (tout) ch2.push({ op: "add", kind: "out", at: tout }); }
+      else {
+        if (tin && tin !== ttLocalVal(ttLocalInput(sh1.start))) ch2.push({ op: "move", target: sh1.in_id, at: tin });
+        if (tout && sh1.out_id && tout !== ttLocalVal(ttLocalInput(sh1.end))) ch2.push({ op: "move", target: sh1.out_id, at: tout });
+        if (tout && !sh1.out_id) ch2.push({ op: "add", kind: "out", shift_id: sh1.id, at: tout });
+      }
+      if (!ch2.length) throw new Error("Nothing changed.");
+      await call("ttAdminEdit", { emp: m.emp, explain: g("why"), changes: ch2, shift_id: sh1.id || "" }); S.modal = null; S.ttR = null; toast("Saved. The original stays on file."); keepScroll(render);
+    });
     if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone"), level: g("level") || "" }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
     if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
     if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
@@ -5481,6 +5534,15 @@
   lsModal = function (m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.type === "lsxTtPick") return ttPicker(m.kind);
+    if (m.type === "lsxTtEdit") {
+      var sh0 = m.sh || {}, places = (S.tt && S.tt.suggest) || {}, opts = (places.visits || []).concat(places.projects || [], places.properties || [], places.zones || []);
+      return "<h2>" + (m.isNew ? "Add a shift" : "Edit shift") + " · " + esc(m.name) + '</h2><p class="muted small">Only the admin edits hours. The original records stay on file as "replaced", with your reason.</p><form class="form" data-form="ttEdit">' +
+        (m.isNew ? '<label class="f">Jobsite<select name="job">' + opts.map(function (o) { return '<option value="' + esc(o.ref_type + "|" + o.ref_id) + '">' + esc(o.name) + "</option>"; }).join("") + "</select></label>" : '<p class="small"><b>' + esc((sh0.places || []).join(", ")) + "</b></p>") +
+        '<div class="row2"><label class="f">Check-in<input type="datetime-local" name="tin" required value="' + esc(ttLocalInput(sh0.start)) + '"></label><label class="f">Check-out<input type="datetime-local" name="tout" value="' + esc(ttLocalInput(sh0.end)) + '"></label></div>' +
+        '<label class="f">Reason (required)<input name="why" required minlength="5" maxlength="300" placeholder="e.g. forgot to check out, confirmed with the foreman"></label>' +
+        (!m.isNew && !sh0.voided ? '<label class="ls-chk"><input type="checkbox" name="void" value="1"> Void this shift (reversible; it stays on file)</label>' : "") +
+        '<div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>';
+    }
     if (m.type === "lsxTtAccess") {
       if (m.pin) return "<h2>Give this to " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">This PIN is shown only once. They log in at the portal with their phone number and this PIN; they stay logged in on their phone. The first phone they use becomes theirs; any other phone waits for your approval.</p><div class="actions"><button class="btn" data-a="close">Done</button></div>';
       return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label><label class="f">Level<select name="level"><option value="labor" selected>#labor · only clocks in and out</option><option value="supervisor">#supervisor / PM · also sees the projects you add them to</option></select></label>') +
@@ -5500,6 +5562,123 @@
         : "<p><b>What's saved:</b> the time of each button (by the server's clock), the job or activity, and the phone's location <b>only at the moment you tap</b>, with its accuracy. No continuous or off-the-clock tracking.</p><p><b>No location</b> (permission off, no signal)? Your time is saved anyway; the office just reviews it.</p><p><b>Who sees it:</b> you, your assigned supervisor, accounting and Jesús. Clients and architects never do.</p><p><b>How long it's kept:</b> " + esc(pv.retention || "") + " (company policy).</p><p><b>Corrections:</b> your original record is never erased; an approved correction is labeled as one.</p><p class=\"muted small\">Location is supporting evidence: on its own it doesn't prove who was there or for how long.</p>") +
         '<div class="actions"><button class="btn" data-a="close">OK</button></div>'; }
     return _lsModalTt(m);
+  };
+  /* ---------------- Job costing: #pm logs costs on contract lines, accounting approves, labor from approved hours ---------------- */
+  var JC_ST = { submitted: ["gold", "Waiting for accounting"], approved: ["ok", "Approved"], rejected: ["bad", "Rejected"], withdrawn: ["", "Withdrawn"] };
+  function jcHm(min) { min = Math.round(min || 0); var h = Math.floor(min / 60), m = min % 60; return h ? h + " h" + (m ? " " + m + " min" : "") : m + " min"; }
+  function jcWhen(iso) { if (!iso) return ""; var d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 16) : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+  function jcKey(pid) { return pid + "|" + (S.viewAs || ""); }
+  async function jcLoad(pid, force) {
+    var k = jcKey(pid); S.jc = S.jc || {}; S.jcBusy = S.jcBusy || {}; if (S.jcBusy[k] && !force) return; S.jcBusy[k] = 1;
+    try { S.jc[k] = await call("jcProject", { projectId: pid }); } catch (e) { S.jc[k] = { err: e.message }; }
+    S.jcBusy[k] = 0; if (S.pid === pid && S.tab === "costs") keepScroll(render);
+  }
+  function tabCosts() {
+    var pid = S.pid, r = (S.jc || {})[jcKey(pid)];
+    if (!r) { jcLoad(pid); return '<div class="loading" style="min-height:30vh">Adding up the costs…</div>'; }
+    if (r.err) return '<div class="empty">' + esc(r.err) + "</div>";
+    var t = r.totals || {}, can = r.can || {}, lab = r.labor || {};
+    var head = '<div class="section-title" style="margin-top:0"><div><h2>Job costs</h2><span class="muted small">What this job really costs, line by line. Each cost counts once accounting checks it against the card, bank or bill.</span></div>' +
+      (can.add ? '<button class="btn sm" data-a="jcNew">＋ Log a cost</button>' : "") + "</div>";
+    var tiles = '<div class="grid g4 jc-kpis">' +
+      (can.contract ? stat("Contract", money(t.contract), "base + approved change orders") : "") +
+      stat("Costs approved", money(t.approved), t.pending ? money(t.pending) + " waiting for accounting" : "nothing waiting") +
+      stat("Labor", can.labor_money ? money(t.labor) : jcHm(lab.approved_min), can.labor_money ? jcHm(lab.approved_min) + " approved" + (lab.pending_min ? " · " + jcHm(lab.pending_min) + " not approved yet" : "") : (lab.pending_min ? jcHm(lab.pending_min) + " not approved yet" : "approved hours")) +
+      (t.margin != null ? stat("Left on the contract", money(t.margin), t.margin < 0 ? "over the contract" : "contract − costs − labor") : "") + "</div>";
+    var row = function (name, sub, amount, approved, pending, left) {
+      return "<tr><td><b>" + esc(name) + "</b>" + (sub ? '<br><small class="muted">' + esc(sub) + "</small>" : "") + "</td>" + (can.contract ? '<td class="num">' + (amount == null ? "" : money(amount)) + "</td>" : "") +
+        '<td class="num">' + (approved ? money(approved) : '<span class="muted">—</span>') + '</td><td class="num">' + (pending ? '<span class="pill gold">' + money(pending) + "</span>" : "") + "</td>" +
+        (can.contract ? '<td class="num' + (left < 0 ? " neg" : "") + '">' + (left == null ? "" : money(left)) + "</td>" : "") + "</tr>";
+    };
+    var lines = (r.lines || []).map(function (l) { return row((l.number ? l.number + " · " : "") + l.title, l.kind === "base" ? "" : "change order", l.amount, l.approved, l.pending, l.left); }).join("");
+    if (r.general.approved || r.general.pending) lines += row("General (no line)", "", null, r.general.approved, r.general.pending, null);
+    if (lab.approved_min || lab.pending_min) lines += "<tr><td><b>Labor</b><br><small class=\"muted\">from the Hours clock" + (lab.pending_min ? " · " + jcHm(lab.pending_min) + " not approved yet" : "") + "</small></td>" + (can.contract ? "<td></td>" : "") +
+      '<td class="num">' + (can.labor_money ? money(lab.cost) : jcHm(lab.approved_min)) + "</td><td></td>" + (can.contract ? "<td></td>" : "") + "</tr>";
+    var table = '<div class="card tt-tbl jc-tbl"><table><thead><tr><th>Contract line</th>' + (can.contract ? '<th class="num">Contract</th>' : "") + '<th class="num">Spent</th><th class="num">Waiting</th>' + (can.contract ? '<th class="num">Left</th>' : "") + "</tr></thead><tbody>" +
+      (lines || '<tr><td colspan="5" class="muted">This project has no contract lines yet. Costs can still go under General.</td></tr>') + "</tbody></table></div>";
+    var labPeople = (lab.people || []).length ? '<details class="card jc-lab"><summary><b>Labor by person</b> <span class="muted small">' + (can.labor_money ? "approved weeks × pay rate, overtime included" : "hours on this job") + "</span></summary><ul>" +
+      lab.people.map(function (p) { return "<li><b>" + esc(p.name) + "</b> · " + jcHm(p.approved_min) + " approved" + (p.pending_min ? " · " + jcHm(p.pending_min) + " waiting" : "") + (can.labor_money ? " · " + money(p.cost) + (p.rate_missing ? ' <span class="pill bad">no pay rate</span>' : "") : "") + "</li>"; }).join("") + "</ul></details>" : "";
+    var item = function (c) {
+      var st = JC_ST[c.status] || ["", c.status];
+      var acts = c.status === "submitted" ? ((can.review && (!c.mine || S.me.admin) ? '<button class="btn sm" data-a="jcOk" data-id="' + esc(c.id) + '">' + (r.qb_connected ? "Approve…" : "Approve") + '</button><button class="btn ghost sm" data-a="jcNo" data-id="' + esc(c.id) + '">Reject</button>' : "") +
+        (c.mine ? '<button class="link small" data-a="jcDel" data-id="' + esc(c.id) + '">Withdraw</button>' : "")) : "";
+      return '<div class="jc-item ' + esc(c.status) + '"><div class="jc-i-main"><div class="jc-i-top"><b>' + money(c.amount) + "</b> · " + esc(c.vendor) + ' <span class="pill ' + st[0] + '">' + st[1] + "</span>" + (c.qb ? ' <span class="pill ok">In QuickBooks</span>' : "") + "</div>" +
+        '<div class="small">' + esc(c.line) + " · " + esc(c.kind_label) + (c.paid_label ? " · " + esc(c.paid_label) : "") + " · " + esc(c.date) + "</div>" + (c.notes ? '<div class="small muted">' + esc(c.notes) + "</div>" : "") +
+        '<div class="small muted">Logged by ' + esc(c.by) + " · " + esc(jcWhen(c.at)) + (c.reviewed_by && c.status !== "withdrawn" ? " · " + (c.status === "approved" ? "approved" : "reviewed") + " by " + esc(c.reviewed_by) + " · " + esc(jcWhen(c.reviewed_at)) : "") + (c.review_note && c.status !== "withdrawn" ? " · “" + esc(c.review_note) + "”" : "") + "</div></div>" +
+        (acts ? '<div class="jc-i-acts">' + acts + "</div>" : "") + "</div>";
+    };
+    var waiting = (r.costs || []).filter(function (c) { return c.status === "submitted"; }), rest = (r.costs || []).filter(function (c) { return c.status !== "submitted"; });
+    return head + tiles + table + labPeople +
+      (waiting.length ? '<div class="section-title"><h2>Waiting for accounting (' + waiting.length + ")</h2></div>" + '<div class="card jc-list">' + waiting.map(item).join("") + "</div>" : "") +
+      '<div class="section-title"><h2>All costs</h2></div>' + (rest.length ? '<div class="card jc-list">' + rest.slice(0, 60).map(item).join("") + "</div>" : '<div class="empty">' + (waiting.length ? "Nothing checked yet." : "No costs logged yet.") + "</div>") +
+      (can.contract ? "" : '<p class="muted small">Contract amounts show here when Jesús shares Contract & billing with you.</p>');
+  }
+  /* Finances: contract vs. costs for every project (works with or without QuickBooks). */
+  async function jcSumLoad() { if (S.jcSumBusy) return; S.jcSumBusy = 1; try { S.jcSum = await call("jcSummary", {}); } catch (e) { S.jcSum = { err: e.message }; } S.jcSumBusy = 0; if (S.home === "finance") keepScroll(render); }
+  function jcFinCard() {
+    var s = S.jcSum; if (!s) { jcSumLoad(); return '<div class="card jc-fin"><div class="loading" style="min-height:80px">Adding up job costs…</div></div>'; } if (s.err || !(s.projects || []).length) return "";
+    return '<div class="card jc-fin"><div class="section-title" style="margin-top:0"><div><h2>Job costing</h2><span class="muted small">Approved costs and labor from approved hours, per project. Click a project to see each line.</span></div></div><div class="tt-tbl"><table><thead><tr><th>Project</th><th class="num">Contract</th><th class="num">Costs</th><th class="num">Labor</th>' + (s.labor_money ? '<th class="num">Left</th>' : "") + "<th>To verify</th></tr></thead><tbody>" +
+      s.projects.map(function (p) { return '<tr class="jc-fin-r" data-a="jcGo" data-id="' + esc(p.id) + '"><td><b>' + esc(p.name) + '</b></td><td class="num">' + money(p.contract) + '</td><td class="num">' + money(p.approved) + (p.pending ? '<br><small class="muted">+' + money(p.pending) + " waiting</small>" : "") + '</td><td class="num">' + (s.labor_money ? money(p.labor) : jcHm(p.labor_min)) + (p.labor_pending_min ? '<br><small class="muted">' + jcHm(p.labor_pending_min) + " not approved</small>" : "") + "</td>" +
+        (s.labor_money ? '<td class="num' + (p.left < 0 ? " neg" : "") + '">' + money(p.left) + "</td>" : "") + "<td>" + (p.to_review ? '<span class="pill gold">' + p.to_review + "</span>" : '<span class="muted small">—</span>') + "</td></tr>"; }).join("") + "</tbody></table></div></div>";
+  }
+  var _homeFinanceJc = homeFinance; homeFinance = function () { return jcFinCard() + _homeFinanceJc(); };
+  /* Hours → Settings: pay rates (only Jesús / pay-rate permission). */
+  async function jcRatesLoad() { if (S.jcRatesBusy) return; S.jcRatesBusy = 1; try { S.jcRates = await call("jcRates", {}); } catch (e) { S.jcRates = { err: e.message }; } S.jcRatesBusy = 0; if (S.home === "tt") keepScroll(render); }
+  var _ttSetViewJc = ttSetView; ttSetView = function () {
+    var h = _ttSetViewJc(); if (!S.ttSet || S.ttSet.loading || S.ttSet.err) return h;
+    var r = S.jcRates; if (!r) { jcRatesLoad(); return h; } if (r.err) return h;
+    return h + '<div class="card jc-rates"><h3>Pay rates</h3><p class="muted small">Hourly rate for job costing: approved hours × rate (overtime 1.5×, double time 2×) show as labor on each project. Only you and people with the pay rates permission see these.</p><div class="tt-tbl"><table><tbody>' +
+      r.people.map(function (p) { return "<tr><td><b>" + esc(p.name) + '</b> <span class="tg tg-' + (p.level === "labor" ? "labor" : p.level === "pm" ? "pm" : "team") + '">#' + p.level + "</span></td><td>" + (r.can_set ? '<label class="jc-rate">$<input type="number" min="1" max="999" step="0.25" inputmode="decimal" data-jc-rate="' + esc(p.email) + '" value="' + (p.rate == null ? "" : p.rate) + '" placeholder="—" aria-label="Hourly rate for ' + esc(p.name) + '"> /h</label>' : (p.rate == null ? '<span class="muted">—</span>' : money(p.rate) + "/h")) + "</td></tr>"; }).join("") + "</tbody></table></div></div>";
+  };
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches || !t.matches("[data-jc-rate]")) return; e.stopImmediatePropagation();
+    var who = t.dataset.jcRate; call("jcSetRate", { email: who, rate: t.value }).then(function () { (S.jcRates.people.filter(function (p) { return p.email === who; })[0] || {}).rate = t.value === "" ? null : +t.value; S.jc = {}; S.jcSum = null; toast("Rate saved"); }).catch(function (er) { toast(er.message); });
+  }, true);
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-a]"); if (!b || !/^jc[A-Z]/.test(b.dataset.a)) return; e.preventDefault(); e.stopImmediatePropagation();
+    var a = b.dataset.a, r = (S.jc || {})[jcKey(S.pid)] || {}, c = (r.costs || []).filter(function (x) { return x.id === b.dataset.id; })[0];
+    if (a === "jcGo") return go(b.dataset.id, "costs");
+    if (a === "jcNew") { S.modal = { type: "lsxJcAdd" }; return keepScroll(render); }
+    if (a === "jcNo") { S.modal = { type: "lsxJcNo", id: b.dataset.id, c: c }; return keepScroll(render); }
+    if (a === "jcDel") return run(b, async function () { await call("jcDelete", { id: b.dataset.id }); await jcLoad(S.pid, true); toast("Withdrawn"); });
+    if (a === "jcOk") {
+      if (!r.qb_connected) return run(b, async function () { await call("jcReview", { id: b.dataset.id, decision: "approve" }); S.jcSum = null; await jcLoad(S.pid, true); toast("Approved"); });
+      S.modal = { type: "lsxJcMatch", id: b.dataset.id, c: c, rows: null }; keepScroll(render);
+      return call("jcMatches", { id: b.dataset.id }).then(function (m) { if (S.modal && S.modal.id === b.dataset.id) { S.modal.rows = m.rows || []; keepScroll(render); } }).catch(function (er) { if (S.modal) { S.modal.rows = []; S.modal.err = er.message; keepScroll(render); } });
+    }
+    if (a === "jcPick") return run(b, async function () { var m = S.modal; await call("jcReview", { id: m.id, decision: "approve", note: b.dataset.note || "", qb_type: b.dataset.type || "", qb_id: b.dataset.qb || "", qb_line: b.dataset.line || "" });
+      S.modal = null; S.jcSum = null; await jcLoad(S.pid, true); toast(b.dataset.qb ? "Approved · put on this job in QuickBooks" : "Approved"); });
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !/^(jcAdd|jcNo)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "jcAdd") return run(btn, async function () {
+      await call("jcAdd", { projectId: S.pid, cost: { line_id: g("line_id"), kind: g("kind"), vendor: g("vendor"), amount: g("amount"), date: g("date"), paid_with: g("paid_with"), notes: g("notes") } });
+      S.modal = null; S.jcSum = null; await jcLoad(S.pid, true); toast("Logged · accounting will check it");
+    });
+    if (f.dataset.form === "jcNo") return run(btn, async function () { await call("jcReview", { id: S.modal.id, decision: "reject", note: g("note") }); S.modal = null; S.jcSum = null; await jcLoad(S.pid, true); toast("Rejected"); });
+  }, true);
+  var _lsModalJc = lsModal;
+  lsModal = function (m) {
+    var cancel = '<button type="button" class="btn ghost" data-a="close">Cancel</button>', r = (S.jc || {})[jcKey(S.pid)] || {};
+    if (m.type === "lsxJcAdd") {
+      var today = new Date(); today = today.getFullYear() + "-" + ("0" + (today.getMonth() + 1)).slice(-2) + "-" + ("0" + today.getDate()).slice(-2);
+      return '<h2>Log a cost</h2><p class="muted small">Accounting checks it against the card, bank or bill. Your name and the time are saved with it.</p><form class="form" data-form="jcAdd">' +
+        '<label class="f">Contract line<select name="line_id">' + (r.lines || []).map(function (l) { return '<option value="' + esc(l.id) + '">' + esc((l.number ? l.number + " · " : "") + l.title) + "</option>"; }).join("") + '<option value="">General (no line)</option></select></label>' +
+        '<div class="row2"><label class="f">Amount<input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00"></label><label class="f">Date<input name="date" type="date" required max="' + today + '" value="' + today + '"></label></div>' +
+        '<label class="f">Paid to<input name="vendor" required maxlength="120" placeholder="Store, subcontractor, rental…"></label>' +
+        '<div class="row2"><label class="f">What<select name="kind">' + Object.keys(r.kinds || {}).map(function (k) { return '<option value="' + k + '">' + esc(r.kinds[k]) + "</option>"; }).join("") + '</select></label><label class="f">Paid with<select name="paid_with"><option value="">—</option>' + Object.keys(r.paid || {}).map(function (k) { return '<option value="' + k + '">' + esc(r.paid[k]) + "</option>"; }).join("") + "</select></label></div>" +
+        '<label class="f">Note (optional)<input name="notes" maxlength="500" placeholder="e.g. wall caps for the east wall"></label><div class="actions">' + cancel + '<button class="btn" type="submit">Log it</button></div></form>';
+    }
+    if (m.type === "lsxJcNo") return "<h2>Reject this cost</h2>" + (m.c ? "<p><b>" + money(m.c.amount) + "</b> · " + esc(m.c.vendor) + " · " + esc(m.c.date) + "</p>" : "") + '<form class="form" data-form="jcNo"><label class="f">Why (the PM sees this)<input name="note" required minlength="3" maxlength="300" placeholder="e.g. not on any card, wrong job"></label><div class="actions">' + cancel + '<button class="btn" type="submit">Reject</button></div></form>';
+    if (m.type === "lsxJcMatch") {
+      var c = m.c || {};
+      return "<h2>Approve · find it in QuickBooks</h2><p><b>" + money(c.amount) + "</b> · " + esc(c.vendor) + " · " + esc(c.date) + '</p><p class="muted small">Pick the card, bank or bill charge it matches: it gets put on this job in QuickBooks (logged, and undoable from Finances → Spending). Or approve without a match.</p>' +
+        (m.rows == null ? '<div class="loading" style="min-height:80px">Looking in QuickBooks…</div>' : m.err ? '<p class="small" style="color:var(--bad)">' + esc(m.err) + "</p>" : !m.rows.length ? '<p class="muted small">No charge with that amount within 2 weeks.</p>' :
+          '<div class="jc-match">' + m.rows.map(function (x) { return '<button class="jc-m-row" data-a="jcPick" data-type="' + esc(x.type) + '" data-qb="' + esc(x.id) + '" data-line="' + esc(x.line) + '"' + (x.used ? " disabled" : "") + "><b>" + money(x.amount) + "</b> · " + esc(x.who || "—") + " · " + esc(x.date) + '<small class="muted">' + esc([x.type === "Bill" ? "Bill" : x.from || "Charge", x.account, x.custName ? "on " + x.custName : "no job yet", x.used ? "already matched" : ""].filter(Boolean).join(" · ")) + "</small></button>"; }).join("") + "</div>") +
+        '<div class="actions">' + cancel + '<button class="btn ghost" data-a="jcPick">Approve without a match</button></div>';
+    }
+    return _lsModalJc(m);
   };
   liveLoop();
   if (S.token) { render(); route(); } else render();

@@ -12,7 +12,10 @@
 TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock", "phone", "crew_level"]);   // phone: crew log in with it + their PIN
 /* Two kinds of #crew: "labor" only clock in and out (no projects, chat, plans or routes); "supervisor" (PM / foreman) see the
    projects they're added to, like crew always have. Empty = supervisor, so nobody already on the portal loses access. */
-function ttIsLabor(p) { if (p && p.crew_level == null && p.email) p = findPerson(p.email) || p; return !!p && !p.preview && p.role === "crew" && String(p.crew_level || "") === "labor"; }
+function ttIsLabor(p) { if (p && p.crew_level == null && p.email && !p.preview) p = findPerson(p.email) || p; return !!p && p.role === "crew" && String(p.crew_level || "") === "labor"; }
+/* Preview as #labor (clock only) or #pm (crew supervisor / project manager): a make-believe crew member of that level. */
+if (typeof previewMe === "function") { var ttPreviewMe0 = previewMe;
+  previewMe = function (role) { if (role === "labor" || role === "pm") { var p = ttPreviewMe0("crew"); p.crew_level = role === "labor" ? "labor" : "supervisor"; p.name = role === "labor" ? "Labor preview" : "PM preview"; if (role === "labor") { p.project_ids = ""; p.projects = []; } return p; } return ttPreviewMe0(role); }; }
 if (typeof canSee === "function") { var ttCanSee0 = canSee;
   canSee = function (me, pid) { return ttIsLabor(me) ? false : ttCanSee0(me, pid); }; }   // enforced on the server: every project, chat, file and plan goes through canSee
 if (typeof publicMe === "function") { var ttPublicMe0 = publicMe;
@@ -84,7 +87,7 @@ function ttLang(me) { var p = ttRow(me); return p.lang === "en" || p.lang === "e
 function ttErr(me, es, en) { return new Error(ttLang(me) === "es" ? es : en); }
 /* Rollout: nobody sees the clock until Jesús turns it on, per person (People.clock) or for everyone (TT_ALL). */
 function ttAll() { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }
-function ttEnabled(p) { if (!p || !isTeam(p) || !isTrue(p.active) || p.clock === "no") return false; return p.role === "crew" || ttAll() || isTrue(p.clock); }   // crew: on unless turned off; team: when turned on
+function ttEnabled(p) { if (!p || !isTeam(p) || !isTrue(p.active) || p.clock === "no" || p.role === "admin") return false; /* the admin manages hours, he doesn't clock */ return p.role === "crew" || ttAll() || isTrue(p.clock); }   // crew: on unless turned off; team: when turned on
 function ttClocker(me) { if (!me || me.preview || !isTeam(me)) throw new Error("My hours is for the Blue Sierra team."); return me; }
 function ttCrewsOf(emp) { return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(emp) > -1; }); }
 /* A reviewer sees: everyone (accounting / admin), or the people they supervise (People.supervisor) and the crews they lead. Never their own decisions. */
@@ -218,7 +221,7 @@ function ttScopeOf(t, id) {
   var today = ttDayOf(ttNow()), out = [];
   if (t === "project") {
     out = rows("Schedule").filter(function (x) { return x.project_id === id && (x.kind === "task" || !x.kind) && x.title && !/^(done|complete|completed|canceled|cancelled)$/i.test(String(x.status || "")); })
-      .sort(function (a, b) { var na = a.start <= today && (!a.end || a.end >= today) ? 0 : 1, nb = b.start <= today && (!b.end || b.end >= today) ? 0 : 1; return na - nb || String(a.start).localeCompare(String(b.start)) || num(a.sort) - num(b.sort); })
+      .sort(function (a, b) { return num(a.sort) - num(b.sort) || String(a.start).localeCompare(String(b.start)); })   // the schedule's own order (1, 2, 3…)
       .map(function (x) { return { id: x.id, title: clean(x.title, 80) }; });
   } else if (t === "visit") {
     var v = findBy("LsVisits", "id", id);
@@ -694,7 +697,7 @@ function ttPreview(me, emp, changes, corrId, declared) {
 }
 ACTIONS.ttRequestCorrection = function (me, b) {
   ttClocker(me); var self = normEmail(me.email), emp = normEmail(b.emp || self), office = emp !== self;
-  if (office && !ttCanReview(me, emp)) throw ttErr(me, "No puedes corregir las horas de esa persona.", "You can't correct that person's hours.");
+  if (office && me.role !== "admin") throw ttErr(me, "Solo el admin edita horas de otras personas.", "Only the admin edits other people's hours.");
   var reason = office ? "office_fix" : String(b.reason || ""); if (!TT_REASONS[reason]) throw ttErr(me, "Elige el motivo.", "Pick the reason.");
   var explain = clean(b.explain, 1000); if (explain.length < (office ? 8 : 3)) throw ttErr(me, "Explica qué pasó.", "Explain what happened.");
   var changes = ttParseChanges(me, emp, b.changes), mineEv = {}; ttEvents(emp).forEach(function (e) { mineEv[e.id] = e; });
@@ -710,6 +713,21 @@ ACTIONS.ttRequestCorrection = function (me, b) {
 };
 function ttCorNeed(me, id) { var c = findBy("TtCorrections", "id", String(id || "")); if (!c) throw new Error("Correction not found."); return c; }
 function ttHist(c, me, what, note) { var h = parseJson(c.history, []); h.push({ at: ttIso(ttNow()), by: me.email, what: what, note: note || "" }); return JSON.stringify(h); }
+/* The admin's manual edit: applied right away, with its reason; the original records stay on file as "replaced". */
+ACTIONS.ttAdminEdit = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only the admin edits hours.");
+  var emp = normEmail(b.emp), who = findPerson(emp); if (!who || !isTeam(who)) throw new Error("Pick an employee.");
+  var explain = clean(b.explain, 1000); if (explain.length < 5) throw new Error("Write the reason for the edit.");
+  var changes = ttParseChanges(me, emp, b.changes), id = newId("tc"), pv = ttPreview(me, emp, changes, id, "");
+  var first = pv.days[0] || ttDayOf(ttNow()), ws = ttWeekStart(first), per = findBy("TtPeriods", "id", ws), closed = !!per && per.status === "closed", t = ttIso(ttNow());
+  pv.virt.forEach(function (e) { insert("TtEvents", e); });
+  insert("TtCorrections", { id: id, emp: emp, shift_id: clean(b.shift_id, 40), date: first, reason: "admin_edit", explain: explain, changes: JSON.stringify(changes), before: JSON.stringify({ before: pv.before, after: pv.after }),
+    delta_min: String(pv.delta), declared_place: "", evidence_id: "", requested_by: normEmail(me.email), requested_at: t, status: "approved", decided_by: normEmail(me.email), decided_at: t, decision_note: explain,
+    applied: pv.virt.map(function (e) { return e.id; }).join(","), period_id: ws, after_close: closed ? "yes" : "", dispute: "", dispute_at: "", history: JSON.stringify([{ at: t, by: normEmail(me.email), what: "edited by the admin", note: explain }]), seen_at: "" });
+  if (closed) { var ph = parseJson(per.history, []), v = num(per.version) + 1; ph.push({ at: t, by: normEmail(me.email), what: "adjustment after close", corr: id, emp: emp, delta_min: pv.delta, version: v }); update("TtPeriods", "id", per.id, { version: String(v), history: JSON.stringify(ph) }); }
+  ttAudit(me, emp, "admin_edit", id, pv.before, pv.after, explain);
+  return { ok: true, delta_min: pv.delta };
+};
 ACTIONS.ttDecide = function (me, b) {
   var c = ttCorNeed(me, b.id), self = normEmail(me.email), dec = String(b.decision || ""), note = clean(b.note, 1000);
   if (["pending", "needs_info"].indexOf(c.status) < 0) throw new Error("This correction was already decided.");
@@ -804,7 +822,8 @@ ACTIONS.ttReview = function (me, b) {
   var ws = ttWeekStart(/^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow())), we = ttAddDays(ws, 6), self = normEmail(me.email);
   var scope = ttScope(me), per = findBy("TtPeriods", "id", ws) || { id: ws, status: "open", version: "0", history: "" };
   var people = scope.map(function (emp) {
-    var w = ttWeekOf(emp, ws, true), has = w.totals.paid_min > 0 || w.exceptions.length || w.corrections.length || w.conflicts.length;
+    var w = ttWeekOf(emp, ws, true), pr = findPerson(emp) || {};                         // everyone on the team shows, even with no hours this week…
+    var has = pr.role !== "admin" || w.totals.paid_min > 0 || w.open_shifts > 0 || w.days.some(function (d) { return d.shifts.length; });   // …except the admin, unless he has hours to fix
     var loc = { inside: 0, outside: 0, unknown: 0, nogps: 0 };                          // where the taps happened vs the place they picked (office only)
     w.days.forEach(function (d) { d.shifts.forEach(function (s) { s.events.forEach(function (e) {
       if (e.source === "correction" || !e.presence) return;                                // check-ins, jobsite moves and retries
@@ -812,7 +831,17 @@ ACTIONS.ttReview = function (me, b) {
     }); }); });
     return has ? { emp: emp, name: w.name, pay_type: w.pay_type, paid_min: w.totals.paid_min, reg: w.calc.reg, ot: w.calc.ot, dt: w.calc.dt, exceptions: w.exceptions.length, open_shifts: w.open_shifts,
       pending: w.corrections.filter(function (c) { return c.status === "pending"; }).length, confirm: w.confirm, approval: w.approval, self: emp === self, loc: loc,
-      presence_open: w.exceptions.filter(function (x) { return x.kind === "presence"; }).length } : null;
+      presence_open: w.exceptions.filter(function (x) { return x.kind === "presence"; }).length,
+      role: pr.role, level: pr.role === "crew" ? (ttIsLabor(pr) ? "labor" : "pm") : pr.role === "admin" ? "admin" : "team", clock: ttEnabled(pr),
+      days: w.days.map(function (d) { return { date: d.date, paid_min: d.paid_min, shifts: d.shifts.map(function (s) {
+        var ins = s.events.filter(function (e) { return e.kind === "in"; })[0] || {}, outs = s.events.filter(function (e) { return e.kind === "out"; })[0] || null, c = ttCaseOf(emp, s.id);
+        var places = []; s.segs.forEach(function (g) { var n = g.ref_name || "No jobsite"; if (places.indexOf(n) < 0) places.push(n); });
+        var last = s.events.filter(function (e) { return e.presence; }).pop() || ins;
+        return { id: s.id, start: s.start, end: s.end, open: s.open, voided: s.voided, paid_min: s.paid_min, places: places, acts: s.segs.map(function (g) { return g.act_note || ""; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }),
+          gps: { result: ins.presence || "", reason: ins.presence_reason || "", dist: ins.zone_m, acc: ins.acc, addr: ins.addr || "", last: last.presence || "" }, phone: { flag: ins.device_flag || "", owner: ins.device_owner || "" },
+          out_phone: outs ? outs.device_flag || "" : "", case: c ? c.status : "", corrected: s.events.some(function (e) { return e.source === "correction"; }), in_id: ins.id || "", out_id: outs ? outs.id : "" };
+      }) }; }),
+      now: (function () { var o = ttStateOf(emp); return o.shift ? { since: o.shift.start, place: o.shift.job && o.shift.job.ref_name } : null; })() } : null;
   }).filter(Boolean);
   var cors = rows("TtCorrections").filter(function (c) { return scope.indexOf(c.emp) > -1 && (c.status === "pending" || c.status === "needs_info"); }).map(function (c) {
     var o = ttCorOut(c), sh = ttShifts(ttEvents(c.emp)); o.can_decide = c.emp !== self && c.requested_by !== self && (!(per.id === c.period_id && per.status === "closed") || !!pm.accounting);
@@ -828,6 +857,7 @@ ACTIONS.ttReview = function (me, b) {
 }
 function ttCloseBlockers(people) {
   var out = []; people.forEach(function (p) {
+    if (!p.paid_min && !p.open_shifts && !p.pending && !p.presence_open) return;            // nothing worked this week: nothing to approve
     if (p.open_shifts) out.push(p.name + ": a shift is still open"); if (p.pending) out.push(p.name + ": " + p.pending + " correction(s) to decide");
     if (p.presence_open) out.push(p.name + ": " + p.presence_open + " check-in(s) pending validation");
     if (!p.approval || !p.approval.valid) out.push(p.name + ": hours not approved" + (p.approval && !p.approval.valid ? " (changed after approval)" : ""));
@@ -900,5 +930,178 @@ function ttTodayItems(me) {
 }
 if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
 if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
-["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
+["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
 NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTest = 1; READ_ONLY.ttState = 1;   // read-only: also what lets Jesús preview the crew screen
+
+/* ======================================================================================================
+   Job costing: what each project really costs, line by line, in one place.
+   - #pm (crew supervisors on the project) and the team log costs against the contract's lines: amount, vendor, date,
+     how it was paid. Each entry keeps who logged it and when; nothing is ever edited in place.
+   - Accounting (#money or the "accounting" hours permission) checks each one against the card / bank / bill and approves
+     or rejects it. Approving can also put the matching QuickBooks charge on this job (the same logged, undoable change
+     as Finances → Spending). Nothing here moves money.
+   - Labor comes from the hours: approved weeks × each person's pay rate (overtime and double time included, shared by
+     the time spent on each job). Hours not approved yet show as hours only.
+   #labor never sees any of this. Contract amounts follow "Who sees Contract & billing"; pay rates and labor dollars only
+   for #money / "pay_view".
+   ====================================================================================================== */
+TABLES.JobCosts = ["id", "project_id", "line_id", "kind", "vendor", "amount", "date", "paid_with", "notes", "status", "by", "at", "reviewed_by", "reviewed_at", "review_note", "qb_type", "qb_id", "qb_log"];
+TABLES.People = TABLES.People.concat(["pay_rate"]);
+var JC_KINDS = { materials: "Materials", subs: "Subcontractor", equipment: "Equipment / rental", disposal: "Dump / disposal", permits: "Permits / fees", other: "Other" };
+var JC_PAID = { card: "Company card", bank: "Bank / ACH", check: "Check", cash: "Cash (reimburse)", bill: "Vendor bill (to pay)" };
+function jcReviewer(me) { return !!me && !me.preview && (canMoney(me) || !!ttPerms(me).accounting); }
+function jcLaborMoney(me) { return !!me && !me.preview && (canMoney(me) || !!ttPerms(me).pay_view); }
+function jcProj(me, pid) {
+  if (!me || (me.role === "crew" && ttIsLabor(me))) throw new Error("No access.");
+  if (!isStaff(me) && me.role !== "crew") throw new Error("No access.");
+  var p = findBy("Projects", "id", String(pid || "")); if (!p || p.status === "deleted" || !canSee(me, p.id)) throw new Error("No access.");
+  return p;
+}
+/* Labor on one project from the hours: per person, per week. Approved weeks get dollars; the rest stay as hours. */
+function jcLabor(pid, withMoney) {
+  var out = { approved_min: 0, pending_min: 0, cost: 0, people: [] };
+  ttTeam().forEach(function (who) {
+    var emp = normEmail(who.email), evs = ttEvents(emp); if (!evs.length) return;
+    var weeks = {};
+    ttShifts(evs).forEach(function (s) {
+      if (!ttCounts(s)) return;
+      s.segs.forEach(function (g) { var ws = ttWeekStart(ttDayOf(g.from)), w = weeks[ws] = weeks[ws] || { all: 0, job: 0 }; w.all += g.to - g.from; if (g.ref_type === "project" && String(g.ref_id) === String(pid)) w.job += g.to - g.from; });
+    });
+    var rate = num(who.pay_rate), mine = { name: who.name || emp, approved_min: 0, pending_min: 0, cost: 0, rate_missing: !rate };
+    Object.keys(weeks).forEach(function (ws) {
+      var w = weeks[ws]; if (!w.job) return;
+      var wk = ttWeekOf(emp, ws, true), ok = wk.approval && wk.approval.valid, share = w.all ? w.job / w.all : 0;
+      if (!ok) { mine.pending_min += ttMin(w.job); return; }
+      mine.approved_min += ttMin(w.job);
+      var c = wk.calc || {}, pay = rate * ((num(c.reg) + 1.5 * num(c.ot) + 2 * num(c.dt)) / 60);
+      mine.cost += pay * share;
+    });
+    if (!mine.approved_min && !mine.pending_min) return;
+    mine.cost = cents(mine.cost); out.approved_min += mine.approved_min; out.pending_min += mine.pending_min; out.cost += mine.cost;
+    if (!withMoney) { delete mine.cost; delete mine.rate_missing; }
+    out.people.push(mine);
+  });
+  out.cost = cents(out.cost); if (!withMoney) delete out.cost;
+  out.people.sort(function (a, b) { return b.approved_min + b.pending_min - a.approved_min - a.pending_min; });
+  return out;
+}
+function jcLinesOf(pid) {
+  return rows("ContractLines").filter(function (l) { return l.project_id === pid && l.status !== "rejected"; })
+    .sort(function (a, c) { return a.kind !== c.kind ? (a.kind === "base" ? -1 : 1) : num(a.sort) - num(c.sort); });
+}
+function jcCostOut(c, me, lines) {
+  var l = lines[c.line_id] || null;
+  return { id: c.id, line_id: c.line_id || "", line: l ? (l.number ? l.number + " · " : "") + l.title : "General (no line)", kind: c.kind, kind_label: JC_KINDS[c.kind] || c.kind, vendor: c.vendor, amount: num(c.amount),
+    date: c.date, paid_with: c.paid_with, paid_label: JC_PAID[c.paid_with] || c.paid_with, notes: c.notes, status: c.status, by: personName(c.by), at: c.at, mine: normEmail(c.by) === normEmail(me.email),
+    reviewed_by: c.reviewed_by ? personName(c.reviewed_by) : "", reviewed_at: c.reviewed_at || "", review_note: c.review_note || "", qb: c.qb_id ? { type: c.qb_type, id: c.qb_id } : null };
+}
+ACTIONS.jcProject = function (me, b) {
+  var p = jcProj(me, b.projectId), bill = canBill(me, p), review = jcReviewer(me), labor$ = jcLaborMoney(me);
+  var lines = jcLinesOf(p.id), byId = {}; lines.forEach(function (l) { byId[l.id] = l; });
+  var costs = rows("JobCosts").filter(function (c) { return c.project_id === p.id; }).sort(function (a, c) { return String(c.at).localeCompare(String(a.at)); });
+  var roll = {}; costs.forEach(function (c) { var k = byId[c.line_id] ? c.line_id : ""; var r = roll[k] = roll[k] || { approved: 0, pending: 0 }; if (c.status === "approved") r.approved += num(c.amount); else if (c.status === "submitted") r.pending += num(c.amount); });
+  var outLines = lines.map(function (l) { var r = roll[l.id] || { approved: 0, pending: 0 }, o = { id: l.id, number: l.number || "", title: l.title, kind: l.kind, approved: cents(r.approved), pending: cents(r.pending) };
+    if (bill) { o.amount = num(l.amount); o.left = cents(o.amount - r.approved); } return o; });
+  var gen = roll[""] || { approved: 0, pending: 0 }, lab = jcLabor(p.id, labor$);
+  var tot = { approved: cents(costs.reduce(function (a, c) { return a + (c.status === "approved" ? num(c.amount) : 0); }, 0)), pending: cents(costs.reduce(function (a, c) { return a + (c.status === "submitted" ? num(c.amount) : 0); }, 0)) };
+  if (labor$) tot.labor = lab.cost;
+  if (bill) { tot.contract = cents(lines.reduce(function (a, l) { return a + (l.kind === "base" || l.status === "approved" ? num(l.amount) : 0); }, 0)); if (labor$) tot.margin = cents(tot.contract - tot.approved - tot.labor); }
+  return { project: { id: p.id, name: p.name, qb: !!p.qb_customer }, can: { add: !me.preview, review: review, contract: bill, labor_money: labor$ }, kinds: JC_KINDS, paid: JC_PAID,
+    lines: outLines, general: { approved: cents(gen.approved), pending: cents(gen.pending) }, labor: lab, totals: tot, costs: costs.map(function (c) { return jcCostOut(c, me, byId); }),
+    qb_connected: review && typeof qbCfg === "function" ? !!qbCfg().refresh : false };
+};
+ACTIONS.jcAdd = function (me, b) {
+  if (me.preview) throw new Error("You're in preview. Exit the preview to change things.");
+  var p = jcProj(me, b.projectId), f = b.cost || {}, amt = cents(f.amount);
+  if (!(amt > 0) || amt > 5e6) throw new Error("Enter the amount.");
+  var line = String(f.line_id || ""); if (line && !jcLinesOf(p.id).some(function (l) { return l.id === line; })) throw new Error("Pick a line of this project's contract.");
+  var kind = JC_KINDS[f.kind] ? f.kind : "other", paid = JC_PAID[f.paid_with] ? f.paid_with : "";
+  var d = dateOrEmpty(f.date) || ttDayOf(ttNow()); if (d > ttDayOf(ttNow())) throw new Error("The date can't be in the future.");
+  var vendor = clean(f.vendor, 120); if (!vendor) throw new Error("Who was it paid to? (store, sub, rental…)");
+  var row = { id: newId("jc"), project_id: p.id, line_id: line, kind: kind, vendor: vendor, amount: String(amt), date: d, paid_with: paid, notes: clean(f.notes, 500), status: "submitted", by: normEmail(me.email), at: ttIso(ttNow()),
+    reviewed_by: "", reviewed_at: "", review_note: "", qb_type: "", qb_id: "", qb_log: "" };
+  insert("JobCosts", row);
+  return { id: row.id };
+};
+ACTIONS.jcDelete = function (me, b) {
+  var c = findBy("JobCosts", "id", String(b.id || "")); if (!c) throw new Error("Not found.");
+  jcProj(me, c.project_id);
+  if (c.status !== "submitted" || (normEmail(c.by) !== normEmail(me.email) && me.role !== "admin")) throw new Error("Only a cost still waiting for accounting can be removed, by whoever logged it.");
+  update("JobCosts", "id", c.id, { status: "withdrawn", reviewed_by: normEmail(me.email), reviewed_at: ttIso(ttNow()), review_note: "withdrawn" });
+  return {};
+};
+/* Accounting: approve (optionally matching the QuickBooks charge and putting it on this job) or reject with a reason. */
+ACTIONS.jcReview = function (me, b) {
+  if (!jcReviewer(me)) throw new Error("Accounting approves costs (#money).");
+  var c = findBy("JobCosts", "id", String(b.id || "")); if (!c) throw new Error("Not found.");
+  var p = findBy("Projects", "id", c.project_id); if (!p) throw new Error("Project not found.");
+  if (c.status !== "submitted" && !(b.decision === "approve" && c.status === "approved" && b.qb_id && !c.qb_id)) throw new Error("Already " + c.status + ".");
+  if (normEmail(c.by) === normEmail(me.email) && me.role !== "admin") throw new Error("Someone else approves the costs you logged.");
+  var note = clean(b.note, 300), patch = { reviewed_by: normEmail(me.email), reviewed_at: ttIso(ttNow()), review_note: note };
+  if (b.decision === "reject") { if (note.length < 3) throw new Error("Say why (e.g. not on the card, wrong job)."); patch.status = "rejected"; update("JobCosts", "id", c.id, patch); return { status: "rejected" }; }
+  if (b.decision !== "approve") throw new Error("Approve or reject.");
+  patch.status = "approved";
+  if (b.qb_id) {
+    var type = String(b.qb_type || ""), id = String(b.qb_id); if (!QB_PATH[type] || !/^\d{1,15}$/.test(id)) throw new Error("Pick the QuickBooks charge.");
+    var dup = rows("JobCosts").filter(function (x) { return x.id !== c.id && x.qb_type === type && x.qb_id === id && x.status === "approved"; })[0];
+    if (dup && !b.qb_line) throw new Error("That QuickBooks charge is already matched to another cost.");
+    var r = ACTIONS.qbAssign(me, { type: type, id: id, lines: b.qb_line ? [String(b.qb_line)] : [], projectId: p.id });
+    patch.qb_type = type; patch.qb_id = id; patch.qb_log = r.logId || "";
+  }
+  update("JobCosts", "id", c.id, patch);
+  return { status: "approved", qb: !!patch.qb_id };
+};
+/* QuickBooks charges that look like this cost: same amount (±2%), within 2 weeks. */
+ACTIONS.jcMatches = function (me, b) {
+  if (!jcReviewer(me)) throw new Error("Accounting approves costs (#money).");
+  var c = findBy("JobCosts", "id", String(b.id || "")); if (!c) throw new Error("Not found.");
+  if (typeof qbCfg !== "function" || !qbCfg().refresh) return { connected: false, rows: [] };
+  qbCheck();
+  var amt = num(c.amount), d0 = new Date(c.date + "T12:00:00Z").getTime(), p = findBy("Projects", "id", c.project_id) || {};
+  var used = {}; rows("JobCosts").forEach(function (x) { if (x.qb_id && x.id !== c.id && x.status === "approved") used[x.qb_type + ":" + x.qb_id] = 1; });
+  var list = qbSpendRows(120).filter(function (r) { var dd = Math.abs(new Date(r.date + "T12:00:00Z").getTime() - d0) / 864e5; return dd <= 14 && Math.abs(r.amount - amt) <= Math.max(1, amt * 0.02); })
+    .map(function (r) { return Object.assign({}, r, { used: !!used[r.type + ":" + r.id], here: !!(p.qb_customer && r.cust === p.qb_customer), days: Math.round(Math.abs(new Date(r.date + "T12:00:00Z").getTime() - d0) / 864e5) }); })
+    .sort(function (a, b2) { return (a.used - b2.used) || (Math.abs(a.amount - amt) - Math.abs(b2.amount - amt)) || (a.days - b2.days); });
+  return { connected: true, rows: list.slice(0, 8) };
+};
+/* Finances: every active project, contract vs. what it has cost so far. */
+ACTIONS.jcSummary = function (me) {
+  if (!jcReviewer(me) && me.role !== "admin") throw new Error("That's #money.");
+  var costs = rows("JobCosts"), labor$ = jcLaborMoney(me);
+  var list = rows("Projects").filter(function (p) { return p.status === "active"; }).map(function (p) {
+    var lines = jcLinesOf(p.id), mine = costs.filter(function (c) { return c.project_id === p.id; }), lab = jcLabor(p.id, labor$);
+    var o = { id: p.id, name: p.name, contract: cents(lines.reduce(function (a, l) { return a + (l.kind === "base" || l.status === "approved" ? num(l.amount) : 0); }, 0)),
+      approved: cents(mine.reduce(function (a, c) { return a + (c.status === "approved" ? num(c.amount) : 0); }, 0)), pending: cents(mine.reduce(function (a, c) { return a + (c.status === "submitted" ? num(c.amount) : 0); }, 0)),
+      to_review: mine.filter(function (c) { return c.status === "submitted"; }).length, labor_min: lab.approved_min, labor_pending_min: lab.pending_min };
+    if (labor$) { o.labor = lab.cost; o.spent = cents(o.approved + o.labor); o.left = cents(o.contract - o.spent); }
+    return o;
+  }).filter(function (o) { return o.contract || o.approved || o.pending || o.labor_min || o.labor_pending_min; });
+  return { projects: list, labor_money: labor$ };
+};
+/* Pay rates: Jesús or whoever has "pay_rates". Only #money / "pay_view" ever see them. */
+ACTIONS.jcSetRate = function (me, b) {
+  if (me.preview || !ttPerms(me).pay_rates) throw new Error("Only Jesús (or someone with the pay rates permission) sets pay rates.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || !isTeam(p)) throw new Error("Pick someone on the team.");
+  var r = String(b.rate == null ? "" : b.rate).trim(), v = r === "" ? "" : String(cents(r)); if (v !== "" && !(num(v) > 0 && num(v) < 1000)) throw new Error("Hourly rate between $1 and $999.");
+  ttAudit(me, e, "pay_rate", e, { pay_rate: p.pay_rate ? "set" : "" }, { pay_rate: v ? "set" : "" }, "");
+  update("People", "email", e, { pay_rate: v });
+  return { ok: true };
+};
+ACTIONS.jcRates = function (me) {
+  if (me.preview || !(ttPerms(me).pay_rates || ttPerms(me).pay_view)) throw new Error("That's for pay rates.");
+  return { can_set: !!ttPerms(me).pay_rates, people: ttTeam().filter(function (p) { return p.role !== "admin"; }).map(function (p) { return { email: normEmail(p.email), name: p.name, role: p.role, level: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "pm") : "team", pay_type: p.pay_type || "hourly", rate: p.pay_rate ? num(p.pay_rate) : null }; }) };
+};
+/* Today: accounting sees the costs waiting for them, one item per project. */
+function jcTodayItems(me) {
+  if (!jcReviewer(me)) return [];
+  var by = {}; rows("JobCosts").forEach(function (c) { if (c.status === "submitted" && normEmail(c.by) !== normEmail(me.email)) (by[c.project_id] = by[c.project_id] || []).push(c); });
+  return Object.keys(by).map(function (pid) {
+    var l = by[pid], p = findBy("Projects", "id", pid) || { name: "Project" }, tot = l.reduce(function (a, c) { return a + num(c.amount); }, 0), first = l.map(function (c) { return c.at; }).sort()[0];
+    return { key: "jc:" + pid, kind: "money", area: "money", priority: 2, title: l.length + " cost" + (l.length > 1 ? "s" : "") + " to verify · " + p.name, sub: "Job costing · $" + cents(tot).toFixed(2),
+      why: "Logged by the PM. Check them against the card, bank or bill before they count.", next: "Approve or reject", owner: me.email, since: String(first || "").slice(0, 16).replace("T", " "), link: { type: "costs", projectId: pid } };
+  });
+}
+if (typeof tdItems === "function") { var jcTd0 = tdItems; tdItems = function (me) { return jcTd0(me).concat(jcTodayItems(me)); }; }
+if (PREFETCH.todayQueue && PREFETCH.todayQueue.indexOf("JobCosts") < 0) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(["JobCosts", "ContractLines"]);
+["jcProject", "jcAdd", "jcDelete", "jcReview", "jcMatches", "jcSummary", "jcSetRate", "jcRates"].forEach(function (a) { PREFETCH[a] = TT_READ.concat(["JobCosts", "ContractLines"]); });
+NO_LOCK.jcProject = 1; NO_LOCK.jcSummary = 1; NO_LOCK.jcRates = 1; NO_LOCK.jcMatches = 1; READ_ONLY.jcProject = 1;

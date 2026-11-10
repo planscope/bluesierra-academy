@@ -262,8 +262,17 @@ function readTags(text) {
   return { aud: aud, text: rest.replace(/[ \t]{2,}/g, " ").trim() };
 }
 function cleanAud(v) { return (Array.isArray(v) ? v : splitIds(v)).map(String).filter(function (a, i, l) { return AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
-/* Contract & billing: Blue Sierra always; the field crew never; the client and the architect only when the admin tags them in. */
-function canBill(me, p) { if (isStaff(me)) return true; if (me.role === "crew") return false; return audList(p.billing_aud).indexOf(me.role) > -1; }
+/* Contract & billing, per project. The admin and #money always see it; the rest of #team unless the admin turns #team off ("noteam");
+   #pm (crew supervisors on the project) only when tagged; #labor never; the client and the architect only when tagged. */
+var BILL_AUDS = ["client", "architect", "pm", "noteam"];
+function billAud(v) { return (Array.isArray(v) ? v : splitIds(v)).map(String).filter(function (a, i, l) { return BILL_AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
+function canBill(me, p) {
+  var l = billAud(p.billing_aud);
+  if (me.role === "admin" && !me.preview) return true;
+  if (isStaff(me)) return canMoney(me) || l.indexOf("noteam") < 0;
+  if (me.role === "crew") return l.indexOf("pm") > -1 && !(typeof ttIsLabor === "function" && ttIsLabor(me));
+  return l.indexOf(me.role) > -1;
+}
 function billChannel(p) { return audList(p.billing_aud).indexOf("client") > -1 ? "client" : audList(p.billing_aud).indexOf("architect") > -1 ? "architect" : "team"; }
 /* A channel for a list of tags (where the chat card goes). */
 function chanFor(aud) { return !aud.length || aud.indexOf("client") > -1 ? "client" : aud.indexOf("architect") > -1 ? "architect" : aud.indexOf("crew") > -1 ? "crew" : "team"; }
@@ -335,7 +344,7 @@ var ACTIONS = {
     ["lat", "lon"].forEach(function (k) { if (patch[k] != null) patch[k] = patch[k] === "" ? "" : String(Math.round(num(patch[k]) * 1e6) / 1e6); });   // where the property is, for the header map
     if (f.address != null && f.lat == null) { patch.lat = ""; patch.lon = ""; }                                                                   // a new address: find it again
     if (patch.retainage_pct != null) patch.retainage_pct = String(Math.max(0, Math.min(20, num(patch.retainage_pct))));
-    if (f.billing_aud != null) { if (me.role !== "admin") throw new Error("Only Jesús changes who sees Contract & billing."); patch.billing_aud = cleanAud(f.billing_aud).filter(function (a) { return a === "client" || a === "architect"; }).join(","); }
+    if (f.billing_aud != null) { if (me.role !== "admin") throw new Error("Only Jesús changes who sees Contract & billing."); patch.billing_aud = billAud(f.billing_aud).join(","); }
     if (f.logo && f.logo.data && f.id) { var lp = findBy("Projects", "id", f.id); patch.architect_logo = saveFile(lp, f.logo, "Architect logo", true); }
     if (f.logo === "") patch.architect_logo = "";
     if (f.id) { needProject(me, f.id); update("Projects", "id", f.id, patch); return { project: projectOut(findBy("Projects", "id", f.id)) }; }
@@ -2252,7 +2261,7 @@ function projectOut(p) {
   return { id: p.id, name: p.name, client_name: p.client_name, address: p.address, city: p.city, phase: p.phase, progress: Number(p.progress || 0),
     start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "",
     retainage_pct: num(p.retainage_pct), lat: p.lat ? num(p.lat) : null, lon: p.lon ? num(p.lon) : null,
-    billing_aud: audList(p.billing_aud), architect_name: p.architect_name || "", architect_logo: p.architect_logo ? img(p.architect_logo, 400) : "" };
+    billing_aud: billAud(p.billing_aud), architect_name: p.architect_name || "", architect_logo: p.architect_logo ? img(p.architect_logo, 400) : "" };
 }
 function photoOut(ph) { return { id: ph.id, file_id: ph.file_id, thumb: img(ph.file_id, 600), full: img(ph.file_id, 2000), caption: ph.caption, at: ph.at, author: ph.author, update_id: ph.update_id }; }
 function invoiceOut(i, staff, ppl) {
