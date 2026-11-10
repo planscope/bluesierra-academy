@@ -2001,3 +2001,6 @@
 .tt-tbl td { vertical-align: top; }
 .tt-case .tt-side { grid-template-columns: 1fr; } .tt-case .tt-cmap { height: 260px; }
 .tt-case .tt-att td, .tt-case .tt-att th { white-space: normal; } .tt-case .tt-att td.tt-addr { min-width: 130px; }
+.tts-locoff { background: #fbf0dc; color: #6b4a0f; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 0 0 8px; }
+.tt-lvl { font-size: 12px; margin-top: 4px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+.tt-lvl { display: block; }

@@ -408,7 +408,7 @@
     var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
     var list = list0, view = staff() ? (S.home || (S.viewAs ? "projects" : "today")) : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
     var crewClock = ttCrewUI() && ttOn() && (S.tt ? S.tt.enabled : (ttCard(), true));      // while it loads the tab shows; it hides only if the clock is off for them
-    if (!staff() && !S.home && crewClock) view = "tt";
+    if (!staff() && (!S.home || S.me.labor) && crewClock) view = "tt";                    // labor: the clock is all they have
     if (S.home === "tt" && ttOn()) view = "tt"; var ttc = crewClock ? "ttc" : "";
     var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
@@ -424,9 +424,9 @@
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
     var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() || (S.me && S.me.labor) ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
-    if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + (ttc ? [["tt", ttL() === "es" ? "Horas" : "Hours"]] : []).concat([["projects", "Projects"]], lsRoleMe ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
+    if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + (ttc ? [["tt", ttL() === "es" ? "Horas" : "Hours"]] : []).concat(S.me.labor ? [] : [["projects", "Projects"]], lsRoleMe && !S.me.labor ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
     if (view === "tt") return head + ttView();
     if (view === "today" && staff() && !S.viewAs) return head + ttCard() + todayView();
@@ -2577,7 +2577,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110113939";
+  var BUILD = "20261110120558";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4995,6 +4995,7 @@
     try {
       if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
       var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); S.ttSync = { st: "ok", at: r.event.recv_at }; S.ttPres = r.presence || null; S.ttExplained = 0;
+      if (r.presence && r.presence.retry) ttQuietRetry(r.state && r.state.shift && r.state.shift.id);
       if (r.summary) { if (ttSimple()) S.ttLast = { at: r.event.at, min: r.state.today_min, shift: r.summary.id, ask: !!r.summary.ask_meal }; else S.modal = { type: "lsxTtSum", s: r.summary }; }
       if (declared) await ttDeclare(r.event.id, declared, kind);
       if (job && job.ref_id) try { localStorage.setItem("bsp_tt_last_" + S.me.key, job.ref_type + "|" + job.ref_id); } catch (x) {}
@@ -5007,6 +5008,16 @@
       } else { S.ttSync = { st: "err", msg: e.message }; }
     }
     S.ttWorking = 0; keepScroll(render);
+  }
+  /* The phone gave a poor or no fix: try again by itself a little later (45 s, then 4 min), without telling the worker. */
+  function ttQuietRetry(sid) {
+    if (!sid || S.ttQuiet === sid) return; S.ttQuiet = sid;
+    [45000, 240000].forEach(function (ms) { setTimeout(async function () {
+      if (!S.tt || !S.tt.shift || S.tt.shift.id !== sid || S.tt.mode === "off") return;
+      try { var both = await Promise.all([ttLoc(), ttIp()]); if (!both[0] || both[0].status !== "ok") return;
+        var r = await call("ttPunch", { kind: "presence", client_key: ttKey(), device_at: new Date().toISOString(), device_id: devId(), device: (navigator.userAgent || "").slice(0, 200), loc: both[0], ip: both[1] || "" });
+        if (r && r.state) S.tt = Object.assign(S.tt, r.state); } catch (e) {}
+    }, ms); });
   }
   async function ttFlush() {
     var q = ttQ(); if (!q.length || S.ttFlushing || !navigator.onLine) { if (q.length) S.ttSync = { st: "pending", n: q.length }; return; }
@@ -5033,7 +5044,7 @@
     if (!s) return ""; if (s.st === "locating") return '<span class="tt-sync">' + tx(ttSimple() ? "saving" : "locating") + "</span>"; if (s.st === "saving") return '<span class="tt-sync">' + tx("saving") + "</span>";
     if (s.st === "err") return '<span class="tt-sync bad">✕ ' + tx("err") + ": " + esc(s.msg) + "</span>";
     if (s.st === "warn") return '<span class="tt-sync bad">⚠ ' + esc(s.msg) + "</span>";
-    var pendNow = S.tt && S.tt.mode !== "off" && S.tt.presence && S.tt.presence.status !== "verified";
+    var pendNow = S.tt && S.tt.mode !== "off" && S.tt.presence && S.tt.presence.status !== "verified" && !ttCrewUI();
     return '<span class="tt-sync' + (pendNow ? "" : " ok") + '">' + (pendNow ? (ttL() === "es" ? "Registro guardado " : "Record saved ") : "✓ " + tx("saved") + " ") + (s.at ? ttHm(s.at) : "") + (s.note ? " · " + esc(s.note) : "") + "</span>";
   }
   /* ---- the crew's screen: pick the place with one tap, tap the clock. Location is taken quietly for the office. ---- */
@@ -5071,6 +5082,12 @@
   /* What the server decided about the last check-in / move / retry, in words the crew understands. Never green unless verified. */
   function ttPresBox() {
     var t = S.tt, p = t.presence || {}, last = p.last || {}, es = ttL() === "es", now = S.ttPres || null, reason = (now && now.reason) || last.reason || "";
+    if (ttCrewUI()) {                                                                    // crew: it was recorded. Whether the place and phone matched is for the office only.
+      if (p.status === "queued") return '<div class="tts-pres ok"><b>✓ ' + (es ? "Entrada guardada en tu teléfono" : "Check-in saved on your phone") + "</b><small>" + (es ? "Se enviará cuando vuelva la señal." : "It will be sent when the signal is back.") + "</small></div>";
+      var off = (now && now.loc_off) || p.loc_off;
+      return '<div class="tts-pres ok"><b>✓ ' + (es ? "Entrada registrada" : "Check-in recorded") + "</b><small>" + esc((t.shift && t.shift.job && t.shift.job.ref_name) || "") + " · " + ttHm(t.shift && t.shift.start) + "</small></div>" +
+        (off ? '<p class="tts-locoff">' + (es ? "Activa la ubicación de tu teléfono para marcar. iPhone: Ajustes › Privacidad › Localización › Safari: \"Al usar la app\". Android: candado junto a la dirección › Permisos › Ubicación." : "Turn on your phone's location to clock. iPhone: Settings › Privacy › Location Services › Safari: \"While Using\". Android: lock icon › Permissions › Location.") + "</p>" : "");
+    }
     var dist = (now && now.dist != null ? now.dist : last.dist), far = dist != null ? (dist >= 1000 ? Math.round(dist / 100) / 10 + " km" : dist + " m") : "";
     if (p.status === "queued") return '<div class="tts-pres pend"><b>⏳ ' + tx("pend_t") + "</b><p>" + tx("queued_office") + "</p></div>";
     if (p.status === "verified") return '<div class="tts-pres ok"><b>✓ ' + tx("ok_in") + "</b><small>" + tx("ok_loc") + (far ? " · " + (es ? "a " : "") + far + (es ? "" : " away") : "") + "</small></div>";
@@ -5086,7 +5103,7 @@
   function ttSimpleCard() {
     var t = S.tt, m = t.mode || "off", sh = t.shift, es = ttL() === "es", busy = S.ttWorking, places = ttPlaces(), working = m !== "off";
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
-    var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified";
+    var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified" && !ttCrewUI();
     var crewUI = ttCrewUI(), preview = !!t.preview;
     var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el crew. Tocar el reloj no guarda nada." : "Preview: this is what the crew sees. Tapping the clock saves nothing.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
@@ -5286,7 +5303,8 @@
       people.map(function (p) {
         var devs = (p.devices || []).map(function (d) { return '<span class="tt-dev ' + d.status + '">' + esc(d.label) + " · " + esc(d.status === "trusted" ? "approved" : d.status) + (d.shared_with.length ? " · also used by " + esc(d.shared_with.join(", ")) : "") +
           (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
-        var access = '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button></div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
+        var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" : "";
+        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button></div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
         return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
           Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
@@ -5422,7 +5440,7 @@
     var t = e.target; if (!t.matches) return;
     if (t.matches("[data-tt-set]")) {
       e.stopImmediatePropagation(); var k = t.dataset.ttSet, em = t.dataset.email, p = S.ttSet.people.filter(function (x) { return x.email === em; })[0], body = { email: em };
-      if (k === "clock") body.clock = t.checked; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
+      if (k === "clock") body.clock = t.checked; else if (k === "crew_level") body.crew_level = t.value; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
       else { var l = p.perms.filter(function (x) { return x !== k; }); if (t.checked) l.push(k); if (k === "period_close" && t.checked && l.indexOf("accounting") < 0) l.push("accounting"); body.perms = l; }
       call("ttSetPerson", body).then(function () { toast("Saved: " + p.name); if (em === S.me.email || k === "clock") S.tt = null; ttSetLoad(); }).catch(function (er) { toast(er.message); ttSetLoad(); });
       return;
@@ -5437,7 +5455,7 @@
   root.addEventListener("submit", function (e) {
     var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
-    if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone") }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
+    if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone"), level: g("level") || "" }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
     if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
     if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
     if (f.dataset.form === "ttReply") return run(btn, async function () {
@@ -5465,7 +5483,7 @@
     if (m.type === "lsxTtPick") return ttPicker(m.kind);
     if (m.type === "lsxTtAccess") {
       if (m.pin) return "<h2>Give this to " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">This PIN is shown only once. They log in at the portal with their phone number and this PIN; they stay logged in on their phone. The first phone they use becomes theirs; any other phone waits for your approval.</p><div class="actions"><button class="btn" data-a="close">Done</button></div>';
-      return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label>') +
+      return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label><label class="f">Level<select name="level"><option value="labor" selected>#labor · only clocks in and out</option><option value="supervisor">#supervisor / PM · also sees the projects you add them to</option></select></label>') +
         '<label class="f">Phone number<input name="phone" type="tel" inputmode="tel" required value="' + esc(m.phone ? phoneFmt(m.phone) : "") + '" placeholder="(408) 555-0199"></label><p class="muted small">' + (m.phone ? "A new PIN replaces the old one." : "We'll create a 6-digit PIN for them.") + "</p>" +
         '<div class="actions">' + cancel + '<button class="btn" type="submit">' + (m.phone ? "Make a new PIN" : "Create the PIN") + "</button></div></form>";
     }

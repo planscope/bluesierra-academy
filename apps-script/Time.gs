@@ -9,7 +9,14 @@
    - Permissions are explicit columns set by the admin (People.perms). A hashtag in a message never grants access.
    Deployed concatenated after Today.gs.
    ====================================================================================================== */
-TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock", "phone"]);   // phone: crew log in with it + their PIN   // clock: "yes" = this person sees the clock (pilot)
+TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock", "phone", "crew_level"]);   // phone: crew log in with it + their PIN
+/* Two kinds of #crew: "labor" only clock in and out (no projects, chat, plans or routes); "supervisor" (PM / foreman) see the
+   projects they're added to, like crew always have. Empty = supervisor, so nobody already on the portal loses access. */
+function ttIsLabor(p) { if (p && p.crew_level == null && p.email) p = findPerson(p.email) || p; return !!p && !p.preview && p.role === "crew" && String(p.crew_level || "") === "labor"; }
+if (typeof canSee === "function") { var ttCanSee0 = canSee;
+  canSee = function (me, pid) { return ttIsLabor(me) ? false : ttCanSee0(me, pid); }; }   // enforced on the server: every project, chat, file and plan goes through canSee
+if (typeof publicMe === "function") { var ttPublicMe0 = publicMe;
+  publicMe = function (p) { var o = ttPublicMe0(p); o.labor = ttIsLabor(p); o.crew_level = p.role === "crew" ? (o.labor ? "labor" : "supervisor") : ""; if (o.labor) o.ls = ""; return o; }; }   // clock: "yes" = this person sees the clock (pilot)
 TABLES.TtEvents = ["id", "emp", "actor", "kind", "at", "device_at", "recv_at", "tz", "act", "ref_type", "ref_id", "ref_name", "lat", "lon", "acc", "loc_at", "loc_status",
   "zone", "zone_name", "zone_m", "source", "offline", "seq", "client_key", "device", "shift_id", "supersedes", "corr_id", "note", "status",
   "act_note", "tgt_lat", "tgt_lon", "radius_m", "presence", "presence_reason", "case_id", "scope_id", "loc_addr", "device_hash", "device_flag", "device_owner", "ip"];   // loc_addr: approximate street address of the phone's point      // presence: verified / outside / unverified, judged by the server for each check-in
@@ -222,6 +229,8 @@ function ttScopeOf(t, id) {
   return out.filter(function (x) { return x.title; }).slice(0, 8);
 }
 
+if (typeof lsRole === "function") { var ttLsRole0 = lsRole; lsRole = function (me) { return ttIsLabor(me) ? "" : ttLsRole0(me); }; }   // labor don't see maintenance routes either
+
 /* ---- phones: who usually clocks from which phone ---- */
 function ttDevLabel(ua) {
   ua = String(ua || ""); var os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Phone";
@@ -281,8 +290,9 @@ ACTIONS.ttCrewAccess = function (me, b) {
     var name = clean(b.name, 80); if (name.length < 2) throw new Error("Write the person's name.");
     email = "crew-" + ph + "@phone.invalid";                                              // an internal id, never emailed (.invalid can't receive mail)
     p = findPerson(email);
-    if (!p) insert("People", { email: email, name: name, role: "crew", project_ids: [].concat(b.project_ids || []).join(","), active: "yes", created_at: now(), avatar: "", phone: ph, lang: "es", pay_type: "hourly" });
-    else update("People", "email", email, { active: "yes", phone: ph, name: name });
+    var lvl = b.level === "supervisor" ? "supervisor" : "labor";                          // new people by phone: labor (clock only) unless Jesús says supervisor
+    if (!p) insert("People", { email: email, name: name, role: "crew", project_ids: [].concat(b.project_ids || []).join(","), active: "yes", created_at: now(), avatar: "", phone: ph, lang: "es", pay_type: "hourly", crew_level: lvl });
+    else update("People", "email", email, { active: "yes", phone: ph, name: name, crew_level: lvl });
   } else update("People", "email", email, { phone: ph });
   var pin = ttNewPin(), salt = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
   update("People", "email", email, { pin_salt: salt, pin_hash: sha(salt + ":" + pin), pin_fails: "0", pin_lock: "" });
@@ -319,9 +329,10 @@ function ttPlaceAddr(t, id) {
 /* ---- the jobsite (place) and the activity (what they're doing there) ---- */
 function ttAuthorized(emp, t, id) {
   var who = findPerson(emp) || {}, staff = isStaff(who), crews = ttCrewsOf(emp).map(function (c) { return c.id; });
-  if (t === "visit") { var v = findBy("LsVisits", "id", id), p = v && findBy("LsProps", "id", v.property_id); return p && p.status !== "deleted" ? { ok: staff || crews.indexOf(v.crew_id) > -1 || crews.indexOf(p.crew_id) > -1, name: p.name } : null; }
-  if (t === "property") { var pp = findBy("LsProps", "id", id); return pp && pp.status !== "deleted" ? { ok: staff || crews.indexOf(pp.crew_id) > -1, name: pp.name } : null; }
-  if (t === "project") { var pj = findBy("Projects", "id", id); return pj && pj.status !== "deleted" ? { ok: staff || splitIds(who.project_ids).indexOf(id) > -1, name: pj.name } : null; }
+  var crewAny = who.role === "crew";                                                     // crew may be sent anywhere; the phone and GPS checks say whether they're really there
+  if (t === "visit") { var v = findBy("LsVisits", "id", id), p = v && findBy("LsProps", "id", v.property_id); return p && p.status !== "deleted" ? { ok: staff || crewAny || crews.indexOf(v.crew_id) > -1 || crews.indexOf(p.crew_id) > -1, name: p.name } : null; }
+  if (t === "property") { var pp = findBy("LsProps", "id", id); return pp && pp.status !== "deleted" && !isTrue(pp.sample) ? { ok: staff || crewAny || crews.indexOf(pp.crew_id) > -1, name: pp.name } : null; }
+  if (t === "project") { var pj = findBy("Projects", "id", id); return pj && pj.status !== "deleted" && pj.status !== "archived" ? { ok: staff || crewAny || splitIds(who.project_ids).indexOf(id) > -1, name: pj.name } : null; }
   if (t === "zone") { var z = ttZones().filter(function (x) { return x.id === id; })[0]; return z ? { ok: true, name: z.name } : null; }   // only zones the office set up
   return null;
 }
@@ -406,10 +417,20 @@ function ttSuggest(emp, who0, crews0) {
   var withScope = function (o) { o.scope = ttScopeOf(o.ref_type, o.ref_id); o.geo = geo(o); return o; };
   var visits = rows("LsVisits").filter(function (v) { return v.date === today && crews.indexOf(v.crew_id) > -1 && ["canceled", "skipped"].indexOf(v.status) < 0; })
     .sort(function (a, b) { return num(a.stop) - num(b.stop); }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return withScope({ ref_type: "visit", ref_id: v.id, name: p.name || "Visit", sub: addr(p), route: true }); });
-  var props = rows("LsProps").filter(function (p) { return p.status !== "deleted" && (crews.indexOf(p.crew_id) > -1 || staff) && !isTrue(p.sample); }).slice(0, 60).map(function (p) { return withScope({ ref_type: "property", ref_id: p.id, name: p.name, sub: addr(p) }); });
-  var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (staff || splitIds(who.project_ids).indexOf(p.id) > -1); }).map(function (p) { return withScope({ ref_type: "project", ref_id: p.id, name: p.name, sub: addr(p) }); });
+  var crewAll = staff || who.role === "crew", mineP = splitIds(who.project_ids);
+  var props = rows("LsProps").filter(function (p) { return p.status !== "deleted" && (crews.indexOf(p.crew_id) > -1 || crewAll) && !isTrue(p.sample); })
+    .sort(function (a, b) { return (crews.indexOf(b.crew_id) > -1) - (crews.indexOf(a.crew_id) > -1); }).slice(0, 80).map(function (p) { return withScope({ ref_type: "property", ref_id: p.id, name: p.name, sub: addr(p), mine: crews.indexOf(p.crew_id) > -1 }); });
+  var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (crewAll || mineP.indexOf(p.id) > -1); })
+    .sort(function (a, b) { return (mineP.indexOf(b.id) > -1) - (mineP.indexOf(a.id) > -1); }).map(function (p) { return withScope({ ref_type: "project", ref_id: p.id, name: p.name, sub: addr(p), mine: mineP.indexOf(p.id) > -1 }); });
   var zones = ttZones().map(function (z) { return { ref_type: "zone", ref_id: z.id, name: z.name, sub: z.kind === "yard" ? "Yard" : "Office", geo: true, scope: [] }; });
   return { visits: visits, properties: props, projects: projs, zones: zones };
+}
+/* What crew see about their own taps: that it was recorded, never whether the location or phone matched (that goes to the office). */
+function ttCrewView(st) {
+  if (st.presence) st.presence = { status: "recorded", loc_off: !!(st.presence.last && /^(denied|unsupported)$/.test(st.presence.last.reason || "")) };
+  (st.recent || []).forEach(function (r) { delete r.presence; });
+  if (st.shift) st.shift.events = st.shift.events.map(function (e) { return { id: e.id, kind: e.kind, at: e.at, act: e.act, act_note: e.act_note, ref_name: e.ref_name }; });
+  return st;
 }
 /* My last records, for the bottom of the crew screen: day, jobsite, in, out, hours. */
 function ttRecent(emp) {
@@ -434,7 +455,9 @@ ACTIONS.ttState = function (me, b) {
     suggest: isStaff(row) ? ttSuggest(emp) : null };                                    // the office's GPS test still needs the jobsites
   var mine = rows("TtCorrections").filter(function (c) { return c.emp === emp; });
   var news = mine.filter(function (c) { return c.decided_at && (!c.seen_at || c.seen_at < c.decided_at); }).map(function (c) { return { id: c.id, status: c.status, date: c.date, note: c.decision_note }; });
-  return Object.assign(ttStateOf(emp), { lang: ttLang(me), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
+  var stt = ttStateOf(emp);
+  if (row.role === "crew") stt = ttCrewView(stt);
+  return Object.assign(stt, { lang: ttLang(me), labor: ttIsLabor(row), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
     privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, office_pending: pm.time_review ? ttOfficePending(me) : 0, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
 };
 ACTIONS.ttPunch = function (me, b) {
@@ -494,8 +517,14 @@ ACTIONS.ttPunch = function (me, b) {
   insert("TtEvents", ev);
   if (ev.case_id) cs = ttCaseTrack(ev, cs);
   if (src === "supervisor") ttAudit(me, emp, "clock_for", ev.id, null, { kind: kind, at: ev.at }, "clocked by a supervisor");
-  var out = { status: status, event: ttEvOut(ev, true), state: ttStateOf(emp), presence: placeEv ? { result: ev.presence, reason: ev.presence_reason, dist: ev.zone_m ? num(ev.zone_m) : null, acc: ev.acc ? num(ev.acc) : null, radius: ev.radius_m ? num(ev.radius_m) : null, place: ev.ref_name, case: cs ? cs.status : "" } : null };
+  var crewTap = (findPerson(emp) || {}).role === "crew" && src !== "supervisor";
+  var out = { status: status, event: ttEvOut(ev, true), state: crewTap ? ttCrewView(ttStateOf(emp)) : ttStateOf(emp), presence: placeEv ? { result: ev.presence, reason: ev.presence_reason, dist: ev.zone_m ? num(ev.zone_m) : null, acc: ev.acc ? num(ev.acc) : null, radius: ev.radius_m ? num(ev.radius_m) : null, place: ev.ref_name, case: cs ? cs.status : "" } : null };
   if (kind === "out" && status === "ok") { var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === sid; })[0]; if (s) { out.summary = ttShiftOut(s, false); out.summary.ask_meal = s.paid > 300 * 6e4 && !s.meals.length; } }
+  if (crewTap) {                                                                          // crew get "recorded"; the verdict, distance and phone check stay with the office
+    if (out.summary) out.summary.events = [];
+    if (out.presence) out.presence = { result: "recorded", loc_off: /^(denied|unsupported)$/.test(ev.loc_status || ""), retry: !!(placeEv && ev.presence !== "verified" && /^(timeout|unavailable|imprecise|stale|uncertain|none)$/.test(ev.presence_reason || "")) };
+    out.event = { id: ev.id, kind: ev.kind, at: ev.at, recv_at: ev.recv_at, ref_name: ev.ref_name, act_note: ev.act_note };
+  }
   return out;
 };
 /* "Test my location" for the office: runs the exact same server check against a jobsite, saves nothing. */
@@ -560,6 +589,10 @@ ACTIONS.ttMyWeek = function (me, b) {
   if (emp !== normEmail(me.email) && !ttCanReview(me, emp)) throw ttErr(me, "No puedes ver las horas de esa persona.", "You can't see that person's hours.");
   var d = /^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow());
   var out = ttWeekOf(emp, ttWeekStart(d), emp !== normEmail(me.email)); out.today = ttDayOf(ttNow()); out.me = emp === normEmail(me.email);
+  if (out.me && ttRow(me).role === "crew") {                                              // crew looking at their own week: times and jobsites, no verdicts
+    out.exceptions = []; out.replaced = []; out.conflicts = [];
+    out.days.forEach(function (dd) { dd.shifts.forEach(function (s) { s.events = s.events.map(function (e) { return { id: e.id, kind: e.kind, at: e.at, act: e.act, act_note: e.act_note, ref_name: e.ref_name, source: e.source }; }); }); });
+  }
   if (isStaff(ttRow(me))) { var all = []; out.days.forEach(function (dd) { dd.shifts.forEach(function (s) { all = all.concat(s.events); }); }); ttFillAddr(all.concat(out.replaced || []), 40); }
   return out;
 };
@@ -835,6 +868,7 @@ ACTIONS.ttSetPerson = function (me, b) {
   if (b.supervisor != null) { var s = normEmail(b.supervisor); if (s && (!findPerson(s) || s === e)) throw new Error("Pick a different supervisor."); patch.supervisor = s; }
   if (b.pay_type != null) { if (["hourly", "exempt", ""].indexOf(b.pay_type) < 0) throw new Error("Pay type: hourly or exempt."); patch.pay_type = b.pay_type; }
   if (b.clock != null) patch.clock = b.clock ? "yes" : "no";
+  if (b.crew_level != null) { if (p.role !== "crew") throw new Error("Only #crew have a level."); patch.crew_level = b.crew_level === "labor" ? "labor" : "supervisor"; }
   ttAudit(me, e, "person_settings", e, { perms: p.perms, supervisor: p.supervisor, pay_type: p.pay_type, clock: p.clock }, patch, ""); update("People", "email", e, patch);
   try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
   return { ok: true };
@@ -845,7 +879,7 @@ ACTIONS.ttSettings = function (me, b) {
   if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
   return { all: ttAll(), week_start: ttCfg().week_start, perms: TT_PERMS, people: ttTeam().map(function (p) {
     return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: ttEnabled(p), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
-      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };
+      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), crew_level: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "supervisor") : "", has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };
   }) };
 };
 ACTIONS.ttSetAbsence = function (me, b) {
