@@ -400,6 +400,7 @@
   function renderList() {
     var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
     var list = list0, view = staff() ? (S.home || (S.viewAs ? "projects" : "today")) : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
+    if (S.home === "tt" && ttOn()) view = "tt"; var ttc = S.me && S.me.crew && ttOn() ? ttCard() : "";
     var deleted = list.filter(function (p) { return p.status === "deleted"; }); list = list.filter(function (p) { return p.status !== "deleted"; });
     var active = list.filter(function (p) { return p.status !== "archived"; }), archived = list.filter(function (p) { return p.status === "archived"; });
     var unreadAll = active.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
@@ -413,13 +414,14 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]]).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
-    if (!staff() && lsRoleMe) head = head + '<div class="chips home-chips">' + [["projects", "Projects"], ["ls", lsRoleMe === "crew" ? "My route" : "My property"]].map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
+    if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + [["projects", "Projects"]].concat(lsRoleMe ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : [], ttc ? [["tt", tx("my")]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
-    if (view === "today" && staff() && !S.viewAs) return head + todayView();
-    if (view === "ls") return head + '<div class="ls-wrap">' + lsView() + "</div>";
+    if (view === "tt") return head + ttView();
+    if (view === "today" && staff() && !S.viewAs) return head + ttCard() + todayView();
+    if (view === "ls") return head + ttc + '<div class="ls-wrap">' + lsView() + "</div>";
     if (view === "gr" && staff() && !S.viewAs) return head + '<div class="ls-wrap gr-wrap">' + grView() + "</div>";
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
@@ -432,7 +434,7 @@
         stat("Billed", money(t.billed), pctOf(t.billed, t.total) + "% of the contracts") + stat("Collected", money(t.paid), pctOf(t.paid, t.total) + "% of the contracts") +
         stat("To collect", money(t.waiting), t.overdue ? '<span style="color:var(--bad)">' + money(t.overdue) + " overdue</span>" : "Nothing overdue" + (t.held ? " · " + money(t.held) + " retainage held" : "")) + "</div>";
     }
-    return head + portfolio + homePins() +
+    return head + ttc + portfolio + homePins() +
       (active.length ? '<div class="projects">' + active.map(card).join("") + "</div>" : '<div class="empty">' + (staff() ? "No projects yet. Create the first one." : "There's no project on your account yet. Blue Sierra will add it soon.") + "</div>") +
       (archived.length ? '<div class="section-title"><h2>Archived</h2></div><div class="projects">' + archived.map(card).join("") + "</div>" : "") +
       (deleted.length ? '<div class="section-title"><h2>Recently deleted</h2><span class="muted small">Only you see these.</span></div><div class="card" style="display:flex;flex-direction:column;gap:10px">' + deleted.map(function (p) { return '<div class="team-row"><div style="flex:1"><b style="font-weight:500">' + esc(p.name) + '</b><div class="muted small">' + esc([p.client_name, p.city].filter(Boolean).join(" · ")) + '</div></div><button class="btn ghost sm" data-a="restoreProject" data-id="' + esc(p.id) + '">Restore</button><button class="btn ghost sm danger-txt" data-a="modal" data-m="purge" data-id="' + esc(p.id) + '">Delete forever</button></div>'; }).join("") + "</div>" : "");
@@ -2227,7 +2229,7 @@
         run(null, async function () { try { await call("deleteMessage", { messageId: gone }); } catch (e) { await refresh(); throw e; } toast("Deleted"); }); }); return;
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
-        S.home = b.dataset.v; if (b.dataset.v === "today") { S.td = null; S.fromToday = 0; } if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null;
+        S.home = b.dataset.v; if (b.dataset.v === "today") { S.td = null; S.fromToday = 0; } if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null; if (b.dataset.v === "tt") { S.ttW = null; S.ttR = null; S.ttWeekQ = {}; S.ttMapOn = 0; S.ttBusy = 0; ttLoad(); }
         if (b.dataset.v === "finance" && S.fin && S.fin.err) S.fin = null;
         refreshList(); if (S.pid) return go(null); return keepScroll(render);
       case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
@@ -2562,7 +2564,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261108104233";
+  var BUILD = "20261110095646";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4842,6 +4844,7 @@
     if (l.type === "opp") { S.home = "gr"; S.grId = l.id; S.grSub = l.sub || "overview"; S.grI = null; S.grE = null; S.grK = null; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "grtab") { S.home = "gr"; S.grId = null; S.grTab = l.tab; window.scrollTo(0, 0); return keepScroll(render); }
     if (l.type === "projects") { S.home = "projects"; window.scrollTo(0, 0); return keepScroll(render); }
+    if (l.type === "time") { S.home = "tt"; S.ttTab = "team"; S.ttWeekQ = { emp: l.emp, week: l.week }; S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
     S.home = "ls"; window.scrollTo(0, 0);
     if (l.type === "lsday") { S.lsTab = "schedule"; S.lsMode = "map"; S.lsPTab = "route"; S.lsMob = "list"; S.lsMapDay = l.date; if (l.visit && S.ls && S.ls.visits && S.ls.visits.some(function (v) { return v.id === l.visit; })) S.modal = { type: "lsWork", id: l.visit }; }
     else S.lsTab = { requests: "requests", estimates: "est", costs: "costs", lstab: l.tab }[l.type] || "today";
@@ -4875,6 +4878,427 @@
   lsModal = function (m) {
     if (m.type === "lsxTdNote") return '<h2>Note</h2><p class="muted small">' + esc(m.title) + '</p><form class="form" data-form="tdNote"><label class="f">Visible to the office on this item<textarea name="note" rows="3" maxlength="300">' + esc(m.note) + '</textarea></label><div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
     return _lsModalTd(m);
+  };
+  /* ================= Time & attendance: clock card, My hours, corrections, team review =================
+     Every tap gets its own key, so a double tap or a retry never saves twice. Without signal the tap waits in
+     this phone's queue (marked offline) and is sent when the connection is back. Location is asked only on a tap. */
+  var TTX = {
+    es: { off: "Fuera de jornada", work: "Trabajando", rest: "Descanso pagado", meal: "Comida (sin pago)", "in": "Check in", out: "Check out", meal_start: "Iniciar comida", meal_end: "Terminar comida", rest_start: "Descanso pagado", rest_end: "Terminar descanso", "switch": "Cambiar trabajo",
+      since: "desde", my: "Mis horas", fix: "Solicitar corrección", what: "¿Qué se registra?", saved: "Guardado", pending: "Pendiente de enviar", err: "No se guardó", retry: "Reintentar", locating: "Obteniendo ubicación…", saving: "Guardando…",
+      pick: "¿En qué vas a trabajar?", route: "Tu ruta de hoy", acts: "Otra actividad", other: "Otro proyecto o propiedad", a_work: "Trabajo", a_load: "Carga / preparación en el yard", a_travel: "Traslado entre trabajos", a_materials: "Compra de materiales", a_disposal: "Basura / disposición", a_office: "Trabajo de oficina", a_unassigned: "Sin asignar (lo eliges después)", rest_seg: "Descanso pagado",
+      today: "Hoy", total: "Pagado", mealt: "Comida", week: "Semana", confirm: "Mis horas están bien", mismatch: "Algo no cuadra", confirmed: "Confirmaste esta semana", discrep: "Dijiste que algo no cuadra", open: "Abierta: falta la salida",
+      corr: "Correcciones", c_pending: "En revisión", c_needs_info: "Te pidieron detalles", c_approved: "Aprobada", c_rejected: "Rechazada", c_withdrawn: "Retirada", approved_c: "Corrección aprobada", answer: "Responder", withdraw: "Retirar", question: "Cuestionar decisión",
+      l_inside: "en el lugar", l_outside: "lejos del lugar", l_unknown: "ubicación no concluyente", l_none: "", l_nozone: "", loc_off: "sin ubicación", offline: "sin señal (hora del teléfono)", declared: "ubicación declarada",
+      sumT: "Salida guardada", sumQ: "¿Falta registrar algo del día?", allgood: "Todo bien", items: "Pendientes de revisar", noitems: "Nada pendiente.", est: "Estimado, no es pago neto",
+      r_missed_in: "Olvidé marcar entrada", r_missed_out: "Olvidé marcar salida", r_wrong_job: "Trabajo equivocado", r_meal: "Comida no registrada", r_tech: "Problema técnico", r_other: "Otro", r_declared: "Hora indicada al marcar", explain: "¿Qué pasó?", place: "¿Dónde estabas? (opcional, queda como ubicación declarada)", send: "Enviar solicitud",
+      day: "Día", tin: "Hora de entrada", tout: "Hora de salida", whichShift: "Jornada", which: "Registro", newTime: "Hora correcta", newJob: "Trabajo correcto", mstart: "Inicio de comida", mend: "Fin de comida", lang: "English",
+      prevWeek: "Semana anterior", nextWeek: "Semana siguiente", nothing: "Sin registros esta semana.", reg: "Regular", ot: "Overtime", dt: "Doble", why: "Así funciona",
+      x_missing_out: "Falta la hora de salida", x_open_long: "Jornada abierta mucho tiempo", x_unassigned: "Tiempo sin trabajo asignado", x_meal: "Comida por revisar", x_no_location: "Sin ubicación al marcar (tu hora cuenta igual)",
+      x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada" },
+    en: { off: "Off the clock", work: "Working", rest: "Paid rest break", meal: "Meal (unpaid)", "in": "Check in", out: "Check out", meal_start: "Start meal", meal_end: "End meal", rest_start: "Paid rest", rest_end: "End rest", "switch": "Change job",
+      since: "since", my: "My hours", fix: "Request a correction", what: "What gets recorded?", saved: "Saved", pending: "Waiting to send", err: "Not saved", retry: "Retry", locating: "Getting location…", saving: "Saving…",
+      pick: "What are you working on?", route: "Today's route", acts: "Other activity", other: "Another project or property", a_work: "Job work", a_load: "Loading / yard prep", a_travel: "Travel between jobs", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_office: "Office work", a_unassigned: "Not assigned (pick later)", rest_seg: "Paid rest",
+      today: "Today", total: "Paid", mealt: "Meal", week: "Week", confirm: "My hours are right", mismatch: "Something's off", confirmed: "You confirmed this week", discrep: "You said something's off", open: "Open: check-out missing",
+      corr: "Corrections", c_pending: "In review", c_needs_info: "Details requested", c_approved: "Approved", c_rejected: "Rejected", c_withdrawn: "Withdrawn", approved_c: "Approved correction", answer: "Answer", withdraw: "Withdraw", question: "Question the decision",
+      l_inside: "at the place", l_outside: "away from the place", l_unknown: "location inconclusive", l_none: "", l_nozone: "", loc_off: "no location", offline: "no signal (phone's clock)", declared: "declared location",
+      sumT: "Check-out saved", sumQ: "Anything missing from today?", allgood: "All good", items: "To review", noitems: "Nothing to review.", est: "Estimate, not net pay",
+      r_missed_in: "Forgot to check in", r_missed_out: "Forgot to check out", r_wrong_job: "Wrong job", r_meal: "Meal not recorded", r_tech: "Technical problem", r_other: "Other", r_declared: "Time given when clocking", explain: "What happened?", place: "Where were you? (optional, saved as a declared location)", send: "Send request",
+      day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "Español",
+      prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works" }
+  };
+  function ttL() { return (S.tt && S.tt.lang) || (S.me && S.me.crew ? "es" : "en"); }
+  function tx(k) { var d = TTX[ttL()]; return d[k] != null ? d[k] : TTX.en[k] != null ? TTX.en[k] : k; }
+  function ttOn() { return !!(S.me && (S.me.crew || staff()) && !S.viewAs); }
+  function ttHm24(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Los_Angeles" }); }
+  function ttHm(iso) { var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(ttL() === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" }); }
+  function ttDur(min) { min = Math.max(0, Math.round(min || 0)); var h = Math.floor(min / 60), m = min % 60; return h ? h + " h" + (m ? " " + String(m).padStart(2, "0") + " min" : "") : m + " min"; }
+  function ttDayName(d) { return new Date(d + "T12:00:00").toLocaleDateString(ttL() === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric" }); }
+  function ttJobName(j) { if (!j) return ""; return j.act === "work" ? (j.ref_name || tx("a_work")) : tx("a_" + j.act); }
+  function ttKey() { return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+  function ttQKey() { return "bsp_ttq_" + (S.me && S.me.key); }
+  function ttQ(v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(ttQKey()) || "[]"); localStorage.setItem(ttQKey(), JSON.stringify(v)); } catch (e) { return v === undefined ? (S.ttMemQ || []) : (S.ttMemQ = v); } }
+  function ttLoad() { if (S.ttBusy) return; S.ttBusy = 1; call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; }).catch(function (e) { S.ttErr = e.message; }).then(function () { S.ttBusy = 0; ttFlush(); keepScroll(render); }); }
+  function ttLoc() {
+    return new Promise(function (res) {
+      if (!navigator.geolocation) return res({ status: "unsupported" }); var done = 0, t = setTimeout(function () { if (!done) { done = 1; res({ status: "timeout" }); } }, 8000);
+      navigator.geolocation.getCurrentPosition(function (p) { if (done) return; done = 1; clearTimeout(t); res({ status: "ok", lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: new Date(p.timestamp).toISOString() }); },
+        function (er) { if (done) return; done = 1; clearTimeout(t); res({ status: er.code === 1 ? "denied" : er.code === 3 ? "timeout" : "unavailable" }); }, { enableHighAccuracy: true, timeout: 7500, maximumAge: 0 });
+    });
+  }
+  var TT_NEXT = { "in": "work", out: "off", meal_start: "meal", meal_end: "work", rest_start: "rest", rest_end: "work", "switch": "work" };
+  /* A time the person types (instead of "now") never replaces the clock: the tap is saved at the real time and the
+     typed time goes to the office as a request ("time given when clocking"). */
+  async function ttDeclare(evId, declared, kind) {
+    try { await call("ttRequestCorrection", { reason: "declared", explain: (ttL() === "es" ? "Hora indicada al marcar " : "Time given when clocking ") + (kind === "in" ? "entrada" : "salida") + ": " + declared.slice(11), changes: [{ op: "move", target: evId, at: declared }] });
+      S.ttSync = { st: "ok", at: new Date().toISOString(), note: ttL() === "es" ? "La hora " + ttHm12(declared) + " quedó pendiente de aprobar" : "The time " + ttHm12(declared) + " is waiting for approval" }; }
+    catch (e) { var es0 = ttL() === "es"; S.ttSync = { st: "warn", msg: (es0 ? "Tu " + (kind === "in" ? "entrada" : "salida") + " sí quedó guardada (hora real). La hora " + ttHm12(declared) + " no se pudo pedir: " : "Your " + (kind === "in" ? "check-in" : "check-out") + " is saved (real time). The time " + ttHm12(declared) + " couldn't be requested: ") + e.message + (es0 ? " Avísale a la oficina." : " Tell the office.") }; }
+  }
+  function ttHm12(local) { var h = +local.slice(11, 13), m = local.slice(14, 16); return ((h % 12) || 12) + ":" + m + (h < 12 ? " am" : " pm"); }
+  async function ttDo(kind, job, declared) {
+    if (S.ttWorking) return; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
+    var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 80) }, job || {});
+    if (declared) ev.declare_at = declared;
+    ev.loc = await ttLoc(); S.ttSync = { st: "saving" }; keepScroll(render);
+    try {
+      if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
+      var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); S.ttSync = { st: "ok", at: r.event.recv_at };
+      if (r.summary) { if (ttSimple()) S.ttLast = { at: r.event.at, min: r.state.today_min, shift: r.summary.id, ask: !!r.summary.ask_meal }; else S.modal = { type: "lsxTtSum", s: r.summary }; }
+      if (declared) await ttDeclare(r.event.id, declared, kind);
+      if (job && job.ref_id) try { localStorage.setItem("bsp_tt_last_" + S.me.key, job.ref_type + "|" + job.ref_id); } catch (x) {}
+    } catch (e) {
+      if (e instanceof TypeError || /fetch|network|offline/i.test(e.message)) {
+        ev.offline = true; var q = ttQ(); q.push(ev); ttQ(q); S.ttSync = { st: "pending", n: q.length };
+        S.tt = Object.assign(S.tt || {}, { mode: TT_NEXT[kind], shift: kind === "out" ? null : Object.assign({}, (S.tt && S.tt.shift) || { start: ev.device_at }, kind === "in" || kind === "switch" ? { job: job } : {}) });
+      } else { S.ttSync = { st: "err", msg: e.message }; }
+    }
+    S.ttWorking = 0; keepScroll(render);
+  }
+  async function ttFlush() {
+    var q = ttQ(); if (!q.length || S.ttFlushing || !navigator.onLine) { if (q.length) S.ttSync = { st: "pending", n: q.length }; return; }
+    S.ttFlushing = 1;
+    try {
+      while (q.length) {
+        var ev = q[0];
+        try { var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); if (ev.declare_at && r.event && !r.dup) await ttDeclare(r.event.id, ev.declare_at, ev.kind); if (r.status === "conflict") S.ttSync = { st: "err", msg: ttL() === "es" ? "Un registro sin señal no cuadró; la oficina lo revisará." : "An offline record didn't fit; the office will review it." }; }
+        catch (e) { if (e instanceof TypeError) break; S.ttSync = { st: "err", msg: e.message }; }
+        q.shift(); ttQ(q);
+      }
+      if (!q.length && (!S.ttSync || S.ttSync.st === "pending")) S.ttSync = { st: "ok", at: new Date().toISOString() };
+    } finally { S.ttFlushing = 0; keepScroll(render); }
+  }
+  window.addEventListener("online", function () { if (S.token) ttFlush(); });
+  setInterval(function () {
+    if (!S.token || !ttOn()) return; if (ttQ().length) ttFlush();
+    document.querySelectorAll("[data-tt-since]").forEach(function (el) { el.textContent = ttDur((Date.now() - new Date(el.dataset.ttSince)) / 6e4); });
+    document.querySelectorAll("[data-tts-clock]").forEach(function (el) { el.textContent = ttHm(new Date().toISOString()); });
+  }, 10000);
+  function ttSyncLine() {
+    var s = S.ttSync, q = ttQ().length;
+    if (q) return '<span class="tt-sync pend">● ' + tx("pending") + " (" + q + ') <button class="link small" data-a="ttFlush">' + tx("retry") + "</button></span>";
+    if (!s) return ""; if (s.st === "locating") return '<span class="tt-sync">' + tx(ttSimple() ? "saving" : "locating") + "</span>"; if (s.st === "saving") return '<span class="tt-sync">' + tx("saving") + "</span>";
+    if (s.st === "err") return '<span class="tt-sync bad">✕ ' + tx("err") + ": " + esc(s.msg) + "</span>";
+    if (s.st === "warn") return '<span class="tt-sync bad">⚠ ' + esc(s.msg) + "</span>";
+    return '<span class="tt-sync ok">✓ ' + tx("saved") + (s.at ? " " + ttHm(s.at) : "") + (s.note ? " · " + esc(s.note) : "") + "</span>";
+  }
+  /* ---- the crew's screen: pick the place with one tap, tap the clock. Location is taken quietly for the office. ---- */
+  function ttSimple() { return !!(S.me && S.me.crew && !staff()); }
+  var TT_CLOCK = '<svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M24 12v13l8 5" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function ttPlaces() {
+    var g = (S.tt && S.tt.suggest) || {}, out = [], seen = {};
+    (g.visits || []).map(function (v) { return Object.assign({ route: 1 }, v); }).concat(g.projects || [], g.properties || []).forEach(function (o) { var k = o.name.toLowerCase(); if (seen[k]) return; seen[k] = 1; out.push(o); });
+    return out;
+  }
+  function ttPickDefault(list) {
+    var last = ""; try { last = localStorage.getItem("bsp_tt_last_" + S.me.key) || ""; } catch (e) {}
+    var hit = list.filter(function (o) { return o.ref_type + "|" + o.ref_id === last; })[0] || list.filter(function (o) { return o.route; })[0];
+    return hit ? hit.ref_type + "|" + hit.ref_id : "";
+  }
+  function ttSimpleCard() {
+    var t = S.tt, m = t.mode || "off", sh = t.shift, es = ttL() === "es", busy = S.ttWorking, places = ttPlaces(), working = m !== "off";
+    if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
+    var showPlaces = !working || S.ttsChange, max = S.ttsMore ? 99 : 6;
+    var tiles = places.slice(0, max).map(function (o) { var k = o.ref_type + "|" + o.ref_id, on = working ? sh && sh.job && sh.job.ref_type + "|" + sh.job.ref_id === k : S.ttsPick === k;
+      return '<button class="tts-place' + (on ? " on" : "") + '" data-a="' + (working ? "ttsSwitch" : "ttsPlace") + '" data-k="' + esc(k) + '" aria-pressed="' + !!on + '"><b>' + esc(o.name) + "</b>" + (o.sub ? "<small>" + esc(o.route ? (es ? "Hoy en tu ruta · " : "On today's route · ") + o.sub.replace(/ · stop \d+$/, "") : o.sub) + "</small>" : "") + (on ? '<i class="tts-check">✓</i>' : "") + "</button>"; }).join("");
+    var more = places.length > 6 ? '<button class="link small" data-a="ttsMore">' + (S.ttsMore ? (es ? "Ver menos" : "Show fewer") : (es ? "Ver más lugares (" : "More places (") + (places.length - 6) + ")") + "</button>" : "";
+    var placeBox = places.length ? '<div class="tts-places">' + tiles + "</div>" + more : '<p class="muted">' + (es ? "No tienes proyectos asignados todavía. Avísale a la oficina." : "No projects assigned yet. Tell the office.") + "</p>";
+    var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick;
+    var clock = '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
+      (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
+      '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>";
+    var head = working ? '<div class="tts-now"><span class="tt-dot"></span><div><b>' + (es ? "Trabajando en " : "Working at ") + esc(ttJobName(sh && sh.job) || "—") + "</b><small>" + (es ? "Entraste " : "Started ") + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small></div></div>" +
+        '<button class="link small" data-a="ttsChange">' + (S.ttsChange ? (es ? "Cerrar" : "Close") : (es ? "¿Te cambiaste de lugar?" : "Moved to another place?")) + "</button>" + (S.ttsChange ? '<div class="tts-q">' + (es ? "Toca el nuevo lugar:" : "Tap the new place:") + "</div>" + placeBox : "")
+      : (S.ttLast ? '<div class="tts-done">✓ ' + (es ? "Salida guardada " : "Check-out saved ") + ttHm(S.ttLast.at) + " · " + (es ? "hoy trabajaste " : "today: ") + ttDur(S.ttLast.min) + "</div>" + ttMealBox() : "") +
+        '<div class="tts-q"><span class="tts-n">1</span>' + (es ? "¿Dónde vas a trabajar?" : "Where are you working?") + "</div>" + placeBox;
+    return '<div class="card tts tt-' + m + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + head +
+      (working ? "" : '<div class="tts-q"><span class="tts-n">2</span>' + (es ? "Toca el reloj para marcar tu entrada" : "Tap the clock to check in") + "</div>") + clock +
+      '<div class="tt-foot">' + ttSyncLine() + '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span></div></div>";
+  }
+  function ttMealBox() {
+    var L0 = S.ttLast, es = ttL() === "es"; if (!L0 || !L0.ask) return "";
+    if (L0.answered) return '<div class="tts-meal done">✓ ' + esc(L0.answered) + "</div>";
+    if (!S.ttMealYes) return '<div class="tts-meal"><b>' + (es ? "¿Tomaste tu comida hoy?" : "Did you take your meal today?") + '</b><div class="tts-meal-b">' +
+      '<button class="btn" data-a="ttsMeal" data-v="yes">' + (es ? "Sí" : "Yes") + '</button><button class="btn ghost" data-a="ttsMeal" data-v="none">' + (es ? "No tomé comida" : "No meal") + '</button><button class="btn ghost" data-a="ttsMeal" data-v="interrupted">' + (es ? "Comí pero seguí trabajando" : "Ate while working") + "</button></div></div>";
+    return '<div class="tts-meal"><b>' + (es ? "¿A qué hora empezaste a comer?" : "What time did you start eating?") + '</b><input type="time" data-tts-meal value="' + esc(S.ttMealAt || "12:00") + '"><b>' + (es ? "¿Cuánto duró?" : "How long?") + '</b><div class="tts-meal-b">' +
+      '<button class="btn" data-a="ttsMealGo" data-m="30">30 min</button><button class="btn" data-a="ttsMealGo" data-m="60">' + (es ? "1 hora" : "1 hour") + '</button><button class="btn ghost" data-a="ttsMeal" data-v="back">' + (es ? "Atrás" : "Back") + "</button></div>" +
+      '<small class="muted">' + (es ? "La oficina lo revisa antes de descontarlo." : "The office reviews it before it's deducted.") + "</small></div>";
+  }
+  async function ttMealSend(b, body) {
+    var es = ttL() === "es";
+    return run(b, async function () {
+      await call("ttMeal", Object.assign({ shift_id: S.ttLast.shift }, body)); S.ttMealYes = 0;
+      S.ttLast.answered = body.answer === "took" ? (es ? "Gracias. Tu comida (" + body.minutes + " min) quedó para que la oficina la apruebe." : "Thanks. Your meal (" + body.minutes + " min) is waiting for the office.") : (es ? "Gracias, quedó anotado." : "Thanks, noted.");
+      keepScroll(render);
+    });
+  }
+  function nowHm24() { var d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+  function ttCard() {
+    if (!ttOn()) return ""; if (S.tt && !S.tt.enabled) return ""; if (S.tt && ttSimple()) return ttSimpleCard(); if (!S.tt) { if (!S.ttErr) ttLoad(); if (!S.ttErr && S.me.crew) return ""; return S.ttErr ? '<div class="card tt-card"><b>' + esc(tx("my")) + "</b> · " + esc(S.ttErr) + ' <button class="link" data-a="ttReload">' + tx("retry") + "</button></div>" : '<div class="card tt-card tt-load">' + tx("my") + "…</div>"; }
+    var t = S.tt, m = t.mode || "off", sh = t.shift, busy = S.ttWorking;
+    var b = function (k, cls) { return '<button class="btn tt-b ' + (cls || "") + '" data-a="ttTap" data-k="' + k + '"' + (busy ? " disabled" : "") + ">" + tx(k) + "</button>"; };
+    var btns = m === "off" ? b("in", "big") : m === "work" ? b("switch", "ghost") + b("meal_start", "ghost") + b("rest_start", "ghost") + b("out", "big out") : m === "meal" ? b("meal_end", "big") + b("out", "ghost") : b("rest_end", "big") + b("out", "ghost");
+    var news = (t.news || []).length ? '<button class="tt-news" data-a="ttMy">' + (t.news.length === 1 ? (ttL() === "es" ? "Decidieron tu corrección: " : "Your correction was decided: ") + tx("c_" + t.news[0].status) : t.news.length + (ttL() === "es" ? " correcciones decididas" : " corrections decided")) + " ›</button>" : "";
+    return '<div class="card tt-card tt-' + m + '"><div class="tt-top"><span class="tt-dot"></span><div class="tt-st"><b>' + tx(m) + "</b>" +
+      (sh && sh.start ? '<small class="muted">' + tx("since") + " " + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small>" : '<small class="muted">' + tx("today") + ": " + ttDur(t.today_min) + "</small>") + "</div>" +
+      '<button class="link small tt-lang" data-a="ttLang">' + tx("lang") + "</button></div>" +
+      (sh && sh.job && m !== "off" ? '<div class="tt-job">' + esc(ttJobName(sh.job)) + "</div>" : "") +
+      '<div class="tt-btns">' + btns + "</div>" + news + '<div class="tt-foot">' + ttSyncLine() + '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttFix">' + tx("fix") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span></div></div>";
+  }
+  function ttPicker(kind) {
+    var g = (S.tt && S.tt.suggest) || {}, row = function (o, act) { return '<button class="tt-pick" data-a="ttPick" data-kind="' + kind + '" data-act="' + act + '" data-rt="' + esc(o.ref_type || "") + '" data-ri="' + esc(o.ref_id || "") + '"><b>' + esc(o.name) + "</b>" + (o.sub ? "<small>" + esc(o.sub) + "</small>" : "") + "</button>"; };
+    var other = (g.properties || []).concat(g.projects || []);
+    return "<h2>" + tx("pick") + "</h2>" + ((g.visits || []).length ? '<div class="eyebrow">' + tx("route") + '</div><div class="tt-picks">' + g.visits.map(function (v) { return row(v, "work"); }).join("") + "</div>" : "") +
+      '<div class="eyebrow">' + tx("acts") + '</div><div class="tt-picks">' + ["load", "travel", "materials", "disposal", "office", "unassigned"].map(function (a) { return row({ name: tx("a_" + a) }, a); }).join("") + "</div>" +
+      (other.length ? '<div class="eyebrow">' + tx("other") + '</div><div class="row2"><select class="tt-other">' + other.map(function (o) { return '<option value="' + esc(o.ref_type + "|" + o.ref_id) + '">' + esc(o.name) + (o.ref_type === "project" ? " (project)" : "") + "</option>"; }).join("") + '</select><button class="btn" data-a="ttPickOther" data-kind="' + kind + '">OK</button></div>' : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">' + (ttL() === "es" ? "Cancelar" : "Cancel") + "</button></div>";
+  }
+  function ttSegs(s) {
+    return '<div class="tt-segs">' + s.segs.map(function (g) { return '<span class="tt-seg' + (g.kind === "rest" ? " rest" : g.act === "unassigned" ? " un" : "") + '">' + esc(g.kind === "rest" ? tx("rest_seg") : ttJobName(g)) + " · " + ttDur(g.min) + "</span>"; }).join("") +
+      s.meals.map(function (x) { return '<span class="tt-seg meal">' + tx("mealt") + " · " + ttDur(x.min) + "</span>"; }).join("") + "</div>";
+  }
+  function ttEvBadge(e) {
+    var out = [];
+    if (e.source === "correction") out.push('<span class="pill gold">' + tx("approved_c") + "</span>");
+    if (e.source === "supervisor") out.push('<span class="pill">' + (ttL() === "es" ? "Registrado por " : "Recorded by ") + esc(e.actor) + "</span>");
+    if (e.offline) out.push('<span class="pill">' + tx("offline") + "</span>");
+    if (e.loc_status === "declared") out.push('<span class="pill">' + tx("declared") + ": " + esc(e.zone_name) + "</span>");
+    else if (ttSimple()) { /* location stays internal for the office */ }
+    else if (["denied", "timeout", "unavailable", "unsupported", "none"].indexOf(e.loc_status) > -1) { if (e.source !== "correction") out.push('<span class="pill">' + tx("loc_off") + "</span>"); }
+    else if (tx("l_" + e.zone)) out.push('<span class="pill' + (e.zone === "outside" ? " bad" : "") + '">📍 ' + tx("l_" + e.zone) + (e.acc ? " ±" + Math.round(e.acc) + " m" : "") + "</span>");
+    if (e.status === "conflict") out.push('<span class="pill bad">' + (ttL() === "es" ? "no cuadró" : "didn't fit") + "</span>");
+    return out.join("");
+  }
+  function ttShiftHtml(s, rev) {
+    var evs = s.events.filter(function (e) { return e.kind !== "in" && e.kind !== "out"; }), first = s.events.filter(function (e) { return e.kind === "in"; })[0], last = s.events.filter(function (e) { return e.kind === "out"; })[0];
+    return '<div class="tt-shift' + (s.open ? " open" : "") + (s.voided ? " void" : "") + '"><div class="tt-sh-h"><b>' + ttHm(s.start) + " → " + (s.end ? ttHm(s.end) : '<span class="bad-t">' + tx("open") + "</span>") + "</b><span>" + (s.voided ? "Voided" : ttDur(s.paid_min)) + "</span></div>" +
+      ttSegs(s) + '<div class="tt-evs">' + (first ? "<span>" + tx("in") + " " + ttHm(first.at) + " " + ttEvBadge(first) + "</span>" : "") + evs.map(function (e) { return "<span>" + tx(e.kind) + " " + ttHm(e.at) + " " + ttEvBadge(e) + "</span>"; }).join("") + (last ? "<span>" + tx("out") + " " + ttHm(last.at) + " " + ttEvBadge(last) + "</span>" : "") + "</div>" +
+      (rev ? '<button class="link small" data-a="ttOfficeFix" data-sid="' + esc(s.id) + '" data-day="' + esc(s.day) + '">Office correction</button>' : "") + "</div>";
+  }
+  function ttWeekLoad() { var w = S.ttWeekQ || {}; S.ttW = { loading: 1 }; call("ttMyWeek", w).then(function (r) { S.ttW = r; if (r.me && S.tt && (S.tt.news || []).length) { call("ttSeen", {}).catch(function () {}); S.tt.news = []; } }).catch(function (e) { S.ttW = { err: e.message }; }).then(function () { keepScroll(render); }); }
+  function ttWeekView() {
+    var w = S.ttW; if (!w) { ttWeekLoad(); return '<div class="loading">' + tx("my") + "…</div>"; } if (w.loading) return '<div class="loading">' + tx("my") + "…</div>";
+    if (w.err) return '<div class="card ls-incomplete">' + esc(w.err) + ' <button class="link" data-a="ttWeekReload">' + tx("retry") + "</button></div>";
+    var rev = !w.me, c = w.calc, es = ttL() === "es";
+    var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttWeekGo" data-d="-7" aria-label="' + tx("prevWeek") + '">‹</button><b>' + (rev ? esc(w.name) + " · " : "") + ttDayName(w.week.start) + " – " + ttDayName(w.week.end) + "</b>" +
+      '<button class="btn ghost sm" data-a="ttWeekGo" data-d="7" aria-label="' + tx("nextWeek") + '">›</button>' + (w.week.status === "closed" ? '<span class="pill">Closed v' + w.week.version + "</span>" : "") + "</div>";
+    var tot = '<div class="grid g4 tt-tot">' + stat(tx("total"), ttDur(w.totals.paid_min), tx("mealt") + ": " + ttDur(w.totals.meal_min)) + stat(tx("reg"), ttDur(c.reg), c.exempt ? (es ? "Exento: sin cálculo de overtime" : "Exempt: overtime not computed") : tx("est")) + stat(tx("ot"), ttDur(c.ot), "1.5×") + stat(tx("dt"), ttDur(c.dt), "2× · " + esc(c.rules.v)) + "</div>";
+    var days = w.days.filter(function (d) { return d.shifts.length; }).map(function (d) { return '<div class="card tt-day"><div class="tt-day-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + d.shifts.map(function (s) { return ttShiftHtml(s, rev); }).join("") + "</div>"; }).join("") || '<div class="empty">' + tx("nothing") + "</div>";
+    var rep = (w.replaced || []).length ? '<details class="tt-rep"><summary>' + (es ? "Registros reemplazados por correcciones (" : "Records replaced by corrections (") + w.replaced.length + ")</summary>" + w.replaced.map(function (e) { return "<div>" + tx(e.kind) + " " + ttDayName(e.at.slice(0, 10)) + " " + ttHm(e.at) + " " + ttEvBadge(e) + "</div>"; }).join("") + "</details>" : "";
+    var xs = w.exceptions.filter(function (x) { return rev || ["correction", "dispute"].concat(ttSimple() ? ["outside", "no_location"] : []).indexOf(x.kind) < 0; });
+    var exc = '<div class="card"><div class="eyebrow">' + tx("items") + "</div>" + (xs.length ? xs.map(function (x) { var es2 = !rev && ttL() === "es" && TTX.es["x_" + x.kind]; return '<div class="tt-exc p' + x.priority + '"><b>' + esc(es2 || x.title) + "</b><small>" + ttDayName(x.day) + (es2 ? "" : " · " + esc(x.why)) + "</small>" + (rev ? "<small>Next: " + esc(x.next) + "</small>" : "") + "</div>"; }).join("") : '<p class="muted small">' + tx("noitems") + "</p>") + "</div>";
+    var cors = w.corrections.length ? '<div class="card"><div class="eyebrow">' + tx("corr") + "</div>" + w.corrections.map(function (k, i) {
+      return '<div class="tt-cor"><div><b>' + esc(tx("r_" + k.reason) || k.reason) + "</b> · " + esc(k.date) + ' <span class="pill' + (k.status === "approved" ? " gold" : k.status === "rejected" ? " bad" : "") + '">' + tx("c_" + k.status) + "</span> " + (k.delta_min ? (k.delta_min > 0 ? "+" : "−") + ttDur(Math.abs(k.delta_min)) : "") + "</div>" +
+        "<small>" + esc(k.explain) + (k.decision_note ? " · " + esc(k.decided_by) + ": “" + esc(k.decision_note) + "”" : "") + (k.after_close ? " · " + (es ? "después del cierre" : "after close") : "") + "</small>" +
+        (w.me ? '<div class="tt-cor-a">' + (k.status === "needs_info" ? '<button class="link small" data-a="ttReply" data-i="' + i + '" data-mode="answer">' + tx("answer") + "</button> " : "") + (k.status === "pending" || k.status === "needs_info" ? '<button class="link small" data-a="ttReply" data-i="' + i + '" data-mode="withdraw">' + tx("withdraw") + "</button>" : "") + ((k.status === "approved" || k.status === "rejected") && !k.dispute ? '<button class="link small" data-a="ttReply" data-i="' + i + '" data-mode="dispute">' + tx("question") + "</button>" : "") + "</div>" : "") + "</div>";
+    }).join("") + "</div>" : "";
+    var conf = w.me ? '<div class="card tt-conf">' + (w.confirm ? "<b>" + tx(w.confirm.status === "ok" ? "confirmed" : "discrep") + "</b>" + (w.confirm.note ? " · " + esc(w.confirm.note) : "") : "") +
+      '<div class="tt-btns"><button class="btn ghost" data-a="ttConfirm" data-v="ok">' + tx("confirm") + '</button><button class="btn ghost" data-a="ttConfirm" data-v="discrepancy">' + tx("mismatch") + "</button></div>" +
+      '<p class="muted small">' + (es ? "Confirmar o no, tus horas trabajadas se pagan. Si algo falta, pide una corrección aunque la semana ya haya cerrado." : "Confirmed or not, the hours you worked are paid. If something is missing, request a correction even after the week closes.") + "</p></div>"
+      : '<div class="card tt-conf">' + (w.confirm ? "Employee: <b>" + esc(w.confirm.status === "ok" ? "confirmed" : "says something's off") + "</b>" + (w.confirm.note ? " · " + esc(w.confirm.note) : "") : "Employee hasn't confirmed (that doesn't hold up approval or pay).") + (w.approval ? "<br>Approved by " + esc(w.approval.by) + (w.approval.valid ? "" : ' · <b class="bad-t">hours changed after approval</b>') : "") +
+        '<div class="tt-btns"><button class="btn" data-a="ttApprove" data-emp="' + esc(w.emp) + '">Approve hours</button><button class="btn ghost" data-a="ttMap">Map of check-ins</button><button class="btn ghost" data-a="ttOfficeFix" data-sid="" data-day="">Office correction</button><button class="btn ghost" data-a="ttAbsence">Record absence</button></div></div>' + (S.ttMapOn ? '<div id="tt-map" class="tt-map"></div>' : "");
+    return head + tot + (w.open_shifts && w.me ? '<div class="card ls-incomplete">' + (es ? "Tienes una jornada abierta. Si ya saliste, pide la corrección con tu hora de salida real." : "A shift is still open. If you already left, request a correction with your real check-out time.") + "</div>" : "") + conf + days + rep + exc + cors;
+  }
+  function ttReviewLoad() { S.ttR = { loading: 1 }; call("ttReview", { week: S.ttRWeek || "" }).then(function (r) { S.ttR = r; }).catch(function (e) { S.ttR = { err: e.message }; }).then(function () { keepScroll(render); }); }
+  function ttReviewView() {
+    var r = S.ttR; if (!r) { ttReviewLoad(); return '<div class="loading">Loading the team\'s hours…</div>'; } if (r.loading) return '<div class="loading">Loading the team\'s hours…</div>';
+    if (r.err) return '<div class="card ls-incomplete">' + esc(r.err) + ' <button class="link" data-a="ttRReload">Try again</button></div>';
+    var w = r.week;
+    var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttRGo" data-d="-7">‹</button><b>Week ' + ttDayName(w.start) + " – " + ttDayName(w.end) + '</b><button class="btn ghost sm" data-a="ttRGo" data-d="7">›</button><span class="pill' + (w.status === "closed" ? " gold" : "") + '">' + (w.status === "closed" ? "Closed v" + w.version + " · " + esc(w.closed_by) : "Open") + "</span></div>";
+    var tbl = r.people.length ? '<div class="card tt-tbl"><table><thead><tr><th>Person</th><th>Paid</th><th>Reg</th><th>OT</th><th>DT</th><th>GPS vs. place</th><th>Items</th><th>Employee</th><th>Approval</th></tr></thead><tbody>' + r.people.map(function (p) {
+      return '<tr><td><button class="link" data-a="ttPerson" data-emp="' + esc(p.emp) + '">' + esc(p.name) + "</button>" + (p.pay_type ? ' <small class="muted">' + esc(p.pay_type) + "</small>" : "") + "</td><td>" + ttDur(p.paid_min) + "</td><td>" + ttDur(p.reg) + "</td><td>" + ttDur(p.ot) + "</td><td>" + ttDur(p.dt) + "</td><td>" + ttLocSum(p.loc) + "</td><td>" + (p.exceptions ? '<span class="pill">' + p.exceptions + "</span>" : "—") + (p.pending ? ' <span class="pill gold">' + p.pending + " to decide</span>" : "") + (p.open_shifts ? ' <span class="pill bad">open</span>' : "") +
+        "</td><td>" + (p.confirm ? (p.confirm.status === "ok" ? "✓ confirmed" : "says something's off") : '<span class="muted">—</span>') + "</td><td>" + (p.approval ? (p.approval.valid ? "✓ " + esc(p.approval.by) : '<span class="bad-t">changed</span>') : p.self ? '<span class="muted">another reviewer</span>' : '<button class="link small" data-a="ttApprove" data-emp="' + esc(p.emp) + '">Approve</button>') + "</td></tr>";
+    }).join("") + "</tbody></table></div>" : '<div class="empty">No hours recorded for this week by the people you review.</div>';
+    var cors = r.corrections.length ? '<h3 class="tt-h3">Corrections to decide</h3>' + r.corrections.map(function (k, i) {
+      var ch = k.changes.map(function (c) { return "<li>" + esc(c.op === "add" ? "Add " + c.kind + " at " + c.at_local : c.op === "move" ? "Change " + (c.orig_kind ? TTX.en[c.orig_kind] + " " + ttHm(c.orig_at) : "the record") + " → " + c.at_local.slice(11) + (c.orig_local && c.orig_local.slice(0, 10) !== c.at_local.slice(0, 10) ? " on " + c.at_local.slice(0, 10) : "") : c.op === "retag" ? "Change the job" + (c.orig_job ? " from " + ttJobName(c.orig_job) : "") + " to " + ttJobName(c.job) : c.op + " the shift") + (c.job && c.op === "add" ? " · " + esc(ttJobName(c.job)) : "") + "</li>"; }).join("");
+      return '<div class="card tt-dec"><div class="tt-dec-h"><b>' + esc(k.name) + "</b> · " + esc(k.date) + " · " + esc(TTX.en["r_" + k.reason] || "Office correction") + ' <span class="pill' + (k.delta_min > 0 ? " gold" : "") + '">' + (k.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(k.delta_min)) + "</span>" + (k.after_close ? ' <span class="pill bad">closed week</span>' : "") + (k.status === "needs_info" ? ' <span class="pill">waiting on their answer</span>' : "") + "</div>" +
+        '<div class="tt-side"><div><div class="eyebrow">The record now</div>' + (k.near.length ? k.near.map(function (s) { return "<small>" + ttDayName(s.day) + "</small>" + ttShiftHtml(s, false); }).join("") : '<p class="muted small">No shifts that day.</p>') + (k.assigned.length ? '<p class="small">Assigned that day: ' + k.assigned.map(function (a) { return esc(a.name) + " (" + esc(a.status) + ")"; }).join(", ") + "</p>" : "") + "</div>" +
+        '<div><div class="eyebrow">What they ask</div><ul class="small">' + ch + "</ul><p>“" + esc(k.explain) + "”</p>" + (k.declared_place ? '<p class="small">Declared location: ' + esc(k.declared_place) + "</p>" : "") + '<p class="muted small">Requested by ' + esc(k.requested_by) + " · " + esc(String(k.requested_at).slice(0, 16).replace("T", " ")) + " UTC</p>" +
+        k.history.slice(1).map(function (h) { return '<p class="small muted">' + esc(h.what) + (h.note ? ": “" + esc(h.note) + "”" : "") + "</p>"; }).join("") + "</div></div>" +
+        (k.can_decide ? '<div class="tt-dec-a"><input class="tt-note" data-i="' + i + '" placeholder="Note (required to reject or ask)"><button class="btn" data-a="ttDecide" data-i="' + i + '" data-d="approve">Approve</button><button class="btn ghost" data-a="ttDecide" data-i="' + i + '" data-d="ask">Ask</button><button class="btn ghost" data-a="ttDecide" data-i="' + i + '" data-d="reject">Reject</button></div>' : '<p class="muted small">Another reviewer has to decide this one' + (k.after_close ? " (closed week: accounting)" : "") + ".</p>") + "</div>";
+    }).join("") : "";
+    var close = w.status === "closed" ? (w.history.filter(function (h) { return h.what === "adjustment after close"; }).length ? '<div class="card"><div class="eyebrow">Adjustments after close</div>' + w.history.filter(function (h) { return h.what === "adjustment after close"; }).map(function (h) { return '<p class="small">v' + h.version + ": " + esc(h.emp) + " " + (h.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(h.delta_min)) + " (correction " + esc(h.corr) + ") · treat in the next payroll</p>"; }).join("") + "</div>" : "")
+      : r.can_close ? '<div class="card"><div class="eyebrow">Close the week for payroll</div>' + (r.blockers.length ? '<ul class="small">' + r.blockers.map(function (b) { return "<li>" + esc(b) + "</li>"; }).join("") + "</ul>" : '<p class="small">Every week is approved. Closing keeps a snapshot; later changes become numbered adjustments.</p>') + '<button class="btn" data-a="ttClose"' + (r.blockers.length ? " disabled" : "") + ">Close week</button></div>" : "";
+    return head + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
+  }
+  function ttLocSum(l) {
+    if (!l) return "—"; var out = [];
+    if (l.inside) out.push('<span class="pill" title="Taps within the picked place">✓ ' + l.inside + " at the place</span>");
+    if (l.outside) out.push('<span class="pill bad" title="Taps away from the place they picked">✕ ' + l.outside + " away</span>");
+    if (l.unknown) out.push('<span class="pill" title="Phone accuracy too low to tell">? ' + l.unknown + "</span>");
+    if (l.nogps) out.push('<span class="pill" title="Location off, denied or not available">' + l.nogps + " no GPS</span>");
+    return out.join(" ") || "—";
+  }
+  function ttView() {
+    if (!S.tt) { if (!S.ttErr) ttLoad(); return '<div class="loading">' + tx("my") + "…</div>"; }
+    var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", "Team review"]] : [], adm ? [["set", "Settings"]] : []);
+    if (!list.length) return '<div class="empty">' + (ttL() === "es" ? "El reloj todavía no está activado para ti." : "The clock isn't turned on for you yet.") + "</div>";
+    var tab = list.some(function (o) { return o[0] === S.ttTab; }) ? S.ttTab : list[0][0];
+    var tabs = list.length > 1 ? '<div class="chips tt-tabs">' + list.map(function (o) { return '<button class="chip' + (tab === o[0] ? " on" : "") + '" data-a="ttTab" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" : "";
+    return ttCard() + tabs + (tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
+  }
+  /* Jesús turns the clock on per person (start with a pilot) and sets explicit permissions. */
+  var TT_PERM_TXT = { time_review: ["Reviews", "Reviews and decides the people they supervise or whose crew they lead"], accounting: ["Accounting", "Sees and reviews everyone's hours"], period_close: ["Closes week", "Closes the week for payroll (with Accounting)"], clock_others: ["Clocks for others", "Can check someone in or out; it's recorded as done by them"] };
+  function ttSetLoad(body) { S.ttSet = S.ttSet || { loading: 1 }; call("ttSettings", body || {}).then(function (r) { S.ttSet = r; }).catch(function (e) { S.ttSet = { err: e.message }; }).then(function () { keepScroll(render); }); }
+  function ttSetView() {
+    var r = S.ttSet; if (!r) { ttSetLoad(); return '<div class="loading">Loading settings…</div>'; } if (r.loading) return '<div class="loading">Loading settings…</div>'; if (r.err) return '<div class="card ls-incomplete">' + esc(r.err) + "</div>";
+    var on = r.people.filter(function (p) { return p.clock; }).length, people = r.people.slice().sort(function (a, b) { return (a.role === "crew") - (b.role === "crew") || a.name.localeCompare(b.name); });
+    var sup = function (p) { return '<select data-tt-set="supervisor" data-email="' + esc(p.email) + '"><option value="">—</option>' + r.people.filter(function (x) { return x.email !== p.email && x.role !== "crew"; }).map(function (x) { return '<option value="' + esc(x.email) + '"' + (p.supervisor === x.email ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + "</select>"; };
+    return '<div class="card tt-set-top"><div><b>Who sees the clock</b><p class="muted small">' + (r.all ? "Everyone on the team sees it." : on ? on + (on === 1 ? " person sees it (pilot)." : " people see it (pilot).") : "Nobody yet. Turn it on for one person to start the pilot.") + " Workweek starts " + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][r.week_start] + ".</p></div>" +
+      '<button class="btn ' + (r.all ? "ghost" : "") + '" data-a="ttSetAll" data-v="' + (r.all ? "" : "1") + '">' + (r.all ? "Back to pilot only" : "Turn on for everyone") + "</button></div>" +
+      '<div class="card tt-tbl"><table><thead><tr><th>Person</th><th>Clock</th>' + Object.keys(TT_PERM_TXT).map(function (k) { return '<th title="' + esc(TT_PERM_TXT[k][1]) + '">' + TT_PERM_TXT[k][0] + "</th>"; }).join("") + "<th>Supervisor</th><th>Pay</th></tr></thead><tbody>" +
+      people.map(function (p) {
+        var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
+        return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small></td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
+          Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
+          "<td>" + (p.admin ? "—" : sup(p)) + '</td><td><select data-tt-set="pay_type" data-email="' + esc(p.email) + '"><option value="">' + (p.role === "crew" ? "hourly (default)" : "—") + '</option><option value="hourly"' + (p.pay_type === "hourly" ? " selected" : "") + '>hourly</option><option value="exempt"' + (p.pay_type === "exempt" ? " selected" : "") + ">exempt</option></select></td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      '<p class="muted small">Every change is saved right away and recorded in the audit log. Crew can\'t get Accounting. Nobody approves their own hours, so with several in Accounting they review each other.</p>';
+  }
+  function ttCorForm(m) {
+    var es = ttL() === "es", w = S.ttW && !S.ttW.err && !S.ttW.loading ? S.ttW : null, shifts = [];
+    (w ? w.days : []).forEach(function (d) { d.shifts.forEach(function (s) { shifts.push(s); }); }); if (S.tt && S.tt.shift && !shifts.some(function (s) { return s.id === S.tt.shift.id; })) shifts.push(S.tt.shift);
+    var evs = []; shifts.forEach(function (s) { s.events.forEach(function (e) { if (["in", "out", "switch", "meal_start", "meal_end"].indexOf(e.kind) > -1) evs.push({ e: e, day: s.day }); }); });
+    var r = m.reason || (m.office ? "office" : "missed_out"), shOpt = shifts.map(function (s) { return '<option value="' + esc(s.id) + '"' + (m.sid === s.id ? " selected" : "") + ">" + ttDayName(s.day) + " " + ttHm(s.start) + (s.end ? " → " + ttHm(s.end) : " (" + tx("open") + ")") + "</option>"; }).join("");
+    var evOpt = evs.map(function (x) { return '<option value="' + esc(x.e.id) + '">' + ttDayName(x.day) + " · " + tx(x.e.kind) + " " + ttHm(x.e.at) + (x.e.kind === "in" || x.e.kind === "switch" ? " · " + esc(ttJobName(x.e)) : "") + "</option>"; }).join("");
+    var jobSel = function (name) { var g = (S.tt && S.tt.suggest) || {}; return '<select name="' + name + '">' + ["load", "travel", "materials", "disposal", "office", "unassigned"].map(function (a) { return '<option value="' + a + '||">' + tx("a_" + a) + "</option>"; }).join("") + (g.visits || []).concat(g.properties || [], g.projects || []).map(function (o) { return '<option value="work|' + esc(o.ref_type) + "|" + esc(o.ref_id) + '">' + esc(o.name) + "</option>"; }).join("") + "</select>"; };
+    var dt = function (name, lab) { return '<label class="f">' + lab + '<input type="datetime-local" name="' + name + '" required value="' + esc(m.day ? m.day + "T07:00" : "") + '"></label>'; };
+    var reasons = m.office ? [["office", es ? "Corrección de oficina" : "Office correction"]] : ["missed_out", "missed_in", "wrong_job", "meal", "tech", "other"].map(function (k) { return [k, tx("r_" + k)]; });
+    var ops = m.office ? '<label class="f">What to change<select name="op">' + [["out", "Add the check-out"], ["in", "Add a missing shift (in + out)"], ["move", "Change a record's time"], ["retag", "Change a record's job"], ["meal", "Add a meal period"], ["void", "Void a shift (reversible)"], ["restore", "Restore a voided shift"]].map(function (o) { return '<option value="' + o[0] + '"' + (m.op === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" : "";
+    var op = m.office ? (m.op || "out") : { missed_out: "out", missed_in: "in", wrong_job: "retag", meal: "meal", tech: "move", other: "move" }[r];
+    var fields = op === "out" ? '<label class="f">' + tx("whichShift") + '<select name="sid">' + shOpt + "</select></label>" + dt("t1", tx("tout"))
+      : op === "in" ? dt("t1", tx("tin")) + dt("t2", tx("tout")) + '<label class="f">' + tx("newJob") + jobSel("job") + "</label>"
+      : op === "move" ? '<label class="f">' + tx("which") + '<select name="target">' + evOpt + "</select></label>" + dt("t1", tx("newTime"))
+      : op === "retag" ? '<label class="f">' + tx("which") + '<select name="target">' + evOpt.replace(/<option value="[^"]+">[^<]*· (Check out|Iniciar comida|Terminar comida|Start meal|End meal)[^<]*<\/option>/g, "") + "</select></label>" + '<label class="f">' + tx("newJob") + jobSel("job") + "</label>"
+      : op === "meal" ? '<label class="f">' + tx("whichShift") + '<select name="sid">' + shOpt + "</select></label>" + dt("t1", tx("mstart")) + dt("t2", tx("mend"))
+      : '<label class="f">' + tx("whichShift") + '<select name="sid">' + shOpt + "</select></label>";
+    return "<h2>" + (m.office ? "Office correction" + (w && !w.me ? " · " + esc(w.name) : "") : tx("fix")) + "</h2>" + '<p class="muted small">' + (es ? "Tu registro original no se borra: la oficina ve los dos y decide." : "The original record is never erased: the reviewer sees both and decides.") + "</p>" +
+      '<form class="form" data-form="ttCor">' + (m.office ? ops : '<label class="f">' + (es ? "Motivo" : "Reason") + '<select name="reason" data-tt-reason>' + reasons.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>") +
+      fields + '<label class="f">' + tx("explain") + '<textarea name="explain" rows="3" required maxlength="1000"></textarea></label>' + (m.office ? "" : '<label class="f">' + tx("place") + '<input name="place" maxlength="120"></label>') +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + '</button><button class="btn" type="submit">' + tx("send") + "</button></div></form>";
+  }
+  function ttLocalVal(v) { return String(v || "").replace("T", " ").slice(0, 16); }
+  function ttJobVal(v) { var p = String(v || "unassigned||").split("|"); return { act: p[0], ref_type: p[1] || "", ref_id: p[2] || "" }; }
+  function ttMapInit() {
+    var el = document.getElementById("tt-map"), w = S.ttW; if (!el || !w || !w.days || el._map) return;
+    var go2 = function () {
+      var map = el._map = L.map(el, { scrollWheelZoom: false }), pts = [];
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(map);
+      w.days.forEach(function (d) { d.shifts.forEach(function (s) { s.events.forEach(function (e) {
+        if (e.lat == null) return; var col = e.zone === "inside" ? "#2e7d4f" : e.zone === "outside" ? "#b3412e" : "#7d8794", ll = [e.lat, e.lon]; pts.push(ll);
+        L.circle(ll, { radius: e.acc || 20, color: col, weight: 1, fillOpacity: .12 }).addTo(map);
+        L.circleMarker(ll, { radius: 6, color: "#fff", weight: 2, fillColor: col, fillOpacity: 1 }).addTo(map).bindPopup("<b>" + esc(tx(e.kind)) + " " + esc(ttHm(e.at)) + "</b><br>" + esc(ttDayName(d.date)) + "<br>±" + Math.round(e.acc) + " m · " + esc(e.zone_name || "") + " (" + esc(e.zone) + ")");
+      }); }); });
+      if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 16 }); else map.setView([37.5, -122.25], 9);
+    };
+    if (window.L) return go2();
+    var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l);
+    var sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; sc.onload = go2; document.head.appendChild(sc);
+  }
+  new MutationObserver(function () { if (S.ttMapOn) ttMapInit(); }).observe(root, { childList: true, subtree: true });
+  function ttWeekShift(d, n) { var x = new Date((d || new Date().toISOString().slice(0, 10)) + "T12:00:00"); x.setDate(x.getDate() + n); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b || !/^tts?[A-Z]/.test(b.dataset.a)) return; e.preventDefault(); e.stopImmediatePropagation();
+    var a = b.dataset.a, i = +b.dataset.i;
+    if (a === "ttReload") { S.tt = null; S.ttErr = ""; return keepScroll(render); }
+    if (a === "ttFlush") return ttFlush();
+    if (a === "ttsMeal") { var mv = b.dataset.v; if (mv === "yes") { S.ttMealYes = 1; return keepScroll(render); } if (mv === "back") { S.ttMealYes = 0; return keepScroll(render); } return ttMealSend(b, { answer: mv }); }
+    if (a === "ttsMealGo") { var mt = (root.querySelector("[data-tts-meal]") || {}).value || ""; if (!/^\d\d:\d\d$/.test(mt)) return toast(ttL() === "es" ? "Pon la hora." : "Set the time."); return ttMealSend(b, { answer: "took", start: mt, minutes: +b.dataset.m }); }
+    if (a === "ttsPlace") { S.ttsPick = b.dataset.k; return keepScroll(render); }
+    if (a === "ttsMore") { S.ttsMore = !S.ttsMore; return keepScroll(render); }
+    if (a === "ttsChange") { S.ttsChange = !S.ttsChange; return keepScroll(render); }
+    if (a === "ttsOther") { S.ttsOther = !S.ttsOther; S.ttsOtherV = ""; return keepScroll(render); }
+    if (a === "ttsSwitch") { var ks = b.dataset.k.split("|"); S.ttsChange = 0; return ttDo("switch", { act: "work", ref_type: ks[0], ref_id: ks[1] }); }
+    if (a === "ttsGo") {
+      var gk = b.dataset.k, dec = "", es1 = ttL() === "es";
+      if (S.ttsOther) {
+        var tv = (root.querySelector("[data-tts-time]") || {}).value || ""; if (!/^\d\d:\d\d$/.test(tv)) return toast(es1 ? "Pon la hora." : "Set the time.");
+        var nd = new Date(), dd = nd.getFullYear() + "-" + String(nd.getMonth() + 1).padStart(2, "0") + "-" + String(nd.getDate()).padStart(2, "0"); dec = dd + " " + tv;
+        if (tv > nowHm24()) return toast(es1 ? "La hora no puede ser después de ahora." : "The time can't be later than now.");
+        if (gk === "out" && S.tt.shift && tv < ttHm24(S.tt.shift.start)) return toast(es1 ? "La salida no puede ser antes de tu entrada." : "Check-out can't be before your check-in.");
+        if (Math.abs(new Date(dd + "T" + tv) - nd) < 5 * 6e4) dec = "";                       // within 5 minutes of now: just the normal tap
+      }
+      S.ttsOther = 0; if (gk === "out") S.ttsChange = 0; else S.ttLast = null;
+      var pk = (S.ttsPick || "").split("|");
+      return ttDo(gk, gk === "in" ? { act: "work", ref_type: pk[0], ref_id: pk[1] } : null, dec);
+    }
+    if (a === "ttTap") { var k = b.dataset.k; if (k === "in" || k === "switch") { S.modal = { type: "lsxTtPick", kind: k }; return keepScroll(render); } return ttDo(k); }
+    if (a === "ttPick") return ttDo(b.dataset.kind, { act: b.dataset.act, ref_type: b.dataset.rt, ref_id: b.dataset.ri });
+    if (a === "ttPickOther") { var v = (root.querySelector(".tt-other") || {}).value || ""; return ttDo(b.dataset.kind, { act: "work", ref_type: v.split("|")[0], ref_id: v.split("|")[1] }); }
+    if (a === "ttLang") { var nl = ttL() === "es" ? "en" : "es"; S.tt.lang = nl; keepScroll(render); return call("ttSetLang", { lang: nl }).catch(function () {}); }
+    if (a === "ttMy") { S.home = "tt"; S.ttTab = "mine"; S.ttWeekQ = {}; S.ttW = null; window.scrollTo(0, 0); return keepScroll(render); }
+    if (a === "ttFix") { S.modal = { type: "lsxTtCor", reason: "missed_out", day: (S.tt && S.tt.today) || "" }; if (!S.ttW) ttWeekLoad(); return keepScroll(render); }
+    if (a === "ttPriv") { S.modal = { type: "lsxTtPriv" }; return keepScroll(render); }
+    if (a === "ttSetAll") return run(b, async function () { S.ttSet = await call("ttSettings", { all: !!b.dataset.v }); S.tt = null; toast(b.dataset.v ? "The clock is on for everyone" : "Back to pilot: only the people checked"); keepScroll(render); });
+    if (a === "ttTab") { S.ttSet = b.dataset.v === "set" ? null : S.ttSet; S.ttTab = b.dataset.v; S.ttWeekQ = {}; S.ttW = null; return keepScroll(render); }
+    if (a === "ttWeekGo") { var q = S.ttWeekQ || {}; q.week = ttWeekShift(S.ttW && S.ttW.week ? S.ttW.week.start : "", +b.dataset.d); S.ttWeekQ = q; S.ttW = null; S.ttMapOn = 0; return keepScroll(render); }
+    if (a === "ttWeekReload") { S.ttW = null; return keepScroll(render); }
+    if (a === "ttRGo") { S.ttRWeek = ttWeekShift(S.ttR && S.ttR.week ? S.ttR.week.start : "", +b.dataset.d); S.ttR = null; return keepScroll(render); }
+    if (a === "ttRReload") { S.ttR = null; return keepScroll(render); }
+    if (a === "ttPerson") { S.ttWeekQ = { emp: b.dataset.emp, week: S.ttR.week.start }; S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
+    if (a === "ttBackTeam") { S.ttWeekQ = {}; S.ttW = null; S.ttR = null; return keepScroll(render); }
+    if (a === "ttMap") { S.ttMapOn = !S.ttMapOn; return keepScroll(render); }
+    if (a === "ttOfficeFix") { S.modal = { type: "lsxTtCor", office: 1, sid: b.dataset.sid, day: b.dataset.day, op: b.dataset.sid ? "out" : "in" }; return keepScroll(render); }
+    if (a === "ttAbsence") { S.modal = { type: "lsxTtAbs" }; return keepScroll(render); }
+    if (a === "ttReply") { var c = S.ttW.corrections[i]; S.modal = { type: "lsxTtReply", id: c.id, mode: b.dataset.mode }; return keepScroll(render); }
+    if (a === "ttConfirm") { if (b.dataset.v === "discrepancy") { S.modal = { type: "lsxTtReply", mode: "discrepancy" }; return keepScroll(render); }
+      return run(b, async function () { await call("ttConfirmWeek", { week: S.ttW.week.start, status: "ok" }); S.ttW = null; toast(ttL() === "es" ? "Gracias. Quedó confirmado." : "Thanks. Confirmed."); keepScroll(render); }); }
+    if (a === "ttApprove") return run(b, async function () { var wk = (S.ttR && S.ttR.week.start) || (S.ttW && S.ttW.week.start); var r = await call("ttApprove", { emp: b.dataset.emp, week: wk }); S.ttR = null; S.ttW = null; toast("Approved" + (r.unconfirmed ? " (the employee hasn't confirmed; that's fine)" : "")); keepScroll(render); });
+    if (a === "ttDecide") { var note = (root.querySelector('.tt-note[data-i="' + i + '"]') || {}).value || "", cc = S.ttR.corrections[i];
+      return run(b, async function () { await call("ttDecide", { id: cc.id, decision: b.dataset.d, note: note }); S.ttR = null; toast({ approve: "Approved: added to the record, the original stays on file", reject: "Rejected. They'll see your reason.", ask: "Question sent" }[b.dataset.d]); keepScroll(render); }); }
+    if (a === "ttClose") return run(b, async function () { await call("ttClose", { week: S.ttR.week.start }); S.ttR = null; toast("Week closed. Later changes will show as adjustments."); keepScroll(render); });
+  }, true);
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches) return;
+    if (t.matches("[data-tt-set]")) {
+      e.stopImmediatePropagation(); var k = t.dataset.ttSet, em = t.dataset.email, p = S.ttSet.people.filter(function (x) { return x.email === em; })[0], body = { email: em };
+      if (k === "clock") body.clock = t.checked; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
+      else { var l = p.perms.filter(function (x) { return x !== k; }); if (t.checked) l.push(k); if (k === "period_close" && t.checked && l.indexOf("accounting") < 0) l.push("accounting"); body.perms = l; }
+      call("ttSetPerson", body).then(function () { toast("Saved: " + p.name); if (em === S.me.email || k === "clock") S.tt = null; ttSetLoad(); }).catch(function (er) { toast(er.message); ttSetLoad(); });
+      return;
+    }
+    if (t.matches("[data-tts-time]")) { S.ttsOtherV = t.value; return; }
+    if (t.matches("[data-tts-meal]")) { S.ttMealAt = t.value; return; }
+    if (t.matches("[data-tt-reason]")) { e.stopImmediatePropagation(); S.modal.reason = t.value; return keepScroll(render); }
+    if (t.matches("form[data-form=ttCor] select[name=op]")) { e.stopImmediatePropagation(); S.modal.op = t.value; return keepScroll(render); }
+  }, true);
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
+    if (f.dataset.form === "ttReply") return run(btn, async function () {
+      if (m.mode === "discrepancy") await call("ttConfirmWeek", { week: S.ttW.week.start, status: "discrepancy", note: g("note") });
+      else await call("ttReply", { id: m.id, note: g("note"), withdraw: m.mode === "withdraw", dispute: m.mode === "dispute" });
+      S.modal = null; S.ttW = null; toast(ttL() === "es" ? "Enviado" : "Sent"); keepScroll(render);
+    });
+    var op = m.office ? (g("op") || m.op || "out") : { missed_out: "out", missed_in: "in", wrong_job: "retag", meal: "meal", tech: "move", other: "move" }[g("reason")], ch = [];
+    if (op === "out") ch = [{ op: "add", kind: "out", shift_id: g("sid"), at: ttLocalVal(g("t1")) }];
+    else if (op === "in") ch = [Object.assign({ op: "add", kind: "in", at: ttLocalVal(g("t1")) }, ttJobVal(g("job"))), { op: "add", kind: "out", at: ttLocalVal(g("t2")) }];
+    else if (op === "move") ch = [{ op: "move", target: g("target"), at: ttLocalVal(g("t1")) }];
+    else if (op === "retag") ch = [Object.assign({ op: "retag", target: g("target") }, ttJobVal(g("job")))];
+    else if (op === "meal") ch = [{ op: "add", kind: "meal_start", shift_id: g("sid"), at: ttLocalVal(g("t1")) }, { op: "add", kind: "meal_end", shift_id: g("sid"), at: ttLocalVal(g("t2")) }];
+    else ch = [{ op: op, shift_id: g("sid") }];
+    var body = { reason: g("reason") || "office_fix", explain: g("explain"), declared_place: g("place"), changes: ch, shift_id: g("sid") };
+    if (m.office && S.ttW && !S.ttW.me) body.emp = S.ttW.emp;
+    run(btn, async function () {
+      var r = await call("ttRequestCorrection", body), d = r.correction.delta_min; S.modal = null; S.ttW = null; S.ttR = null;
+      toast((ttL() === "es" ? "Solicitud enviada" : "Request sent") + (d ? " (" + (d > 0 ? "+" : "−") + ttDur(Math.abs(d)) + ")" : "") + (ttL() === "es" ? ". Te avisamos cuando la revisen." : ". You'll see the decision here.")); keepScroll(render);
+    });
+  }, true);
+  var _lsModalTt = lsModal;
+  lsModal = function (m) {
+    var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
+    if (m.type === "lsxTtPick") return ttPicker(m.kind);
+    if (m.type === "lsxTtCor") return ttCorForm(m);
+    if (m.type === "lsxTtSum") { var s = m.s; return "<h2>✓ " + tx("sumT") + "</h2><p><b>" + ttHm(s.start) + " → " + ttHm(s.end) + "</b> · " + tx("total") + " " + ttDur(s.paid_min) + (s.meal_min ? " · " + tx("mealt") + " " + ttDur(s.meal_min) : "") + "</p>" + ttSegs(s) +
+      "<p>" + tx("sumQ") + '</p><div class="actions"><button class="btn ghost" data-a="ttFix">' + tx("fix") + '</button><button class="btn" data-a="close">' + tx("allgood") + "</button></div>"; }
+    if (m.type === "lsxTtReply") { var lab = { answer: tx("answer"), withdraw: tx("withdraw"), dispute: tx("question"), discrepancy: tx("mismatch") }[m.mode];
+      return "<h2>" + lab + '</h2><form class="form" data-form="ttReply"><label class="f">' + (m.mode === "discrepancy" ? (es ? "¿Qué no cuadra?" : "What doesn't match?") : (es ? "Escribe aquí" : "Write here")) + '<textarea name="note" rows="3" required maxlength="1000"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>"; }
+    if (m.type === "lsxTtAbs") return '<h2>Record an absence</h2><p class="muted small">No "no check-in" item is raised for these days, and future reminders will skip them.</p><form class="form" data-form="ttAbs"><div class="row2"><label class="f">From<input type="date" name="from" required></label><label class="f">To<input type="date" name="to"></label></div><label class="f">Kind<select name="kind"><option value="vacation">Vacation</option><option value="sick">Sick</option><option value="off">Day off</option><option value="other">Other</option></select></label><label class="f">Note<input name="note" maxlength="300"></label><div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>';
+    if (m.type === "lsxTtPriv") { var pv = (S.tt && S.tt.privacy) || {};
+      return "<h2>" + tx("what") + "</h2>" + (es
+        ? "<p><b>Qué se guarda:</b> la hora de cada botón (según el servidor), el trabajo o actividad, y la ubicación del teléfono <b>solo en el momento en que tocas</b> el botón, con su precisión. No hay rastreo continuo ni fuera de jornada.</p><p><b>Si no hay ubicación</b> (permiso apagado, sin señal), tu hora se guarda igual y la oficina solo lo revisa.</p><p><b>Quién lo ve:</b> tú, tu supervisor asignado, accounting y Jesús. Clientes y arquitectos nunca lo ven.</p><p><b>Cuánto tiempo se guarda:</b> " + esc(pv.retention || "") + " (política de la empresa).</p><p><b>Correcciones:</b> nunca se borra tu registro original; la corrección aprobada queda marcada como tal.</p><p class=\"muted small\">La ubicación es una referencia: no prueba por sí sola quién estaba ni cuánto tiempo.</p>"
+        : "<p><b>What's saved:</b> the time of each button (by the server's clock), the job or activity, and the phone's location <b>only at the moment you tap</b>, with its accuracy. No continuous or off-the-clock tracking.</p><p><b>No location</b> (permission off, no signal)? Your time is saved anyway; the office just reviews it.</p><p><b>Who sees it:</b> you, your assigned supervisor, accounting and Jesús. Clients and architects never do.</p><p><b>How long it's kept:</b> " + esc(pv.retention || "") + " (company policy).</p><p><b>Corrections:</b> your original record is never erased; an approved correction is labeled as one.</p><p class=\"muted small\">Location is supporting evidence: on its own it doesn't prove who was there or for how long.</p>") +
+        '<div class="actions"><button class="btn" data-a="close">OK</button></div>'; }
+    return _lsModalTt(m);
   };
   liveLoop();
   if (S.token) { render(); route(); } else render();

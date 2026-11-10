@@ -1897,3 +1897,72 @@
 #bs-portal .home-chips .chip{flex:none;white-space:nowrap}
 #bs-portal .td-bar .chips{max-width:100%;overflow-x:auto;scrollbar-width:none}
 #bs-portal .td-bar .chips .chip{flex:none;white-space:nowrap}
+
+/* ---- Time & attendance: clock card, My hours, team review ---- */
+.tt-card { margin: 0 0 16px; padding: 16px; border-left: 4px solid var(--line); }
+.tt-card.tt-work { border-left-color: var(--ok); } .tt-card.tt-meal { border-left-color: var(--gold); } .tt-card.tt-rest { border-left-color: #6b8fb3; }
+.tt-load { color: var(--muted); }
+.tt-top { display: flex; align-items: center; gap: 10px; }
+.tt-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--line); flex: none; }
+.tt-work .tt-dot { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); } .tt-meal .tt-dot { background: var(--gold); } .tt-rest .tt-dot { background: #6b8fb3; }
+.tt-st { display: flex; flex-direction: column; flex: 1; min-width: 0; } .tt-st b { font-size: 18px; font-weight: 600; }
+.tt-lang { flex: none; }
+.tt-job { margin: 8px 0 0 22px; font-weight: 500; }
+.tt-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tt-b { min-height: 48px; flex: 1 1 auto; font-size: 16px; }
+.tt-b.big { flex: 1 1 100%; min-height: 56px; font-size: 18px; } #bs-portal .tt-b.out { color: #fff; }
+.tt-b.out { background: var(--ink); color: #fff; }
+.tt-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-top: 12px; font-size: 13px; }
+.tt-sync { color: var(--muted); } .tt-sync.ok { color: var(--ok); } .tt-sync.pend { color: var(--warn, #7a5a12); } .tt-sync.bad { color: var(--bad); }
+.tt-news { display: block; width: 100%; text-align: left; margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--gold-soft); border: 0; font: inherit; cursor: pointer; }
+.tt-picks { display: grid; gap: 8px; margin: 6px 0 14px; }
+.tt-pick { text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 48px; }
+.tt-pick:hover { border-color: var(--ink-2); } .tt-pick small { color: var(--muted); }
+.tt-other { flex: 1; min-width: 0; }
+.tt-tabs { margin: 0 0 12px; }
+.tt-wk-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; } .tt-wk-nav b { flex: 1; text-align: center; min-width: 160px; }
+.tt-tot { margin-bottom: 12px; }
+.tt-day { margin-bottom: 10px; } .tt-day-h { display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 6px; }
+.tt-shift { border-top: 1px solid var(--line); padding: 8px 0; } .tt-shift.open .tt-sh-h b { color: var(--bad); } .tt-shift.void { opacity: .55; text-decoration: line-through; }
+.tt-sh-h { display: flex; justify-content: space-between; gap: 8px; }
+.tt-segs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.tt-seg { font-size: 12px; padding: 3px 8px; border-radius: 99px; background: var(--paper); border: 1px solid var(--line); }
+.tt-seg.rest { background: #e8eff6; } .tt-seg.meal { background: var(--gold-soft); } .tt-seg.un { background: var(--bad-soft); }
+.tt-evs { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--ink-2); } .tt-evs .pill { font-size: 11px; }
+.tt-rep { margin: 8px 0 12px; font-size: 13px; } .tt-rep div { padding: 3px 0; color: var(--muted); }
+.tt-exc { padding: 8px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; } .tt-exc small { color: var(--muted); } .tt-exc.p1 b { color: var(--bad); }
+.tt-cor { padding: 8px 0; border-top: 1px solid var(--line); } .tt-cor small { display: block; color: var(--muted); margin-top: 2px; }
+.tt-conf { margin-bottom: 12px; }
+.bad-t { color: var(--bad); }
+.tt-tbl { overflow-x: auto; } .tt-tbl table { width: 100%; border-collapse: collapse; font-size: 14px; } .tt-tbl th, .tt-tbl td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.tt-h3 { margin: 6px 0 10px; }
+.tt-dec { margin-bottom: 12px; } .tt-dec-h { margin-bottom: 10px; }
+.tt-side { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .tt-side > div { min-width: 0; }
+.tt-dec-a { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; } .tt-note { flex: 1 1 220px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.tt-map { height: 320px; border-radius: var(--radius); margin: 0 0 12px; overflow: hidden; }
+@media (max-width: 640px) { .tt-side { grid-template-columns: 1fr; } .tt-b { flex: 1 1 45%; } .grid.tt-tot { grid-template-columns: 1fr 1fr; gap: 8px; } .grid.tt-tot > * { padding: 12px; } }
+
+/* ---- crew clock: one tap for the place, one tap on the clock ---- */
+.tts { margin: 0 0 16px; padding: 18px 16px; }
+.tts-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.tts-q { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; margin: 14px 0 10px; }
+.tts-n { width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; flex: none; }
+.tts-places { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
+.tts-place { position: relative; text-align: left; min-height: 72px; padding: 12px 14px; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font: inherit; cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.tts-place b { font-size: 16px; font-weight: 600; line-height: 1.2; padding-right: 18px; } .tts-place small { color: var(--muted); font-size: 12px; line-height: 1.25; }
+.tts-place.on { border-color: var(--ok); background: var(--ok-soft); }
+.tts-check { position: absolute; top: 8px; right: 10px; font-style: normal; color: var(--ok); font-weight: 700; }
+#bs-portal .tts-clock { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 150px; margin: 14px 0 6px; border: 0; border-radius: 22px; font: inherit; color: #fff; cursor: pointer; }
+.tts-clock.k-in { background: var(--ok); } .tts-clock.k-out { background: var(--ink); }
+.tts-clock b { font-size: 26px; letter-spacing: .06em; } .tts-time { font-size: 18px; opacity: .9; }
+.tts-clock:disabled { opacity: .45; cursor: default; }
+.tts-otherlink { display: block; margin: 4px auto 0; }
+.tts-other { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 4px; font-weight: 600; } .tts-other input { font-size: 22px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; }
+.tts-now { display: flex; align-items: center; gap: 12px; margin: 6px 0; } .tts-now b { font-size: 19px; display: block; } .tts-now small { color: var(--muted); font-size: 14px; }
+.tts.tt-work .tt-dot { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+.tts-done { background: var(--ok-soft); color: var(--ok); padding: 10px 12px; border-radius: 10px; font-weight: 500; }
+@media (max-width: 340px) { .tts-places { grid-template-columns: 1fr; } }
+.tts-meal { margin: 10px 0 4px; padding: 14px; border-radius: 12px; background: var(--gold-soft); display: flex; flex-direction: column; gap: 10px; } .tts-meal b { font-size: 17px; }
+.tts-meal.done { background: var(--ok-soft); color: var(--ok); font-weight: 500; }
+.tts-meal-b { display: flex; flex-wrap: wrap; gap: 8px; } .tts-meal-b .btn { flex: 1 1 auto; min-height: 48px; font-size: 16px; }
+.tts-meal input { font-size: 22px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; }

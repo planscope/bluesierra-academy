@@ -1,0 +1,603 @@
+/* ======================================================================================================
+   Time & attendance ("My hours"). ONE record of time serves attendance, payroll review and job cost.
+   - TtEvents is append-only: nothing in it is edited or deleted. Shifts, segments and totals are DERIVED from it.
+   - A correction never overwrites. When approved it ADDS events; an added event may "supersede" an older one,
+     and both stay on file (the older one is shown as replaced).
+   - Times are stored in UTC (ISO). Days, weeks and the screen use the company time zone (CONFIG.TZ).
+   - Location is auxiliary evidence, captured only when someone taps a button. A missing or far location creates
+     an item to review; it never blocks recording time and never removes time.
+   - Permissions are explicit columns set by the admin (People.perms). A hashtag in a message never grants access.
+   Deployed concatenated after Today.gs.
+   ====================================================================================================== */
+TABLES.People = TABLES.People.concat(["perms", "supervisor", "lang", "pay_type", "clock"]);   // clock: "yes" = this person sees the clock (pilot)
+TABLES.TtEvents = ["id", "emp", "actor", "kind", "at", "device_at", "recv_at", "tz", "act", "ref_type", "ref_id", "ref_name", "lat", "lon", "acc", "loc_at", "loc_status",
+  "zone", "zone_name", "zone_m", "source", "offline", "seq", "client_key", "device", "shift_id", "supersedes", "corr_id", "note", "status"];
+TABLES.TtCorrections = ["id", "emp", "shift_id", "date", "reason", "explain", "changes", "before", "delta_min", "declared_place", "evidence_id", "requested_by", "requested_at",
+  "status", "decided_by", "decided_at", "decision_note", "applied", "period_id", "after_close", "dispute", "dispute_at", "history", "seen_at"];
+TABLES.TtWeeks = ["key", "period_id", "emp", "emp_status", "emp_note", "emp_at", "approved_by", "approved_at", "approved_hash", "history"];
+TABLES.TtPeriods = ["id", "start", "end", "status", "version", "closed_by", "closed_at", "rules", "snapshot", "history"];
+TABLES.TtAbsence = ["id", "emp", "from", "to", "kind", "note", "by", "at"];
+TABLES.TtZones = ["id", "name", "kind", "lat", "lon", "radius_m", "active", "updated_by", "updated_at"];
+TABLES.TtMeals = ["id", "emp", "shift_id", "day", "answer", "start", "minutes", "corr_id", "at"];   // what the person answered at check-out: took / none / interrupted
+TABLES.TtAudit = ["id", "at", "by", "emp", "kind", "ref", "before", "after", "note"];
+var TT_T = ["TtEvents", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals"];
+var TT_READ = ["People", "LsCrews", "LsVisits", "LsProps", "Projects"].concat(TT_T);
+var TT_NOW = 0;                                                                     // tests set a fixed clock; production uses the real one
+function ttNow() { return TT_NOW || Date.now(); }
+var TT_PERMS = ["time_review", "accounting", "pay_view", "pay_rates", "period_close", "time_export", "clock_others"];
+var TT_ACTS = { work: 1, load: 1, travel: 1, materials: 1, disposal: 1, office: 1, unassigned: 1 };
+var TT_REASONS = { missed_in: 1, missed_out: 1, wrong_job: 1, meal: 1, tech: 1, other: 1, office_fix: 1, declared: 1 };   // declared: a time typed on the clock screen instead of "now"
+var TT_ORDER = { "in": 0, meal_end: 1, rest_end: 1, "switch": 2, meal_start: 3, rest_start: 3, out: 4 };
+/* California rules as the starting point (DLSE FAQ: daily over 8 h and weekly over 40 h = 1.5x, over 12 h = 2x, 7th consecutive day
+   in the workweek: first 8 h 1.5x, beyond 8 h 2x). The result is labeled an estimate until accounting validates it. */
+var TT_RULES = { v: "CA-2026.1", note: "Estimate. Accounting must validate these rules before any payroll export." };
+
+function ttCfg() {
+  var pr = PropertiesService.getScriptProperties(), n = function (k, d) { var v = Number(pr.getProperty(k)); return isFinite(v) && pr.getProperty(k) !== null ? v : d; };
+  return { week_start: n("TT_WEEK_START", 1), radius: n("TT_RADIUS_M", 150), acc_ok: n("TT_ACC_OK_M", 100), open_long_h: n("TT_OPEN_LONG_H", 12), retention: pr.getProperty("TT_RETENTION") || "4 years" };
+}
+/* ---- time helpers (UTC in storage, company time zone on screen) ---- */
+function ttMs(iso) { var t = Date.parse(String(iso || "")); return isNaN(t) ? null : t; }
+function ttIso(ms) { return new Date(ms).toISOString(); }
+function ttLocal(ms, pat) { return Utilities.formatDate(new Date(ms), CONFIG.TZ, pat || "yyyy-MM-dd HH:mm"); }
+function ttDayOf(ms) { return ttLocal(ms, "yyyy-MM-dd"); }
+function ttFromLocal(s) {                                                               // "2026-11-09 07:30" (company time) → UTC ms, DST-safe
+  var m = String(s || "").match(/^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)$/); if (!m) return null;
+  var want = Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]);
+  var off = function (ms) { var l = ttLocal(ms).match(/^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)$/); return Date.UTC(+l[1], l[2] - 1, +l[3], +l[4], +l[5]) - ms; };
+  var g = want - off(want); return want - off(g);
+}
+function ttAddDays(d, n) { var x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+function ttWeekStart(d) { var dow = new Date(d + "T12:00:00Z").getUTCDay(); return ttAddDays(d, -((dow - ttCfg().week_start + 7) % 7)); }
+var TT_DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function ttHm(ms) { var l = ttLocal(ms), h = +l.slice(11, 13); return ((h % 12) || 12) + ":" + l.slice(14, 16) + (h < 12 ? " am" : " pm"); }
+function ttHuman(ms) { var d = ttDayOf(ms); return TT_DOW[new Date(d + "T12:00:00Z").getUTCDay()] + " " + d.slice(5) + " " + ttHm(ms); }
+function ttMin(ms) { return Math.round(ms / 6e4); }                                      // display only; sums are kept in milliseconds
+function ttKm(a, b) { var R = 6371000, r = Math.PI / 180, dl = (b.lat - a.lat) * r, dn = (b.lon - a.lon) * r; var h = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dn / 2) * Math.sin(dn / 2); return 2 * R * Math.asin(Math.sqrt(h)); }
+
+/* ---- who may do what ---- */
+function ttRow(me) { return findPerson(me.email) || me; }
+function ttPerms(me) {
+  if (!me || me.preview) return {}; var p = ttRow(me), o = {};
+  if (p.role === "admin") { TT_PERMS.forEach(function (k) { o[k] = 1; }); return o; }
+  if (!isTeam(p) || !isTrue(p.active)) return {};
+  splitIds(p.perms).forEach(function (k) { if (TT_PERMS.indexOf(k) > -1) o[k] = 1; });
+  if (o.accounting) o.time_review = 1; return o;
+}
+function ttLang(me) { var p = ttRow(me); return p.lang === "en" || p.lang === "es" ? p.lang : p.role === "crew" ? "es" : "en"; }
+function ttErr(me, es, en) { return new Error(ttLang(me) === "es" ? es : en); }
+/* Rollout: nobody sees the clock until Jesús turns it on, per person (People.clock) or for everyone (TT_ALL). */
+function ttAll() { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }
+function ttEnabled(p) { return !!p && isTeam(p) && isTrue(p.active) && (ttAll() || isTrue(p.clock)); }
+function ttClocker(me) { if (!me || me.preview || !isTeam(me)) throw new Error("My hours is for the Blue Sierra team."); return me; }
+function ttCrewsOf(emp) { return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(emp) > -1; }); }
+/* A reviewer sees: everyone (accounting / admin), or the people they supervise (People.supervisor) and the crews they lead. Never their own decisions. */
+function ttCanReview(me, emp) {
+  var pm = ttPerms(me); if (pm.accounting) return true; if (!pm.time_review) return false;
+  var p = findPerson(emp); if (p && normEmail(p.supervisor) === normEmail(me.email)) return true;
+  return ttCrewsOf(emp).some(function (c) { return normEmail(c.lead) === normEmail(me.email); });
+}
+function ttTeam() { return rows("People").filter(function (p) { return isTrue(p.active) && isTeam(p); }); }
+function ttScope(me) { return ttTeam().filter(function (p) { return ttCanReview(me, normEmail(p.email)); }).map(function (p) { return normEmail(p.email); }); }
+function ttOwnerOf(emp) {
+  var p = findPerson(emp) || {}, sup = normEmail(p.supervisor); if (sup && sup !== emp && findPerson(sup)) return sup;
+  var lead = ttCrewsOf(emp).map(function (c) { return normEmail(c.lead); }).filter(function (e) { return e && e !== emp && findPerson(e); })[0]; if (lead) return lead;
+  var acc = ttTeam().filter(function (x) { return x.role === "admin" || splitIds(x.perms).indexOf("accounting") > -1; }).map(function (x) { return normEmail(x.email); }).filter(function (e) { return e !== emp; });
+  return acc.filter(function (e) { return findPerson(e).role !== "admin"; })[0] || acc[0] || "";
+}
+function ttAudit(me, emp, kind, ref, before, after, note) {
+  insert("TtAudit", { id: newId("ta"), at: ttIso(ttNow()), by: me.email, emp: emp, kind: kind, ref: ref || "", before: before == null ? "" : JSON.stringify(before).slice(0, 4000), after: after == null ? "" : JSON.stringify(after).slice(0, 4000), note: String(note || "").slice(0, 500) });
+}
+
+/* ---- shifts derived from the events ---- */
+function ttEvents(emp) { return rows("TtEvents").filter(function (e) { return e.emp === emp; }); }
+function ttLive(evs) { var gone = {}; evs.forEach(function (e) { if (e.supersedes) gone[e.supersedes] = 1; }); return evs.filter(function (e) { return !gone[e.id] && e.status !== "conflict"; }); }
+function ttSort(a, b) { return ttMs(a.at) - ttMs(b.at) || (TT_ORDER[a.kind] || 0) - (TT_ORDER[b.kind] || 0) || String(a.recv_at).localeCompare(String(b.recv_at)); }
+function ttShifts(evs, nowMs) {
+  var live = ttLive(evs), by = {}, voided = {}; nowMs = nowMs || ttNow();
+  live.filter(function (e) { return e.kind === "void" || e.kind === "restore"; }).sort(function (a, b) { return String(a.recv_at).localeCompare(String(b.recv_at)); })
+    .forEach(function (e) { voided[e.shift_id] = e.kind === "void" ? e : null; });
+  live.forEach(function (e) { if (e.kind !== "void" && e.kind !== "restore") (by[e.shift_id] = by[e.shift_id] || []).push(e); });
+  return Object.keys(by).map(function (sid) { return ttBuild(sid, by[sid].sort(ttSort), voided[sid] || null, nowMs); }).sort(function (a, b) { return a.start - b.start; });
+}
+function ttJobOf(e) { return { act: e.act || "unassigned", ref_type: e.ref_type || "", ref_id: e.ref_id || "", ref_name: e.ref_name || "" }; }
+function ttBuild(sid, evs, voidEv, nowMs) {
+  var inE = evs.filter(function (e) { return e.kind === "in"; })[0];
+  if (!inE) return { id: sid, broken: true, start: ttMs(evs[0].at), end: null, open: false, voided: !!voidEv, events: evs, segs: [], meals: [], paid: 0, meal: 0, rest: 0, unassigned: 0, day: ttDayOf(ttMs(evs[0].at)), mode: "off" };
+  var t = ttMs(inE.at), cur = ttJobOf(inE), mode = "work", segs = [], meals = [], mealFrom = 0, end = null, after = 0;
+  var close = function (to) { if (to > t) segs.push({ from: t, to: to, kind: mode === "rest" ? "rest" : "work", act: cur.act, ref_type: cur.ref_type, ref_id: cur.ref_id, ref_name: cur.ref_name }); t = Math.max(t, to); };
+  evs.forEach(function (e) {
+    if (e === inE) return; var ms = ttMs(e.at); if (end != null || ms < ttMs(inE.at)) { after++; return; }
+    if (e.kind === "switch") { if (mode !== "meal") close(ms); cur = ttJobOf(e); }
+    else if (e.kind === "meal_start" && mode !== "meal") { close(ms); mode = "meal"; mealFrom = ms; }
+    else if (e.kind === "meal_end" && mode === "meal") { meals.push({ from: mealFrom, to: ms }); t = ms; mode = "work"; }
+    else if (e.kind === "rest_start" && mode === "work") { close(ms); mode = "rest"; }
+    else if (e.kind === "rest_end" && mode === "rest") { close(ms); mode = "work"; }
+    else if (e.kind === "out") { if (mode === "meal") { meals.push({ from: mealFrom, to: ms }); t = ms; } else close(ms); end = ms; }
+  });
+  var open = end == null, upto = open ? Math.max(nowMs, t) : end;
+  if (open) { if (mode === "meal") meals.push({ from: mealFrom, to: upto, open: true }); else { var m0 = mode; close(upto); mode = m0; } }
+  var sum = function (l, f) { return l.reduce(function (a, s) { return a + (f ? (f(s) ? s.to - s.from : 0) : s.to - s.from); }, 0); };
+  return { id: sid, start: ttMs(inE.at), end: end, open: open, voided: !!voidEv, void_ev: voidEv, mode: open ? mode : "off", job: cur, events: evs, segs: segs, meals: meals,
+    paid: sum(segs), meal: sum(meals), rest: sum(segs, function (s) { return s.kind === "rest"; }), unassigned: sum(segs, function (s) { return s.act === "unassigned"; }),
+    span: upto - ttMs(inE.at), day: ttDayOf(ttMs(inE.at)), stray: after };
+}
+/* Paid time per company-time-zone calendar day (a shift past midnight counts on each day it touches).
+   An open shift counts "so far" only while it's today's and not too long; a forgotten one counts nothing until someone
+   records the real check-out: the portal never invents an end time. */
+function ttCounts(s) { return !s.voided && !s.broken && (!s.open || (s.day === ttDayOf(ttNow()) && ttNow() - s.start <= ttCfg().open_long_h * 36e5)); }
+function ttPerDay(shifts) {
+  var out = {};
+  shifts.forEach(function (s) {
+    if (!ttCounts(s)) return;
+    s.segs.forEach(function (g) {
+      var a = g.from;
+      while (a < g.to) { var d = ttDayOf(a), next = ttFromLocal(ttAddDays(d, 1) + " 00:00"), b = Math.min(g.to, next > a ? next : g.to); out[d] = (out[d] || 0) + (b - a); a = b; }
+    });
+  });
+  return out;
+}
+/* Regular / overtime / double time for one workweek. days: 7 numbers (minutes) in workweek order. */
+function ttCalcWeek(days, payType) {
+  var res = days.map(function () { return { reg: 0, ot: 0, dt: 0 }; }), worked = days.filter(function (m) { return m > 0; }).length, cum = 0;
+  if (payType === "exempt") return { days: days.map(function (m) { return { reg: m, ot: 0, dt: 0 }; }), reg: days.reduce(function (a, b) { return a + b; }, 0), ot: 0, dt: 0, exempt: true, rules: TT_RULES };
+  days.forEach(function (m, i) {
+    var r = res[i];
+    if (i === 6 && worked === 7) { r.ot = Math.min(m, 480); r.dt = Math.max(0, m - 480); }
+    else { r.reg = Math.min(m, 480); r.ot = Math.min(Math.max(m - 480, 0), 240); r.dt = Math.max(0, m - 720); }
+    if (cum + r.reg > 2400) { var over = cum + r.reg - 2400; r.reg -= over; r.ot += over; }      // weekly: only regular hours count toward 40, so nothing is counted twice
+    cum += r.reg;
+  });
+  var t = { reg: 0, ot: 0, dt: 0 }; res.forEach(function (r) { t.reg += r.reg; t.ot += r.ot; t.dt += r.dt; });
+  return { days: res, reg: t.reg, ot: t.ot, dt: t.dt, seventh: worked === 7, rules: TT_RULES };
+}
+
+/* ---- where the tap happened: kept as evidence, never as proof ---- */
+function ttTarget(job) {
+  var t = job.ref_type, id = job.ref_id, p = null, cfg = ttCfg();
+  if (t === "visit") { var v = findBy("LsVisits", "id", id); p = v ? findBy("LsProps", "id", v.property_id) : null; }
+  else if (t === "property") p = findBy("LsProps", "id", id);
+  else if (t === "project") { var pj = findBy("Projects", "id", id); if (pj && pj.lat !== "" && pj.lon !== "") return { name: pj.name, lat: num(pj.lat), lon: num(pj.lon), r: cfg.radius }; return pj ? { name: pj.name } : null; }
+  if (p) return p.lat !== "" && p.lon !== "" ? { name: p.name, lat: num(p.lat), lon: num(p.lon), r: cfg.radius } : { name: p.name };
+  if (job.act === "load" || job.act === "office") {
+    var z = rows("TtZones").filter(function (z) { return isTrue(z.active) && (z.kind === "yard" || z.kind === "office"); });
+    if (!z.length && typeof lsCfg === "function") { var y = lsCfg().yard; if (y && y.lat != null) return [{ name: "Yard", lat: num(y.lat), lon: num(y.lon), r: cfg.radius }]; }   // the maintenance yard already set up
+    return z.length ? z.map(function (z) { return { name: z.name, lat: num(z.lat), lon: num(z.lon), r: num(z.radius_m) || cfg.radius }; }) : null;
+  }
+  return null;                                                                          // travel, materials, dump runs: no fixed place to compare with
+}
+function ttLocate(loc, job, atMs) {
+  loc = loc || {}; var cfg = ttCfg(), st = String(loc.status || "none"), o = { lat: "", lon: "", acc: "", loc_at: "", loc_status: "none", zone: "none", zone_name: "", zone_m: "" };
+  if (["ok", "denied", "timeout", "unavailable", "unsupported"].indexOf(st) < 0) st = "none";
+  var lat = Number(loc.lat), lon = Number(loc.lon), acc = Number(loc.acc), lt = ttMs(loc.at);
+  if (st === "ok" && !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && isFinite(acc) && acc > 0 && lt)) st = "unavailable";
+  o.loc_status = st;
+  if (st === "ok") {
+    o.lat = String(Math.round(lat * 1e6) / 1e6); o.lon = String(Math.round(lon * 1e6) / 1e6); o.acc = String(Math.round(acc)); o.loc_at = ttIso(lt);
+    if (acc > cfg.acc_ok) o.loc_status = "imprecise"; if (Math.abs(lt - atMs) > 120000) o.loc_status = "stale";
+  }
+  var tg = ttTarget(job); if (!tg) return o;
+  var list = [].concat(tg).filter(function (z) { return z.lat != null; }); o.zone_name = [].concat(tg)[0].name || "";
+  if (!list.length) { o.zone = "nozone"; return o; }                                     // the place has no map point yet
+  if (!o.lat) { o.zone = "unknown"; o.zone_name = list[0].name; return o; }
+  var best = null; list.forEach(function (z) { var d = ttKm({ lat: lat, lon: lon }, z); if (!best || d - z.r < best.d - best.z.r) best = { d: d, z: z }; });
+  o.zone_name = best.z.name; o.zone_m = String(Math.round(best.d));
+  o.zone = best.d <= best.z.r && acc <= best.z.r ? "inside" : best.d - acc > best.z.r ? "outside" : "unknown";
+  return o;
+}
+
+/* ---- the job someone is working on ---- */
+function ttJob(me, emp, b) {
+  var act = String(b.act || ""), t = String(b.ref_type || ""), id = String(b.ref_id || ""), name = "";
+  if (!TT_ACTS[act]) throw ttErr(me, "Elige qué vas a hacer.", "Pick what you're working on.");
+  if (act !== "work") { t = ""; id = ""; }
+  else {
+    if (t === "visit") { var v = findBy("LsVisits", "id", id); var p = v && findBy("LsProps", "id", v.property_id); if (!p) throw ttErr(me, "No encontré esa visita.", "Visit not found."); name = p.name; }
+    else if (t === "property") { var pp = findBy("LsProps", "id", id); if (!pp || pp.status === "deleted") throw ttErr(me, "No encontré esa propiedad.", "Property not found."); name = pp.name; }
+    else if (t === "project") {
+      var pj = findBy("Projects", "id", id), who = findPerson(emp) || {};
+      if (!pj || pj.status === "deleted" || !(isStaff(who) || splitIds(who.project_ids).indexOf(id) > -1)) throw ttErr(me, "No encontré ese proyecto.", "Project not found."); name = pj.name;
+    } else throw ttErr(me, "Elige el proyecto o la propiedad.", "Pick the project or property.");
+  }
+  return { act: act, ref_type: t, ref_id: id, ref_name: name };
+}
+
+/* ---- state for the card ---- */
+function ttEvOut(e, withLoc) {
+  var o = { id: e.id, kind: e.kind, at: e.at, recv_at: e.recv_at, device_at: e.device_at, source: e.source, offline: isTrue(e.offline), actor: e.actor !== e.emp ? personName(e.actor) : "",
+    act: e.act, ref_type: e.ref_type, ref_id: e.ref_id, ref_name: e.ref_name, loc_status: e.loc_status, zone: e.zone, zone_name: e.zone_name, zone_m: e.zone_m ? num(e.zone_m) : null,
+    corr_id: e.corr_id, supersedes: e.supersedes, note: e.note, status: e.status, shift_id: e.shift_id };
+  if (withLoc && e.lat !== "") { o.lat = num(e.lat); o.lon = num(e.lon); o.acc = num(e.acc); o.loc_at = e.loc_at; }
+  return o;
+}
+function ttShiftOut(s, withLoc) {
+  var seg = function (g) { return { from: ttIso(g.from), to: ttIso(g.to), min: ttMin(g.to - g.from), kind: g.kind, act: g.act, ref_type: g.ref_type, ref_id: g.ref_id, ref_name: g.ref_name }; };
+  return { id: s.id, day: s.day, start: s.start != null ? ttIso(s.start) : null, end: s.end != null ? ttIso(s.end) : null, open: s.open, voided: s.voided, broken: !!s.broken, mode: s.mode, job: s.job || null,
+    paid_min: ttMin(s.paid), meal_min: ttMin(s.meal), rest_min: ttMin(s.rest), unassigned_min: ttMin(s.unassigned), segs: s.segs.map(seg),
+    meals: s.meals.map(function (m) { return { from: ttIso(m.from), to: ttIso(m.to), min: ttMin(m.to - m.from), open: !!m.open }; }), events: s.events.map(function (e) { return ttEvOut(e, withLoc); }) };
+}
+function ttStateOf(emp) {
+  var sh = ttShifts(ttEvents(emp)), open = sh.filter(function (s) { return s.open && !s.voided && !s.broken; }).pop() || null, today = ttDayOf(ttNow());
+  var todayMs = ttPerDay(sh)[today] || 0;
+  return { mode: open ? open.mode : "off", shift: open ? ttShiftOut(open, true) : null, today_min: ttMin(todayMs), server_now: ttIso(ttNow()), today: today };
+}
+function ttSuggest(emp) {
+  var today = ttDayOf(ttNow()), crews = ttCrewsOf(emp).map(function (c) { return c.id; }), who = findPerson(emp) || {};
+  var visits = rows("LsVisits").filter(function (v) { return v.date === today && crews.indexOf(v.crew_id) > -1 && ["canceled", "skipped"].indexOf(v.status) < 0; })
+    .sort(function (a, b) { return num(a.stop) - num(b.stop); }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return { ref_type: "visit", ref_id: v.id, name: p.name || "Visit", sub: (p.address || "") + (v.stop ? " · stop " + v.stop : ""), status: v.status }; });
+  var props = rows("LsProps").filter(function (p) { return p.status !== "deleted" && (crews.indexOf(p.crew_id) > -1 || isStaff(who)) && !isTrue(p.sample); }).slice(0, 40).map(function (p) { return { ref_type: "property", ref_id: p.id, name: p.name, sub: p.city || "" }; });
+  var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (isStaff(who) || splitIds(who.project_ids).indexOf(p.id) > -1); }).map(function (p) { return { ref_type: "project", ref_id: p.id, name: p.name, sub: p.city || "" }; });
+  return { visits: visits, properties: props, projects: projs };
+}
+
+/* ====================================== actions: the employee ====================================== */
+ACTIONS.ttState = function (me, b) {
+  ttClocker(me); var emp = normEmail(me.email), pm = ttPerms(me), row = ttRow(me), cfg = ttCfg();
+  if (!ttEnabled(row)) return { enabled: false, reviewer: !!pm.time_review, perms: pm, lang: ttLang(me), admin: me.role === "admin" };
+  var mine = rows("TtCorrections").filter(function (c) { return c.emp === emp; });
+  var news = mine.filter(function (c) { return c.decided_at && (!c.seen_at || c.seen_at < c.decided_at); }).map(function (c) { return { id: c.id, status: c.status, date: c.date, note: c.decision_note }; });
+  return Object.assign(ttStateOf(emp), { lang: ttLang(me), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
+    privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
+};
+ACTIONS.ttPunch = function (me, b) {
+  ttClocker(me); var emp = normEmail(me.email), src = "employee";
+  if (b.for_emp && normEmail(b.for_emp) !== emp) {                                     // a supervisor clocking for someone: needs its own permission, and it says so on the record
+    emp = normEmail(b.for_emp); var who = findPerson(emp);
+    if (!ttPerms(me).clock_others || !ttCanReview(me, emp) || !who || !isTeam(who)) throw ttErr(me, "No tienes permiso para registrar por esa persona.", "You can't clock for that person."); src = "supervisor";
+  }
+  if (!ttEnabled(findPerson(emp))) throw ttErr(me, "El reloj todavía no está activado para esta persona.", "The clock isn't turned on for this person yet.");
+  var key = String(b.client_key || ""); if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw ttErr(me, "Recarga el portal e intenta otra vez.", "Reload the portal and try again.");
+  var dup = findBy("TtEvents", "client_key", key);
+  if (dup) return { dup: true, status: dup.status, event: ttEvOut(dup), state: ttStateOf(dup.emp) };   // a double tap or a retry of the same tap: nothing new is saved
+  var kind = String(b.kind || ""); if (["in", "out", "meal_start", "meal_end", "rest_start", "rest_end", "switch"].indexOf(kind) < 0) throw new Error("Unknown action.");
+  var nowMs = ttNow(), offline = !!b.offline, dev = ttMs(b.device_at), at = nowMs, notes = [], status = "ok";
+  if (offline) {                                                                        // saved on the phone without signal: its own clock is all we have, and it says so
+    if (dev == null) throw new Error("Missing the time of the offline record.");
+    if (dev > nowMs + 120000) { notes.push("device clock was ahead of the server"); at = nowMs; } else at = dev;
+    if (nowMs - at > 7 * 864e5) { status = "conflict"; notes.push("arrived more than 7 days late"); }
+  } else if (dev != null && Math.abs(dev - nowMs) > 5 * 60000) notes.push("device clock off by " + Math.round((dev - nowMs) / 60000) + " min");
+  var shifts = ttShifts(ttEvents(emp), nowMs).filter(function (s) { return !s.voided && !s.broken; }), open = shifts.filter(function (s) { return s.open; }).pop(), id = newId("te"), sid = id, job = null;
+  var per = findBy("TtPeriods", "id", ttWeekStart(ttDayOf(at))); if (per && per.status === "closed") { status = "conflict"; notes.push("that week is already closed"); }
+  if (kind === "in") {
+    if (open) { if (!offline) throw ttErr(me, "Ya tienes entrada desde las " + ttHm(open.start) + ".", "You're already checked in since " + ttHm(open.start) + "."); status = "conflict"; notes.push("another shift was open"); }
+    else if (shifts.some(function (s) { return at >= s.start && (s.end == null || at < s.end); })) { status = "conflict"; notes.push("overlaps a recorded shift"); }
+    job = ttJob(me, emp, b);
+  } else {
+    var tg = offline ? (shifts.filter(function (s) { return at >= s.start && (s.end == null || at <= s.end); }).pop() || open) : open;
+    if (!tg) { if (!offline) throw ttErr(me, "No tienes entrada registrada.", "You're not checked in."); status = "conflict"; notes.push("no open shift for it"); }
+    else {
+      sid = tg.id; var m = tg.mode;
+      var okk = { work: ["meal_start", "rest_start", "switch", "out"], meal: ["meal_end", "out"], rest: ["rest_end", "out"] }[m] || [];
+      if (!offline && okk.indexOf(kind) < 0) throw ttErr(me, "Esa acción no aplica ahora.", "That doesn't apply right now.");
+      if (at < tg.start) { status = "conflict"; notes.push("earlier than the check-in"); }
+      if (offline && tg.end != null && at > tg.end) { status = "conflict"; notes.push("after the check-out"); }
+      job = kind === "switch" ? ttJob(me, emp, b) : tg.job;
+    }
+  }
+  if (!job) job = { act: "", ref_type: "", ref_id: "", ref_name: "" };
+  var loc = ttLocate(b.loc, job, at);
+  var ev = Object.assign({ id: id, emp: emp, actor: me.email, kind: kind, at: ttIso(at), device_at: dev != null ? ttIso(dev) : "", recv_at: ttIso(nowMs), tz: CONFIG.TZ,
+    act: kind === "in" || kind === "switch" ? job.act : "", ref_type: kind === "in" || kind === "switch" ? job.ref_type : "", ref_id: kind === "in" || kind === "switch" ? job.ref_id : "", ref_name: kind === "in" || kind === "switch" ? job.ref_name : "",
+    source: src, offline: offline ? "yes" : "", seq: String(num(b.seq) || ""), client_key: key, device: clean(b.device, 80), shift_id: sid, supersedes: "", corr_id: "", note: notes.join("; "), status: status }, loc);
+  insert("TtEvents", ev);
+  if (src === "supervisor") ttAudit(me, emp, "clock_for", ev.id, null, { kind: kind, at: ev.at }, "clocked by a supervisor");
+  var out = { status: status, event: ttEvOut(ev, true), state: ttStateOf(emp) };
+  if (kind === "out" && status === "ok") { var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === sid; })[0]; if (s) { out.summary = ttShiftOut(s, false); out.summary.ask_meal = s.paid > 300 * 6e4 && !s.meals.length; } }
+  return out;
+};
+ACTIONS.ttSetLang = function (me, b) { ttClocker(me); var l = b.lang === "en" ? "en" : "es"; update("People", "email", normEmail(me.email), { lang: l }); return { lang: l }; };
+
+/* One workweek for one person: days, shifts, totals, overtime estimate, items to review, corrections, confirmation. */
+function ttWeekOf(emp, ws, forReviewer) {
+  var we = ttAddDays(ws, 6), all = ttEvents(emp), sh = ttShifts(all), days = [], perDay = ttPerDay(sh), who = findPerson(emp) || {};
+  var inWeek = sh.filter(function (s) { return s.day >= ws && s.day <= we || (s.end != null && ttDayOf(s.end) >= ws && s.day < ws); });
+  for (var i = 0; i < 7; i++) { var d = ttAddDays(ws, i); days.push({ date: d, paid_min: ttMin(perDay[d] || 0), shifts: inWeek.filter(function (s) { return s.day === d; }).map(function (s) { return ttShiftOut(s, true); }) }); }
+  var gone = {}; all.forEach(function (e) { if (e.supersedes) gone[e.supersedes] = e.corr_id || e.id; });
+  var replaced = all.filter(function (e) { return gone[e.id] && ttDayOf(ttMs(e.at)) >= ws && ttDayOf(ttMs(e.at)) <= we; }).map(function (e) { var o = ttEvOut(e, true); o.replaced_by = gone[e.id]; return o; });
+  var conflicts = all.filter(function (e) { return e.status === "conflict" && ttDayOf(ttMs(e.at)) >= ws && ttDayOf(ttMs(e.at)) <= we; }).map(function (e) { return ttEvOut(e, true); });
+  var calc = ttCalcWeek(days.map(function (d) { return d.paid_min; }), who.pay_type);
+  var byAct = {}; inWeek.forEach(function (s) { if (s.voided) return; s.segs.forEach(function (g) { var k = g.kind === "rest" ? "rest" : g.act; byAct[k] = (byAct[k] || 0) + (g.to - g.from); }); });
+  Object.keys(byAct).forEach(function (k) { byAct[k] = ttMin(byAct[k]); });
+  var wk = findBy("TtWeeks", "key", ws + "|" + emp), per = findBy("TtPeriods", "id", ws) || { id: ws, status: "open", version: "0" };
+  var cors = rows("TtCorrections").filter(function (c) { return c.emp === emp && (c.period_id === ws || ["pending", "needs_info"].indexOf(c.status) > -1); }).map(ttCorOut);
+  var hash = ttHash(days, inWeek);
+  return { emp: emp, name: personName(emp), pay_type: who.pay_type || "", week: { start: ws, end: we, status: per.status, version: num(per.version) }, days: days, replaced: replaced, conflicts: conflicts,
+    totals: { paid_min: days.reduce(function (a, d) { return a + d.paid_min; }, 0), meal_min: ttMin(inWeek.reduce(function (a, s) { return a + (s.voided ? 0 : s.meal); }, 0)), by_act: byAct }, calc: calc,
+    open_shifts: inWeek.filter(function (s) { return s.open && !s.voided; }).length, exceptions: ttExc(emp, sh, ws, we, all), corrections: cors,
+    confirm: wk ? { status: wk.emp_status, note: wk.emp_note, at: wk.emp_at } : null,
+    approval: wk && wk.approved_by ? { by: personName(wk.approved_by), at: wk.approved_at, valid: wk.approved_hash === hash } : null };
+}
+function ttHash(days, inWeek) { return sha(JSON.stringify(days.map(function (d) { return d.paid_min; })) + "|" + inWeek.map(function (s) { return s.id + ":" + s.events.length + ":" + (s.voided ? "v" : ""); }).join(",")).slice(0, 16); }
+ACTIONS.ttMyWeek = function (me, b) {
+  ttClocker(me); var emp = normEmail(b.emp || me.email);
+  if (emp !== normEmail(me.email) && !ttCanReview(me, emp)) throw ttErr(me, "No puedes ver las horas de esa persona.", "You can't see that person's hours.");
+  var d = /^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow());
+  var out = ttWeekOf(emp, ttWeekStart(d), emp !== normEmail(me.email)); out.today = ttDayOf(ttNow()); out.me = emp === normEmail(me.email); return out;
+};
+ACTIONS.ttConfirmWeek = function (me, b) {
+  ttClocker(me); var emp = normEmail(me.email), ws = ttWeekStart(String(b.week || "")), st = b.status === "discrepancy" ? "discrepancy" : "ok", note = clean(b.note, 1000);
+  if (!/^\d{4}-\d\d-\d\d$/.test(ws)) throw new Error("Pick the week.");
+  if (st === "discrepancy" && note.length < 3) throw ttErr(me, "Escribe qué no cuadra.", "Say what doesn't match.");
+  var k = ws + "|" + emp, wk = findBy("TtWeeks", "key", k), h = parseJson(wk && wk.history, []); h.push({ at: ttIso(ttNow()), by: emp, what: "employee " + st, note: note });
+  var patch = { emp_status: st, emp_note: note, emp_at: ttIso(ttNow()), history: JSON.stringify(h) };
+  if (wk) update("TtWeeks", "key", k, patch); else insert("TtWeeks", Object.assign({ key: k, period_id: ws, emp: emp }, patch));
+  ttAudit(me, emp, "confirm", k, null, patch, note); return { ok: true };
+};
+
+/* ---- the meal question at check-out (shifts over 5 h with no meal clocked). Nothing is deducted by itself:
+   "took it" becomes a request with the time they give; "no" or "interrupted" keeps the time paid and goes to review. ---- */
+function ttMealOf(emp, sid) { return rows("TtMeals").filter(function (m) { return m.emp === emp && m.shift_id === sid; }).sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); }).pop() || null; }
+ACTIONS.ttMeal = function (me, b) {
+  ttClocker(me); var emp = normEmail(me.email), ans = String(b.answer || "");
+  if (["took", "none", "interrupted"].indexOf(ans) < 0) throw ttErr(me, "Elige una respuesta.", "Pick an answer.");
+  var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === String(b.shift_id || ""); })[0];
+  if (!s || s.open || s.voided) throw ttErr(me, "No encontré esa jornada.", "Shift not found.");
+  if (s.meals.length) throw ttErr(me, "Esa jornada ya tiene comida registrada.", "That shift already has a meal recorded.");
+  var row = { id: newId("tm"), emp: emp, shift_id: s.id, day: s.day, answer: ans, start: "", minutes: "", corr_id: "", at: ttIso(ttNow()) };
+  if (ans === "took") {
+    var st = String(b.start || ""), mins = Math.round(num(b.minutes));
+    if (!/^\d\d:\d\d$/.test(st)) throw ttErr(me, "¿A qué hora empezaste a comer?", "What time did the meal start?");
+    if (mins < 10 || mins > 120) throw ttErr(me, "La comida debe durar entre 10 y 120 minutos.", "A meal is 10 to 120 minutes.");
+    var a = ttFromLocal(s.day + " " + st), z = a + mins * 6e4;
+    if (a == null || a < s.start || z > s.end) throw ttErr(me, "La comida tiene que quedar entre tu entrada y tu salida.", "The meal has to fall between your check-in and check-out.");
+    var r = ACTIONS.ttRequestCorrection(me, { reason: "meal", explain: (ttLang(me) === "es" ? "Comida reportada al marcar salida: " : "Meal reported at check-out: ") + st + ", " + mins + " min", shift_id: s.id,
+      changes: [{ op: "add", kind: "meal_start", shift_id: s.id, at: ttLocal(a) }, { op: "add", kind: "meal_end", shift_id: s.id, at: ttLocal(z) }] });
+    row.start = st; row.minutes = String(mins); row.corr_id = r.correction.id;
+  }
+  insert("TtMeals", row); ttAudit(me, emp, "meal_answer", s.id, null, { answer: ans, start: row.start, minutes: row.minutes }, "");
+  return { answer: ans, corr_id: row.corr_id };
+};
+
+/* ====================================== corrections ====================================== */
+function ttCorOut(c) {
+  return { id: c.id, emp: c.emp, name: personName(c.emp), shift_id: c.shift_id, date: c.date, reason: c.reason, explain: c.explain, changes: parseJson(c.changes, []), before: parseJson(c.before, {}),
+    delta_min: num(c.delta_min), declared_place: c.declared_place, requested_by: personName(c.requested_by), office: c.requested_by !== c.emp, requested_at: c.requested_at, status: c.status,
+    decided_by: c.decided_by ? personName(c.decided_by) : "", decided_at: c.decided_at, decision_note: c.decision_note, period_id: c.period_id, after_close: isTrue(c.after_close),
+    dispute: c.dispute, dispute_at: c.dispute_at, history: parseJson(c.history, []) };
+}
+/* The events a correction would add (nothing saved). Each says it came from a correction; none carries a phone location. */
+function ttVirtual(me, emp, changes, corrId, declared, evs) {
+  var byId = {}; evs.forEach(function (e) { byId[e.id] = e; }); var lastIn = "", made = [], t0 = ttIso(ttNow());
+  var base = function (kind, atIso, sid, job, sup) {
+    var id = newId("te"); return { id: id, emp: emp, actor: me.email, kind: kind, at: atIso, device_at: "", recv_at: t0, tz: CONFIG.TZ, act: job ? job.act : "", ref_type: job ? job.ref_type : "", ref_id: job ? job.ref_id : "",
+      ref_name: job ? job.ref_name : "", lat: "", lon: "", acc: "", loc_at: "", loc_status: declared ? "declared" : "none", zone: "none", zone_name: declared ? String(declared).slice(0, 120) : "", zone_m: "",
+      source: "correction", offline: "", seq: "", client_key: "", device: "", shift_id: sid || id, supersedes: sup || "", corr_id: corrId, note: "", status: "ok" };
+  };
+  changes.forEach(function (c) {
+    if (c.op === "add") {
+      var sid = c.kind === "in" ? "" : c.shift_id || lastIn; if (c.kind !== "in" && !sid) throw ttErr(me, "Indica a qué jornada pertenece.", "Say which shift it belongs to.");
+      var e = base(c.kind, c.at, sid, c.kind === "in" || c.kind === "switch" ? c.job : null); if (c.kind === "in") lastIn = e.id; made.push(e);
+    } else if (c.op === "move" || c.op === "retag") {
+      var o = byId[c.target]; if (!o || o.emp !== emp || ["void", "restore"].indexOf(o.kind) > -1) throw ttErr(me, "No encontré ese registro.", "That record wasn't found.");
+      var j = c.op === "retag" ? c.job : (o.kind === "in" || o.kind === "switch" ? ttJobOf(o) : null);
+      made.push(base(o.kind, c.op === "move" ? c.at : o.at, o.shift_id, j, o.id));
+    } else if (c.op === "void" || c.op === "restore") made.push(base(c.op, t0, c.shift_id, null, ""));
+  });
+  return made;
+}
+function ttParseChanges(me, emp, list) {
+  list = [].concat(list || []); if (!list.length || list.length > 8) throw ttErr(me, "Agrega el cambio que pides (máximo 8).", "Add the change you're asking for (8 at most).");
+  var nowMs = ttNow();
+  return list.map(function (c) {
+    var op = String(c.op || ""), o = { op: op };
+    if (["add", "move", "retag", "void", "restore"].indexOf(op) < 0) throw new Error("Unknown change.");
+    if (op === "void" || op === "restore") { if (!c.shift_id) throw new Error("Which shift?"); o.shift_id = String(c.shift_id); return o; }
+    if (op !== "add") o.target = String(c.target || "");
+    if (op === "add") { o.kind = String(c.kind || ""); if (["in", "out", "meal_start", "meal_end", "rest_start", "rest_end", "switch"].indexOf(o.kind) < 0) throw new Error("Unknown change."); if (c.shift_id) o.shift_id = String(c.shift_id); }
+    if (op === "add" || op === "move") {
+      var ms = ttFromLocal(c.at); if (ms == null) throw ttErr(me, "Escribe la hora (fecha y hora).", "Write the date and time.");
+      if (ms > nowMs) throw ttErr(me, "La hora no puede ser en el futuro.", "The time can't be in the future."); o.at = ttIso(ms); o.at_local = ttLocal(ms);
+    }
+    if (op === "retag" || (op === "add" && (o.kind === "in" || o.kind === "switch"))) o.job = ttJob(me, emp, c);
+    return o;
+  });
+}
+function ttCheck(me, shifts) {
+  var ok = shifts.filter(function (s) { return !s.voided; });
+  ok.forEach(function (s) {
+    if (s.broken) throw ttErr(me, "Así quedaría una jornada sin entrada.", "That would leave a shift without a check-in.");
+    if (s.stray) throw ttErr(me, "Hay un registro fuera de la jornada (antes de la entrada o después de la salida).", "A record would fall outside its shift (before the check-in or after the check-out).");
+    if (s.end != null && s.end - s.start > 24 * 36e5) throw ttErr(me, "Una jornada no puede pasar de 24 horas.", "A shift can't be longer than 24 hours.");
+  });
+  for (var i = 1; i < ok.length; i++) { var a = ok[i - 1], b = ok[i]; if (a.end == null || b.start < a.end) throw ttErr(me, "Se encimaría con otra jornada tuya que empezó el " + ttDayOf(a.start).slice(5).replace("-", "/") + " a las " + ttHm(a.start) + ".", "That would overlap the shift starting " + ttHuman(a.start) + "."); }
+}
+function ttDaysTouched(shifts, ids) { var d = {}; shifts.forEach(function (s) { if (ids[s.id]) { d[s.day] = 1; if (s.end != null) d[ttDayOf(s.end)] = 1; } }); return d; }
+function ttPreview(me, emp, changes, corrId, declared) {
+  var evs = ttEvents(emp), before = ttShifts(evs), virt = ttVirtual(me, emp, changes, corrId, declared, evs), after = ttShifts(evs.concat(virt));
+  ttCheck(me, after);
+  var ids = {}; virt.forEach(function (e) { ids[e.shift_id] = 1; }); var days = Object.assign(ttDaysTouched(before, ids), ttDaysTouched(after, ids));
+  var pb = ttPerDay(before), pa = ttPerDay(after), bd = {}, ad = {}, delta = 0;
+  Object.keys(days).forEach(function (d) { bd[d] = ttMin(pb[d] || 0); ad[d] = ttMin(pa[d] || 0); delta += ad[d] - bd[d]; });
+  return { virt: virt, before: bd, after: ad, delta: delta, days: Object.keys(days).sort() };
+}
+ACTIONS.ttRequestCorrection = function (me, b) {
+  ttClocker(me); var self = normEmail(me.email), emp = normEmail(b.emp || self), office = emp !== self;
+  if (office && !ttCanReview(me, emp)) throw ttErr(me, "No puedes corregir las horas de esa persona.", "You can't correct that person's hours.");
+  var reason = office ? "office_fix" : String(b.reason || ""); if (!TT_REASONS[reason]) throw ttErr(me, "Elige el motivo.", "Pick the reason.");
+  var explain = clean(b.explain, 1000); if (explain.length < (office ? 8 : 3)) throw ttErr(me, "Explica qué pasó.", "Explain what happened.");
+  var changes = ttParseChanges(me, emp, b.changes), mineEv = {}; ttEvents(emp).forEach(function (e) { mineEv[e.id] = e; });
+  changes.forEach(function (c) { var o = c.target && mineEv[c.target]; if (o) { c.orig_kind = o.kind; c.orig_at = ttIso(ttMs(o.at)); c.orig_local = ttLocal(ttMs(o.at)); c.orig_job = ttJobOf(o); } });   // what it was, shown next to what's asked
+  if (!office && changes.some(function (c) { return c.op === "void" || c.op === "restore"; })) throw ttErr(me, "Solo la oficina puede anular una jornada.", "Only the office can void a shift.");
+  var id = newId("tc"), pv = ttPreview(me, emp, changes, id, clean(b.declared_place, 120));
+  var first = pv.days[0] || ttDayOf(ttNow()), ws = ttWeekStart(first), per = findBy("TtPeriods", "id", ws), closed = !!per && per.status === "closed";
+  var row = { id: id, emp: emp, shift_id: clean(b.shift_id, 40), date: first, reason: reason, explain: explain, changes: JSON.stringify(changes), before: JSON.stringify({ before: pv.before, after: pv.after }),
+    delta_min: String(pv.delta), declared_place: clean(b.declared_place, 120), evidence_id: "", requested_by: self, requested_at: ttIso(ttNow()), status: "pending", decided_by: "", decided_at: "", decision_note: "",
+    applied: "", period_id: ws, after_close: closed ? "yes" : "", dispute: "", dispute_at: "", history: JSON.stringify([{ at: ttIso(ttNow()), by: self, what: "requested" }]), seen_at: "" };
+  insert("TtCorrections", row); ttAudit(me, emp, "correction_requested", id, null, { changes: changes, delta_min: pv.delta }, explain);
+  return { correction: ttCorOut(row) };
+};
+function ttCorNeed(me, id) { var c = findBy("TtCorrections", "id", String(id || "")); if (!c) throw new Error("Correction not found."); return c; }
+function ttHist(c, me, what, note) { var h = parseJson(c.history, []); h.push({ at: ttIso(ttNow()), by: me.email, what: what, note: note || "" }); return JSON.stringify(h); }
+ACTIONS.ttDecide = function (me, b) {
+  var c = ttCorNeed(me, b.id), self = normEmail(me.email), dec = String(b.decision || ""), note = clean(b.note, 1000);
+  if (["pending", "needs_info"].indexOf(c.status) < 0) throw new Error("This correction was already decided.");
+  if (self === c.emp || self === c.requested_by) throw new Error("Nobody decides their own correction. Another reviewer has to.");
+  if (!ttCanReview(me, c.emp)) throw new Error("You can't review this person's hours.");
+  var per = findBy("TtPeriods", "id", c.period_id), closed = !!per && per.status === "closed";
+  if (closed && !ttPerms(me).accounting) throw new Error("That week is closed. Only accounting decides changes to a closed week.");
+  if (dec === "approve") {
+    var pv = ttPreview(me, c.emp, parseJson(c.changes, []), c.id, c.declared_place);      // re-checked against the records as they are now
+    pv.virt.forEach(function (e) { insert("TtEvents", e); });
+    var patch = { status: "approved", decided_by: self, decided_at: ttIso(ttNow()), decision_note: note, applied: pv.virt.map(function (e) { return e.id; }).join(","), delta_min: String(pv.delta),
+      before: JSON.stringify({ before: pv.before, after: pv.after }), history: ttHist(c, me, "approved", note) };
+    if (closed) {
+      var ph = parseJson(per.history, []), v = num(per.version) + 1; ph.push({ at: ttIso(ttNow()), by: self, what: "adjustment after close", corr: c.id, emp: c.emp, delta_min: pv.delta, version: v });
+      update("TtPeriods", "id", per.id, { version: String(v), history: JSON.stringify(ph) }); patch.after_close = "yes";
+    }
+    update("TtCorrections", "id", c.id, patch); ttAudit(me, c.emp, "correction_approved", c.id, pv.before, pv.after, note);
+  } else if (dec === "reject" || dec === "ask") {
+    if (note.length < 3) throw new Error(dec === "reject" ? "Say why it's rejected." : "Write what you need to know.");
+    update("TtCorrections", "id", c.id, { status: dec === "reject" ? "rejected" : "needs_info", decided_by: self, decided_at: ttIso(ttNow()), decision_note: note, history: ttHist(c, me, dec === "reject" ? "rejected" : "asked for details", note) });
+    ttAudit(me, c.emp, dec === "reject" ? "correction_rejected" : "correction_question", c.id, null, null, note);
+  } else throw new Error("Approve, reject or ask.");
+  return { correction: ttCorOut(findBy("TtCorrections", "id", c.id)) };
+};
+ACTIONS.ttReply = function (me, b) {
+  var c = ttCorNeed(me, b.id), self = normEmail(me.email), note = clean(b.note, 1000);
+  if (c.emp !== self && c.requested_by !== self) throw new Error("Correction not found."); if (note.length < 2) throw ttErr(me, "Escribe tu respuesta.", "Write your answer.");
+  if (b.withdraw) { if (["pending", "needs_info"].indexOf(c.status) < 0) throw new Error("It was already decided."); update("TtCorrections", "id", c.id, { status: "withdrawn", history: ttHist(c, me, "withdrawn", note) }); ttAudit(me, c.emp, "correction_withdrawn", c.id, null, null, note); return { ok: true }; }
+  if (b.dispute) { if (["approved", "rejected"].indexOf(c.status) < 0) throw new Error("There's no decision to question yet."); update("TtCorrections", "id", c.id, { dispute: note, dispute_at: ttIso(ttNow()), history: ttHist(c, me, "questioned the decision", note) }); ttAudit(me, c.emp, "decision_questioned", c.id, null, null, note); return { ok: true }; }
+  if (c.status !== "needs_info") throw new Error("Nobody asked for details on this one.");
+  update("TtCorrections", "id", c.id, { status: "pending", history: ttHist(c, me, "answered", note) }); ttAudit(me, c.emp, "correction_answered", c.id, null, null, note); return { ok: true };
+};
+ACTIONS.ttSeen = function (me) { ttClocker(me); var e = normEmail(me.email), t = ttIso(ttNow()); rows("TtCorrections").forEach(function (c) { if (c.emp === e && c.decided_at && (!c.seen_at || c.seen_at < c.decided_at)) update("TtCorrections", "id", c.id, { seen_at: t }); }); return {}; };
+
+/* ====================================== review, items to resolve, closing the week ====================================== */
+function ttAbsentOn(emp, d) { return rows("TtAbsence").some(function (a) { return a.emp === emp && a.from <= d && a.to >= d; }); }
+/* Items to review for one person. Neutral words: an item is a gap in the record, never a judgment about the person. */
+function ttExc(emp, shifts, from, to, evs) {
+  var out = [], cfg = ttCfg(), nowMs = ttNow(), today = ttDayOf(nowMs), who = findPerson(emp) || {}, nm = who.name || emp, owner = ttOwnerOf(emp);
+  var add = function (x) { x.emp = emp; x.name = nm; x.owner = x.owner || owner; out.push(x); };
+  shifts.forEach(function (s) {
+    if (s.voided || s.broken || s.day < from || s.day > to) return;
+    if (s.open && s.day < today) add({ key: "out:" + s.id, kind: "missing_out", day: s.day, shift_id: s.id, priority: 1, title: "Check-out missing", why: "Shift started " + ttHuman(s.start) + " and is still open", next: "Ask " + nm + " for the time, or record an office correction" });
+    else if (s.open && nowMs - s.start > cfg.open_long_h * 36e5) add({ key: "long:" + s.id, kind: "open_long", day: s.day, shift_id: s.id, priority: 2, title: "Shift open more than " + cfg.open_long_h + " h", why: "Started " + ttHm(s.start), next: "Check with " + nm });
+    if (!s.open && s.unassigned >= 6e4) add({ key: "un:" + s.id, kind: "unassigned", day: s.day, shift_id: s.id, priority: 3, title: ttMin(s.unassigned) + " min not assigned to a job", why: "The time counts; it just isn't on a job yet", next: "Assign the job (correction)" });
+    var paid = s.paid / 6e4, said = ttMealOf(emp, s.id);
+    if (!s.open && paid > 300 && !s.meals.length && said && said.answer === "none") add({ key: "meal:" + s.id, kind: "meal", day: s.day, shift_id: s.id, priority: 2, title: "Says no meal was taken", why: Math.round(paid / 6) / 10 + " h shift; answered at check-out", next: "Review with accounting (a meal premium may apply)" });
+    else if (!s.open && paid > 300 && !s.meals.length && said && said.answer === "interrupted") add({ key: "meal:" + s.id, kind: "meal", day: s.day, shift_id: s.id, priority: 2, title: "Says the meal was interrupted or worked through", why: Math.round(paid / 6) / 10 + " h shift; the time stays paid", next: "Review with accounting (a meal premium may apply)" });
+    else if (!s.open && paid > 300 && !s.meals.length && said && said.answer === "took") { /* the meal they reported is a correction to decide */ }
+    else if (!s.open && paid > 300 && !s.meals.length) add({ key: "meal:" + s.id, kind: "meal", day: s.day, shift_id: s.id, priority: 2, title: "Meal period to review", why: Math.round(paid / 6) / 10 + " h with no meal recorded", next: "Ask whether a meal was taken, missed or interrupted" });
+    else if (!s.open && paid > 600 && s.meals.length < 2) add({ key: "meal2:" + s.id, kind: "meal", day: s.day, shift_id: s.id, priority: 2, title: "Second meal period to review", why: Math.round(paid / 6) / 10 + " h with " + s.meals.length + " meal recorded", next: "Review with accounting" });
+    s.events.forEach(function (e) {
+      if (e.source === "correction") return;
+      if (["denied", "timeout", "unavailable", "unsupported", "none"].indexOf(e.loc_status) > -1 && (e.kind === "in" || e.kind === "out")) add({ key: "loc:" + e.id, kind: "no_location", day: s.day, shift_id: s.id, priority: 3, title: "No location on " + (e.kind === "in" ? "check-in" : "check-out"), why: { denied: "Location permission was off", timeout: "The phone took too long", unavailable: "The phone couldn't get a location", unsupported: "This device doesn't share location", none: "No location was sent" }[e.loc_status], next: "Nothing needed if the time is right" });
+      else if (e.zone === "outside") add({ key: "zone:" + e.id, kind: "outside", day: s.day, shift_id: s.id, priority: 3, title: "Recorded away from " + (e.zone_name || "the job"), why: "About " + (num(e.zone_m) >= 1000 ? Math.round(num(e.zone_m) / 100) / 10 + " km" : num(e.zone_m) + " m") + " away (phone accuracy ±" + e.acc + " m)", next: "Check if they were on another job or traveling" });
+      if (isTrue(e.offline)) add({ key: "off:" + e.id, kind: "offline", day: s.day, shift_id: s.id, priority: 3, title: "Recorded without signal", why: "Time comes from the phone's clock; it reached the server " + ttHuman(ttMs(e.recv_at)), next: "Confirm the time looks right" });
+    });
+  });
+  (evs || []).forEach(function (e) { var d = ttDayOf(ttMs(e.at)); if (e.status === "conflict" && d >= from && d <= to) add({ key: "conf:" + e.id, kind: "conflict", day: d, shift_id: e.shift_id, priority: 1, title: "A record didn't fit", why: (e.note || "conflict") + " (" + e.kind + " " + ttHuman(ttMs(e.at)) + ")", next: "Decide with an office correction; the record stays on file" }); });
+  var live = shifts.filter(function (s) { return !s.voided && !s.broken; });
+  for (var i = 1; i < live.length; i++) if (live[i - 1].end == null ? live[i].start > live[i - 1].start : live[i].start < live[i - 1].end) add({ key: "ovl:" + live[i].id, kind: "overlap", day: live[i].day, shift_id: live[i].id, priority: 1, title: "Overlapping shifts", why: "Two shifts cover the same time", next: "Fix with an office correction" });
+  var perDay = ttPerDay(shifts);
+  Object.keys(perDay).forEach(function (d) { if (d >= from && d <= to && perDay[d] > 8 * 36e5) add({ key: "ot:" + d + ":" + pkey(emp), kind: "overtime", day: d, priority: 3, title: "Possible overtime", why: Math.round(perDay[d] / 36e5 * 10) / 10 + " h on " + d, next: "Review hours; overtime worked is paid even if it wasn't pre-approved" }); });
+  // a scheduled day with no check-in (crews only; past days; not on a recorded absence; only since this person started using the clock)
+  var crews = ttCrewsOf(emp).map(function (c) { return c.id; }), firstDay = (evs || []).filter(function (e) { return e.source !== "correction"; }).map(function (e) { return ttDayOf(ttMs(e.at)); }).sort()[0];
+  if (crews.length && firstDay) {
+    var days = {}; rows("LsVisits").forEach(function (v) { if (crews.indexOf(v.crew_id) > -1 && v.date >= from && v.date >= firstDay && v.date <= to && v.date < today && ["canceled", "skipped"].indexOf(v.status) < 0) days[v.date] = 1; });
+    Object.keys(days).forEach(function (d) { if (!live.some(function (s) { return s.day === d; }) && !ttAbsentOn(emp, d)) add({ key: "noin:" + d + ":" + pkey(emp), kind: "no_checkin", day: d, priority: 2, title: "No check-in on a scheduled day", why: "Their crew had visits on " + d, next: "Ask if they worked, or record the absence" }); });
+  }
+  rows("TtCorrections").forEach(function (c) {
+    if (c.emp !== emp) return;
+    if (c.status === "pending" || c.status === "needs_info") add({ key: "cor:" + c.id, kind: "correction", day: c.date, priority: c.status === "pending" ? 1 : 3, title: c.status === "pending" ? "Correction to decide" : "Waiting on " + nm + "'s answer", why: (c.delta_min > 0 ? "+" : "") + num(c.delta_min) + " min · " + c.explain.slice(0, 80), next: c.status === "pending" ? "Approve, reject or ask" : "Wait for the reply" });
+    if (c.dispute && c.dispute_at >= (c.decided_at || "")) add({ key: "dis:" + c.id, kind: "dispute", day: c.date, priority: 2, title: nm + " questions a decision", why: c.dispute.slice(0, 90), next: "Talk with them; record an office correction if needed" });
+  });
+  return out;
+}
+ACTIONS.ttReview = function (me, b) {
+  var pm = ttPerms(me); if (!pm.time_review) throw new Error("Only reviewers see the team's hours.");
+  var ws = ttWeekStart(/^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow())), we = ttAddDays(ws, 6), self = normEmail(me.email);
+  var scope = ttScope(me), per = findBy("TtPeriods", "id", ws) || { id: ws, status: "open", version: "0", history: "" };
+  var people = scope.map(function (emp) {
+    var w = ttWeekOf(emp, ws, true), has = w.totals.paid_min > 0 || w.exceptions.length || w.corrections.length || w.conflicts.length;
+    var loc = { inside: 0, outside: 0, unknown: 0, nogps: 0 };                          // where the taps happened vs the place they picked (office only)
+    w.days.forEach(function (d) { d.shifts.forEach(function (s) { s.events.forEach(function (e) {
+      if (e.source === "correction" || ["in", "out", "switch"].indexOf(e.kind) < 0) return;
+      if (["ok", "imprecise", "stale"].indexOf(e.loc_status) < 0) loc.nogps++; else if (e.zone === "inside") loc.inside++; else if (e.zone === "outside") loc.outside++; else if (e.zone === "unknown") loc.unknown++;
+    }); }); });
+    return has ? { emp: emp, name: w.name, pay_type: w.pay_type, paid_min: w.totals.paid_min, reg: w.calc.reg, ot: w.calc.ot, dt: w.calc.dt, exceptions: w.exceptions.length, open_shifts: w.open_shifts,
+      pending: w.corrections.filter(function (c) { return c.status === "pending"; }).length, confirm: w.confirm, approval: w.approval, self: emp === self, loc: loc } : null;
+  }).filter(Boolean);
+  var cors = rows("TtCorrections").filter(function (c) { return scope.indexOf(c.emp) > -1 && (c.status === "pending" || c.status === "needs_info"); }).map(function (c) {
+    var o = ttCorOut(c), sh = ttShifts(ttEvents(c.emp)); o.can_decide = c.emp !== self && c.requested_by !== self && (!(per.id === c.period_id && per.status === "closed") || !!pm.accounting);
+    o.near = sh.filter(function (s) { return Math.abs(new Date(s.day) - new Date(c.date)) <= 864e5; }).map(function (s) { return ttShiftOut(s, true); });   // the record as it is now, side by side
+    var crews = ttCrewsOf(c.emp).map(function (x) { return x.id; }); o.assigned = rows("LsVisits").filter(function (v) { return v.date === c.date && crews.indexOf(v.crew_id) > -1; }).map(function (v) { var p = findBy("LsProps", "id", v.property_id) || {}; return { name: p.name || "Visit", status: v.status, stop: v.stop }; });
+    return o;
+  });
+  var blockers = ttCloseBlockers(people); if (we >= ttDayOf(ttNow())) blockers.unshift("The week isn't over yet (it ends " + we + ")");
+  return { week: { start: ws, end: we, status: per.status, version: num(per.version), closed_by: per.closed_by ? personName(per.closed_by) : "", closed_at: per.closed_at || "", history: parseJson(per.history, []) },
+    people: people, corrections: cors, can_close: !!(pm.accounting && pm.period_close), blockers: blockers, rules: TT_RULES, today: ttDayOf(ttNow()), perms: pm };
+}
+function ttCloseBlockers(people) {
+  var out = []; people.forEach(function (p) {
+    if (p.open_shifts) out.push(p.name + ": a shift is still open"); if (p.pending) out.push(p.name + ": " + p.pending + " correction(s) to decide");
+    if (!p.approval || !p.approval.valid) out.push(p.name + ": hours not approved" + (p.approval && !p.approval.valid ? " (changed after approval)" : ""));
+  }); return out;
+}
+ACTIONS.ttApprove = function (me, b) {
+  var emp = normEmail(b.emp), ws = ttWeekStart(String(b.week || "")), self = normEmail(me.email);
+  if (!ttCanReview(me, emp)) throw new Error("You can't review this person's hours."); if (emp === self) throw new Error("Nobody approves their own hours. Another reviewer has to.");
+  var w = ttWeekOf(emp, ws, true); if (w.week.status === "closed") throw new Error("That week is already closed.");
+  if (w.open_shifts) throw new Error("A shift is still open. Resolve the check-out first.");
+  if (w.corrections.some(function (c) { return c.period_id === ws && (c.status === "pending" || c.status === "needs_info"); })) throw new Error("Decide the corrections first.");
+  if (ttWeekStart(ttDayOf(ttNow())) === ws && !b.mid_week) throw new Error("The week isn't over yet.");
+  var all = ttShifts(ttEvents(emp)), inWeek = all.filter(function (s) { return s.day >= ws && s.day <= w.week.end; }), hash = ttHash(w.days, inWeek), k = ws + "|" + emp, wk = findBy("TtWeeks", "key", k);
+  var h = parseJson(wk && wk.history, []); h.push({ at: ttIso(ttNow()), by: self, what: "approved", paid_min: w.totals.paid_min });
+  var patch = { approved_by: self, approved_at: ttIso(ttNow()), approved_hash: hash, history: JSON.stringify(h) };
+  if (wk) update("TtWeeks", "key", k, patch); else insert("TtWeeks", Object.assign({ key: k, period_id: ws, emp: emp, emp_status: "", emp_note: "", emp_at: "" }, patch));
+  ttAudit(me, emp, "week_approved", k, null, { paid_min: w.totals.paid_min, reg: w.calc.reg, ot: w.calc.ot, dt: w.calc.dt }, "");
+  return { ok: true, unconfirmed: !w.confirm };
+};
+ACTIONS.ttClose = function (me, b) {
+  var pm = ttPerms(me); if (!pm.accounting || !pm.period_close) throw new Error("Only accounting closes a week.");
+  var ws = ttWeekStart(String(b.week || "")), we = ttAddDays(ws, 6); if (we >= ttDayOf(ttNow())) throw new Error("The week isn't over yet.");
+  var per = findBy("TtPeriods", "id", ws); if (per && per.status === "closed") throw new Error("Already closed.");
+  var r = ACTIONS.ttReview(me, { week: ws }), bl = r.blockers; if (bl.length) throw new Error("Not ready to close: " + bl.slice(0, 4).join("; ") + (bl.length > 4 ? " (+" + (bl.length - 4) + " more)" : ""));
+  var snap = r.people.map(function (p) { return { emp: p.emp, paid_min: p.paid_min, reg: p.reg, ot: p.ot, dt: p.dt, confirm: p.confirm ? p.confirm.status : "not confirmed" }; });
+  var h = parseJson(per && per.history, []); h.push({ at: ttIso(ttNow()), by: me.email, what: "closed", version: 1 });
+  var row = { id: ws, start: ws, end: we, status: "closed", version: "1", closed_by: me.email, closed_at: ttIso(ttNow()), rules: TT_RULES.v, snapshot: JSON.stringify(snap), history: JSON.stringify(h) };
+  if (per) update("TtPeriods", "id", ws, row); else insert("TtPeriods", row);
+  ttAudit(me, "", "week_closed", ws, null, snap, ""); return { ok: true, people: snap.length };
+};
+/* ---- admin settings: explicit permissions, supervisor, pay type; absences ---- */
+ACTIONS.ttSetPerson = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús changes time permissions.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || !isTeam(p)) throw new Error("Pick someone on the team.");
+  var patch = {};
+  if (b.perms != null) patch.perms = [].concat(b.perms).filter(function (k) { return TT_PERMS.indexOf(k) > -1; }).join(",");
+  if (b.supervisor != null) { var s = normEmail(b.supervisor); if (s && (!findPerson(s) || s === e)) throw new Error("Pick a different supervisor."); patch.supervisor = s; }
+  if (b.pay_type != null) { if (["hourly", "exempt", ""].indexOf(b.pay_type) < 0) throw new Error("Pay type: hourly or exempt."); patch.pay_type = b.pay_type; }
+  if (b.clock != null) patch.clock = b.clock ? "yes" : "";
+  ttAudit(me, e, "person_settings", e, { perms: p.perms, supervisor: p.supervisor, pay_type: p.pay_type, clock: p.clock }, patch, ""); update("People", "email", e, patch);
+  try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
+  return { ok: true };
+};
+/* Jesús's settings screen: who has the clock, explicit permissions, supervisor and pay type, per person. */
+ACTIONS.ttSettings = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús changes time settings.");
+  if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
+  return { all: ttAll(), week_start: ttCfg().week_start, perms: TT_PERMS, people: ttTeam().map(function (p) {
+    return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: isTrue(p.clock), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
+      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }) };
+  }) };
+};
+ACTIONS.ttSetAbsence = function (me, b) {
+  var e = normEmail(b.emp); if (!ttCanReview(me, e)) throw new Error("You can't manage this person's absences.");
+  var f = String(b.from || ""), t = String(b.to || f); if (!/^\d{4}-\d\d-\d\d$/.test(f) || !/^\d{4}-\d\d-\d\d$/.test(t) || t < f) throw new Error("Pick the dates.");
+  var row = { id: newId("tb"), emp: e, from: f, to: t, kind: ["vacation", "sick", "off", "other"].indexOf(b.kind) > -1 ? b.kind : "off", note: clean(b.note, 300), by: me.email, at: ttIso(ttNow()) };
+  insert("TtAbsence", row); ttAudit(me, e, "absence", row.id, null, row, ""); return { ok: true };
+};
+/* Items for the office's Today queue (reviewers only), last 14 days. */
+function ttTodayItems(me) {
+  if (!ttPerms(me).time_review) return [];
+  var to = ttDayOf(ttNow()), from = ttAddDays(to, -14), out = [];
+  ttScope(me).forEach(function (emp) { var evs = ttEvents(emp); ttExc(emp, ttShifts(evs), from, to, evs).forEach(function (x) {
+    if (x.kind === "overtime" || x.kind === "no_location") return;                        // shown in the weekly review, not in the daily queue
+    out.push({ key: "tt:" + x.key, kind: "time", area: "time", priority: x.priority, title: x.title + " · " + x.name, sub: "Hours · " + x.day, why: x.why, next: x.next, owner: x.owner, since: x.day + " 00:00", link: { type: "time", emp: emp, week: ttWeekStart(x.day) } });
+  }); });
+  return out;
+}
+if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
+if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
+["ttState", "ttSettings", "ttPunch", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
+NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1;
