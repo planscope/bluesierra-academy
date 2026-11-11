@@ -307,6 +307,7 @@
 
   /* ---------------- render ---------------- */
   function render() {
+    if (S.me && S.me.pinTemp && !S.viewAs && S.token) { S.pendingMe = S.me; S.me = null; S.step = "setpin"; S.lastCode = null; }   // came in with the office's code: choose your own PIN first
     if (S.step === "setpin" && !S.me) return renderLogin();
     if (!S.token || !S.me) {
       if (S.token && !S.me) {
@@ -384,22 +385,34 @@
   function loginStep() { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && (r.email || r.phone)) { S.email = r.email || ""; S.phone = r.phone || ""; S.who = r.name; return "pin"; } } catch (e) {} return "email"; }
   function remember(email, name, phone) { try { localStorage.setItem("bsp-remember", JSON.stringify({ email: email, name: name || "", phone: phone || "" })); } catch (e) {} }
   function phoneOf(v) { var d = String(v || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); return /@/.test(v) ? "" : d.length === 10 ? d : ""; }
+  function idLine(email, phone) { var m = /^crew-(\d{10})@phone\.invalid$/.exec(email || ""); return m || (phone && /@phone\.invalid$/.test(email || "")) ? "📱 " + phoneFmt(m ? m[1] : phone) + " · logs in by phone" : esc(email) + (phone ? " · 📱 " + phoneFmt(phone) : ""); }
+  /* Add a laborer with only their phone: name, phone, level. They get a welcome code; the first time they use it they choose their own PIN. */
+  function crewPhoneForm(pid) {
+    return '<form class="card form" data-form="crewPhone"' + (pid ? ' data-pid="' + esc(pid) + '"' : "") + ' style="margin-top:16px"><h3>Add a laborer with only their phone</h3>' +
+      '<p class="muted small">No email needed. You get a welcome code to text them. The first time they open the portal they type their phone number and that code, then choose their own 6-digit PIN.' + (pid ? " They're added to this project." : "") + "</p>" +
+      '<div class="row2"><label class="f">Name<input type="text" name="name" required maxlength="80"></label><label class="f">Phone number<input type="tel" name="phone" inputmode="tel" required placeholder="(408) 555-0199"></label></div>' +
+      '<label class="f">Level<select name="level"><option value="labor" selected>#labor · only clocks in and out</option><option value="supervisor">#pm / supervisor · also sees the projects you add them to</option></select></label>' +
+      '<div class="actions"><button class="btn" type="submit">Add and get the code</button></div></form>';
+  }
+  function addHow(cur) { return '<div class="chips add-how" role="tablist"><button type="button" class="chip' + (cur !== "phone" ? " on" : "") + '" data-a="ttAddHow" data-v="email">With email</button><button type="button" class="chip' + (cur === "phone" ? " on" : "") + '" data-a="ttAddHow" data-v="phone">📱 Phone only (crew)</button></div>'; }
   function phoneFmt(d) { return d && d.length === 10 ? "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6) : d; }
   function forget() { try { localStorage.removeItem("bsp-remember"); } catch (e) {} S.who = ""; }
   async function savePin(pin) {
     await call("setPin", { pin: pin }); S.lastCode = null; S.resetPin = false;
-    S.me = S.pendingMe; S.me.hasPin = true; S.pendingMe = null; S.projects = null; toast("PIN saved 🔐 Next time, just your email and PIN."); return route();
+    S.me = S.pendingMe; S.me.hasPin = true; S.me.pinTemp = false; S.pendingMe = null; S.projects = null; toast(S.phone ? "PIN guardado 🔐 La próxima vez, solo tu número y tu PIN." : "PIN saved 🔐 Next time, just your email and PIN."); return route();
   }
   (function () { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && (r.email || r.phone)) { S.email = r.email || ""; S.phone = r.phone || ""; S.who = r.name; S.step = "pin"; } } catch (e) {} })();
   function renderLogin() {
     var demo = !API && window.BSP_MOCK, lp = loginPhoto();
     root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
       '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal · Beta v1.1</div>' +
-      (S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
+      (S.step === "setpin" && S.phone ? "<h1>Elige tu PIN.</h1><p class=\"muted\">6 números que tú escojas. Con tu teléfono y este PIN entras de ahora en adelante; el código de la oficina ya no sirve. / Choose your own 6-digit PIN.</p>" +
+          '<form class="form" data-form="setpin"><label class="f">Tu PIN nuevo / New PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Guardar mi PIN / Save</button></form>'
+        : S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
           '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>' +
           (S.lastCode ? '<button class="link" data-a="keepCode">Keep ' + esc(S.lastCode) + " as my PIN</button>" : "")
-        : S.step === "pin" && S.phone ? "<h1>Hola" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Escribe tu PIN de 6 números para <b>' + esc(phoneFmt(S.phone)) + "</b>. / Type your 6-digit PIN.</p>" +
-          '<form class="form" data-form="pin"><input type="text" name="username" autocomplete="username" value="' + esc(S.phone) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Entrar / Log in</button></form>' +
+        : S.step === "pin" && S.phone ? "<h1>Hola" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">' + (S.welcome ? "Escribe el código de 6 números que te mandó la oficina para <b>" + esc(phoneFmt(S.phone)) + "</b>. Después eliges tu propio PIN. / Type the code the office texted you; then you choose your own PIN." : "Escribe tu PIN de 6 números para <b>" + esc(phoneFmt(S.phone)) + "</b>. / Type your 6-digit PIN.") + "</p>" +
+          '<form class="form" data-form="pin"><input type="text" name="username" autocomplete="username" value="' + esc(S.phone) + '" hidden><label class="f">' + (S.welcome ? "Código / Code" : "PIN") + '<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Entrar / Log in</button></form>' +
           '<div class="login-links"><span class="muted small">¿Olvidaste tu PIN? Pídele uno nuevo a la oficina.</span><button class="link" data-a="restart">No soy ' + esc(S.who || "yo") + " / Not me</button></div>"
         : S.step === "pin" ? "<h1>Welcome back" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Type your 6-digit PIN for <b>' + esc(S.email) + "</b>.</p>" +
           '<form class="form" data-form="pin"><input type="email" name="username" autocomplete="username" value="' + esc(S.email) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
@@ -535,16 +548,16 @@
     var admin = S.me && S.me.admin;
     return (admin ? '<div class="card va-card"><div><b>See what everyone else sees</b><div class="muted small">Preview the portal as #client, #architect or #crew to check nothing private is leaking.</div></div><button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview</button></div>" : "") +
       qbSettings() + rtCard() + callCard() + feedbackCard() + '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + S.team.map(function (x) {
-      return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + esc(x.email) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
-        '<span class="role-chips">' + roleChip(x.role, x.money) + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
+      return '<div class="team-row' + (x.active ? "" : " off") + '">' + av(x.name, x.avatar, x.role) + '<div style="flex:1;min-width:0"><b style="font-weight:500">' + esc(x.name) + (x.email === S.me.email ? " (you)" : "") + '</b><div class="muted small">' + idLine(x.email, x.phone) + (x.since ? " · since " + day(x.since) : "") + "</div></div>" +
+        '<span class="role-chips">' + roleChip(x.role, x.money) + (x.level ? '<span class="pill">' + (x.level === "labor" ? "#labor" : "#pm") + "</span>" : "") + (x.role === "crew" ? '<small class="muted">' + (x.projects || 0) + " project" + (x.projects === 1 ? "" : "s") + "</small>" : "") + "</span>" + (x.active ? "" : '<span class="pill bad">Access off</span>') +
         (admin && x.email !== S.me.email ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="team">Change</button>' : "") +
         (admin && x.email !== S.me.email && x.role !== "admin" ? '<button class="btn ghost sm" data-a="teamOff" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '">Remove</button>' : "") + "</div>";
     }).join("") + "</div>" +
-      (admin ? '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
+      (admin ? addHow(S.addHow) + (S.addHow === "phone" ? crewPhoneForm("") : '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
         '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
         '<div class="f"><span>Role</span>' + rolePicker("staff", ["staff", "crew"], false) + "</div>" +
         '<p class="muted small">Clients and architects are added from each project’s People tab, so they only ever see their project.</p>' +
-        '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>'
+        '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>')
         : '<p class="muted small" style="margin-top:12px">Only Jesús can add or remove team members. Clients and architects are added from each project’s People tab.</p>');
   }
   function refreshList() { var seq = S.seq; call("listProjects").then(function (r) { if (seq === S.seq) { S.projects = r.projects; S.pins = r.pins || []; if (!S.pid) keepScroll(render); } }).catch(function () {}); }
@@ -934,7 +947,7 @@
   function ago(t) { if (!t) return ""; var m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; }
   async function ping() {
     if (!S.token || !S.me || S.viewAs) return;
-    try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible" });
+    try { var r = await call("presence", { pid: S.pid || "", tab: S.pid ? S.tab : "", status: S.myStatus || "", hidden: document.visibilityState !== "visible", inCall: !!(CALL && !CALL.sim) });
       S.presence = r; if (!S.myStatus && r.me) S.myStatus = r.me.s;
       if (r.pulse) onPulse(r.pulse);
       if (r.ver) onVersion(r.ver);
@@ -1870,12 +1883,12 @@
   function tabPeople() {
     var ppl = S.data.people || [];
     return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2>' + (S.me.admin ? '<button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview as…</button>" : "") + '</div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
-      ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + esc(x.email) + "</div></div>" +
+      ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + idLine(x.email, x.phone) + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + "</span>" + (x.email !== S.me.email && (S.me.admin || ["client", "architect", "crew"].indexOf(x.role) > -1) ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="project">Change</button>' : "") +
         (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
-      '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
+      (S.me.admin ? addHow(S.addHow) : "") + (S.me.admin && S.addHow === "phone" ? crewPhoneForm(S.pid) : '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
       '<div class="f"><span>Role</span>' + rolePicker("client", ["client", "architect", "crew"].concat(S.me.admin ? ["staff"] : [])) + "</div>" +
-      '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>';
+      '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>');
   }
 
 
@@ -2518,7 +2531,7 @@
     async function submitForm() {
       if (kind === "email") {
         var ph = phoneOf(v("email"));
-        if (ph) { var cph = await call("checkPhone", { phone: ph }); S.phone = ph; S.email = ""; S.who = cph.name; if (!cph.hasPin) throw new Error("Todavía no tienes PIN. Pídeselo a la oficina. / Ask the office for your PIN."); S.step = "pin"; return render(); }
+        if (ph) { var cph = await call("checkPhone", { phone: ph }); S.phone = ph; S.email = ""; S.who = cph.name; if (!cph.hasPin) throw new Error("Todavía no tienes acceso. Pídele tu código a la oficina. / Ask the office for your welcome code."); S.welcome = !!cph.welcome; S.step = "pin"; return render(); }
         S.phone = ""; S.email = v("email").toLowerCase(); if (S.email.indexOf("@") < 1) throw new Error("Escribe tu email o tu número de 10 dígitos. / Type your email or 10-digit phone.");
         var ce = await call("checkEmail", { email: S.email }); S.who = ce.name;
         if (ce.hasPin) { S.step = "pin"; return render(); }
@@ -2527,7 +2540,9 @@
       if (kind === "pin") {
         var rp = S.phone ? await call("loginPhone", { phone: S.phone, pin: v("pin"), device_id: devId(), ua: (navigator.userAgent || "").slice(0, 160) }) : await call("loginPin", { email: S.email, pin: v("pin"), device_id: devId(), ua: (navigator.userAgent || "").slice(0, 160) });
         remember(S.phone ? "" : S.email, S.who, S.phone);
-        S.token = rp.token; store("set", rp.token); S.me = rp.me; S.projects = null; return route();
+        S.token = rp.token; store("set", rp.token);
+        if (rp.mustSetPin || (rp.me && rp.me.pinTemp)) { S.pendingMe = rp.me; S.lastCode = null; S.welcome = false; S.step = "setpin"; S.me = null; return renderLogin(); }
+        S.me = rp.me; S.projects = null; return route();
       }
       if (kind === "code") {
         var r = await call("verifyCode", { email: S.email, code: v("code"), resetPin: !!S.resetPin });
@@ -2584,6 +2599,10 @@
       if (kind === "answer") {
         await call("answerQuestion", { projectId: S.pid, questionId: f.dataset.q, text: v("text") });
         f.reset(); await refresh(true); toast("Answer sent"); return;
+      }
+      if (kind === "crewPhone") {
+        var rc = await call("ttCrewAccess", { name: v("name"), phone: v("phone"), level: v("level") || "labor", project_id: f.dataset.pid || "" });
+        f.reset(); S.team = null; S.modal = { type: "lsxTtAccess", pin: rc.pin, phone: rc.phone, name: rc.name }; if (S.pid) await refresh(); else keepScroll(render); return;
       }
       if (kind === "person") {
         await call("addPerson", { projectId: S.pid, name: v("name"), email: v("email"), role: v("role") || "client", invite: !!fd.get("invite") });
@@ -2648,7 +2667,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110154544";
+  var BUILD = "20261110160421";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2830,7 +2849,7 @@
     if (HELP) HELP.style.display = S.modal ? "none" : "";
     var n = dockUnread(), cnt = DOCK.querySelector(".dk-count"); cnt.textContent = n ? (n > 99 ? "99+" : n) : ""; cnt.style.display = n ? "" : "none";
     if (!(d.open && !d.min)) return;
-    var data = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? { messages: S.data.messages, channels: S.data.channels, members: S.data.members, reads: S.data.reads } : null);
+    var data = (S.dockData || {})[d.pid] || (S.data && S.pid === d.pid ? { messages: S.data.messages, channels: S.data.channels, members: S.data.members, reads: S.data.reads, seen: S.data.seen } : null);
     if (!data && !(S.feedBusy || {})[d.pid]) loadFeed(d.pid);
     var chans = dockChans(data); if (chans.indexOf(d.ch) < 0) d.ch = chans[0];
     var projs = S.projects || [], pname = (projs.filter(function (p) { return p.id === d.pid; })[0] || {}).name || "Chat";
@@ -3143,7 +3162,7 @@
       '<div class="cw-stage"></div><div class="cw-note" aria-live="polite"></div><div class="cw-over"></div>';
     document.body.appendChild(w); document.body.classList.add("bsp-oncall");
     CALL = { el: w, url: url, pid: pid, ch: ch, room: room, title: title || "Video call", others: {}, peers: (info.peers || []).slice(), declined: {}, outgoing: !!info.outgoing, ever: false, t0: Date.now() };
-    var me = CALL; callHead();
+    var me = CALL; callHead(); setTimeout(ping, 0);                           // others see "In a call" now
     var tm = w.querySelector(".cw-time"), iv = setInterval(function () { if (!w.isConnected) return clearInterval(iv); var s = Math.floor((Date.now() - me.t0) / 1000); tm.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }, 1000);
     w.querySelector("[data-cw=min]").onclick = function () { w.classList.toggle("min"); this.textContent = w.classList.contains("min") ? "▢" : "–"; this.title = w.classList.contains("min") ? "Make it bigger again" : "Shrink (the call keeps going)"; };
     w.querySelector("[data-cw=end]").onclick = function () { callEnd(); toast("You left the call"); };
@@ -3241,7 +3260,7 @@
   function callEnd(quiet) {
     var me = CALL; if (!me) return; CALL = null; me.leaving = true; clearTimeout(me.noAns); clearTimeout(me.netT);
     if (me.daily) { try { me.daily.leave().catch(function () {}).then(function () { try { me.daily.destroy(); } catch (e) {} }); } catch (e) { try { me.daily.destroy(); } catch (er) {} } }
-    me.el.remove(); document.body.classList.remove("bsp-oncall"); if (!quiet) loadFeed(me.pid);
+    me.el.remove(); document.body.classList.remove("bsp-oncall"); if (!quiet) loadFeed(me.pid); setTimeout(ping, 0);   // …and stop seeing it right away
   }
   /* Someone you called said they can't take it. */
   function callDeclined(x) {
@@ -5204,6 +5223,7 @@
     if (S.ttWorking) return; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
     var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 200) }, job || {});
     if (declared) ev.declare_at = declared;
+    if (S.tt && S.tt.preview) { await new Promise(function (r) { setTimeout(r, 600); }); ttPreviewPunch(kind, job || {}, ev); S.ttWorking = 0; keepScroll(render); return; }   // practice clock: nothing is sent
     var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0]; if (both[1]) ev.ip = both[1]; ev.device_id = devId(); S.ttSync = { st: "saving" }; keepScroll(render);
     try {
       if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
@@ -5221,6 +5241,22 @@
       } else { S.ttSync = { st: "err", msg: e.message }; }
     }
     S.ttWorking = 0; keepScroll(render);
+  }
+  /* Preview (Jesús viewing as #labor, #pm or #crew): the clock works on screen, the way a worker sees it, but nothing is saved. */
+  function ttPreviewPunch(kind, job, ev) {
+    var t = S.tt, now = ev.declare_at ? new Date(ev.declare_at.replace(" ", "T")).toISOString() : ev.device_at, keepJob = (t.shift && t.shift.job) || {};
+    if (job.ref_id && !job.ref_name) { var sg = t.suggest || {}; Object.keys(sg).forEach(function (k) { (Array.isArray(sg[k]) ? sg[k] : []).forEach(function (x) { if (x && x.ref_id === job.ref_id) job.ref_name = x.name || x.ref_name || ""; }); }); }
+    if (kind === "out") {
+      var st = t.shift ? new Date(t.shift.start) : new Date(now), min = Math.max(1, Math.round((new Date(now) - st) / 60000));
+      t.today_min = (t.today_min || 0) + min; t.mode = "off"; t.shift = null; t.presence = null;
+      var rec = (t.recent || [])[0]; if (rec && !rec.end) { rec.end = now; rec.paid_min = min; rec.open = false; }
+      if (ttSimple()) S.ttLast = { at: now, min: t.today_min, shift: "preview", ask: false };
+    } else {
+      t.mode = kind === "presence" ? t.mode || "work" : TT_NEXT[kind];
+      t.shift = Object.assign({}, t.shift || { id: "preview", start: now }, kind === "in" || kind === "switch" ? { job: Object.assign({}, kind === "switch" && !job.ref_id ? keepJob : {}, job) } : {});
+      if (kind === "in") { t.presence = { status: "recorded" }; t.recent = [{ day: t.today, place: job.ref_name || "", start: now, end: null, open: true, paid_min: null, presence: "" }].concat(t.recent || []).slice(0, 8); }
+    }
+    S.ttSync = { st: "ok", at: now }; toast(ttL() === "es" ? "Vista previa: no se guardó nada" : "Preview: nothing was saved");
   }
   /* The phone gave a poor or no fix: try again by itself a little later (45 s, then 4 min), without telling the worker. */
   function ttQuietRetry(sid) {
@@ -5318,7 +5354,7 @@
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
     var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified" && !ttCrewUI();
     var crewUI = ttCrewUI(), preview = !!t.preview;
-    var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el crew. Tocar el reloj no guarda nada." : "Preview: this is what the crew sees. Tapping the clock saves nothing.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
+    var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el trabajador. Puedes practicar la entrada y la salida; no se guarda nada." : "Preview: this is what the worker sees. Try checking in and out; nothing is saved.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
       (crewUI ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
     var body;
@@ -5621,6 +5657,8 @@
       var sh = pe.days.filter(function (d) { return d.date === b.dataset.d; })[0].shifts[+b.dataset.si]; S.modal = { type: "lsxTtEdit", emp: pe.emp, name: pe.name, sh: sh }; return keepScroll(render); }
     if (a === "ttDevTrust") { var dc = S.ttCases[i]; return run(b, async function () { await call("ttDevice", { emp: dc.emp, dev: b.dataset.dev, decision: "trust" }); S.ttR = null; toast("Phone approved for " + dc.name + ". Next check-ins from it count normally."); keepScroll(render); }); }
     if (a === "ttDevSet") return run(b, async function () { await call("ttDevice", { emp: b.dataset.emp, dev: b.dataset.dev, decision: b.dataset.d }); ttSetLoad(); toast({ trust: "Phone approved", block: "Phone blocked", remove: "Phone removed" }[b.dataset.d]); });
+    if (a === "ttAddHow") { S.addHow = b.dataset.v; return keepScroll(render); }
+    if (a === "ttCopyMsg") { try { navigator.clipboard.writeText(b.dataset.c); toast("Message copied. Paste it in a text to them."); } catch (er) { toast(b.dataset.c); } return; }
     if (a === "ttAccess") { S.modal = { type: "lsxTtAccess", email: b.dataset.emp || "", name: b.dataset.name || "", phone: b.dataset.phone || "" }; return keepScroll(render); }
     if (a === "ttGpsGo") { var gk2 = ((root.querySelector("[data-tt-gps]") || {}).value || "").split("|"); S.ttGpsBusy = 1; S.ttGps = null; keepScroll(render);
       return ttLoc().then(function (loc) { return call("ttGeoTest", { ref_type: gk2[0], ref_id: gk2[1], loc: loc, device_at: new Date().toISOString() }).then(function (r) { r.samples = loc.samples; S.ttGps = r; }); }).catch(function (e) { S.ttGps = { err: e.message }; }).then(function () { S.ttGpsBusy = 0; keepScroll(render); }); }
@@ -5735,7 +5773,9 @@
         '<div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "lsxTtAccess") {
-      if (m.pin) return "<h2>Give this to " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">This PIN is shown only once. They log in at the portal with their phone number and this PIN; they stay logged in on their phone. The first phone they use becomes theirs; any other phone waits for your approval.</p><div class="actions"><button class="btn" data-a="close">Done</button></div>';
+      if (m.pin) { var smsTxt = "Hola " + first(m.name || "") + ", ya tienes acceso al portal de Blue Sierra. Entra a https://www.bluesierracorp.com/portal con tu número de teléfono y este código: " + m.pin + ". Después eliges tu propio PIN. El código vence en 7 días.";
+        return "<h2>Welcome code for " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">Shown only once. Text it to them: they open the portal, type their phone number and this code, and then choose their own PIN. The code works for 7 days. The first phone they use becomes theirs; any other phone waits for your approval.</p>' +
+          '<div class="actions"><button class="btn ghost" data-a="ttCopyMsg" data-c="' + esc(smsTxt) + '">Copy the message</button><a class="btn" href="sms:+1' + esc(m.phone) + "?&body=" + encodeURIComponent(smsTxt) + '">Send by text</a><button class="btn ghost" data-a="close">Done</button></div>'; }
       return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label><label class="f">Level<select name="level"><option value="labor" selected>#labor · only clocks in and out</option><option value="supervisor">#supervisor / PM · also sees the projects you add them to</option></select></label>') +
         '<label class="f">Phone number<input name="phone" type="tel" inputmode="tel" required value="' + esc(m.phone ? phoneFmt(m.phone) : "") + '" placeholder="(408) 555-0199"></label><p class="muted small">' + (m.phone ? "A new PIN replaces the old one." : "We'll create a 6-digit PIN for them.") + "</p>" +
         '<div class="actions">' + cancel + '<button class="btn" type="submit">' + (m.phone ? "Make a new PIN" : "Create the PIN") + "</button></div></form>";

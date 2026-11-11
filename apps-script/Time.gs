@@ -272,7 +272,7 @@ function ttByPhone(ph) { return ph ? rows("People").filter(function (p) { return
 PUBLIC.checkPhone = function (b) {
   var ph = ttPhone(b.phone); if (!ph) throw new Error("Escribe tu número de 10 dígitos. / Type your 10-digit number.");
   var p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
-  return { hasPin: !!p.pin_hash, name: first(p.name), lang: p.lang || (p.role === "crew" ? "es" : "en") };
+  return { hasPin: !!p.pin_hash, welcome: !!(p.pin_hash && p.pin_temp), name: first(p.name), lang: p.lang || (p.role === "crew" ? "es" : "en") };
 };
 PUBLIC.loginPhone = function (b) {
   var ph = ttPhone(b.phone), p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
@@ -281,27 +281,39 @@ PUBLIC.loginPhone = function (b) {
   return r;
 };
 var ttLoginPin0 = PUBLIC.loginPin;
-PUBLIC.loginPin = function (b) { var r = ttLoginPin0(b); try { if (b.device_id) ttDev(normEmail(b.email), b.device_id, b.ua, "login"); } catch (e) {} return r; };
+PUBLIC.loginPin = function (b) {
+  var who = findPerson(normEmail(b.email)), temp = who && who.pin_temp ? String(who.pin_temp) : "";
+  if (temp && temp < now()) throw new Error("Tu código de bienvenida venció. Pídele uno nuevo a la oficina. / Your welcome code expired. Ask the office for a new one.");
+  var r = ttLoginPin0(b); try { if (b.device_id) ttDev(normEmail(b.email), b.device_id, b.ua, "login"); } catch (e) {}
+  if (temp) r.mustSetPin = true;                                                         // they came in with the office's code: next they choose their own PIN
+  return r;
+};
+/* Choosing your own PIN retires the welcome code. */
+var ttSetPin0 = ACTIONS.setPin;
+ACTIONS.setPin = function (me, b) { var r = ttSetPin0(me, b); var p = findPerson(me.email); if (p && p.pin_temp) update("People", "email", p.email, { pin_temp: "" }); return r; };
 /* Jesús adds a crew member by phone (no email needed) and gives them a PIN, or resets it. The PIN is shown once. */
 function ttNewPin() { var p; do { p = String(Math.floor(100000 + Math.random() * 900000)); } while (/^(\d)\1{5}$/.test(p) || "0123456789".indexOf(p) > -1 || "9876543210".indexOf(p) > -1); return p; }
 ACTIONS.ttCrewAccess = function (me, b) {
   if (me.role !== "admin" || me.preview) throw new Error("Only Jesús gives crew access.");
   var ph = ttPhone(b.phone); if (!ph) throw new Error("Type a 10-digit phone number.");
   var other = ttByPhone(ph), email = b.email ? normEmail(b.email) : "", p = email ? findPerson(email) : null;
+  var pj = String(b.project_id || ""); if (pj && !findBy("Projects", "id", pj)) throw new Error("That project isn't here anymore.");
   if (other && (!p || normEmail(other.email) !== normEmail(p.email))) throw new Error("That phone is already used by " + other.name + ".");
   if (!p) {
     var name = clean(b.name, 80); if (name.length < 2) throw new Error("Write the person's name.");
     email = "crew-" + ph + "@phone.invalid";                                              // an internal id, never emailed (.invalid can't receive mail)
     p = findPerson(email);
     var lvl = b.level === "supervisor" ? "supervisor" : "labor";                          // new people by phone: labor (clock only) unless Jesús says supervisor
-    if (!p) insert("People", { email: email, name: name, role: "crew", project_ids: [].concat(b.project_ids || []).join(","), active: "yes", created_at: now(), avatar: "", phone: ph, lang: "es", pay_type: "hourly", crew_level: lvl });
+    if (!p) insert("People", { email: email, name: name, role: "crew", project_ids: [].concat(b.project_ids || []).concat(pj ? [pj] : []).join(","), active: "yes", created_at: now(), avatar: "", phone: ph, lang: "es", pay_type: "hourly", crew_level: lvl });
     else update("People", "email", email, { active: "yes", phone: ph, name: name, crew_level: lvl });
   } else update("People", "email", email, { phone: ph });
+  if (pj) { var cur = findPerson(email), ids = splitIds(cur.project_ids); if (ids.indexOf(pj) < 0 && !isStaff(cur)) { ids.push(pj); update("People", "email", email, { project_ids: ids.join(",") }); } }
   var pin = ttNewPin(), salt = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
-  update("People", "email", email, { pin_salt: salt, pin_hash: sha(salt + ":" + pin), pin_fails: "0", pin_lock: "" });
-  ttAudit(me, email, "crew_access", email, null, { phone: "***" + ph.slice(-4) }, "PIN issued");
+  var until = Utilities.formatDate(new Date(Date.now() + 7 * 86400000), CONFIG.TZ, "yyyy-MM-dd HH:mm");   // a welcome code: good for 7 days, then they pick their own PIN
+  update("People", "email", email, { pin_salt: salt, pin_hash: sha(salt + ":" + pin), pin_fails: "0", pin_lock: "", pin_temp: until });
+  ttAudit(me, email, "crew_access", email, null, { phone: "***" + ph.slice(-4) }, "Welcome code issued");
   try { CacheService.getScriptCache().remove("who:" + email); } catch (e) {}
-  return { email: email, phone: ph, pin: pin, name: (findPerson(email) || {}).name };
+  return { email: email, phone: ph, pin: pin, name: (findPerson(email) || {}).name, until: until };
 };
 
 /* ---- addresses for the office: the approximate street address of a phone reading (Google's reverse geocoder,
@@ -449,9 +461,13 @@ function ttOfficePending(me) { var sc = ttScope(me), self = normEmail(me.email);
 /* ====================================== actions: the employee ====================================== */
 ACTIONS.ttState = function (me, b) {
   if (me && me.preview === "crew") {                                                    // Jesús previewing the portal as #crew: what a crew member sees, nothing saves
-    var pcrews = typeof lsCrewsOf === "function" ? lsCrewsOf(me).map(function (c) { return c.id; }) : [];
-    return { enabled: true, preview: true, mode: "off", shift: null, presence: null, today_min: 0, today: ttDayOf(ttNow()), server_now: ttIso(ttNow()), lang: "es", perms: {}, recent: [], news: [], pending: 0, reviewer: false, admin: false,
-      suggest: ttSuggest(normEmail(me.email), me, pcrews), privacy: { retention: ttCfg().retention, radius: ttCfg().radius } };
+    var pcrews = typeof lsCrewsOf === "function" ? lsCrewsOf(me).map(function (c) { return c.id; }) : [], sug = ttSuggest(normEmail(me.email), me, pcrews), today0 = ttDayOf(ttNow());
+    // An example worker: two earlier days in "My records", so the preview looks like a real person's phone. Nothing here is saved.
+    var spots = [].concat(sug.projects || [], sug.properties || []).filter(function (x) { return x && x.name; }), ex = [];
+    [1, 2].forEach(function (back, i) { var d = ttAddDays(today0, -back), sp = spots[i % Math.max(1, spots.length)] || { name: "Jobsite" };
+      ex.push({ day: d, place: sp.name, start: d + "T07:00:00", end: d + "T15:30:00", open: false, paid_min: 480, presence: "verified", example: true }); });
+    return { enabled: true, preview: true, mode: "off", shift: null, presence: null, today_min: 0, today: today0, server_now: ttIso(ttNow()), lang: "es", perms: {}, recent: ex, news: [], pending: 0, reviewer: false, admin: false,
+      suggest: sug, privacy: { retention: ttCfg().retention, radius: ttCfg().radius } };
   }
   ttClocker(me); var emp = normEmail(me.email), pm = ttPerms(me), row = ttRow(me), cfg = ttCfg();
   if (!ttEnabled(row)) return { enabled: false, reviewer: !!pm.time_review, perms: pm, lang: ttLang(me), admin: me.role === "admin", office_pending: pm.time_review ? ttOfficePending(me) : 0,
@@ -946,7 +962,7 @@ NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTe
    for #money / "pay_view".
    ====================================================================================================== */
 TABLES.JobCosts = ["id", "project_id", "line_id", "kind", "vendor", "amount", "date", "paid_with", "notes", "status", "by", "at", "reviewed_by", "reviewed_at", "review_note", "qb_type", "qb_id", "qb_log"];
-TABLES.People = TABLES.People.concat(["pay_rate"]);
+TABLES.People = TABLES.People.concat(["pay_rate", "pin_temp"]);   // pin_temp: until when the office's welcome code works (then they pick their own PIN)
 var JC_KINDS = { materials: "Materials", subs: "Subcontractor", equipment: "Equipment / rental", disposal: "Dump / disposal", permits: "Permits / fees", other: "Other" };
 var JC_PAID = { card: "Company card", bank: "Bank / ACH", check: "Check", cash: "Cash (reimburse)", bill: "Vendor bill (to pay)" };
 function jcReviewer(me) { return !!me && !me.preview && (canMoney(me) || !!ttPerms(me).accounting); }

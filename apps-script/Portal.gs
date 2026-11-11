@@ -225,7 +225,7 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, pinTemp: !!(p.pin_hash && p.pin_temp), preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
@@ -578,7 +578,8 @@ var ACTIONS = {
   presence: function (me, b) {
     var c = CacheService.getScriptCache(), myKey = pkey(me.email), prevRaw = c.get("pres:" + myKey), prev = prevRaw ? JSON.parse(prevRaw) : {};
     var st = ["available", "busy", "away"].indexOf(b.status) > -1 ? b.status : prev.s || "available";
-    var mine = { s: st, at: Date.now(), hidden: !!b.hidden, pid: canSee(me, b.pid) ? String(b.pid || "") : "", tab: String(b.tab || "").slice(0, 20), call: prev.call || 0 };
+    var mine = { s: st, at: Date.now(), hidden: !!b.hidden, pid: canSee(me, b.pid) ? String(b.pid || "") : "", tab: String(b.tab || "").slice(0, 20),
+      call: b.inCall === true ? Date.now() + 150000 : b.inCall === false ? 0 : Math.min(prev.call || 0, Date.now() + 150000) };   // "In a call" only while the call window is open (it pings every 20-60 s)
     c.put("pres:" + myKey, JSON.stringify(mine), 21600);
     var projects = rows("Projects").filter(function (p) { return canSee(me, p.id) && p.status !== "deleted" && (isStaff(me) || p.status !== "archived"); }), names = {};
     projects.forEach(function (p) { names[p.id] = p.name; });
@@ -672,7 +673,7 @@ var ACTIONS = {
         "<p><a href='" + as(x.email) + "' style='display:inline-block;background:#1a73e8;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none'>Join the call</a></p>" +
         "<p style='color:#555'>Or open <b>meet.google.com</b> and enter the code <b>" + esc(code) + "</b>.</p>"); }, "");
     });
-    try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
+    try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 150000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
     withLock(function () {                                // only the chat card needs the lock; the Calendar work above didn't
       _ROWS = {}; prefetch(["People", "Projects", "Messages"]);
       postEvent(p, me, "call", "is calling " + (names.length > 3 ? names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " more" : names.join(", ").replace(/, ([^,]*)$/, " and $1")),
@@ -766,7 +767,7 @@ var ACTIONS = {
   },
   listTeam: function (me) {
     needStaff(me);
-    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length }; }) };
+    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length, phone: x.phone ? String(x.phone).replace(/\D/g, "").slice(-10) : "", level: x.role === "crew" ? (x.crew_level || "supervisor") : "" }; }) };
   },
 
   answerQuestion: function (me, b) {
@@ -2006,7 +2007,7 @@ function dailyCall(me, p, ch, who) {
       "Video call inside the portal. Tap Join; it works for the next 2 hours.", "call:" + room.name, ch);
   });
   who.forEach(function (x) { dailyRing(me, p, ch, room, exp, x); });
-  try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 45 * 60000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
+  try { var pc = CacheService.getScriptCache(), pkk = "pres:" + pkey(me.email), pv = JSON.parse(pc.get(pkk) || "{}"); pv.call = Date.now() + 150000; pv.at = pv.at || Date.now(); pc.put(pkk, JSON.stringify(pv), 21600); } catch (e) {}
   bumpVersion(p.id);
   return { url: mine, code: room.name, embed: true };
 }

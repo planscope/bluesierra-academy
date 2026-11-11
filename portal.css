@@ -2118,3 +2118,4 @@
 
 /* While a call is shrunk to a bar on a phone, the chat bubble sits above it. */
 @media (max-width:640px){body.bsp-oncall #bs-portal #bsp-dock{bottom:80px}}
+#bs-portal .add-how{display:inline-flex;margin-top:18px}
