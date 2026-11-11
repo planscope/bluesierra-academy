@@ -580,6 +580,16 @@ ACTIONS.ttPresenceDecide = function (me, b) {
   ttAudit(me, c.emp, "presence_" + dec, c.id, { status: c.status }, { status: dec === "accept" ? "accepted" : "rejected" }, note);
   return { case: ttCaseOut(findBy("TtPresence", "id", c.id), true) };
 };
+/* Several check-ins of one or more people at once, with one reason (the dashboard's "Accept all"). Each is checked like a single decision. */
+ACTIONS.ttPresenceDecideMany = function (me, b) {
+  var ids = [].concat(b.ids || []).map(String).filter(function (x, i, l) { return x && l.indexOf(x) === i; }).slice(0, 200);
+  if (!ids.length) throw new Error("Pick at least one check-in.");
+  if (clean(b.note, 600).length < 3) throw new Error("Write the reason for the decision.");
+  var done = [], failed = [];
+  ids.forEach(function (id) { try { ACTIONS.ttPresenceDecide(me, { id: id, decision: b.decision, note: b.note }); done.push(id); } catch (e) { failed.push({ id: id, error: e.message }); } });
+  if (!done.length && failed.length) throw new Error(failed[0].error);
+  return { done: done, failed: failed };
+};
 ACTIONS.ttSetLang = function (me, b) { ttClocker(me); var l = b.lang === "en" ? "en" : "es"; update("People", "email", normEmail(me.email), { lang: l }); return { lang: l }; };
 
 /* One workweek for one person: days, shifts, totals, overtime estimate, items to review, corrections, confirmation. */
@@ -946,7 +956,7 @@ function ttTodayItems(me) {
 }
 if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
 if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
-["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
+["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttPresenceDecideMany", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
 NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTest = 1; READ_ONLY.ttState = 1;   // read-only: also what lets Jesús preview the crew screen
 
 /* ======================================================================================================

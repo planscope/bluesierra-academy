@@ -2670,7 +2670,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110164913";
+  var BUILD = "20261110165952";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5484,9 +5484,9 @@
   function ttSheetTop(people, days) {
     var tot = 0, ot = 0, now = 0, fix = 0, today = (S.ttR && S.ttR.today) || "";
     people.forEach(function (p) { tot += p.paid_min || 0; ot += (p.ot || 0) + (p.dt || 0); if (p.now) now++; fix += (p.open_shifts || 0) + (p.presence_open || 0) + (p.pending || 0); });
-    return '<div class="grid g4 tt-kpis">' + stat("Team hours this week", ttHmShort(tot), people.filter(function (p) { return p.paid_min; }).length + " of " + people.length + " people worked") + stat("Overtime", ttHmShort(ot), ot ? "1.5× / 2× estimate" : "none this week") +
-      stat("Working now", String(now), now ? "on the clock" : "nobody on the clock") + stat("To fix", String(fix), fix ? "open shifts, check-ins to validate, requests" : "all clear") + "</div>" +
-      '<div class="card tt-sheet-card"><div class="tt-sheet-wrap"><table class="tt-sheet"><thead><tr><th class="tt-nm">Employee</th>' + days.map(function (d) { return '<th class="' + (d === today ? "tt-tdy" : "") + '">' + ttDayHead(d) + "</th>"; }).join("") +
+    S.ttKpis = '<div class="grid g4 tt-kpis">' + stat("Team hours this week", ttHmShort(tot), people.filter(function (p) { return p.paid_min; }).length + " of " + people.length + " people worked") + stat("Overtime", ttHmShort(ot), ot ? "1.5× / 2× estimate" : "none this week") +
+      stat("Working now", String(now), now ? "on the clock" : "nobody on the clock") + stat("To fix", String(fix), fix ? "open shifts, check-ins to validate, requests" : "all clear") + "</div>";
+    return '<h3 class="tt-h3">Week at a glance</h3><div class="card tt-sheet-card"><div class="tt-sheet-wrap"><table class="tt-sheet"><thead><tr><th class="tt-nm">Employee</th>' + days.map(function (d) { return '<th class="' + (d === today ? "tt-tdy" : "") + '">' + ttDayHead(d) + "</th>"; }).join("") +
       '<th class="tt-tot">Total</th><th>Regular</th><th>Overtime</th><th class="tt-stc">Status</th></tr></thead><tbody>';
   }
   function ttSheetRow(p, pi, open, days, flags, appr) {
@@ -5524,6 +5524,7 @@
     var phTxt = function (ph) { return ph.flag === "ok" ? '<span class="ok-t">📱 own phone</span>' : ph.flag === "other_person" ? '<span class="bad-t">📱 ' + esc(ph.owner) + "'s phone</span>" : ph.flag === "new_device" ? '<span class="warn-t">📱 new phone</span>' : ph.flag ? '<span class="warn-t">📱 ' + esc(RSS[ph.flag] || ph.flag) + "</span>" : '<span class="muted">📱 —</span>'; };
     S.ttDash = r.people;
     var DAYS7 = [0, 1, 2, 3, 4, 5, 6].map(function (i) { var d = new Date(w.start + "T12:00:00"); d.setDate(d.getDate() + i); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); });
+    S.ttKpis = "";
     var tbl = r.people.length ? ttSheetTop(r.people, DAYS7) + r.people.map(function (p, pi) {
       var open = !!(S.ttOpenEmp || {})[p.emp], days = p.days.filter(function (d) { return d.shifts.length; });
       var flags = (p.presence_open ? '<span class="pill bad">' + p.presence_open + " to validate</span>" : "") + (p.open_shifts ? '<span class="pill bad">open shift</span>' : "") + (p.pending ? '<span class="pill gold">' + p.pending + " request</span>" : "");
@@ -5548,19 +5549,51 @@
     };
     var RSN = { other_device: "another person's phone", new_device: "phone not approved yet", no_device: "phone didn't identify itself", blocked_device: "blocked phone", denied: "location permission off", timeout: "phone too slow to locate", unavailable: "no location from the phone", unsupported: "device doesn't share location", none: "no location sent", stale: "old location", imprecise: "not precise enough", uncertain: "too close to the edge to tell", outside: "away from the jobsite", no_geocode: "jobsite has no map point", no_place: "no jobsite picked" };
     var ST = { pending: ["Pending validation", "bad"], verified_later: ["Verified late", "gold"], accepted: ["Accepted", ""], rejected: ["Rejected", ""] };
-    var caseCard = function (c, i) {
+    var caseCard = function (c, i, compact) {
       var att = c.attempts.map(function (a) { return "<tr><td>" + esc(a.kind === "presence" ? "Retry" : a.kind === "in" ? "Check-in" : "Moved jobsite") + "</td><td>" + ttHm(a.at) + (a.offline ? " (offline)" : "") + "</td><td>" + esc(a.presence === "verified" ? "✓ verified" : a.presence === "outside" ? "✕ away" : "? " + (RSN[a.reason] || a.reason || "")) + "</td><td>" + (a.dist != null ? (a.dist >= 1000 ? Math.round(a.dist / 100) / 10 + " km" : a.dist + " m") : "—") + "</td><td>" + (a.acc != null ? "±" + a.acc + " m" : "—") + "</td><td>" + (a.loc_at ? ttHm(a.loc_at) : "—") + '</td><td class="tt-addr">' + (a.addr ? "Near " + esc(a.addr) : a.dist != null ? '<span class="muted">no address found</span>' : "—") + '</td><td class="tt-addr">' + ttDevCell(a, c, i) + "</td></tr>"; }).join("");
-      return '<div class="card tt-case' + (c.open ? "" : " closed") + '"><div class="tt-dec-h"><b>' + esc(c.name) + "</b> · " + esc(c.place || "No jobsite") + (c.place_addr ? ' <small class="muted">(' + esc(c.place_addr) + ")</small>" : "") + " · " + ttDayName(c.first_at.slice(0, 10)) + " " + ttHm(c.first_at) + ' <span class="pill ' + ST[c.status][1] + '">' + ST[c.status][0] + "</span>" + (c.status === "verified_later" ? ' <small class="muted">verified from ' + ttHm(c.verified_at) + "; the time before is what you decide</small>" : "") + "</div>" +
+      return (compact ? '<div class="tt-case-d">' : '<div class="card tt-case' + (c.open ? "" : " closed") + '"><div class="tt-dec-h"><b>' + esc(c.name) + "</b> · " + esc(c.place || "No jobsite") + (c.place_addr ? ' <small class="muted">(' + esc(c.place_addr) + ")</small>" : "") + " · " + ttDayName(c.first_at.slice(0, 10)) + " " + ttHm(c.first_at) + ' <span class="pill ' + ST[c.status][1] + '">' + ST[c.status][0] + "</span>" + (c.status === "verified_later" ? ' <small class="muted">verified from ' + ttHm(c.verified_at) + "; the time before is what you decide</small>" : "") + "</div>") +
         '<div class="tt-side"><div><table class="tt-att"><thead><tr><th></th><th>Time (server)</th><th>Result</th><th>Distance</th><th>Accuracy</th><th>Captured</th><th>Phone was near (approx. address)</th><th>Which phone</th></tr></thead><tbody>' + att + "</tbody></table>" +
         (c.explain.length ? c.explain.map(function (x) { return '<p class="small">“' + esc(x.text) + '” <span class="muted">' + ttHm(x.at) + "</span></p>"; }).join("") : '<p class="muted small">No explanation yet.</p>') +
         (c.decision ? '<p class="small"><b>' + esc(c.decision === "accept" ? "Accepted" : "Rejected") + "</b> by " + esc(c.decided_by) + ": “" + esc(c.decision_note) + "”</p>" : "") + "</div>" +
         '<div><div class="tt-cmap" data-case="' + i + '"></div><small class="muted">Jobsite (dashed = allowed radius) and the last location recorded by the phone at each try, with its accuracy. Not a live position.</small></div></div>' +
-        (c.can_decide ? '<div class="tt-dec-a"><input class="tt-cnote" data-i="' + i + '" placeholder="Reason for the decision (required)"><button class="btn" data-a="ttCase" data-i="' + i + '" data-d="accept">Accept the time</button><button class="btn ghost" data-a="ttCase" data-i="' + i + '" data-d="reject">Reject</button></div><p class="muted small">Rejecting doesn\'t delete hours; if they shouldn\'t count, record an office correction.</p>' : c.open ? '<p class="muted small">Another reviewer has to decide this one.</p>' : "") + "</div>";
+        (compact ? "" : c.can_decide ? '<div class="tt-dec-a"><input class="tt-cnote" data-i="' + i + '" placeholder="Reason for the decision (required)"><button class="btn" data-a="ttCase" data-i="' + i + '" data-d="accept">Accept the time</button><button class="btn ghost" data-a="ttCase" data-i="' + i + '" data-d="reject">Reject</button></div><p class="muted small">Rejecting doesn\'t delete hours; if they shouldn\'t count, record an office correction.</p>' : c.open ? '<p class="muted small">Another reviewer has to decide this one.</p>' : "") + "</div>";
     };
     var openCases = (r.cases || []).filter(function (c) { return c.open; }), doneCases = (r.cases || []).filter(function (c) { return !c.open; });
     S.ttCases = r.cases || [];
-    var casesHtml = (openCases.length ? '<h3 class="tt-h3">Check-ins pending validation (' + openCases.length + ")</h3>" + openCases.map(function (c) { return caseCard(c, S.ttCases.indexOf(c)); }).join("") : "") +
-      (doneCases.length ? '<details class="tt-rep"><summary>Decided this week (' + doneCases.length + ")</summary>" + doneCases.map(function (c) { return caseCard(c, S.ttCases.indexOf(c)); }).join("") + "</details>" : "");
+    // Validation, for the office: one line per person, the few facts that decide it; the map and the attempts only when asked.
+    var lday = function (iso) { var d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+    var shiftOf = function (c) { var p = r.people.filter(function (x) { return x.emp === c.emp; })[0], hit = null; (p ? p.days : []).forEach(function (d) { d.shifts.forEach(function (sh) { if (sh.id === c.shift_id) hit = sh; }); }); return hit; };
+    var why = function (c) {
+      var a = c.attempts || [], f = a[0] || {}, last = a[a.length - 1] || {}, out = [];
+      if (last.presence === "verified") out.push('<span class="ok-t">✓ at the jobsite later</span>');
+      else if (f.presence === "outside" || c.first_reason === "outside") out.push('<span class="bad-t">' + (f.dist != null ? fmtD(f.dist) + " away" : "away from the jobsite") + "</span>");
+      else out.push('<span class="warn-t">' + esc(RSN[c.first_reason || f.reason] || c.first_reason || f.reason || "not verified") + "</span>");
+      var odd = a.filter(function (x) { return x.device_flag && x.device_flag !== "ok"; })[0];
+      if (odd && c.first_reason !== odd.device_flag) out.push('<span class="' + (odd.device_flag === "other_person" ? "bad-t" : "warn-t") + '">📱 ' + (odd.device_flag === "other_person" ? esc(odd.device_owner) + "'s phone" : esc(RSN[odd.device_flag] || odd.device_flag)) + "</span>");
+      return out.join(" · ");
+    };
+    var whyTxt = function (c) { var d = document.createElement("div"); d.innerHTML = why(c); return d.textContent; };
+    var groups = {}; openCases.forEach(function (c) { (groups[c.emp] = groups[c.emp] || []).push(c); });
+    var gk = Object.keys(groups).sort(function (a, b) { return groups[b].length - groups[a].length || groups[a][0].name.localeCompare(groups[b][0].name); });
+    S.ttVOpen = S.ttVOpen || {}; S.ttVWhere = S.ttVWhere || {};
+    var caseLine = function (c) { var i = S.ttCases.indexOf(c), sh = shiftOf(c), ex = (c.explain || []).slice(-1)[0], wOpen = !!S.ttVWhere[c.id];
+      return '<div class="tt-vc' + (wOpen ? " open" : "") + '"><div class="tt-vc-t"><b>' + ttDayName(lday(c.first_at)) + " · " + ttHm(c.first_at) + "</b><span>" + esc(c.place || "No jobsite") + "</span>" + (sh && (sh.paid_min || sh.open) ? "<span>" + (sh.paid_min ? ttHmShort(sh.paid_min) + " h" : "") + (sh.open ? (sh.paid_min ? " · " : "") + '<span class="bad-t">no check-out yet</span>' : "") + "</span>" : "") + '<span class="tt-vc-why">' + why(c) + "</span>" +
+        (ex ? '<q class="tt-vc-ex">' + esc(ex.text) + "</q>" : "") + "</div>" +
+        '<div class="tt-vc-a"><button class="link small" data-a="ttVWhere" data-id="' + esc(c.id) + '">' + (wOpen ? "Hide" : "Where? ▸") + "</button>" +
+        (c.can_decide ? '<button class="btn ghost sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="reject">Reject</button><button class="btn sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="accept">Accept</button>' : '<small class="muted">Another reviewer decides</small>') + "</div>" +
+        (wOpen ? caseCard(c, i, true) : "") + "</div>"; };
+    var casesHtml = gk.length ? '<div class="tt-val"><div class="tt-val-h"><h3 class="tt-h3">Check-ins to validate</h3><span class="muted small">' + openCases.length + " check-in" + (openCases.length === 1 ? "" : "s") + " · " + gk.length + " " + (gk.length === 1 ? "person" : "people") + ". Hours count either way; this records whether each check-in is trusted.</span></div>" +
+      gk.map(function (emp) {
+        var list = groups[emp].sort(function (a, b) { return String(a.first_at).localeCompare(String(b.first_at)); }), p = r.people.filter(function (x) { return x.emp === emp; })[0] || {}, open = !!S.ttVOpen[emp], mins = 0, reasons = {};
+        list.forEach(function (c) { var sh = shiftOf(c); if (sh) mins += sh.paid_min || 0; reasons[whyTxt(c)] = (reasons[whyTxt(c)] || 0) + 1; });
+        var ids = list.filter(function (c) { return c.can_decide; }).map(function (c) { return c.id; });
+        return '<div class="card tt-vg' + (open ? " open" : "") + '"><div class="tt-vg-row"><button class="tt-vg-h" data-a="ttVOpen" data-emp="' + esc(emp) + '" aria-expanded="' + open + '"><span class="tt-chev">' + (open ? "▾" : "▸") + "</span><span class=\"tt-vg-n\"><b>" + esc(list[0].name) + '</b> <span class="tg">' + ({ labor: "#labor", pm: "#pm", team: "#team", admin: "#admin" }[p.level] || "") + "</span><small>" +
+          list.length + " check-in" + (list.length === 1 ? "" : "s") + (mins ? " · " + ttHmShort(mins) + " h at stake" : "") + " · " + Object.keys(reasons).map(function (k) { return esc(k) + (reasons[k] > 1 ? " ×" + reasons[k] : ""); }).join(", ") + "</small></span></button>" +
+          (ids.length ? '<div class="tt-vg-a"><button class="btn ghost sm" data-a="ttVDec" data-ids="' + esc(ids.join(",")) + '" data-d="reject">Reject' + (ids.length > 1 ? " all" : "") + '</button><button class="btn sm" data-a="ttVDec" data-ids="' + esc(ids.join(",")) + '" data-d="accept">Accept' + (ids.length > 1 ? " all " + ids.length : "") + "</button></div>" : "") + "</div>" +
+          (open ? '<div class="tt-vg-b">' + list.map(caseLine).join("") + "</div>" : "") + "</div>";
+      }).join("") + "</div>" : "";
+    if (doneCases.length) casesHtml += '<details class="tt-rep tt-vdone"><summary>Decided this week (' + doneCases.length + ")</summary>" + doneCases.map(function (c) {
+      return '<div class="tt-vd"><b>' + esc(c.name) + "</b> · " + ttDayName(lday(c.first_at)) + " " + ttHm(c.first_at) + " · " + esc(c.place || "No jobsite") + ' · <span class="pill ' + ST[c.status][1] + '">' + ST[c.status][0] + "</span>" + (c.decision ? ' <small class="muted">' + esc(c.decided_by) + ": “" + esc(c.decision_note) + "”</small>" : "") + "</div>"; }).join("") + "</details>";
     var cors = r.corrections.length ? '<h3 class="tt-h3">Corrections to decide</h3>' + r.corrections.map(function (k, i) {
       var ch = k.changes.map(function (c) { return "<li>" + esc(c.op === "add" ? "Add " + c.kind + " at " + c.at_local : c.op === "move" ? "Change " + (c.orig_kind ? TTX.en[c.orig_kind] + " " + ttHm(c.orig_at) : "the record") + " → " + c.at_local.slice(11) + (c.orig_local && c.orig_local.slice(0, 10) !== c.at_local.slice(0, 10) ? " on " + c.at_local.slice(0, 10) : "") : c.op === "retag" ? "Change the job" + (c.orig_job ? " from " + ttJobName(c.orig_job) : "") + " to " + ttJobName(c.job) : c.op + " the shift") + (c.job && c.op === "add" ? " · " + esc(ttJobName(c.job)) : "") + "</li>"; }).join("");
       return '<div class="card tt-dec"><div class="tt-dec-h"><b>' + esc(k.name) + "</b> · " + esc(k.date) + " · " + esc(TTX.en["r_" + k.reason] || "Office correction") + ' <span class="pill' + (k.delta_min > 0 ? " gold" : "") + '">' + (k.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(k.delta_min)) + "</span>" + (k.after_close ? ' <span class="pill bad">closed week</span>' : "") + (k.status === "needs_info" ? ' <span class="pill">waiting on their answer</span>' : "") + "</div>" +
@@ -5571,7 +5604,7 @@
     }).join("") : "";
     var close = w.status === "closed" ? (w.history.filter(function (h) { return h.what === "adjustment after close"; }).length ? '<div class="card"><div class="eyebrow">Adjustments after close</div>' + w.history.filter(function (h) { return h.what === "adjustment after close"; }).map(function (h) { return '<p class="small">v' + h.version + ": " + esc(h.emp) + " " + (h.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(h.delta_min)) + " (correction " + esc(h.corr) + ") · treat in the next payroll</p>"; }).join("") + "</div>" : "")
       : r.can_close ? '<div class="card"><div class="eyebrow">Close the week for payroll</div>' + (r.blockers.length ? '<ul class="small">' + r.blockers.map(function (b) { return "<li>" + esc(b) + "</li>"; }).join("") + "</ul>" : '<p class="small">Every week is approved. Closing keeps a snapshot; later changes become numbered adjustments.</p>') + '<button class="btn" data-a="ttClose"' + (r.blockers.length ? " disabled" : "") + ">Close week</button></div>" : "";
-    return head + casesHtml + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
+    return head + (S.ttKpis || "") + casesHtml + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
   }
   function ttLocSum(l) {
     if (!l) return "—"; var out = [];
@@ -5711,6 +5744,10 @@
     if (a === "ttAccess") { S.modal = { type: "lsxTtAccess", email: b.dataset.emp || "", name: b.dataset.name || "", phone: b.dataset.phone || "" }; return keepScroll(render); }
     if (a === "ttGpsGo") { var gk2 = ((root.querySelector("[data-tt-gps]") || {}).value || "").split("|"); S.ttGpsBusy = 1; S.ttGps = null; keepScroll(render);
       return ttLoc().then(function (loc) { return call("ttGeoTest", { ref_type: gk2[0], ref_id: gk2[1], loc: loc, device_at: new Date().toISOString() }).then(function (r) { r.samples = loc.samples; S.ttGps = r; }); }).catch(function (e) { S.ttGps = { err: e.message }; }).then(function () { S.ttGpsBusy = 0; keepScroll(render); }); }
+    if (a === "ttVOpen") { S.ttVOpen = S.ttVOpen || {}; S.ttVOpen[b.dataset.emp] = !S.ttVOpen[b.dataset.emp]; return keepScroll(render); }
+    if (a === "ttVWhere") { S.ttVWhere = S.ttVWhere || {}; S.ttVWhere[b.dataset.id] = !S.ttVWhere[b.dataset.id]; return keepScroll(render); }
+    if (a === "ttVDec") { var vids = b.dataset.ids.split(","), vcs = (S.ttCases || []).filter(function (c) { return vids.indexOf(c.id) > -1; }); S.modal = { type: "lsxTtVDec", ids: vids, cases: vcs, decision: b.dataset.d }; return keepScroll(render); }
+    if (a === "ttVWhy") { var inp = root.querySelector("form[data-form=ttVDec] input[name=why]"); if (inp) { inp.value = b.dataset.t; inp.focus(); } return; }
     if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); S.ttR = null; S.tt = null; toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
@@ -5772,7 +5809,7 @@
     if (t.matches("form[data-form=ttCor] select[name=op]")) { e.stopImmediatePropagation(); S.modal.op = t.value; return keepScroll(render); }
   }, true);
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess|ttEdit)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess|ttEdit|ttVDec)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
     if (f.dataset.form === "ttEdit") return run(btn, async function () {
       var sh1 = m.sh || {}, ch2 = [], tin = ttLocalVal(g("tin")), tout = ttLocalVal(g("tout"));
@@ -5786,6 +5823,15 @@
       }
       if (!ch2.length) throw new Error("Nothing changed.");
       await call("ttAdminEdit", { emp: m.emp, explain: g("why"), changes: ch2, shift_id: sh1.id || "" }); S.modal = null; S.ttR = null; toast(m.del ? "Deleted. It no longer counts; you can restore it." : m.restore ? "Restored. It counts again." : "Saved. The original stays on file."); keepScroll(render);
+    });
+    if (f.dataset.form === "ttVDec") return run(btn, async function () {
+      var why2 = g("why"), rv = await call("ttPresenceDecideMany", { ids: m.ids, decision: m.decision, note: why2 }), deleted = 0;
+      if (m.decision === "reject" && fd.get("del")) {
+        var byEmp = {}; m.cases.forEach(function (c) { if (rv.done.indexOf(c.id) > -1 && c.shift_id) (byEmp[c.emp] = byEmp[c.emp] || []).push(c.shift_id); });
+        for (var ek in byEmp) { await call("ttAdminEdit", { emp: ek, explain: "Check-in rejected: " + why2, changes: byEmp[ek].filter(function (x, i, l) { return l.indexOf(x) === i; }).map(function (sid) { return { op: "void", shift_id: sid }; }) }); deleted += byEmp[ek].length; }
+      }
+      S.modal = null; S.ttR = null; S.tt = null;
+      toast((m.decision === "accept" ? "Accepted " : "Rejected ") + rv.done.length + (rv.failed.length ? " · " + rv.failed.length + " couldn't be decided" : "") + (deleted ? " · hours deleted" : "")); keepScroll(render);
     });
     if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone"), level: g("level") || "" }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
     if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
@@ -5813,6 +5859,16 @@
   lsModal = function (m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.type === "lsxTtPick") return ttPicker(m.kind);
+    if (m.type === "lsxTtVDec") {
+      var acc = m.decision === "accept", names = m.cases.map(function (c) { return c.name; }).filter(function (x, i, l) { return l.indexOf(x) === i; }), adm = !!(S.tt && S.tt.admin);
+      var picks = acc ? ["Confirmed with the foreman", "Picking up materials", "GPS problem on the phone", "Was at the jobsite"] : ["Wasn't at the jobsite", "Not work time", "Someone else checked in for them", "Test check-in"];
+      return "<h2>" + (acc ? "Accept " : "Reject ") + (m.ids.length > 1 ? m.ids.length + " check-ins" : "this check-in") + " · " + esc(names.join(", ")) + '</h2><div class="card tt-del-sum">' + m.cases.map(function (c) { var dd = new Date(c.first_at), ld = isNaN(dd) ? String(c.first_at).slice(0, 10) : dd.getFullYear() + "-" + String(dd.getMonth() + 1).padStart(2, "0") + "-" + String(dd.getDate()).padStart(2, "0"); return "<div>" + ttDayName(ld) + " " + ttHm(c.first_at) + " · " + esc(c.place || "No jobsite") + "</div>"; }).join("") + "</div>" +
+        '<p class="muted small">' + (acc ? "They're marked as trusted. The reason stays on record." : "They're marked as not trusted, with your reason. The hours still count unless you delete them" + (adm ? " below." : " (only Jesús can delete hours).")) + "</p>" +
+        '<form class="form" data-form="ttVDec"><div class="tt-why-pick">' + picks.map(function (t) { return '<button type="button" class="chip" data-a="ttVWhy" data-t="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") + "</div>" +
+        '<label class="f">Reason (required)<input name="why" required minlength="5" maxlength="300"></label>' +
+        (!acc && adm ? '<label class="ls-chk"><input type="checkbox" name="del" value="1"> Also delete these hours (they stay on file; you can restore them)</label>' : "") +
+        '<div class="actions">' + cancel + '<button class="btn' + (acc ? "" : " danger-btn") + '" type="submit">' + (acc ? "Accept" : "Reject") + (m.ids.length > 1 ? " " + m.ids.length : "") + "</button></div></form>";
+    }
     if (m.type === "lsxTtEdit" && (m.del || m.restore)) {
       var shx = m.sh || {};
       return "<h2>" + (m.del ? "Delete this entry?" : "Restore this entry?") + '</h2><div class="card tt-del-sum"><b>' + esc(m.name) + "</b> · " + ttDayName(m.day || String(shx.start || "").slice(0, 10)) + "<br>" + ttHm(shx.start) + " → " + (shx.end ? ttHm(shx.end) : "no check-out") + " · " + ttDur(shx.paid_min) + (shx.places && shx.places.length ? "<br><small>" + esc(shx.places.join(", ")) + "</small>" : "") + "</div>" +

@@ -2157,3 +2157,38 @@
 #bs-portal .bill-tags{align-items:flex-start}
 #bs-portal .bill-tags .bt-main{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
 #bs-portal .bill-tags .tg-opt input:disabled+span{opacity:.75;cursor:default}
+/* Check-ins to validate: one line per person; details only when asked */
+#bs-portal .tt-val{margin-bottom:16px}
+#bs-portal .tt-val-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:6px 0 10px}
+#bs-portal .tt-val-h .tt-h3{margin:0}
+#bs-portal .tt-vg{padding:0;margin-bottom:8px;overflow:hidden;border-left:4px solid var(--bad)}
+#bs-portal .tt-vg-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 12px 6px 0}
+#bs-portal .tt-vg-h{flex:1 1 320px;min-width:0;display:flex;align-items:flex-start;gap:10px;background:none;border:0;padding:8px 6px 8px 14px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+#bs-portal .tt-vg-n{min-width:0}
+#bs-portal .tt-vg-n small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+#bs-portal .tt-vg-n .tg{font-size:12px;color:var(--muted)}
+#bs-portal .tt-vg-a{display:flex;gap:8px;margin-left:auto;padding-left:14px}
+#bs-portal .tt-vg-b{border-top:1px solid var(--line);background:#faf8f4}
+#bs-portal .tt-vc{padding:10px 14px 10px 38px;border-top:1px solid var(--line)}
+#bs-portal .tt-vc:first-child{border-top:0}
+#bs-portal .tt-vc-t{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;font-size:14px}
+#bs-portal .tt-vc-t>span{color:var(--ink-2)}
+#bs-portal .tt-vc-why{font-weight:500}
+#bs-portal .tt-vc-ex{flex-basis:100%;font-size:13px;color:var(--ink-2);font-style:italic}
+#bs-portal .tt-vc-a{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:6px}
+#bs-portal .tt-vc-a .link{margin-right:auto}
+#bs-portal .tt-case-d{margin-top:10px;padding:12px;background:#fff;border:1px solid var(--line);border-radius:12px}
+#bs-portal .tt-vdone{margin-bottom:16px}
+#bs-portal .tt-vd{padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+#bs-portal .tt-why-pick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+#bs-portal .tt-why-pick .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+@media (max-width:640px){#bs-portal .tt-vg-a{width:100%;padding:0 0 8px 38px}#bs-portal .tt-vc{padding-left:14px}}
+#bs-portal .tt-case-d .tt-side{display:block}
+#bs-portal .tt-case-d .tt-side>div:first-child{overflow-x:auto;margin-bottom:10px}
+#bs-portal .tt-case-d .tt-cmap{height:240px}
+@media (max-width:640px){
+  #bs-portal .tt-kpis{grid-template-columns:1fr 1fr!important;gap:8px}
+  #bs-portal .tt-kpis .stat{padding:12px 14px}
+  #bs-portal .tt-kpis .stat b{font-size:24px}
+  #bs-portal .tt-kpis .stat span{font-size:12px}
+}
