@@ -2119,3 +2119,41 @@
 /* While a call is shrunk to a bar on a phone, the chat bubble sits above it. */
 @media (max-width:640px){body.bsp-oncall #bs-portal #bsp-dock{bottom:80px}}
 #bs-portal .add-how{display:inline-flex;margin-top:18px}
+/* Hours dashboard: the week at a glance */
+#bs-portal .tt-kpis{margin-bottom:14px}
+#bs-portal .tt-sheet-card{padding:0;overflow:hidden;margin-bottom:14px}
+#bs-portal .tt-sheet-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#bs-portal .tt-sheet{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums;min-width:860px}
+#bs-portal .tt-sheet th{font-size:12px;font-weight:600;color:var(--muted);text-align:center;padding:10px 6px;border-bottom:1px solid var(--line);background:#faf8f4;white-space:nowrap}
+#bs-portal .tt-sheet th small{display:block;font-weight:400}
+#bs-portal .tt-sheet td{text-align:center;padding:11px 6px;border-bottom:1px solid var(--line);color:var(--muted);white-space:nowrap}
+#bs-portal .tt-sheet td.on{color:var(--ink);font-weight:500}
+#bs-portal .tt-sheet td.open{color:var(--bad);font-weight:600}
+#bs-portal .tt-sheet .tt-tdy{background:#f6f1e6}
+#bs-portal .tt-sheet .tt-nm{text-align:left;padding-left:14px;position:sticky;left:0;background:#fff;z-index:1;min-width:190px;white-space:normal}
+#bs-portal .tt-sheet th.tt-nm{background:#faf8f4}
+#bs-portal .tt-sheet .tt-nm small{display:block;font-size:12px;font-weight:500}
+#bs-portal .tt-sheet .tt-nm .tg{font-size:11.5px;color:var(--muted)}
+#bs-portal .tt-sheet .tt-tot{color:var(--ink);font-size:15px;border-left:1px solid var(--line)}
+#bs-portal .tt-sheet td.ot{color:var(--warn);font-weight:600}
+#bs-portal .tt-sheet .tt-stc{text-align:left;white-space:normal;min-width:150px;font-size:13px}
+#bs-portal .tt-sheet .tt-stc .pill{margin:2px 2px 0 0}
+#bs-portal .tt-sheet-r{cursor:pointer}
+#bs-portal .tt-sheet-r:hover td{background:#fbf9f5}
+#bs-portal .tt-sheet-r.open td{background:#f7f3ec;border-bottom-color:transparent}
+#bs-portal .tt-sheet-d>td{padding:0 0 10px;text-align:left;background:#f7f3ec;white-space:normal}
+#bs-portal .tt-sheet-d .tt-emp-b{position:sticky;left:0;max-width:min(100vw - 60px,1100px)}
+#bs-portal .tt-sheet-f td{background:#faf8f4;color:var(--ink);font-weight:600;border-bottom:0}
+#bs-portal .tt-es-x{display:flex;gap:12px;align-items:center}
+#bs-portal .tt-byjob{margin-bottom:14px}
+#bs-portal .tt-bj{display:grid;grid-template-columns:minmax(0,1.4fr) 1fr auto;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+#bs-portal .tt-bj:first-of-type{border-top:0}
+#bs-portal .tt-bj small{display:block;color:var(--muted);font-size:12px}
+#bs-portal .tt-bj-bar{height:8px;background:#efe9df;border-radius:99px;overflow:hidden}
+#bs-portal .tt-bj-bar i{display:block;height:100%;background:var(--ink-2);border-radius:99px}
+#bs-portal .tt-bj-h{font-variant-numeric:tabular-nums}
+#bs-portal .tt-del-sum{padding:12px 14px;margin:6px 0 10px;line-height:1.6}
+@media (max-width:640px){#bs-portal .tt-sheet .tt-nm{min-width:130px}#bs-portal .tt-bj{grid-template-columns:1fr auto}#bs-portal .tt-bj-bar{display:none}}
+#bs-portal .bill-tags{align-items:flex-start}
+#bs-portal .bill-tags .bt-main{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+#bs-portal .bill-tags .tg-opt input:disabled+span{opacity:.75;cursor:default}
