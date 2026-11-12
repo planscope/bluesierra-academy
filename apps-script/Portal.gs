@@ -124,6 +124,7 @@ function doPost(e) {
       }
     }
     res = res || {}; res.ok = true;
+    if (typeof ttBump === "function" && !READ_ONLY[b.action] && (/^(tt|jc)/.test(b.action) || /^(addPerson|removePerson|setRole|saveProfile)$/.test(b.action)) && !/^(ttMyWeek|ttReview|ttCaseDetail|ttGeoTest|ttSettings|ttSeen|jcProject|jcSummary|jcMatches|jcRates)$/.test(b.action)) ttBump();   // hours changed: the dashboard's cached copy is stale
   } catch (err) { res = { ok: false, error: String(err.message || err) }; }
   flushMail();                                   // emails go out after the lock is released, so nobody waits behind them
   rtFlush();                                     // then the instant doorbell (Firebase)

@@ -563,9 +563,10 @@
   function refreshList() { var seq = S.seq; call("listProjects").then(function (r) { if (seq === S.seq) { S.projects = r.projects; S.pins = r.pins || []; if (!S.pid) keepScroll(render); } }).catch(function () {}); }
   async function loadHome(what) {
     if (S.homeLoading === what) return; S.homeLoading = what; var seq = S.seq;
+    if (what === "activity" && !S.activity) swrFill("act", function (c) { S.activity = c; }); else if (what !== "activity" && !S.team) swrFill("team", function (c) { S.team = c; });
     try {
-      if (what === "activity") { var r = await call("activity", { limit: 80 }); if (seq === S.seq) S.activity = r.items; }
-      else { var t = await call("listTeam"); if (seq === S.seq) S.team = t.team; }
+      if (what === "activity") { var r = await call("activity", { limit: 80 }); if (seq === S.seq) { S.activity = r.items; cacheSet("act", r.items); } }
+      else { var t = await call("listTeam"); if (seq === S.seq) { S.team = t.team; cacheSet("team", t.team); } }
     } catch (e) { toast(e.message); if (what === "activity") S.activity = []; else S.team = []; }
     S.homeLoading = null; if (!S.pid) keepScroll(render);
   }
@@ -1085,6 +1086,8 @@
   function ckey(name) { if (S.viewAs) return ""; var e = S.me && S.me.email || (function () { try { return localStorage.getItem("bsp-last-email"); } catch (x) { return ""; } })(); return e ? "bsp-c:" + e + ":" + name : ""; }
   function cacheGet(name) { try { var k = ckey(name); return k ? JSON.parse(localStorage.getItem(k) || "null") : null; } catch (e) { return null; } }
   function cacheSet(name, v) { try { var k = ckey(name); if (k) localStorage.setItem(k, JSON.stringify(v)); } catch (e) { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e2) {} } }
+  /* Show the saved copy now (if there is one) and redraw; the caller's fresh data replaces it a moment later. */
+  function swrFill(name, assign) { var c = cacheGet(name); if (!c) return false; assign(c); setTimeout(function () { keepScroll(render); }, 0); return true; }
   function cacheClear() { try { Object.keys(localStorage).filter(function (x) { return x.indexOf("bsp-c:") === 0 || x === "bsp-last-email"; }).forEach(function (x) { localStorage.removeItem(x); }); } catch (e) {} }
 
   /* ---------------- notification bell (playful, HEY-style) ---------------- */
@@ -2325,7 +2328,7 @@
         run(null, async function () { try { await call("deleteMessage", { messageId: gone }); } catch (e) { await refresh(); throw e; } toast("Deleted"); }); }); return;
       case "unatt": S.att[b.dataset.k].splice(+b.dataset.i, 1); return keepScroll(render);
       case "homeView":
-        S.home = b.dataset.v; if (b.dataset.v === "today") { S.td = null; S.fromToday = 0; } if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null; if (b.dataset.v === "tt") { S.ttW = null; S.ttR = null; S.ttWeekQ = {}; S.ttMapOn = 0; S.ttBusy = 0; ttLoad(); }
+        S.home = b.dataset.v; if (b.dataset.v === "today") { S.td = null; S.fromToday = 0; } if (b.dataset.v === "activity") S.activity = null; if (b.dataset.v === "team") S.team = null; if (b.dataset.v === "tt") { S.ttW = null; S.ttWeekQ = {}; S.ttMapOn = 0; S.ttBusy = 0; if (S.tt && S.tt.reviewer) ttReviewLoad(true); ttLoad(); }
         if (b.dataset.v === "finance" && S.fin && S.fin.err) S.fin = null;
         refreshList(); if (S.pid) return go(null); return keepScroll(render);
       case "sideChan": S.chan = b.dataset.c; S.readMark = {}; if (S.tab !== "messages") return go(S.pid, "messages"); render(); window.scrollTo(0, document.body.scrollHeight); return;
@@ -2670,7 +2673,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261110165952";
+  var BUILD = "20261112095755";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -4704,7 +4707,7 @@
       (bad.length ? bad.map(function (x) { return '<small class="bad-t">' + esc(x.email) + ": " + esc(x.error || "not sent yet") + "</small>"; }).join("") : "") + "</div>" +
       (bad.length ? '<button class="btn sm" data-a="grxRetry" data-key="' + esc(m.key) + '" data-p="' + esc(m.proposal_id) + '">Retry ' + (bad.length === 1 ? esc(bad[0].email) : "the " + bad.length + " that failed") + "</button>" : "") + "</div>";
   }
-  function grLoad() { if (S.grBusy) return; S.grBusy = 1; call("grHome", {}).then(function (r) { S.gr = r; }).catch(function (e) { S.gr = { err: e.message }; }).then(function () { S.grBusy = 0; if (!S.pid && S.home === "gr") keepScroll(render); }); }
+  function grLoad() { if (S.grBusy) return; S.grBusy = 1; if (!S.gr) swrFill("gr", function (c) { S.gr = c; }); call("grHome", {}).then(function (r) { S.gr = r; cacheSet("gr", r); }).catch(function (e) { S.gr = { err: e.message }; }).then(function () { S.grBusy = 0; if (!S.pid && S.home === "gr") keepScroll(render); }); }
   function grO(id) { return ((S.gr && S.gr.opps) || []).filter(function (o) { return o.id === id; })[0]; }
   function grA(id) { return ((S.gr && S.gr.accounts) || []).filter(function (a) { return a.id === id; })[0]; }
   function grC(id) { return ((S.gr && S.gr.contacts) || []).filter(function (c) { return c.id === id; })[0]; }
@@ -5056,7 +5059,8 @@
   var TD_PRI = { 1: ["Now", "bad"], 2: ["Soon", "warn"], 3: ["", ""] }, TD_AREA = { projects: "Project", maintenance: "Maintenance", growth: "Growth", money: "Money" };
   function tdLoad(force) {
     if (S.tdBusy) return; S.tdBusy = 1; var at = Date.now(); S.tdAt = at;
-    call("todayQueue", { show_snoozed: !!S.tdShowSn }).then(function (r) { if (S.tdAt === at) S.td = r; }).catch(function (e) { if (S.tdAt === at) S.td = { err: e.message }; }).then(function () { S.tdBusy = 0; keepScroll(render); });
+    if (!S.td && !S.tdShowSn) swrFill("td", function (c) { S.td = c; });
+    call("todayQueue", { show_snoozed: !!S.tdShowSn }).then(function (r) { if (S.tdAt === at) { S.td = r; if (!S.tdShowSn) cacheSet("td", r); } }).catch(function (e) { if (S.tdAt === at) S.td = { err: e.message }; }).then(function () { S.tdBusy = 0; keepScroll(render); });
   }
   function tdList() {
     var r = S.td, f = S.tdF || "all";
@@ -5200,7 +5204,9 @@
   function ttQ(v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(ttQKey()) || "[]"); localStorage.setItem(ttQKey(), JSON.stringify(v)); } catch (e) { return v === undefined ? (S.ttMemQ || []) : (S.ttMemQ = v); } }
   function ttLoad() {
     if (S.ttBusy || !S.token) return; S.ttBusy = 1;
-    call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; S.ttTries = 0; }).catch(function (e) {
+    if (!S.tt && !ttCrewUI() && !S.viewAs) { var ct = cacheGet("tt"); if (ct && ct.reviewer != null) { S.tt = ct; setTimeout(function () { keepScroll(render); }, 0); } }
+    if (S.tt && S.tt.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad();                 // the dashboard starts loading at the same time, not after
+    call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; S.ttTries = 0; if (!ttCrewUI() && !S.viewAs) cacheSet("tt", r); if (r.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad(); }).catch(function (e) {
       S.ttErr = e.message; if ((S.ttTries = (S.ttTries || 0) + 1) < 3) setTimeout(function () { if (!S.tt) { S.ttErr = ""; keepScroll(render); } }, 2500 * S.ttTries);   // quietly try again (e.g. right after logging in)
     }).then(function () { S.ttBusy = 0; ttFlush(); keepScroll(render); });
   }
@@ -5511,12 +5517,28 @@
       return '<div class="tt-bj"><div><b>' + esc(k) + "</b><small>" + esc(n.join(", ")) + '</small></div><div class="tt-bj-bar"><i style="width:' + Math.max(4, Math.round(j[k].min / max * 100)) + '%"></i></div><b class="tt-bj-h">' + ttHmShort(j[k].min) + "</b></div>"; }).join("") +
       '<p class="muted small">Each shift counts at the first jobsite of the day it was checked in at.</p></div>';
   }
-  function ttReviewLoad() { S.ttR = { loading: 1 }; call("ttReview", { week: S.ttRWeek || "" }).then(function (r) { S.ttR = r; }).catch(function (e) { S.ttR = { err: e.message }; }).then(function () { keepScroll(render); }); }
+  // Office: get Hours ready in the background a few seconds after the portal opens, so the tab opens instantly.
+  (function () { var tries = 0, iv = setInterval(function () { if (++tries > 30) return clearInterval(iv); if (!S.me || !S.token) return; clearInterval(iv);
+    if (staff() && !S.viewAs && !S.tt && document.visibilityState === "visible") setTimeout(function () { if (!S.tt) ttLoad(); }, 2500); }, 1000); })();
+  /* Who changed the hours: their face, name, what they did, when, and their reason (like a project's timeline). */
+  function ttHistHtml(list, wide) {
+    var when = function (at) { var d = new Date(at); if (isNaN(d)) return esc(at); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); };
+    return '<div class="tt-hist' + (wide ? " wide" : "") + '">' + list.map(function (h) {
+      return '<div class="tt-h">' + av(h.by, h.avatar, h.role, "xs", h.key) + '<div class="tt-h-t"><span><b>' + esc(first(h.by)) + "</b> " + esc(h.what) + (wide && h.emp_name ? " · " + esc(h.emp_name) : "") + (h.delta ? ' <span class="muted">(' + (h.delta > 0 ? "+" : "−") + ttHmShort(Math.abs(h.delta)) + ")</span>" : "") + "</span>" +
+        '<small>' + when(h.at) + (h.note ? " · “" + esc(h.note) + "”" : "") + "</small></div></div>"; }).join("") + "</div>";
+  }
+  function ttReviewLoad(keep) {
+    var wk = S.ttRWeek || "", ck = "ttR:" + wk, gen = S.ttRGen = (S.ttRGen || 0) + 1, have = S.ttR && S.ttR.week && (!wk || S.ttR.week.start === wk);
+    if (keep && have) S.ttR.stale = 1;
+    else { var old = !S.viewAs && cacheGet(ck); S.ttR = old && old.week ? Object.assign(old, { stale: 1 }) : { loading: 1 }; }
+    call("ttReview", { week: wk }).then(function (r) { if (gen !== S.ttRGen) return; S.ttR = r; if (!S.viewAs) cacheSet(ck, r); })
+      .catch(function (e) { if (gen !== S.ttRGen) return; if (S.ttR && S.ttR.week) { S.ttR.stale = 0; toast(e.message); } else S.ttR = { err: e.message }; }).then(function () { keepScroll(render); });
+  }
   function ttReviewView() {
-    var r = S.ttR; if (!r) { ttReviewLoad(); return '<div class="loading">Loading the team\'s hours…</div>'; } if (r.loading) return '<div class="loading">Loading the team\'s hours…</div>';
+    var r = S.ttR; if (!r) { ttReviewLoad(); r = S.ttR; } if (r.loading) return '<div class="loading">Loading the team\'s hours…</div>';
     if (r.err) return '<div class="card ls-incomplete">' + esc(r.err) + ' <button class="link" data-a="ttRReload">Try again</button></div>';
     var w = r.week;
-    var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttRGo" data-d="-7">‹</button><b>Week ' + ttDayName(w.start) + " – " + ttDayName(w.end) + '</b><button class="btn ghost sm" data-a="ttRGo" data-d="7">›</button><span class="pill' + (w.status === "closed" ? " gold" : "") + '">' + (w.status === "closed" ? "Closed v" + w.version + " · " + esc(w.closed_by) : "Open") + "</span></div>";
+    var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttRGo" data-d="-7">‹</button><b>Week ' + ttDayName(w.start) + " – " + ttDayName(w.end) + '</b><button class="btn ghost sm" data-a="ttRGo" data-d="7">›</button><span class="pill' + (w.status === "closed" ? " gold" : "") + '">' + (w.status === "closed" ? "Closed v" + w.version + " · " + esc(w.closed_by) : "Open") + "</span>" + (r.stale ? '<span class="tt-upd">Updating…</span>' : "") + "</div>";
     var adminR = !!(S.tt && S.tt.admin), LVL = { labor: "#labor", pm: "#pm", team: "#team", admin: "#admin" };
     var fmtD = function (m) { m = +m; return m >= 1000 ? Math.round(m / 100) / 10 + " km" : m + " m"; };
     var RSS = { denied: "location off", timeout: "no answer from the phone", unavailable: "no location", unsupported: "no location", none: "no location", stale: "old reading", imprecise: "imprecise", uncertain: "at the edge", no_geocode: "jobsite has no map point", no_place: "no jobsite", other_device: "another person's phone", new_device: "new phone", no_device: "unknown phone", blocked_device: "blocked phone" };
@@ -5533,6 +5555,7 @@
         return '<div class="tt-emp-day"><div class="tt-ed-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + d.shifts.map(function (sh, si) {
           return '<div class="tt-emp-sh' + (sh.voided ? " void" : "") + '"><div class="tt-es-t"><b>' + ttHm(sh.start) + " → " + (sh.end ? ttHm(sh.end) : '<span class="bad-t">no check-out</span>') + "</b> · " + ttDur(sh.paid_min) + "<small>" + esc(sh.places.join(", ")) + (sh.acts.length ? " · " + esc(sh.acts.join(", ")) : "") + "</small></div>" +
             '<div class="tt-es-c">' + gpsTxt(sh.gps) + phTxt(sh.phone) + (sh.gps.addr ? '<small class="muted">Near ' + esc(sh.gps.addr) + "</small>" : "") + (sh.corrected ? '<span class="pill gold">edited</span>' : "") + (sh.case === "pending" || sh.case === "verified_later" ? '<span class="pill bad">to validate</span>' : sh.case ? '<span class="pill">' + esc(sh.case) + "</span>" : "") + "</div>" +
+            (sh.hist ? ttHistHtml(sh.hist) : "") +
             (adminR ? '<div class="tt-es-x">' + (sh.voided ? '<span class="pill">Deleted</span><button class="link small" data-a="ttRestore" data-pi="' + pi + '" data-d="' + esc(d.date) + '" data-si="' + si + '">Restore</button>'
               : '<button class="link small" data-a="ttEdit" data-pi="' + pi + '" data-d="' + esc(d.date) + '" data-si="' + si + '">Edit</button><button class="link small bad-t" data-a="ttDel" data-pi="' + pi + '" data-d="' + esc(d.date) + '" data-si="' + si + '">Delete</button>') + "</div>" : "") + "</div>";
         }).join("") + "</div>";
@@ -5579,9 +5602,11 @@
     var caseLine = function (c) { var i = S.ttCases.indexOf(c), sh = shiftOf(c), ex = (c.explain || []).slice(-1)[0], wOpen = !!S.ttVWhere[c.id];
       return '<div class="tt-vc' + (wOpen ? " open" : "") + '"><div class="tt-vc-t"><b>' + ttDayName(lday(c.first_at)) + " · " + ttHm(c.first_at) + "</b><span>" + esc(c.place || "No jobsite") + "</span>" + (sh && (sh.paid_min || sh.open) ? "<span>" + (sh.paid_min ? ttHmShort(sh.paid_min) + " h" : "") + (sh.open ? (sh.paid_min ? " · " : "") + '<span class="bad-t">no check-out yet</span>' : "") + "</span>" : "") + '<span class="tt-vc-why">' + why(c) + "</span>" +
         (ex ? '<q class="tt-vc-ex">' + esc(ex.text) + "</q>" : "") + "</div>" +
+        (sh && sh.hist ? ttHistHtml(sh.hist) : "") +
         '<div class="tt-vc-a"><button class="link small" data-a="ttVWhere" data-id="' + esc(c.id) + '">' + (wOpen ? "Hide" : "Where? ▸") + "</button>" +
+        (adminR && sh ? '<button class="link small" data-a="ttVEdit" data-id="' + esc(c.id) + '">Edit</button><button class="link small bad-t" data-a="ttVDel" data-id="' + esc(c.id) + '">Delete</button>' : "") +
         (c.can_decide ? '<button class="btn ghost sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="reject">Reject</button><button class="btn sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="accept">Accept</button>' : '<small class="muted">Another reviewer decides</small>') + "</div>" +
-        (wOpen ? caseCard(c, i, true) : "") + "</div>"; };
+        (wOpen ? (c.evidence ? caseCard(c, i, true) : '<div class="tt-case-d muted small">Loading where they checked in…</div>') : "") + "</div>"; };
     var casesHtml = gk.length ? '<div class="tt-val"><div class="tt-val-h"><h3 class="tt-h3">Check-ins to validate</h3><span class="muted small">' + openCases.length + " check-in" + (openCases.length === 1 ? "" : "s") + " · " + gk.length + " " + (gk.length === 1 ? "person" : "people") + ". Hours count either way; this records whether each check-in is trusted.</span></div>" +
       gk.map(function (emp) {
         var list = groups[emp].sort(function (a, b) { return String(a.first_at).localeCompare(String(b.first_at)); }), p = r.people.filter(function (x) { return x.emp === emp; })[0] || {}, open = !!S.ttVOpen[emp], mins = 0, reasons = {};
@@ -5604,7 +5629,8 @@
     }).join("") : "";
     var close = w.status === "closed" ? (w.history.filter(function (h) { return h.what === "adjustment after close"; }).length ? '<div class="card"><div class="eyebrow">Adjustments after close</div>' + w.history.filter(function (h) { return h.what === "adjustment after close"; }).map(function (h) { return '<p class="small">v' + h.version + ": " + esc(h.emp) + " " + (h.delta_min >= 0 ? "+" : "−") + ttDur(Math.abs(h.delta_min)) + " (correction " + esc(h.corr) + ") · treat in the next payroll</p>"; }).join("") + "</div>" : "")
       : r.can_close ? '<div class="card"><div class="eyebrow">Close the week for payroll</div>' + (r.blockers.length ? '<ul class="small">' + r.blockers.map(function (b) { return "<li>" + esc(b) + "</li>"; }).join("") + "</ul>" : '<p class="small">Every week is approved. Closing keeps a snapshot; later changes become numbered adjustments.</p>') + '<button class="btn" data-a="ttClose"' + (r.blockers.length ? " disabled" : "") + ">Close week</button></div>" : "";
-    return head + (S.ttKpis || "") + casesHtml + cors + tbl + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
+    var logH = (r.log || []).length ? '<details class="card tt-log"' + (S.ttLogOpen ? " open" : "") + '><summary data-a="ttLogTog"><b>Changes to hours</b> <span class="muted small">' + r.log.length + " · who did what, when and why</span></summary>" + ttHistHtml(r.log, true) + "</details>" : "";
+    return head + (S.ttKpis || "") + casesHtml + cors + tbl + logH + close + '<p class="muted small">Overtime is an estimate with rules ' + esc(r.rules.v) + ". " + esc(r.rules.note) + " Hours worked count even when overtime wasn't pre-approved.</p>";
   }
   function ttLocSum(l) {
     if (!l) return "—"; var out = [];
@@ -5616,7 +5642,7 @@
   }
   function ttView() {
     if (ttCrewUI()) return ttCard() || '<div class="loading" style="min-height:30vh">' + (ttL() === "es" ? "Cargando tu reloj…" : "Loading your clock…") + "</div>";   // crew: just the clock screen
-    if (!S.tt) { if (!S.ttErr) ttLoad(); return '<div class="loading">' + tx("my") + "…</div>"; }
+    if (!S.tt) { if (!S.ttErr) ttLoad(); if (!S.tt) return '<div class="loading">' + tx("my") + "…</div>"; }
     var on = S.tt.enabled, rev = S.tt.reviewer, adm = S.tt.admin, list = (on ? [["mine", tx("my")]] : []).concat(rev ? [["team", adm ? "Hours dashboard" : "Team review"]] : [], staff() ? [["gps", "Test GPS"]] : [], adm ? [["set", "Settings"]] : []);
     if (!list.length) return '<div class="empty">' + (ttL() === "es" ? "El reloj todavía no está activado para ti." : "The clock isn't turned on for you yet.") + "</div>";
     var tab = list.some(function (o) { return o[0] === S.ttTab; }) ? S.ttTab : list[0][0];
@@ -5737,19 +5763,28 @@
       S.modal = { type: "lsxTtEdit", emp: pd.emp, name: pd.name, sh: shd, del: a === "ttDel", restore: a === "ttRestore", day: b.dataset.d }; return keepScroll(render); }
     if (a === "ttEdit") { var pe = S.ttDash[+b.dataset.pi]; if (b.dataset.new) { S.modal = { type: "lsxTtEdit", emp: pe.emp, name: pe.name, isNew: 1 }; return keepScroll(render); }
       var sh = pe.days.filter(function (d) { return d.date === b.dataset.d; })[0].shifts[+b.dataset.si]; S.modal = { type: "lsxTtEdit", emp: pe.emp, name: pe.name, sh: sh }; return keepScroll(render); }
-    if (a === "ttDevTrust") { var dc = S.ttCases[i]; return run(b, async function () { await call("ttDevice", { emp: dc.emp, dev: b.dataset.dev, decision: "trust" }); S.ttR = null; toast("Phone approved for " + dc.name + ". Next check-ins from it count normally."); keepScroll(render); }); }
+    if (a === "ttDevTrust") { var dc = S.ttCases[i]; return run(b, async function () { await call("ttDevice", { emp: dc.emp, dev: b.dataset.dev, decision: "trust" }); ttReviewLoad(true); toast("Phone approved for " + dc.name + ". Next check-ins from it count normally."); keepScroll(render); }); }
     if (a === "ttDevSet") return run(b, async function () { await call("ttDevice", { emp: b.dataset.emp, dev: b.dataset.dev, decision: b.dataset.d }); ttSetLoad(); toast({ trust: "Phone approved", block: "Phone blocked", remove: "Phone removed" }[b.dataset.d]); });
     if (a === "ttAddHow") { S.addHow = b.dataset.v; return keepScroll(render); }
     if (a === "ttCopyMsg") { try { navigator.clipboard.writeText(b.dataset.c); toast("Message copied. Paste it in a text to them."); } catch (er) { toast(b.dataset.c); } return; }
     if (a === "ttAccess") { S.modal = { type: "lsxTtAccess", email: b.dataset.emp || "", name: b.dataset.name || "", phone: b.dataset.phone || "" }; return keepScroll(render); }
     if (a === "ttGpsGo") { var gk2 = ((root.querySelector("[data-tt-gps]") || {}).value || "").split("|"); S.ttGpsBusy = 1; S.ttGps = null; keepScroll(render);
       return ttLoc().then(function (loc) { return call("ttGeoTest", { ref_type: gk2[0], ref_id: gk2[1], loc: loc, device_at: new Date().toISOString() }).then(function (r) { r.samples = loc.samples; S.ttGps = r; }); }).catch(function (e) { S.ttGps = { err: e.message }; }).then(function () { S.ttGpsBusy = 0; keepScroll(render); }); }
+    if (a === "ttLogTog") { e.preventDefault(); S.ttLogOpen = !S.ttLogOpen; return keepScroll(render); }
     if (a === "ttVOpen") { S.ttVOpen = S.ttVOpen || {}; S.ttVOpen[b.dataset.emp] = !S.ttVOpen[b.dataset.emp]; return keepScroll(render); }
-    if (a === "ttVWhere") { S.ttVWhere = S.ttVWhere || {}; S.ttVWhere[b.dataset.id] = !S.ttVWhere[b.dataset.id]; return keepScroll(render); }
+    if (a === "ttVWhere") { S.ttVWhere = S.ttVWhere || {}; var wid = b.dataset.id; S.ttVWhere[wid] = !S.ttVWhere[wid];
+      var wc = (S.ttR && S.ttR.cases || []).filter(function (c) { return c.id === wid; })[0];
+      if (S.ttVWhere[wid] && wc && !wc.evidence && !wc.loadingEv) { wc.loadingEv = 1; call("ttCaseDetail", { id: wid }).then(function (r) { Object.assign(wc, r.case); }).catch(function (e) { toast(e.message); }).then(function () { wc.loadingEv = 0; keepScroll(render); }); }
+      return keepScroll(render); }
+    if (a === "ttVEdit" || a === "ttVDel") { var ec = (S.ttR && S.ttR.cases || []).filter(function (c) { return c.id === b.dataset.id; })[0], esh = null;
+      (S.ttR.people || []).forEach(function (p) { if (p.emp === (ec && ec.emp)) p.days.forEach(function (d) { d.shifts.forEach(function (x) { if (x.id === ec.shift_id) esh = x; }); }); });
+      if (!ec || !esh) return toast("That shift isn't in this week's view.");
+      var edt = new Date(esh.start), eday = isNaN(edt) ? String(esh.start || "").slice(0, 10) : edt.getFullYear() + "-" + String(edt.getMonth() + 1).padStart(2, "0") + "-" + String(edt.getDate()).padStart(2, "0");
+      S.modal = { type: "lsxTtEdit", emp: ec.emp, name: ec.name, sh: esh, del: a === "ttVDel", day: eday }; return keepScroll(render); }
     if (a === "ttVDec") { var vids = b.dataset.ids.split(","), vcs = (S.ttCases || []).filter(function (c) { return vids.indexOf(c.id) > -1; }); S.modal = { type: "lsxTtVDec", ids: vids, cases: vcs, decision: b.dataset.d }; return keepScroll(render); }
     if (a === "ttVWhy") { var inp = root.querySelector("form[data-form=ttVDec] input[name=why]"); if (inp) { inp.value = b.dataset.t; inp.focus(); } return; }
     if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
-      return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); S.ttR = null; S.tt = null; toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
+      return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
     if (a === "ttsGo") {
       var gk = b.dataset.k, dec = "", es1 = ttL() === "es";
@@ -5773,24 +5808,24 @@
     if (a === "ttMy") { S.home = "tt"; S.ttTab = "mine"; S.ttWeekQ = {}; S.ttW = null; window.scrollTo(0, 0); return keepScroll(render); }
     if (a === "ttFix") { S.modal = { type: "lsxTtCor", reason: "missed_out", day: (S.tt && S.tt.today) || "" }; if (!S.ttW) ttWeekLoad(); return keepScroll(render); }
     if (a === "ttPriv") { S.modal = { type: "lsxTtPriv" }; return keepScroll(render); }
-    if (a === "ttSetAll") return run(b, async function () { S.ttSet = await call("ttSettings", { all: !!b.dataset.v }); S.tt = null; toast(b.dataset.v ? "The clock is on for everyone" : "Back to pilot: only the people checked"); keepScroll(render); });
+    if (a === "ttSetAll") return run(b, async function () { S.ttSet = await call("ttSettings", { all: !!b.dataset.v }); ttLoad(); toast(b.dataset.v ? "The clock is on for everyone" : "Back to pilot: only the people checked"); keepScroll(render); });
     if (a === "ttTab") { S.ttSet = b.dataset.v === "set" ? null : S.ttSet; S.ttTab = b.dataset.v; S.ttWeekQ = {}; S.ttW = null; return keepScroll(render); }
     if (a === "ttWeekGo") { var q = S.ttWeekQ || {}; q.week = ttWeekShift(S.ttW && S.ttW.week ? S.ttW.week.start : "", +b.dataset.d); S.ttWeekQ = q; S.ttW = null; S.ttMapOn = 0; return keepScroll(render); }
     if (a === "ttWeekReload") { S.ttW = null; return keepScroll(render); }
     if (a === "ttRGo") { S.ttRWeek = ttWeekShift(S.ttR && S.ttR.week ? S.ttR.week.start : "", +b.dataset.d); S.ttR = null; return keepScroll(render); }
-    if (a === "ttRReload") { S.ttR = null; return keepScroll(render); }
+    if (a === "ttRReload") { ttReviewLoad(true); return keepScroll(render); }
     if (a === "ttPerson") { S.ttWeekQ = { emp: b.dataset.emp, week: S.ttR.week.start }; S.ttW = null; S.ttMapOn = 0; window.scrollTo(0, 0); return keepScroll(render); }
-    if (a === "ttBackTeam") { S.ttWeekQ = {}; S.ttW = null; S.ttR = null; return keepScroll(render); }
+    if (a === "ttBackTeam") { S.ttWeekQ = {}; S.ttW = null; ttReviewLoad(true); return keepScroll(render); }
     if (a === "ttMap") { S.ttMapOn = !S.ttMapOn; return keepScroll(render); }
     if (a === "ttOfficeFix") { S.modal = { type: "lsxTtCor", office: 1, sid: b.dataset.sid, day: b.dataset.day, op: b.dataset.sid ? "out" : "in" }; return keepScroll(render); }
     if (a === "ttAbsence") { S.modal = { type: "lsxTtAbs" }; return keepScroll(render); }
     if (a === "ttReply") { var c = S.ttW.corrections[i]; S.modal = { type: "lsxTtReply", id: c.id, mode: b.dataset.mode }; return keepScroll(render); }
     if (a === "ttConfirm") { if (b.dataset.v === "discrepancy") { S.modal = { type: "lsxTtReply", mode: "discrepancy" }; return keepScroll(render); }
       return run(b, async function () { await call("ttConfirmWeek", { week: S.ttW.week.start, status: "ok" }); S.ttW = null; toast(ttL() === "es" ? "Gracias. Quedó confirmado." : "Thanks. Confirmed."); keepScroll(render); }); }
-    if (a === "ttApprove") return run(b, async function () { var wk = (S.ttR && S.ttR.week.start) || (S.ttW && S.ttW.week.start); var r = await call("ttApprove", { emp: b.dataset.emp, week: wk }); S.ttR = null; S.ttW = null; toast("Approved" + (r.unconfirmed ? " (the employee hasn't confirmed; that's fine)" : "")); keepScroll(render); });
+    if (a === "ttApprove") return run(b, async function () { var wk = (S.ttR && S.ttR.week.start) || (S.ttW && S.ttW.week.start); var r = await call("ttApprove", { emp: b.dataset.emp, week: wk }); ttReviewLoad(true); S.ttW = null; toast("Approved" + (r.unconfirmed ? " (the employee hasn't confirmed; that's fine)" : "")); keepScroll(render); });
     if (a === "ttDecide") { var note = (root.querySelector('.tt-note[data-i="' + i + '"]') || {}).value || "", cc = S.ttR.corrections[i];
-      return run(b, async function () { await call("ttDecide", { id: cc.id, decision: b.dataset.d, note: note }); S.ttR = null; toast({ approve: "Approved: added to the record, the original stays on file", reject: "Rejected. They'll see your reason.", ask: "Question sent" }[b.dataset.d]); keepScroll(render); }); }
-    if (a === "ttClose") return run(b, async function () { await call("ttClose", { week: S.ttR.week.start }); S.ttR = null; toast("Week closed. Later changes will show as adjustments."); keepScroll(render); });
+      return run(b, async function () { await call("ttDecide", { id: cc.id, decision: b.dataset.d, note: note }); ttReviewLoad(true); toast({ approve: "Approved: added to the record, the original stays on file", reject: "Rejected. They'll see your reason.", ask: "Question sent" }[b.dataset.d]); keepScroll(render); }); }
+    if (a === "ttClose") return run(b, async function () { await call("ttClose", { week: S.ttR.week.start }); ttReviewLoad(true); toast("Week closed. Later changes will show as adjustments."); keepScroll(render); });
   }, true);
   root.addEventListener("change", function (e) {
     var t = e.target; if (!t.matches) return;
@@ -5798,7 +5833,7 @@
       e.stopImmediatePropagation(); var k = t.dataset.ttSet, em = t.dataset.email, p = S.ttSet.people.filter(function (x) { return x.email === em; })[0], body = { email: em };
       if (k === "clock") body.clock = t.checked; else if (k === "crew_level") body.crew_level = t.value; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
       else { var l = p.perms.filter(function (x) { return x !== k; }); if (t.checked) l.push(k); if (k === "period_close" && t.checked && l.indexOf("accounting") < 0) l.push("accounting"); body.perms = l; }
-      call("ttSetPerson", body).then(function () { toast("Saved: " + p.name); if (em === S.me.email || k === "clock") S.tt = null; ttSetLoad(); }).catch(function (er) { toast(er.message); ttSetLoad(); });
+      call("ttSetPerson", body).then(function () { toast("Saved: " + p.name); if (em === S.me.email || k === "clock") ttLoad(); ttSetLoad(); }).catch(function (er) { toast(er.message); ttSetLoad(); });
       return;
     }
     if (t.matches("[data-tts-time]")) { S.ttsOtherV = t.value; return; }
@@ -5813,6 +5848,7 @@
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
     if (f.dataset.form === "ttEdit") return run(btn, async function () {
       var sh1 = m.sh || {}, ch2 = [], tin = ttLocalVal(g("tin")), tout = ttLocalVal(g("tout"));
+      if (m.del && fd.get("purge")) { await call("ttPurgeShift", { emp: m.emp, shift_id: sh1.id, explain: g("why") }); S.modal = null; ttReviewLoad(true); toast("Deleted permanently. The history keeps the record of who and why."); return keepScroll(render); }
       if (m.del || fd.get("void")) ch2.push({ op: "void", shift_id: sh1.id });
       else if (m.restore) ch2.push({ op: "restore", shift_id: sh1.id });
       else if (m.isNew) { var jb = g("job").split("|"); ch2.push({ op: "add", kind: "in", at: tin, act: "general", ref_type: jb[0], ref_id: jb[1] }); if (tout) ch2.push({ op: "add", kind: "out", at: tout }); }
@@ -5822,17 +5858,25 @@
         if (tout && !sh1.out_id) ch2.push({ op: "add", kind: "out", shift_id: sh1.id, at: tout });
       }
       if (!ch2.length) throw new Error("Nothing changed.");
-      await call("ttAdminEdit", { emp: m.emp, explain: g("why"), changes: ch2, shift_id: sh1.id || "" }); S.modal = null; S.ttR = null; toast(m.del ? "Deleted. It no longer counts; you can restore it." : m.restore ? "Restored. It counts again." : "Saved. The original stays on file."); keepScroll(render);
+      await call("ttAdminEdit", { emp: m.emp, explain: g("why"), changes: ch2, shift_id: sh1.id || "" }); S.modal = null; ttReviewLoad(true); toast(m.del ? "Deleted. It no longer counts; you can restore it." : m.restore ? "Restored. It counts again." : "Saved. The original stays on file."); keepScroll(render);
     });
-    if (f.dataset.form === "ttVDec") return run(btn, async function () {
-      var why2 = g("why"), rv = await call("ttPresenceDecideMany", { ids: m.ids, decision: m.decision, note: why2 }), deleted = 0;
-      if (m.decision === "reject" && fd.get("del")) {
-        var byEmp = {}; m.cases.forEach(function (c) { if (rv.done.indexOf(c.id) > -1 && c.shift_id) (byEmp[c.emp] = byEmp[c.emp] || []).push(c.shift_id); });
-        for (var ek in byEmp) { await call("ttAdminEdit", { emp: ek, explain: "Check-in rejected: " + why2, changes: byEmp[ek].filter(function (x, i, l) { return l.indexOf(x) === i; }).map(function (sid) { return { op: "void", shift_id: sid }; }) }); deleted += byEmp[ek].length; }
-      }
-      S.modal = null; S.ttR = null; S.tt = null;
-      toast((m.decision === "accept" ? "Accepted " : "Rejected ") + rv.done.length + (rv.failed.length ? " · " + rv.failed.length + " couldn't be decided" : "") + (deleted ? " · hours deleted" : "")); keepScroll(render);
-    });
+    if (f.dataset.form === "ttVDec") {
+      // Shown at once: the check-ins leave the list now; the server catches up behind (and anything it refuses comes back).
+      var why2 = g("why"), delH = m.decision === "reject" && !!fd.get("del"), meName = (S.me && S.me.name) || "You";
+      if (why2.length < 5) return toast("Write the reason (at least a few words).");
+      (S.ttR && S.ttR.cases || []).forEach(function (c) { if (m.ids.indexOf(c.id) > -1) { c.open = false; c.status = m.decision === "accept" ? "accepted" : "rejected"; c.decision = m.decision; c.decision_note = why2; c.decided_by = meName; } });
+      S.modal = null; keepScroll(render); toast((m.decision === "accept" ? "Accepted " : "Rejected ") + m.ids.length + " · saving…");
+      (async function () {
+        try {
+          var rv = await call("ttPresenceDecideMany", { ids: m.ids, decision: m.decision, note: why2 }), deleted = 0;
+          if (delH) { var byEmp = {}; m.cases.forEach(function (c) { if (rv.done.indexOf(c.id) > -1 && c.shift_id) (byEmp[c.emp] = byEmp[c.emp] || []).push(c.shift_id); });
+            for (var ek in byEmp) { var sids = byEmp[ek].filter(function (x, i, l) { return l.indexOf(x) === i; }); await call("ttAdminEdit", { emp: ek, explain: "Check-in rejected: " + why2, shift_id: sids[0], changes: sids.map(function (sid) { return { op: "void", shift_id: sid }; }) }); deleted += sids.length; } }
+          toast((m.decision === "accept" ? "Accepted " : "Rejected ") + rv.done.length + (rv.failed.length ? " · " + rv.failed.length + " couldn't be decided" : "") + (deleted ? " · hours deleted" : "") + " ✓");
+        } catch (er) { toast(er.message); }
+        ttReviewLoad(true); ttLoad();
+      })();
+      return;
+    }
     if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone"), level: g("level") || "" }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
     if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
     if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
@@ -5851,7 +5895,7 @@
     var body = { reason: g("reason") || "office_fix", explain: g("explain"), declared_place: g("place"), changes: ch, shift_id: g("sid") };
     if (m.office && S.ttW && !S.ttW.me) body.emp = S.ttW.emp;
     run(btn, async function () {
-      var r = await call("ttRequestCorrection", body), d = r.correction.delta_min; S.modal = null; S.ttW = null; S.ttR = null;
+      var r = await call("ttRequestCorrection", body), d = r.correction.delta_min; S.modal = null; S.ttW = null; ttReviewLoad(true);
       toast((ttL() === "es" ? "Solicitud enviada" : "Request sent") + (d ? " (" + (d > 0 ? "+" : "−") + ttDur(Math.abs(d)) + ")" : "") + (ttL() === "es" ? ". Te avisamos cuando la revisen." : ". You'll see the decision here.")); keepScroll(render);
     });
   }, true);
@@ -5874,6 +5918,7 @@
       return "<h2>" + (m.del ? "Delete this entry?" : "Restore this entry?") + '</h2><div class="card tt-del-sum"><b>' + esc(m.name) + "</b> · " + ttDayName(m.day || String(shx.start || "").slice(0, 10)) + "<br>" + ttHm(shx.start) + " → " + (shx.end ? ttHm(shx.end) : "no check-out") + " · " + ttDur(shx.paid_min) + (shx.places && shx.places.length ? "<br><small>" + esc(shx.places.join(", ")) + "</small>" : "") + "</div>" +
         '<p class="muted small">' + (m.del ? "It stops counting toward their hours, totals and payroll. The record stays on file marked deleted, with your reason, and you can restore it." : "It counts toward their hours again.") + "</p>" +
         '<form class="form" data-form="ttEdit"><label class="f">Reason (required)<input name="why" required minlength="5" maxlength="300" placeholder="' + (m.del ? "e.g. test check-in, duplicate, wrong person" : "e.g. deleted by mistake") + '"></label>' +
+        (m.del && S.ttR && S.ttR.can_purge ? '<label class="ls-chk tt-purge"><input type="checkbox" name="purge" value="1"> <span><b>Delete permanently</b> — the records are erased and can\'t be restored. Only for test or mistaken entries; real hours must be kept for payroll. The history keeps who deleted it, when and why.</span></label>' : "") +
         '<div class="actions">' + cancel + '<button class="btn' + (m.del ? " danger-btn" : "") + '" type="submit">' + (m.del ? "Delete" : "Restore") + "</button></div></form>";
     }
     if (m.type === "lsxTtEdit") {
@@ -5914,7 +5959,8 @@
   function jcKey(pid) { return pid + "|" + (S.viewAs || ""); }
   async function jcLoad(pid, force) {
     var k = jcKey(pid); S.jc = S.jc || {}; S.jcBusy = S.jcBusy || {}; if (S.jcBusy[k] && !force) return; S.jcBusy[k] = 1;
-    try { S.jc[k] = await call("jcProject", { projectId: pid }); } catch (e) { S.jc[k] = { err: e.message }; }
+    if (!S.jc[k] && !S.viewAs) swrFill("jc:" + pid, function (c) { S.jc[k] = c; });
+    try { S.jc[k] = await call("jcProject", { projectId: pid }); if (!S.viewAs) cacheSet("jc:" + pid, S.jc[k]); } catch (e) { if (!S.jc[k] || S.jc[k].err) S.jc[k] = { err: e.message }; else toast(e.message); }
     S.jcBusy[k] = 0; if (S.pid === pid && S.tab === "costs") keepScroll(render);
   }
   function tabCosts() {
@@ -5958,7 +6004,7 @@
       (can.contract ? "" : '<p class="muted small">Contract amounts show here when Jesús shares Contract & billing with you.</p>');
   }
   /* Finances: contract vs. costs for every project (works with or without QuickBooks). */
-  async function jcSumLoad() { if (S.jcSumBusy) return; S.jcSumBusy = 1; try { S.jcSum = await call("jcSummary", {}); } catch (e) { S.jcSum = { err: e.message }; } S.jcSumBusy = 0; if (S.home === "finance") keepScroll(render); }
+  async function jcSumLoad() { if (S.jcSumBusy) return; S.jcSumBusy = 1; if (!S.jcSum) swrFill("jcs", function (c) { S.jcSum = c; }); try { S.jcSum = await call("jcSummary", {}); cacheSet("jcs", S.jcSum); } catch (e) { S.jcSum = { err: e.message }; } S.jcSumBusy = 0; if (S.home === "finance") keepScroll(render); }
   function jcFinCard() {
     var s = S.jcSum; if (!s) { jcSumLoad(); return '<div class="card jc-fin"><div class="loading" style="min-height:80px">Adding up job costs…</div></div>'; } if (s.err || !(s.projects || []).length) return "";
     return '<div class="card jc-fin"><div class="section-title" style="margin-top:0"><div><h2>Job costing</h2><span class="muted small">Approved costs and labor from approved hours, per project. Click a project to see each line.</span></div></div><div class="tt-tbl"><table><thead><tr><th>Project</th><th class="num">Contract</th><th class="num">Costs</th><th class="num">Labor</th>' + (s.labor_money ? '<th class="num">Left</th>' : "") + "<th>To verify</th></tr></thead><tbody>" +

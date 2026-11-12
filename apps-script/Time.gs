@@ -843,9 +843,26 @@ function ttExc(emp, shifts, from, to, evs) {
   });
   return out;
 }
+/* Speed: the dashboard is kept in the cache for 2 minutes per viewer and week, and thrown away the moment any hours change
+   (every time action bumps "ttver"). Big answers are split in pieces (the cache holds 100 KB per piece). */
+function ttVer() { try { return CacheService.getScriptCache().get("ttver") || "0"; } catch (e) { return "0"; } }
+function ttBump() { try { CacheService.getScriptCache().put("ttver", String(Date.now()), 21600); } catch (e) {} }
+function bigCacheGet(k) {
+  try { var c = CacheService.getScriptCache(), n = Number(c.get(k + ":n") || 0); if (!n || n > 40) return null; var keys = []; for (var i = 0; i < n; i++) keys.push(k + ":" + i);
+    var g = c.getAll(keys), s = ""; for (var j = 0; j < n; j++) { if (g[k + ":" + j] == null) return null; s += g[k + ":" + j]; } return JSON.parse(s); } catch (e) { return null; }
+}
+function bigCachePut(k, obj, ttl) {
+  try { var s = JSON.stringify(obj), size = 30000, n = Math.ceil(s.length / size); if (!n || n > 40) return; var o = {}; for (var i = 0; i < n; i++) o[k + ":" + i] = s.substr(i * size, size); o[k + ":n"] = String(n); CacheService.getScriptCache().putAll(o, ttl || 120); } catch (e) {}
+}
 ACTIONS.ttReview = function (me, b) {
   var pm = ttPerms(me); if (!pm.time_review) throw new Error("Only reviewers see the team's hours.");
-  var ws = ttWeekStart(/^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow())), we = ttAddDays(ws, 6), self = normEmail(me.email);
+  var ws0 = ttWeekStart(/^\d{4}-\d\d-\d\d$/.test(String(b.week || "")) ? b.week : ttDayOf(ttNow())), ck = "ttrev:" + rtHash("r|" + normEmail(me.email) + "|" + ws0).slice(0, 24) + ":" + ttVer();
+  if (!b.fresh && !TT_NOW) { var hit = bigCacheGet(ck); if (hit) { hit.cached = true; return hit; } }
+  prefetch(TT_READ);
+  var out = ttReviewBuild(me, b, pm, ws0); if (!TT_NOW) bigCachePut(ck, out, 120); return out;
+};
+function ttReviewBuild(me, b, pm, ws) {
+  var we = ttAddDays(ws, 6), self = normEmail(me.email);
   var scope = ttScope(me), per = findBy("TtPeriods", "id", ws) || { id: ws, status: "open", version: "0", history: "" };
   var people = scope.map(function (emp) {
     var w = ttWeekOf(emp, ws, true), pr = findPerson(emp) || {};                         // everyone on the team shows, even with no hours this week…
@@ -876,11 +893,66 @@ ACTIONS.ttReview = function (me, b) {
     return o;
   });
   var cases = rows("TtPresence").filter(function (c) { if (scope.indexOf(c.emp) < 0) return false; var d = ttDayOf(ttMs(c.first_at)); return TT_OPEN_CASE[c.status] || (d >= ws && d <= we); })
-    .map(function (c) { var o = ttCaseOut(c, true); o.can_decide = o.open && c.emp !== self; return o; }).sort(function (a, b) { return (b.open - a.open) || String(a.first_at).localeCompare(String(b.first_at)); });
+    .map(function (c) { var o = ttCaseOut(c, false); o.can_decide = o.open && c.emp !== self; return o; }).sort(function (a, b) { return (b.open - a.open) || String(a.first_at).localeCompare(String(b.first_at)); });   // the map data loads on "Where?" (ttCaseDetail)
   var blockers = ttCloseBlockers(people); if (we >= ttDayOf(ttNow())) blockers.unshift("The week isn't over yet (it ends " + we + ")");
+  var hist = ttHistory(scope, ws, we, pm), byShift = {};
+  hist.forEach(function (h) { if (h.shift_id) (byShift[h.shift_id] = byShift[h.shift_id] || []).push(h); });
+  people.forEach(function (p) { p.days.forEach(function (d) { d.shifts.forEach(function (sh) { if (byShift[sh.id]) sh.hist = byShift[sh.id].slice(0, 5); }); }); });
   return { week: { start: ws, end: we, status: per.status, version: num(per.version), closed_by: per.closed_by ? personName(per.closed_by) : "", closed_at: per.closed_at || "", history: parseJson(per.history, []) },
-    people: people, corrections: cors, cases: cases, can_close: !!(pm.accounting && pm.period_close), blockers: blockers, rules: TT_RULES, today: ttDayOf(ttNow()), perms: pm };
+    people: people, corrections: cors, cases: cases, can_close: !!(pm.accounting && pm.period_close), blockers: blockers, rules: TT_RULES, today: ttDayOf(ttNow()), perms: pm,
+    log: hist.filter(function (h) { var d = String(h.at).slice(0, 10); return h.in_week || (d >= ws && d <= ttAddDays(we, 7)); }).slice(0, 60), can_purge: me.role === "admin" && !me.preview };
 }
+/* Who did what to the hours, newest first: the person (name + avatar), when, what, and their reason. Pay rates never show here. */
+function ttHistory(scope, ws, we, pm) {
+  var ppl = {}; rows("People").forEach(function (p) { ppl[normEmail(p.email)] = p; });
+  var cors = {}; rows("TtCorrections").forEach(function (c) { cors[c.id] = c; });
+  var cases = {}; rows("TtPresence").forEach(function (c) { cases[c.id] = c; });
+  var shiftDay = {}; scope.forEach(function (emp) { ttShifts(ttEvents(emp)).forEach(function (s) { if (s.day >= ws && s.day <= we) shiftDay[s.id] = s.day; }); });
+  var SAY = { presence_accept: "accepted a check-in", presence_reject: "rejected a check-in", correction_approved: "approved a correction", correction_requested: "asked for a correction", correction_withdrawn: "withdrew a correction",
+    correction_answered: "answered a question about a correction", decision_questioned: "questioned a decision", week_approved: "approved the week", absence: "recorded an absence", crew_access: "gave phone access",
+    person_settings: "changed clock settings", confirm: "confirmed their week", presence_explained: "explained a check-in", clock_for: "clocked in for someone", shift_purged: "permanently deleted a shift",
+    device_trust: "approved a phone", device_block: "blocked a phone", device_remove: "removed a phone" };
+  var out = [];
+  rows("TtAudit").forEach(function (a) {
+    if (scope.indexOf(a.emp) < 0 || a.kind === "pay_rate" || a.kind === "meal_answer") return;
+    var what = SAY[a.kind] || "", sid = "", delta = null;
+    if (a.kind === "admin_edit" || /^correction_/.test(a.kind)) {
+      var c = cors[a.ref] || {}, ch = parseJson(c.changes, []), ops = ch.map(function (x) { return x.op + (x.op === "add" ? ":" + x.kind : ""); });
+      sid = c.shift_id || (ch.filter(function (x) { return x.shift_id; })[0] || {}).shift_id || ""; delta = c.delta_min !== "" && c.delta_min != null ? num(c.delta_min) : null;
+      if (a.kind === "admin_edit") what = ops.length && ops.every(function (o) { return o === "void"; }) ? "deleted a shift" : ops.length && ops.every(function (o) { return o === "restore"; }) ? "restored a shift"
+        : ops.indexOf("add:in") > -1 ? "added a shift" : ops.length === 1 && ops[0] === "add:out" ? "added the check-out" : ops.every(function (o) { return o === "move"; }) ? "changed the times" : "edited the hours";
+    } else if (/^presence_/.test(a.kind)) sid = (cases[a.ref] || {}).shift_id || "";
+    else if (a.kind === "shift_purged") sid = a.ref;
+    if (!what) return;
+    var by = ppl[normEmail(a.by)] || {}, emp = ppl[a.emp] || {};
+    out.push({ id: a.id, at: a.at, by: by.name || a.by, key: by.email ? pkey(by.email) : "", avatar: by.avatar || "", role: by.role || "", emp: a.emp, emp_name: emp.name || a.emp, kind: a.kind, what: what, note: a.note || "",
+      shift_id: sid, in_week: !!(sid && shiftDay[sid]), delta: delta });
+  });
+  return out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+}
+/* The map, the addresses and the phones of one check-in, only when the office asks for them. */
+ACTIONS.ttCaseDetail = function (me, b) {
+  var c = findBy("TtPresence", "id", String(b.id || "")); if (!c) throw new Error("Case not found.");
+  if (!ttPerms(me).time_review || ttScope(me).indexOf(c.emp) < 0) throw new Error("You can't review this person's hours.");
+  var o = ttCaseOut(c, true); o.can_decide = o.open && c.emp !== normEmail(me.email); return { case: o };
+};
+/* Permanently delete a shift (admin only): for test check-ins and real mistakes. The records are removed; a line in the
+   history keeps who deleted what, when and why. Not allowed in a week already closed for payroll (delete it there instead, it stays on file). */
+ACTIONS.ttPurgeShift = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only the admin permanently deletes hours.");
+  var emp = normEmail(b.emp), sid = String(b.shift_id || ""), why = clean(b.explain, 500);
+  if (why.length < 5) throw new Error("Write the reason for deleting it permanently.");
+  var sh = ttShifts(ttEvents(emp)).filter(function (s) { return s.id === sid; })[0]; if (!sh) throw new Error("That shift wasn't found.");
+  var per = findBy("TtPeriods", "id", ttWeekStart(sh.day)); if (per && per.status === "closed") throw new Error("That week is closed for payroll. Use Delete (it stays on file) instead.");
+  var evIds = {}; rows("TtEvents").forEach(function (e) { if (e.emp === emp && e.shift_id === sid) evIds[e.id] = 1; });
+  var summary = { day: sh.day, start: ttIso(sh.start), end: sh.end != null ? ttIso(sh.end) : "", paid_min: ttMin(sh.paid || 0), places: sh.segs.map(function (g) { return g.ref_name || ""; }).filter(Boolean), events: Object.keys(evIds).length };
+  removeWhere("TtEvents", function (e) { return evIds[e.id] || (e.emp === emp && e.shift_id === sid); });
+  removeWhere("TtPresence", function (c) { return c.emp === emp && c.shift_id === sid; });
+  removeWhere("TtMeals", function (m) { return m.emp === emp && m.shift_id === sid; });
+  ttAudit(me, emp, "shift_purged", sid, summary, null, why);
+  return { purged: summary };
+};
+function ttReviewUnused() {}
 function ttCloseBlockers(people) {
   var out = []; people.forEach(function (p) {
     if (!p.paid_min && !p.open_shifts && !p.pending && !p.presence_open) return;            // nothing worked this week: nothing to approve
@@ -956,8 +1028,9 @@ function ttTodayItems(me) {
 }
 if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
 if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
-["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttPresenceDecideMany", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
-NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTest = 1; READ_ONLY.ttState = 1;   // read-only: also what lets Jesús preview the crew screen
+["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttPresenceDecideMany", "ttCaseDetail", "ttPurgeShift", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
+NO_LOCK.ttState = 1; NO_LOCK.ttMyWeek = 1; NO_LOCK.ttReview = 1; NO_LOCK.ttGeoTest = 1; READ_ONLY.ttState = 1;
+NO_LOCK.ttCaseDetail = 1; PREFETCH.ttReview = ["People"];   // the dashboard reads the time tables itself, only when its cached copy is gone   // read-only: also what lets Jesús preview the crew screen
 
 /* ======================================================================================================
    Job costing: what each project really costs, line by line, in one place.

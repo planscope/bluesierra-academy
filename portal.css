@@ -2192,3 +2192,20 @@
   #bs-portal .tt-kpis .stat b{font-size:24px}
   #bs-portal .tt-kpis .stat span{font-size:12px}
 }
+/* Hours: who changed what (avatar, name, when, why) */
+#bs-portal .tt-hist{display:flex;flex-direction:column;gap:6px;margin:8px 0 2px}
+#bs-portal .tt-h{display:flex;gap:9px;align-items:flex-start}
+#bs-portal .tt-h .avatar{width:26px;height:26px;flex:none;font-size:11px}
+#bs-portal .tt-h-t{display:flex;flex-direction:column;min-width:0;font-size:13px;line-height:1.35}
+#bs-portal .tt-h-t small{color:var(--muted);font-size:12px}
+#bs-portal .tt-hist.wide{gap:10px;margin-top:12px}
+#bs-portal .tt-hist.wide .tt-h{padding-top:10px;border-top:1px solid var(--line)}
+#bs-portal .tt-hist.wide .tt-h:first-child{border-top:0;padding-top:0}
+#bs-portal .tt-log{margin-bottom:14px}
+#bs-portal .tt-log summary{cursor:pointer;list-style:none;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+#bs-portal .tt-log summary::before{content:"▸";color:var(--muted)}
+#bs-portal .tt-log[open] summary::before{content:"▾"}
+#bs-portal .tt-upd{font-size:12px;color:var(--muted);animation:ttUpd 1.2s ease-in-out infinite}
+@keyframes ttUpd{50%{opacity:.4}}
+#bs-portal .tt-purge{align-items:flex-start;background:#fbefed;border:1px solid #efc9c2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.4}
+#bs-portal .tt-purge input{margin-top:3px}
