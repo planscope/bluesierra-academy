@@ -135,7 +135,7 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  var VIEWABLE = { oxCalls: 1, oxCallSlots: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
     if (S.viewAs) {
@@ -431,6 +431,7 @@
   }
 
   function renderList() {
+    if (clIsSetter()) return clSetterHome();                                            // the appointment setter: only the call list
     var lsRoleMe = S.me && S.me.ls, list0 = S.projects || [];
     var list = list0, view = staff() ? (S.home || (S.viewAs ? "projects" : "today")) : lsRoleMe ? (S.home || (list0.length ? "projects" : "ls")) : "projects";
     var crewClock = ttCrewUI() && ttOn() && (S.tt ? S.tt.enabled : (ttCard(), true));      // while it loads the tab shows; it hides only if the clock is off for them
@@ -556,7 +557,7 @@
     }).join("") + "</div>" +
       (admin ? addHow(S.addHow) + (S.addHow === "phone" ? crewPhoneForm("") : '<form class="card form" data-form="team" style="margin-top:16px"><h3>Add someone to the Blue Sierra team</h3><p class="muted small">Team members see every project: chat (including #team), schedule, photos, contract and invoices. They log in with their email: the first time with a 6-digit code we email them, then with a PIN they choose.</p>' +
         '<div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
-        '<div class="f"><span>Role</span>' + rolePicker("staff", ["staff", "crew"], false) + "</div>" +
+        '<div class="f"><span>Role</span>' + rolePicker("staff", ["staff", "crew", "setter"], false) + "</div>" +
         '<p class="muted small">Clients and architects are added from each project’s People tab, so they only ever see their project.</p>' +
         '<label class="check-line"><input type="checkbox" name="invite" checked> Email them an invitation</label><div class="actions"><button class="btn" type="submit">Add</button></div></form>')
         : '<p class="muted small" style="margin-top:12px">Only Jesús can add or remove team members. Clients and architects are added from each project’s People tab.</p>');
@@ -695,9 +696,10 @@
     staff: ["team", "Team", "Blue Sierra project manager or office: every project, the #team chat, contract and billing."],
     admin: ["admin", "Admin", "Everything, plus permissions, #money, deleting projects and starting them over."],
     pm: ["pm", "Crew · PM / supervisor", "Field crew who lead: the projects you add them to (plans, schedule, photos, #crew chat) and their clock. No money unless you share Contract & billing with #pm."],
-    labor: ["labor", "Crew · labor", "Only the clock: jobsite, activity, check in and out, and their own hours. No projects, chat, plans or routes."]
+    labor: ["labor", "Crew · labor", "Only the clock: jobsite, activity, check in and out, and their own hours. No projects, chat, plans or routes."],
+    setter: ["setter", "Appointment setter", "Only the call list: the architects and builders to call, their numbers, what to say, and your free times to book meetings. No projects, chat, emails or money."]
   };
-  var PV_ROLES = ["client", "architect", "pm", "labor"];                                      // the people outside the office, as they really see the portal
+  var PV_ROLES = ["client", "architect", "pm", "labor", "setter"];                                      // the people outside the office, as they really see the portal
   function roleChip(role, money) { var r = ROLES[role] || ROLES.client; return '<span class="tg tg-' + r[0] + '" title="' + esc(r[1] + ": " + r[2]) + '">#' + r[0] + "</span>" + (money && role !== "admin" ? '<span class="tg tg-money" title="Sees #money: what each job costs and makes">#money</span>' : ""); }
   function rolePicker(sel, allowed, money) {
     var m = money !== undefined;
@@ -2202,7 +2204,7 @@
       var rx = (m.from === "team" ? S.team : d && d.people || []).filter(function (x) { return x.email === m.email; })[0];
       if (!rx) body = "<p>Not found.</p>";
       else {
-        var rAllowed = m.from === "team" ? ["staff", "crew", "admin"] : ["client", "architect", "crew"].concat(S.me.admin ? ["staff", "admin"] : []);
+        var rAllowed = m.from === "team" ? ["staff", "crew", "setter", "admin"] : ["client", "architect", "crew"].concat(S.me.admin ? ["staff", "admin"] : []);
         if (rAllowed.indexOf(rx.role) < 0) rAllowed.unshift(rx.role);
         body = '<h2>Role and permissions</h2><div class="role-who">' + av(rx.name, rx.avatar, rx.role) + "<div><b>" + esc(rx.name) + '</b><div class="muted small">' + esc(rx.email) + "</div></div></div>" +
           '<form class="form" data-form="role">' + rolePicker(rx.role, rAllowed, S.me.admin ? !!rx.money : undefined) +
@@ -2674,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115150413";
+  var BUILD = "20261115155456";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6152,9 +6154,9 @@
       '<div class="ox-kpis">' + [["Firms reached", (k.reached != null ? k.reached : k.contacted) + '<small> / ' + k.firms + "</small>"], ["Replies", k.replied + '<small> · ' + rate + "% of emailed</small>"], ["Bid invites", k.invites], ["Bids sent", k.bids], ["Won", k.won + (k.won ? " 🏆" : "")]].map(function (x) { return '<div class="ox-kpi"><span>' + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("") + "</div>";
     var wk = d.week || {};
     hero += '<div class="ox-week"><span class="ox-week-l">This week</span>' + [["✉️", wk.email, "emails"], ["💼", wk.linkedin, "LinkedIn"], ["📞", wk.call, "calls"], ["💬", wk.reply, "replies"], ["🏗️", wk.invites, "invites"]].map(function (x) { return '<span class="ox-wk' + (x[1] ? " on" : "") + '">' + x[0] + " <b>" + (x[1] || 0) + "</b> " + x[2] + "</span>"; }).join("") + "</div>";
-    var tabs = '<div class="chips ox-tabs">' + [["today", "Today", dueN + readyN], ["projects", "Projects", d.projects.length], ["firms", "Firms", d.firms.length], ["bids", "Bids", d.opps.length], ["network", "Network", 0], ["import", "Import & tools", 0]].map(function (o) {
+    var tabs = '<div class="chips ox-tabs">' + [["today", "Today", dueN + readyN], ["projects", "Projects", d.projects.length], ["firms", "Firms", d.firms.length], ["bids", "Bids", d.opps.length], ["calls", "Calls", d.calls ? d.calls.meetings.filter(function (m) { return m.status === "booked"; }).length : 0], ["network", "Network", 0], ["import", "Import & tools", 0]].map(function (o) {
       return '<button class="chip' + (tab === o[0] ? " on" : "") + '" data-a="oxTab" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>";
-    return hero + tabs + (tab === "projects" ? oxProjects() : tab === "firms" ? oxFirms() : tab === "bids" ? oxBids() : tab === "network" ? oxNetwork() : tab === "import" ? oxImportView() : oxToday());
+    return hero + tabs + (tab === "projects" ? oxProjects() : tab === "firms" ? oxFirms() : tab === "bids" ? oxBids() : tab === "calls" ? clView() : tab === "network" ? oxNetwork() : tab === "import" ? oxImportView() : oxToday());
   }
   /* ---------- Today: what to do, in order ---------- */
   /* How good a project is for us right now: early stage, the kind of work we do, recent, priority, and someone we can reach. */
@@ -6182,7 +6184,9 @@
     var d = S.ox, q = d.queue, html = "";
     if (d.projects.length) html += oxHot();
     if (!d.projects.length) return '<div class="card ox-empty"><div class="ox-big">📋</div><b>No permits yet</b><p class="muted">Load the permit list, the firms and the outreach tracker (the CSVs from the weekly search) and this page fills up.</p><button class="btn" data-a="oxTab" data-v="import">Import files</button></div>';
-    if (d.alerts.length) html += '<h3 class="ox-h">🔔 New projects for firms you’re talking to</h3>' + d.alerts.map(function (a) { var f = oxF(a.firm_id), p = oxP(a.project_id); if (!f || !p) return "";
+    html += clOffice();
+    var nal = d.alerts.filter(function (a) { return a.kind !== "setter_email"; });
+    if (nal.length) html += '<h3 class="ox-h">🔔 New projects for firms you’re talking to</h3>' + nal.map(function (a) { var f = oxF(a.firm_id), p = oxP(a.project_id); if (!f || !p) return "";
       return '<div class="card ox-row"><div class="ox-row-t"><b>' + esc(f.name) + '</b><span>New on the list: ' + oxAddr(p) + " · " + esc(OX_TYPE_L[p.type] || p.type) + '</span></div><div class="ox-row-a"><button class="btn ghost sm" data-a="oxAlertNo" data-id="' + esc(a.id) + '">Dismiss</button><button class="btn sm" data-a="oxWrite" data-f="' + esc(f.id) + '" data-p="' + esc(p.id) + '" data-alert="' + esc(a.id) + '" data-step="again">Write again</button></div></div>'; }).join("");
     if (q.due.length) html += '<h3 class="ox-h">📬 Follow-ups due</h3>' + q.due.map(function (x) {
       var f = oxF(x.firm_id); if (!f) return ""; var cs = oxContacts(f.id), li = cs.filter(function (c) { return c.linkedin; })[0], ph = (cs.filter(function (c) { return c.phone; })[0] || {}).phone || f.phone;
@@ -6202,7 +6206,7 @@
         (x.individual ? '<button class="btn ghost sm" data-a="oxConfirm" data-f="' + esc(f.id) + '">They’re a pro ✓</button>' : "") + '<button class="btn sm" data-a="oxWrite" data-f="' + esc(f.id) + '" data-c="' + esc(x.contact_id) + '" data-step="day0"' + (x.blocked || x.individual ? " disabled" : "") + '>Write email</button><button class="btn ghost sm ox-x" data-a="oxRemove" data-f="' + esc(f.id) + '" title="Not for us: take it off the list" aria-label="Remove ' + esc(f.name) + '">✕</button></div></div>';
     }).join("") + (ready.length > 8 ? '<button class="link small" data-a="oxMore">' + (S.oxMore ? "Show fewer" : "Show " + (Math.min(40, ready.length) - 8) + " more") + "</button>" : "") : '<p class="muted small">Nobody with an email is waiting. Find emails below.</p>';
     if (q.no_email_total) html += '<h3 class="ox-h">🔎 Need an email <span class="muted small">' + q.no_email_total + " firms</span></h3>" + '<div class="card ox-row"><div class="ox-row-t"><span>' + q.no_email.slice(0, 6).map(function (x) { var f = oxF(x.firm_id); return f ? '<button class="link" data-a="oxFirm" data-f="' + esc(f.id) + '">' + esc(f.name) + "</button>" : ""; }).join(" · ") + (q.no_email_total > 6 ? " and " + (q.no_email_total - 6) + " more" : "") + "</span></div>" +
-      '<div class="ox-row-a"><button class="btn sm" data-a="oxFreeGo" data-ids="' + esc(q.no_email.slice(0, 24).map(function (x) { return x.firm_id; }).join(",")) + '">🔎 Find emails (free)</button>' + (d.can_send && d.rr && d.rr.on ? '<button class="btn ghost sm" data-a="oxEnrichGo" data-ids="' + esc(q.no_email.slice(0, 12).map(function (x) { return x.firm_id; }).join(",")) + '">RocketReach</button>' : "") + "</div></div>" +
+      '<div class="ox-row-a"><button class="btn sm" data-a="oxFreeGo" data-ids="' + esc(q.no_email.slice(0, 24).map(function (x) { return x.firm_id; }).join(",")) + '">🔎 Find emails (free)</button>' + (d.can_send && d.rr && d.rr.on ? '<button class="btn ghost sm" data-a="oxScoutGo" data-ids="' + esc(q.no_email.slice(0, 12).map(function (x) { return x.firm_id; }).join(",")) + '" title="Free RocketReach search first; credits only where nothing free was found">🚀 RocketReach (search free first)</button>' : "") + "</div></div>" +
       '<p class="muted small">Free: people who already emailed you (Gmail), the firm’s website, and the firm’s email format. Firms without a website: add it on the firm (or the weekly search brings it).</p>';
     return html;
   }
@@ -6272,8 +6276,8 @@
         return '<div class="card ox-sigcard"><h3>✍️ Email signature</h3><p class="muted small">Added under every outreach email, like your normal Gmail signature. ' + (g.name ? "This is how it looks:" : "Not set yet.") + "</p>" + (g.name ? oxSigBlock(g) : "") +
           (d.can_send ? '<details' + (g.name ? "" : " open") + '><summary class="small">' + (g.name ? "Edit" : "Set it up") + '</summary><form class="form" data-form="oxSig"><div class="row2">' + fld("name", "Name", "Jesus Toto") + fld("title", "Title", "Principal") + '</div><div class="row2">' + fld("company", "Company", "Blue Sierra Construction, Inc.") + fld("email", "Email", "you@bluesierracorp.com") + '</div><div class="row2">' + fld("phone", "Phone (P)") + fld("fax", "Fax (F)") + '</div><div class="row2">' + fld("cell", "Cell (C)") + fld("website", "Website", "www.bluesierracorp.com") + '</div><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Save signature</button></div></form></details>' : "") + "</div>"; })() +
       '<div class="card ox-ai"><h3>✨ AI email writer</h3>' + (d.ai && d.ai.on
-        ? '<p>Connected. “Write email” starts with a fresh draft and “✨ New version” writes another one, each different. It only uses the firm, the first name, the street and town and the type of project. Owners are never sent.</p>' + (d.can_send ? '<button class="link small" data-a="oxAiOff">Disconnect</button>' : "")
-        : '<p class="muted small">Off. “New version” still works with the saved versions. To have Claude write each email, paste an Anthropic API key (console.anthropic.com → API keys). It’s stored on the server, never shown again and never sent to browsers. About 1–2 cents per draft.</p>' + (d.can_send ? '<form class="form" data-form="oxAiKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects the AI writer.</p>')) + "</div>" +
+        ? '<p>Connected. “Write email” starts with a fresh draft and “🔄 Rewrite” has Claude write another one. It only uses the firm, the first name, the street and town and the type of project. Owners are never sent.</p>' + (d.can_send ? '<button class="link small" data-a="oxAiOff">Disconnect</button>' : "")
+        : '<p class="muted small">Off, and you don’t need it: “🔄 Rewrite” already mixes hundreds of phrasings in your own words, free and with no key. Only if you want Claude to write each email from scratch, paste an Anthropic API key (console.anthropic.com → API keys). It’s stored on the server, never shown again and never sent to browsers. About 1–2 cents per draft.</p>' + (d.can_send ? '<form class="form" data-form="oxAiKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects the AI writer.</p>')) + "</div>" +
       '<details class="card ox-rr"' + (rr.on ? " open" : "") + '><summary><h3>💳 RocketReach <span class="muted small">optional · paid</span></h3></summary><p class="muted small">You don’t need it: “Find emails (free)” uses your Gmail, the firms’ websites and their email format. Connect it only if you want a paid backup.</p>' + (rr.on ? '<p>Connected' + (rr.credits != null ? " · <b>" + esc(String(rr.credits)) + "</b> lookup credits left" : "") + (rr.err ? ' · <span class="bad-t">' + esc(rr.err) + "</span>" : "") + '</p><p class="muted small">One lookup per firm (the principal, project architect or estimator). Firms with a verified email are skipped, nobody is looked up twice, and you see the cost before anything runs.</p>' +
         (d.can_send ? '<div class="actions" style="justify-content:flex-start;flex-wrap:wrap">' + ["1", "2", "3"].map(function (w) { return '<button class="btn ghost sm" data-a="oxEnrichWave" data-w="' + w + '">Enrich wave ' + w + "</button>"; }).join("") + '<button class="btn ghost sm" data-a="oxEnrichCheck">Check pending lookups</button><button class="link small" data-a="oxRrOff">Disconnect</button></div>' : "")
         : (d.can_send ? '<p class="muted small">Paste your RocketReach API key (rocketreach.co → Account → API). It’s stored on the server, never shown again and never sent to browsers.</p><form class="form" data-form="oxRrKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects RocketReach.</p>')) + "</details>" +
@@ -6353,10 +6357,22 @@
     if (m.type === "lsxOxOpp") { var o = (S.ox.opps || []).filter(function (x) { return x.id === m.id; })[0] || {}; return '<h2>Bid</h2><form class="form" data-form="oxOpp"><div class="row2"><label class="f">Amount<input name="amount" inputmode="decimal" value="' + esc(o.amount || "") + '"></label><label class="f">Due<input type="date" name="due" value="' + esc(o.due || "") + '"></label></div><label class="f">Notes<textarea name="notes" rows="3">' + esc(o.notes || "") + '</textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>'; }
     if (m.type === "lsxOxLink") { var r0 = S.ox.roles.filter(function (x) { return x.id === m.role_id; })[0] || {}; return "<h2>Link “" + esc(r0.raw || "") + '” to a firm</h2><form class="form" data-form="oxLink"><label class="f">Firm<select name="firm"><option value="">Pick a firm…</option>' + S.ox.firms.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.name) + "</option>"; }).join("") + '</select></label><p class="muted small">Or add it as a new firm:</p><label class="f">New firm name<input name="newname" value="' + esc(String(r0.raw || "").replace(/\s*\([^)]*\)/g, "")) + '"></label><div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>'; }
     if (m.type === "lsxOxNewFirm") return '<h2>Add a firm</h2><form class="form" data-form="oxNewFirm"><label class="f">Name<input name="name" required></label><div class="row2"><label class="f">Type<input name="firm_type" placeholder="Architect, Builder/GC…"></label><label class="f">Segment<select name="segment"><option value="cold">❄️ Cold</option><option value="known">👋 Known</option><option value="warm">🔥 Warm</option><option value="excluded">⛔ Excluded</option></select></label></div><div class="row2"><label class="f">Website<input name="website"></label><label class="f">Phone<input name="phone"></label></div><div class="actions">' + cancel + '<button class="btn" type="submit">Add</button></div></form>';
+    if (m.type === "lsxOxScout") {
+      if (!m.results) return '<h2>🚀 RocketReach, free search first</h2><p>' + esc(m.progress || "Searching…") + '</p><div class="ox-prog"><i style="width:' + (m.pct || 5) + '%"></i></div><p class="muted small">Searching names, titles and each firm’s website (no credits), then its website and your Gmail for emails. Credits are only offered for firms still without a real email.</p>';
+      var need = m.results.filter(function (x) { return x.needs_lookup; }), solved = m.results.filter(function (x) { return !x.needs_lookup && !x.note && (x.free || x.guessed); }), cr = m.rr && m.rr.credits;
+      return "<h2>🚀 RocketReach results</h2>" + (m.stopped ? '<div class="ox-wait">⚠️ On this plan searching uses credits, so it stopped after the first search.</div>' : "") +
+        "<p><b>" + solved.length + "</b> firm" + (solved.length === 1 ? "" : "s") + " got emails for free · <b>" + need.length + "</b> still need a paid lookup" + (cr != null ? " · you have " + esc(String(cr)) + " credit" + (cr == 1 ? "" : "s") : "") + "</p>" +
+        '<div class="ox-free-res">' + m.results.map(function (x) { var bits = [x.people ? x.people + " people" : "", x.website ? "website found" : "", x.free ? x.free + " email" + (x.free === 1 ? "" : "s") + " free" : "", x.guessed ? x.guessed + " guessed" : ""].filter(Boolean).join(" · ");
+          return '<div class="' + (x.free || x.guessed ? "hit" : "") + '"><button class="link" data-a="oxFirm" data-f="' + esc(x.firm_id) + '">' + esc(x.firm) + "</button> " + (bits ? esc(bits) : "") + (x.note ? ' <span class="muted">' + esc(x.note) + "</span>" : "") + (x.needs_lookup ? ' <span class="pill gold">needs a lookup</span>' : "") + "</div>"; }).join("") + "</div>" +
+        '<p class="muted small">A lookup reveals one real email; the portal then builds everyone else’s at that firm from its format, so one credit covers the whole firm.</p><div class="actions"><button class="btn ghost" data-a="close">Done</button>' + (need.length && m.can ? '<button class="btn" data-a="oxEnrichGo" data-ids="' + esc(need.map(function (x) { return x.firm_id; }).join(",")) + '">Use credits on the best ' + Math.min(need.length, cr == null || cr === "inf" ? need.length : Number(cr)) + "</button>" : "") + "</div>";
+    }
     if (m.type === "lsxOxEnrich") {
       if (!m.plan) return '<div class="loading" style="min-height:140px">Checking what it would cost…</div>';
-      if (m.results) return "<h2>🔎 RocketReach results</h2>" + m.results.map(function (x) { return '<p class="small"><b>' + esc(x.firm) + "</b> · " + esc(x.found || "") + " " + (x.status === "found" ? "✅" : '<span class="muted">' + esc(x.status) + "</span>") + "</p>"; }).join("") + '<div class="actions"><button class="btn" data-a="close">Done</button></div>';
+      if (m.results) return "<h2>🔎 RocketReach results</h2>" + m.results.map(function (x) { return '<p class="small"><b>' + esc(x.firm) + "</b> · " + esc(x.found || "") + (x.phone ? " 📞" : "") + " " + (x.status === "found" ? "✅" : '<span class="muted">' + esc(x.status) + "</span>") + "</p>"; }).join("") + '<div class="actions"><button class="btn" data-a="close">Done</button></div>';
       var go = m.plan.list.filter(function (x) { return !x.skip; }), sk = m.plan.list.filter(function (x) { return x.skip; }), cr = m.plan.rr && m.plan.rr.credits;
+      if (m.goal === "calls") return "<h2>📇 Phones for the setter</h2><p><b>" + go.length + " lookup" + (go.length === 1 ? "" : "s") + "</b> (about " + go.length + " credit" + (go.length === 1 ? "" : "s") + ")" + (cr != null ? " · you have " + esc(String(cr)) + " left" : "") + "</p>" +
+        (go.length ? '<p class="small">' + go.map(function (x) { return esc(x.name); }).join(" · ") + "</p>" : "") + (sk.length ? '<details class="small"><summary>' + sk.length + " skipped (no credit)</summary>" + sk.map(function (x) { return "<div>" + esc(x.name) + ' <span class="muted">· ' + esc(x.skip) + "</span></div>"; }).join("") + "</details>" : "") +
+        '<p class="muted small">Best firms first. Each finds the decision maker (principal, partner or president) and saves every phone and the email RocketReach has. Firms whose decision maker already has a phone, and anyone looked up before, cost nothing.</p><div class="actions">' + cancel + (go.length ? '<button class="btn" data-a="oxEnrichYes">Spend ' + go.length + " credit" + (go.length === 1 ? "" : "s") + "</button>" : "") + "</div>";
       return "<h2>🔎 Find emails with RocketReach</h2><p><b>" + go.length + " lookup" + (go.length === 1 ? "" : "s") + "</b> (about " + go.length + " credit" + (go.length === 1 ? "" : "s") + ")" + (cr != null ? " · you have " + esc(String(cr)) + " left" : "") + "</p>" +
         (go.length ? '<p class="small">' + go.map(function (x) { return esc(x.name); }).join(" · ") + "</p>" : "") + (sk.length ? '<details class="small"><summary>' + sk.length + " skipped</summary>" + sk.map(function (x) { return "<div>" + esc(x.name) + ' <span class="muted">· ' + esc(x.skip) + "</span></div>"; }).join("") + "</details>" : "") +
         '<p class="muted small">Each finds one person (principal, project architect or estimator) and saves their email and phone as “RocketReach, not verified”.</p><div class="actions">' + cancel + (go.length ? '<button class="btn" data-a="oxEnrichYes">Spend ' + go.length + " credit" + (go.length === 1 ? "" : "s") + "</button>" : "") + "</div>";
@@ -6379,7 +6395,7 @@
       .then(function (r) {
         if (S.modal !== m) return; m.busy = 0;
         var same = m.hist.filter(function (h) { return h.body === r.body; })[0];
-        if (same && !r.ai) { m.idx = m.hist.indexOf(same); if (m.hist.length >= (r.versions || 1)) toast("That’s every saved version. Connect the AI writer for endless new ones."); }
+        if (same && !r.ai) { m.idx = m.hist.indexOf(same); toast("No new wording left for this one. Edit it by hand."); }
         else { m.hist.push({ subject: r.subject, body: r.body, ai: !!r.ai }); m.idx = m.hist.length - 1; }
         m.draft = Object.assign({}, r, to ? { to: to } : {}, pj ? { project_id: pj } : {}); if (r.ai_err) toast(r.ai_err); oxShowVer(m);
       })
@@ -6387,12 +6403,12 @@
   }
   function oxVerBar(m) {
     var h = oxCur(m), n = m.hist.length;
-    return '<div class="ox-ver"><span class="ox-ver-nav"><button type="button" class="btn ghost sm" data-a="oxVer" data-v="-1"' + (m.idx > 0 && !m.busy ? "" : " disabled") + ' aria-label="Previous version">‹</button><span class="small">' + (n ? "Version " + (m.idx + 1) + " of " + n : "") + (h.ai ? ' · <b class="ox-ai-tag">✨ AI</b>' : n ? ' · <span class="muted">saved</span>' : "") + '</span><button type="button" class="btn ghost sm" data-a="oxVer" data-v="1"' + (m.idx < n - 1 && !m.busy ? "" : " disabled") + ' aria-label="Next version">›</button></span>' +
-      '<button type="button" class="btn ghost sm" data-a="oxNewVer"' + (m.busy ? " disabled" : "") + ">" + (m.busy ? "Writing…" : "✨ New version") + "</button></div>" + (h.ai ? '<p class="muted small">Written by AI from the permit facts. Read it before you send it.</p>' : "");
+    return '<div class="ox-ver"><span class="ox-ver-nav"><button type="button" class="btn ghost sm" data-a="oxVer" data-v="-1"' + (m.idx > 0 && !m.busy ? "" : " disabled") + ' aria-label="Previous version">‹</button><span class="small">' + (n ? "Version " + (m.idx + 1) + " of " + n : "") + (h.ai ? ' · <b class="ox-ai-tag">✨ AI</b>' : "") + '</span><button type="button" class="btn ghost sm" data-a="oxVer" data-v="1"' + (m.idx < n - 1 && !m.busy ? "" : " disabled") + ' aria-label="Next version">›</button></span>' +
+      '<button type="button" class="btn ghost sm" data-a="oxNewVer"' + (m.busy ? " disabled" : "") + ">" + (m.busy ? "Rewriting…" : "🔄 Rewrite") + "</button></div>" + (h.ai ? '<p class="muted small">Written by AI from the permit facts. Read it before you send it.</p>' : "");
   }
-  function oxEnrichOpen(ids, wave) {
-    S.modal = { type: "lsxOxEnrich", ids: ids }; keepScroll(render);
-    call("oxEnrichPlan", wave ? { wave: wave } : { firm_ids: ids }).then(function (r) { if (S.modal && S.modal.type === "lsxOxEnrich") { S.modal.plan = r; S.modal.ids = r.list.map(function (x) { return x.firm_id; }); keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); });
+  function oxEnrichOpen(ids, wave, goal) {
+    S.modal = { type: "lsxOxEnrich", ids: ids, goal: goal || "" }; keepScroll(render);
+    call("oxEnrichPlan", Object.assign(wave ? { wave: wave } : { firm_ids: ids }, goal ? { goal: goal } : {})).then(function (r) { if (S.modal && S.modal.type === "lsxOxEnrich") { S.modal.plan = r; S.modal.ids = r.list.map(function (x) { return x.firm_id; }); keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); });
   }
   function oxDo(p, okMsg) { return p.then(function () { if (okMsg) toast(okMsg); S.oxBusy = 0; oxLoad(); }).catch(function (e) { toast(e.message); }); }
   root.addEventListener("click", function (e) {
@@ -6411,7 +6427,7 @@
       clearTimeout(S.oxUndoT); S.oxUndo = { id: fr.id, name: fr.name, before: before }; S.oxUndoT = setTimeout(function () { S.oxUndo = null; keepScroll(render); }, 10000); keepScroll(render);
       return oxDo(call("oxSaveFirm", { firm: { id: fr.id, status: "removed" } })); }
     if (a === "oxUndo") { var u = S.oxUndo; if (!u) return; S.oxUndo = null; clearTimeout(S.oxUndoT); keepScroll(render); return oxDo(call("oxSaveFirm", { firm: { id: u.id, status: u.before || "active" } }), "↩︎ " + u.name + " is back"); }
-    if (a === "oxAiOff") return sure("Disconnect the AI writer? Drafts go back to the saved versions.", function () { oxDo(call("oxAiSave", { off: true }), "AI writer disconnected"); }, "Disconnect");
+    if (a === "oxAiOff") return sure("Disconnect the AI writer? Rewrite goes back to your own phrasings.", function () { oxDo(call("oxAiSave", { off: true }), "AI writer disconnected"); }, "Disconnect");
     if (a === "oxWrite") { if (b.disabled) return; return oxOpenDraft(b.dataset.f, b.dataset.c, b.dataset.step || "day0", b.dataset.p, b.dataset.alert); }
     if (a === "oxDone") { var fx = b.dataset.f; return run(b, function () { return call("oxTouch", { firm_id: fx, channel: b.dataset.ch, step: b.dataset.step || "", outcome: b.dataset.o || "done", summary: b.dataset.ch === "linkedin" ? "LinkedIn" : "" }).then(function () { toast(b.dataset.ch === "reply" ? "💬 Nice! Marked as replied" : b.dataset.ch === "linkedin" ? "💼 LinkedIn done" : "📞 Call logged"); S.oxBusy = 0; oxLoad(); }); }); }
     if (a === "oxNote") { S.modal = { type: "lsxOxNote", firm_id: b.dataset.f }; return keepScroll(render); }
@@ -6433,11 +6449,15 @@
     if (a === "oxAlertNo") return oxDo(call("oxAlert", { id: b.dataset.id }));
     if (a === "oxLinkAsk") { S.modal = { type: "lsxOxLink", role_id: b.dataset.r, back: S.modal && S.modal.id }; return keepScroll(render); }
     if (a === "oxNewFirm") { S.modal = { type: "lsxOxNewFirm" }; return keepScroll(render); }
+    if (a === "oxScoutGo") { var sids = String(b.dataset.ids || "").split(",").filter(Boolean), sm = { type: "lsxOxScout", pct: 5, can: S.ox && S.ox.can_send }; S.modal = sm; keepScroll(render);
+      (async function () { var all = [], stop = false, rr = null; for (var i = 0; i < sids.length && !stop; i += 4) { sm.progress = "Searched " + i + " of " + sids.length + " firms…"; sm.pct = Math.max(5, Math.round(i / sids.length * 100)); if (S.modal === sm) keepScroll(render);
+          try { var rs = await call("oxRrScout", { firm_ids: sids.slice(i, i + 4) }); all = all.concat(rs.results || []); rr = rs.rr; stop = !!rs.stopped; } catch (er) { toast(er.message); break; } }
+        sm.results = all; sm.rr = rr; sm.stopped = stop; if (S.modal === sm) keepScroll(render); S.oxBusy = 0; oxLoad(); })(); return; }
     if (a === "oxEnrichGo") return oxEnrichOpen(String(b.dataset.ids || "").split(",").filter(Boolean));
     if (a === "oxEnrichWave") return oxEnrichOpen([], b.dataset.w);
     if (a === "oxEnrichYes") { var m0 = S.modal, ids = m0.plan.list.filter(function (x) { return !x.skip; }).map(function (x) { return x.firm_id; }), all = [];
-      return run(b, async function () { for (var i = 0; i < ids.length; i += 12) { var rr = await call("oxEnrich", { firm_ids: ids.slice(i, i + 12), confirm: true }); all = all.concat(rr.results || []); b.textContent = "Looking up… " + Math.min(ids.length, i + 12) + "/" + ids.length; }
-        m0.results = all; S.modal = m0; keepScroll(render); S.oxBusy = 0; oxLoad(); }); }
+      return run(b, async function () { for (var i = 0; i < ids.length; i += 12) { var rr = await call("oxEnrich", { firm_ids: ids.slice(i, i + 12), confirm: true, goal: m0.goal || "" }); all = all.concat(rr.results || []); b.textContent = "Looking up… " + Math.min(ids.length, i + 12) + "/" + ids.length; }
+        m0.results = all; S.modal = m0; keepScroll(render); S.oxBusy = 0; oxLoad(); S.cl = null; }); }
     if (a === "oxEnrichCheck") return run(b, function () { return call("oxEnrichCheck", {}).then(function (r) { toast(r.updated ? r.updated + " lookup" + (r.updated > 1 ? "s" : "") + " finished" : "Nothing new yet"); S.oxBusy = 0; oxLoad(); }); });
     if (a === "oxRrOff") return sure("Disconnect RocketReach? Contacts already found stay.", function () { oxDo(call("oxRrSave", { off: true }), "RocketReach disconnected"); }, "Disconnect");
     if (a === "oxCopyPrompt") { try { navigator.clipboard.writeText(oxGrokPrompt()); toast("Prompt copied. Paste it in Grok 🤖"); } catch (er) { toast("Select the text and copy it"); } return; }
@@ -6481,6 +6501,168 @@
     if (f.dataset.form === "oxSig") return run(btn, function () { return call("oxSigSave", { sig: { name: g("name"), title: g("title"), company: g("company"), email: g("email"), phone: g("phone"), fax: g("fax"), cell: g("cell"), website: g("website") } }).then(function () { toast("✍️ Signature saved"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxAiKey") return run(btn, function () { return call("oxAiSave", { key: g("key") }).then(function () { toast("✨ AI writer connected"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxRrKey") return run(btn, function () { return call("oxRrSave", { key: g("key") }).then(function () { toast("🔎 RocketReach connected"); S.oxBusy = 0; oxLoad(); }); });
+  }, true);
+  /* ====================== Calls: the appointment setter's screen (and Outreach → Calls for Jesús) ======================
+     The setter (#setter) sees only this: who to call next, the number, what to say about their projects, how the call went,
+     and Jesús's free times to book a meeting onto his Google Calendar. Everything lands back in Outreach. */
+  function clIsSetter() { return !!(S.me && (S.me.setter || S.me.role === "setter")); }
+  function clDay(d) { var x = new Date(String(d).slice(0, 10) + "T12:00:00"); return isNaN(x) ? String(d || "") : x.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); }
+  function clTime(t) { var m = String(t || "").match(/^(\d\d):(\d\d)/); if (!m) return String(t || ""); var h = +m[1]; return (h % 12 || 12) + ":" + m[2] + (h < 12 ? " am" : " pm"); }
+  function clTel(ph) { var d = String(ph || "").replace(/\D/g, ""); if (d.length === 10) d = "1" + d; return "tel:+" + d; }
+  function clSeg(s) { return s === "warm" ? '<span class="ox-seg ox-warm">🤝 we know them</span>' : s === "known" ? '<span class="ox-seg ox-known">👋 they know us</span>' : ""; }
+  function clItem(fid) { return ((S.cl && S.cl.queue) || []).filter(function (q) { return q.firm_id === fid; })[0] || null; }
+  function clLoad() {
+    if (S.clBusy) return; S.clBusy = 1;
+    if (!S.cl && !S.viewAs) swrFill("cl", function (c) { S.cl = c; });
+    call("oxCalls", {}).then(function (r) { S.cl = r; S.clAt = Date.now(); if (!S.viewAs) cacheSet("cl", r); }).catch(function (e) { if (!S.cl) S.cl = { err: e.message }; else toast(e.message); })
+      .then(function () { S.clBusy = 0; if (!S.pid) keepScroll(render); });
+  }
+  function clSetterHome() {
+    return '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">Blue Sierra · Calls</div><h2 style="font-size:32px;margin-top:4px">Hi, ' + esc(first(S.me.name)) + "</h2></div></div>" +
+      '<div class="ox-wrap cl-wrap">' + clView() + "</div>";
+  }
+  function clView() {
+    var d = S.cl; if (!d) { clLoad(); return '<div class="loading">Getting your call list…</div>'; }
+    if (d.err) return '<div class="card ls-incomplete">' + esc(d.err) + ' <button class="link" data-a="clReload">Try again</button></div>';
+    if (!S.clAt || Date.now() - S.clAt > 90000) { S.clAt = Date.now(); setTimeout(clLoad, 0); }
+    var st = d.stats || { today: {}, week: {} }, t = st.today || {}, w = st.week || {}, n = d.queue.length;
+    var hero = '<div class="card cl-hero"><div class="cl-hero-t"><b>' + (n ? "📞 " + (d.total || n) + " firm" + ((d.total || n) === 1 ? "" : "s") + " to call" : "🎉 Nobody left to call right now") + "</b>" +
+      '<span class="muted small">' + (clIsSetter() ? "Call, tap how it went, and when they want to talk, book Jesús right from the card." : "The setter’s list: decision makers, their numbers and what to say.") + "</span></div>" +
+      '<div class="cl-stats">' + [["Calls", t.calls], ["Talked", t.talked], ["Booked", t.booked]].map(function (x) { return '<div class="cl-stat"><b>' + (x[1] || 0) + "</b><span>" + x[0] + "</span></div>"; }).join("") + "</div>" +
+      '<div class="cl-week small">This week · <b>' + (w.calls || 0) + "</b> calls · <b>" + (w.talked || 0) + "</b> conversations · <b>" + (w.booked || 0) + "</b> meetings</div></div>";
+    var meets = d.meetings.length ? '<h3 class="ox-h">📅 Booked with Jesús</h3>' + d.meetings.map(clMeetRow).join("") : "";
+    var list = n ? '<h3 class="ox-h">Up next <span class="muted small">best first</span></h3>' + d.queue.map(clRow).join("") : "";
+    var foot = [d.later ? d.later + " waiting for their callback day or a second try" : "", d.done_today ? d.done_today + " already called today" : "", d.no_phone ? d.no_phone + " more firms still need a phone number" + (clIsSetter() ? " (Jesús is getting them)" : "") : ""].filter(Boolean);
+    return hero + meets + list + (foot.length ? '<p class="muted small cl-foot">' + esc(foot.join(" · ")) + "</p>" : "");
+  }
+  function clRow(x) {
+    var who = x.contact || x.ask_for, ph = x.contact && x.contact.phone ? x.contact.phone : x.main_phone, p = x.projects[0] || {};
+    return '<div class="card ox-row cl-row' + (x.kind === "callback" ? " cl-cb" : "") + '"><div class="ox-row-t"><span class="ox-l1"><b>' + esc(x.firm) + "</b> " + clSeg(x.segment) + (x.kind === "callback" ? ' <span class="pill gold">call back</span>' : "") + "</span>" +
+      '<span class="small">' + esc(x.reason) + "</span>" +
+      '<span class="muted small">' + (who ? esc(who.name) + (who.title ? " · " + esc(who.title) : "") + (x.contact ? "" : " (ask for)") + " · " : "") + esc(ph) + (p.street ? " · " + esc(p.street) + ", " + esc(p.town) : "") + (x.tries ? " · tried " + x.tries + "×" : "") + "</span></div>" +
+      '<div class="ox-row-a"><a class="btn ghost sm" href="' + clTel(ph) + '" data-a="clDialed" data-f="' + esc(x.firm_id) + '">📞 Call</a><button class="btn sm" data-a="clOpen" data-f="' + esc(x.firm_id) + '">Open</button></div></div>';
+  }
+  function clMeetRow(mt) {
+    var today = (S.cl && S.cl.today) || (S.ox && S.ox.today) || "", past = mt.day < today || (mt.day === today), mineBooked = clIsSetter() && S.me && mt.booked_by === S.me.name;
+    var stL = { held: '<span class="pill ok">held</span>', no_show: '<span class="pill bad">no-show</span>', canceled: '<span class="pill">canceled</span>' }[mt.status] || "";
+    var acts = mt.status !== "booked" ? "" : (staff() && !S.viewAs ? (past ? '<button class="btn ghost sm" data-a="clMeet" data-id="' + esc(mt.id) + '" data-v="held">Held ✓</button><button class="btn ghost sm" data-a="clMeet" data-id="' + esc(mt.id) + '" data-v="no_show">No-show</button>' : "") : "") +
+      ((staff() && !S.viewAs) || mineBooked ? '<button class="btn ghost sm" data-a="clMeet" data-id="' + esc(mt.id) + '" data-v="canceled">Cancel</button>' : "");
+    return '<div class="card ox-row cl-meet' + (mt.status !== "booked" ? " held" : "") + '"><div class="ox-row-t"><span class="ox-l1"><b>' + esc(clDay(mt.day)) + " · " + esc(clTime(mt.time)) + "</b> " + esc(mt.kind_label) + " · " + mt.minutes + " min " + stL + "</span>" +
+      "<span>" + esc(mt.firm) + (mt.contact ? " · " + esc(mt.contact) + (mt.title ? ", " + esc(mt.title) : "") : "") + "</span>" +
+      '<span class="muted small">' + esc([mt.project, mt.where, "booked by " + mt.booked_by].filter(Boolean).join(" · ")) + (mt.note && !clIsSetter() ? '<br>📝 ' + esc(mt.note) : "") + "</span></div>" +
+      '<div class="ox-row-a">' + (mt.link ? '<a class="btn ghost sm" href="' + esc(mt.link) + '" target="_blank" rel="noopener">' + (/meet\.google/.test(mt.link) ? "Meet ↗" : "Calendar ↗") + "</a>" : "") + acts + "</div></div>";
+  }
+  /* Jesús's Outreach → Today: what the setter booked, who wants an email, and who still needs a phone number. */
+  function clOffice() {
+    var c = S.ox && S.ox.calls; if (!c) return "";
+    var up = c.meetings.filter(function (m) { return m.status === "booked"; }), reqs = (S.ox.alerts || []).filter(function (a) { return a.kind === "setter_email"; }), html = "";
+    if (up.length || reqs.length || c.setters.length) {
+      html += '<h3 class="ox-h">📞 From the setter</h3>' + c.setters.map(function (s) { var t = s.stats.today, w = s.stats.week;
+        return '<div class="cl-setter small"><b>' + esc(s.name) + "</b> today: " + t.calls + " calls · " + t.talked + " talked · " + t.booked + ' booked <span class="muted">· this week ' + w.calls + " calls, " + w.booked + " meetings</span></div>"; }).join("");
+      html += up.map(clMeetRow).join("") + reqs.map(function (a) { var f = oxF(a.firm_id); if (!f) return "";
+        return '<div class="card ox-row"><div class="ox-row-t"><span class="ox-l1"><b>' + esc(f.name) + "</b> " + oxSegPill(f) + '</span><span>The setter talked to them: they’d like the info by email.</span></div><div class="ox-row-a"><button class="btn ghost sm" data-a="oxAlertNo" data-id="' + esc(a.id) + '">Dismiss</button><button class="btn sm" data-a="oxWrite" data-f="' + esc(f.id) + '" data-step="day0" data-alert="' + esc(a.id) + '">Write email</button></div></div>'; }).join("");
+    }
+    if (c.no_phone_total && S.ox.can_send && S.ox.rr && S.ox.rr.on) html += '<div class="card ox-row cl-need"><div class="ox-row-t"><span class="ox-l1"><b>📇 ' + c.no_phone_total + " firms need a phone number for the setter</b></span>" +
+      '<span class="muted small">' + c.on_list + " are ready to call now. One RocketReach lookup per firm gets the principal’s direct line and email, best firms first. You see the cost before anything runs.</span></div>" +
+      '<div class="ox-row-a"><button class="btn sm" data-a="clPhones" data-ids="' + esc(c.no_phone.join(",")) + '">Get phones</button></div></div>';
+    if (!c.setters.length && S.me && S.me.admin) html += '<p class="muted small cl-foot">📞 Add your appointment setter on the Team page as <b>#setter</b>: they’ll see only the call list, ' + c.on_list + " firms ready to call.</p>";
+    return html;
+  }
+  /* The call card: who, the numbers, what to say, how it went. */
+  function clCard(m) {
+    var x = clItem(m.firm_id) || m.x; if (!x) return '<h2>Done</h2><p class="muted">This firm isn’t on the list anymore.</p><div class="actions"><button class="btn" data-a="close">Close</button></div>';
+    m.x = x; m.f = m.f || {};
+    var s = x.script, who = x.contact || x.ask_for, fn = who && who.name ? first(who.name) : "";
+    var dial = function (ph, label, ghost) { return ph ? '<a class="btn cl-dial' + (ghost ? " ghost" : "") + '" href="' + clTel(ph) + '">📞 ' + esc(label) + " <span>" + esc(ph) + "</span></a>" : ""; };
+    var direct = x.contact && x.contact.phone;
+    var numbers = '<div class="cl-dials">' + (direct ? dial(x.contact.phone, "Call " + fn, false) : "") + (x.main_phone ? dial(x.main_phone, "Main line" + (!direct && fn ? ", ask for " + fn : ""), !!direct) : "") +
+      x.others.filter(function (o) { return o && o.phone; }).map(function (o) { return dial(o.phone, first(o.name) + (o.title ? " · " + o.title : ""), true); }).join("") + "</div>" +
+      (who && who.phones ? '<p class="muted small">Other numbers: ' + esc(who.phones) + "</p>" : "");
+    var whoLine = who ? '<p class="cl-who"><b>' + esc(who.name) + "</b>" + (who.title ? " · " + esc(who.title) : "") + (who.dm ? ' <span class="pill ok">decision maker</span>' : "") +
+      (who.email ? '<br><span class="muted small">' + esc(who.email) + "</span>" : "") + (who.linkedin ? ' <a class="link small" href="' + esc(who.linkedin) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : "") + "</p>" : "";
+    var steps = [["If the front desk answers", s.front], ["Hi", s.opener], ["Why you’re calling", s.why], ["Who we are", s.pitch], ["The ask", s.ask], ["Book Jesús", s.meet]];
+    var script = '<div class="cl-script"><div class="eyebrow">What to say</div>' + steps.map(function (st, i) { return '<div class="cl-say' + (i ? "" : " cl-front") + '"><span class="cl-n">' + (i || "☎") + "</span><div><small>" + st[0] + "</small><p>" + esc(st[1]) + "</p></div></div>"; }).join("") +
+      '<details class="cl-vm"><summary class="small">🎙️ Voicemail</summary><p>' + esc(s.voicemail) + "</p></details></div>";
+    var projs = '<div class="cl-projs">' + x.projects.map(function (p) { return '<span class="cl-proj"><b>' + esc(p.street) + "</b>, " + esc(p.town) + "<small>" + esc((p.type ? p.type + " · " : "") + p.stage.replace(/^is /, "")) + "</small></span>"; }).join("") + "</div>";
+    var hist = x.history.length ? '<details class="cl-hist"><summary class="small">What’s happened so far (' + x.history.length + ")</summary>" + x.history.map(function (h) { return '<p class="small">' + esc(clDay(h.date)) + " · " + esc(h.by) + " · " + esc(h.summary || h.outcome || h.channel) + "</p>"; }).join("") + "</details>" : "";
+    var OUTS = [["no_answer", "No answer"], ["voicemail", "Voicemail"], ["gatekeeper", "Front desk"], ["conversation", "Talked"], ["callback", "Call back…"], ["not_interested", "Not interested"], ["wrong_number", "Wrong number"], ["do_not_call", "Do not call"]];
+    var o = m.out || "", fv = function (k) { return esc(m.f[k] || ""); };
+    var extra = o === "callback" ? '<div class="row2"><label class="f">Call back on<input type="date" name="cb_date" min="' + esc(S.cl.today) + '" value="' + fv("cb_date") + '" required></label><label class="f">At (optional)<input type="time" name="cb_time" step="900" value="' + fv("cb_time") + '"></label></div>'
+      : o === "gatekeeper" ? '<p class="muted small">Did they give you the right person? Save them here.</p><div class="row2"><label class="f">Name<input name="nc_name" value="' + fv("nc_name") + '"></label><label class="f">Title<input name="nc_role" value="' + fv("nc_role") + '"></label></div><div class="row2"><label class="f">Direct line<input name="nc_phone" inputmode="tel" value="' + fv("nc_phone") + '"></label><label class="f">Email<input name="nc_email" type="email" value="' + fv("nc_email") + '"></label></div>' : "";
+    var wantEmail = ["conversation", "gatekeeper", "callback"].indexOf(o) > -1 ? '<label class="check-line"><input type="checkbox" name="want_email"' + (m.f.want_email ? " checked" : "") + "> They asked for info by email (Jesús writes it)</label>" : "";
+    var label = (OUTS.filter(function (q) { return q[0] === o; })[0] || ["", ""])[1].replace("…", "");
+    var form = '<form class="form cl-log" data-form="clLog"><div class="eyebrow">How did it go?</div><div class="cl-outs">' + OUTS.map(function (q) { return '<button type="button" class="chip' + (o === q[0] ? " on" : "") + (q[0] === "do_not_call" ? " cl-dnc" : "") + '" data-a="clOut" data-v="' + q[0] + '">' + q[1] + "</button>"; }).join("") + "</div>" + extra + wantEmail +
+      (o ? '<label class="f">Note <span class="muted small">(only the office sees it)</span><textarea name="note" rows="2" placeholder="What they said, who to ask for, best time to call…">' + fv("note") + '</textarea></label><div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button><button class="btn" type="submit">Save: ' + esc(label) + "</button></div>" : "") + "</form>";
+    return "<h2>" + esc(x.firm) + '</h2><p class="muted small">' + esc([x.type, x.reason].filter(Boolean).join(" · ")) + (x.website ? ' · <a class="link" href="' + esc(x.website) + '" target="_blank" rel="noopener">website ↗</a>' : "") + "</p>" +
+      whoLine + numbers + projs + script + '<button class="btn cl-book" data-a="clBook" data-f="' + esc(x.firm_id) + '">📅 They want to meet? Book Jesús</button>' + form + hist;
+  }
+  function clSlots(m) {
+    m.slots = null; var ask = m.minutes;
+    call("oxCallSlots", { minutes: m.minutes }).then(function (r) { if (S.modal === m && m.minutes === ask) { m.slots = r; keepScroll(render); } })
+      .catch(function (e) { if (S.modal === m) { m.slots = { days: [], err: e.message }; keepScroll(render); } });
+  }
+  function clBookCard(m) {
+    var x = m.x, kinds = S.cl.kinds || {}, f = m.f;
+    var people = [x.contact, x.ask_for].concat(x.others || []).filter(Boolean).filter(function (p, i, a) { return a.findIndex(function (q) { return q.id === p.id; }) === i; });
+    var head = "<h2>📅 Book Jesús · " + esc(x.firm) + "</h2>" +
+      '<div class="cl-pick"><span class="small">How</span><div class="chips">' + Object.keys(kinds).map(function (k) { return '<button type="button" class="chip' + (m.kind === k ? " on" : "") + '" data-a="clKind" data-v="' + k + '">' + esc(kinds[k]) + "</button>"; }).join("") + "</div></div>" +
+      '<div class="cl-pick"><span class="small">How long</span><div class="chips">' + [15, 30, 45, 60].map(function (n) { return '<button type="button" class="chip' + (m.minutes === n ? " on" : "") + '" data-a="clMin" data-v="' + n + '">' + n + " min</button>"; }).join("") + "</div></div>";
+    var days = !m.slots ? '<div class="loading" style="min-height:100px">Looking at Jesús’s calendar…</div>' : m.slots.err ? '<p class="bad-t small">' + esc(m.slots.err) + "</p>" :
+      (function () { var ds = m.slots.days.filter(function (d) { return d.slots.length; }); return ds.length ? '<div class="cl-days">' + ds.map(function (d) { return '<div class="cl-day"><b>' + esc(clDay(d.day)) + '</b><div class="cl-slots">' + d.slots.map(function (t) { return '<button type="button" class="chip' + (m.day === d.day && m.time === t ? " on" : "") + '" data-a="clSlot" data-d="' + d.day + '" data-t="' + t + '">' + clTime(t) + "</button>"; }).join("") + "</div></div>"; }).join("") + "</div>"
+        : '<p class="muted">Jesús has no free times in the next two weeks. Ask them for a time that works and leave a note.</p>'; })();
+    var pick = m.day && m.time, fv = function (k, d) { return esc(f[k] != null ? f[k] : d || ""); }, sel = f.contact != null ? f.contact : (people[0] ? people[0].id : "");
+    var selP = people.filter(function (p) { return p.id === sel; })[0], defMail = selP ? selP.email : "";
+    var form = '<form class="form" data-form="clBook"><div class="row2"><label class="f">With<select name="contact">' + people.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.name + (p.title ? " · " + p.title : "")) + "</option>"; }).join("") + '<option value=""' + (sel === "" ? " selected" : "") + ">Someone else</option></select></label>" +
+      '<label class="f">Their email <span class="muted small">(for the invite)</span><input type="email" name="email" value="' + fv("email", defMail) + '" placeholder="name@firm.com"></label></div>' +
+      (m.kind === "office" || m.kind === "site" ? '<label class="f">Where<input name="where" value="' + fv("where", m.kind === "site" && x.projects[0] ? x.projects[0].street + ", " + x.projects[0].town : "") + '" placeholder="Address"></label>' : "") +
+      '<label class="f">About<select name="project">' + x.projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (f.project === p.id ? " selected" : "") + ">" + esc(p.street + ", " + p.town) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Note for Jesús <span class="muted small">(not in the invite)</span><textarea name="note" rows="2" placeholder="What they want to talk about, anything he should know">' + fv("note") + "</textarea></label>" +
+      '<p class="muted small">It goes straight on Jesús’s Google Calendar' + (m.kind === "video" ? " with a Google Meet link" : "") + ". With an email, they get the calendar invite too.</p>" +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="clBack">Back</button><button class="btn" type="submit"' + (pick ? "" : " disabled") + ">" + (pick ? "Book " + esc(clDay(m.day)) + " at " + esc(clTime(m.time)) : "Pick a time") + "</button></div></form>";
+    return head + days + form;
+  }
+  var _lsModalCl = lsModal;
+  lsModal = function (m) { if (m.type === "lsxClCall") return clCard(m); if (m.type === "lsxClBook") return clBookCard(m); return _lsModalCl(m); };
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-a]"); if (!b || !root.contains(b)) return; var a = b.dataset.a; if (!/^cl[A-Z]/.test(a)) return;
+    var m = S.modal || {};
+    if (a === "clReload") { S.cl = null; return clLoad(); }
+    if (a === "clOpen" || a === "clDialed") { if (a === "clOpen") e.preventDefault(); S.modal = { type: "lsxClCall", firm_id: b.dataset.f, f: {} }; return keepScroll(render); }   // "Call" dials and opens the card
+    if (a === "clOut") { e.preventDefault(); m.out = b.dataset.v; return keepScroll(render); }
+    if (a === "clBook") { e.preventDefault(); var x = clItem(b.dataset.f) || m.x; if (!x) return; S.modal = { type: "lsxClBook", firm_id: x.firm_id, x: x, kind: "phone", minutes: 30, f: {} }; keepScroll(render); return clSlots(S.modal); }
+    if (a === "clKind") { m.kind = b.dataset.v; return keepScroll(render); }
+    if (a === "clMin") { m.minutes = Number(b.dataset.v); m.day = m.time = ""; keepScroll(render); return clSlots(m); }
+    if (a === "clSlot") { m.day = b.dataset.d; m.time = b.dataset.t; return keepScroll(render); }
+    if (a === "clBack") { S.modal = { type: "lsxClCall", firm_id: m.firm_id, x: m.x, f: {} }; return keepScroll(render); }
+    if (a === "clPhones") return oxEnrichOpen(String(b.dataset.ids || "").split(",").filter(Boolean), null, "calls");
+    if (a === "clMeet") {
+      var st = b.dataset.v, go = function () { run(b, function () { return call("oxMeeting", { id: b.dataset.id, status: st }).then(function () { toast(st === "held" ? "✅ Marked held. Next: send them the bid info" : st === "no_show" ? "Back on the call list" : "Canceled. The guest was told."); S.clBusy = 0; clLoad(); if (S.ox) { S.oxBusy = 0; oxLoad(); } }); }); };
+      return st === "canceled" ? sure("Cancel this meeting? It comes off Jesús’s calendar and the guest gets a cancellation.", go, "Cancel meeting") : go();
+    }
+  });
+  root.addEventListener("input", function (e) {                                       // keep what was typed when the card redraws
+    var t = e.target, m = S.modal; if (!m || !t.name || !t.closest || !t.closest('[data-form="clLog"], [data-form="clBook"]')) return;
+    m.f = m.f || {}; m.f[t.name] = t.type === "checkbox" ? t.checked : t.value;
+  });
+  root.addEventListener("change", function (e) {
+    var t = e.target, m = S.modal; if (!m || !t.name || !t.closest || !t.closest('[data-form="clLog"], [data-form="clBook"]')) return;
+    m.f = m.f || {}; m.f[t.name] = t.type === "checkbox" ? t.checked : t.value; if (t.name === "contact") { delete m.f.email; keepScroll(render); }
+  });
+  root.addEventListener("submit", function (e) {
+    var f = e.target; if (!f.matches || !/^cl/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var m = S.modal || {}, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]"), x = m.x;
+    var after = function (r, msg) { S.modal = null; toast(msg); if (S.cl && r && r.stats) S.cl.stats = r.stats; if (S.cl) S.cl.queue = S.cl.queue.filter(function (q) { return q.firm_id !== m.firm_id; }); S.clBusy = 0; clLoad(); if (S.ox) { S.oxBusy = 0; oxLoad(); } keepScroll(render); };
+    if (f.dataset.form === "clLog") {
+      var who = x.contact || x.ask_for, body = { firm_id: m.firm_id, contact_id: who ? who.id : "", project_id: (x.projects[0] || {}).id || "", outcome: m.out, note: g("note"), callback_date: g("cb_date"), callback_time: g("cb_time"), want_email: !!fd.get("want_email") };
+      if (g("nc_name")) body.new_contact = { name: g("nc_name"), role: g("nc_role"), phone: g("nc_phone"), email: g("nc_email") };
+      var MSG = { no_answer: "📞 No answer. It comes back in two days.", voicemail: "🎙️ Voicemail logged. It comes back in two days.", gatekeeper: "Logged. Next one!", conversation: "💬 Nice! Logged.", callback: "📅 Back on your list " + clDay(g("cb_date")), not_interested: "Logged. Off the list.", wrong_number: "Number cleared.", do_not_call: "On the do-not-call list." };
+      var go = function () { return run(btn, function () { return call("oxCallLog", body).then(function (r) { after(r, MSG[m.out] || "Logged"); }); }); };
+      return m.out === "do_not_call" ? sure("Put " + x.firm + " on the do-not-call list? Nobody will call them again.", go, "Do not call") : go();
+    }
+    if (f.dataset.form === "clBook") return run(btn, function () {
+      return call("oxCallBook", { firm_id: m.firm_id, contact_id: g("contact"), project_id: g("project"), day: m.day, time: m.time, minutes: m.minutes, kind: m.kind, email: g("email"), where: g("where"), note: g("note") })
+        .then(function (r) { after(r, "📅 Booked " + clDay(m.day) + " at " + clTime(m.time) + (r.invited ? ". They got the invite." : ". It’s on Jesús’s calendar.")); });
+    });
   }, true);
   liveLoop();
   if (S.token) { render(); route(); } else render();

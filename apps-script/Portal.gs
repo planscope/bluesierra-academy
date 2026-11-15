@@ -226,11 +226,12 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, pinTemp: !!(p.pin_hash && p.pin_temp), preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
+function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", setter: p.role === "setter", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, pinTemp: !!(p.pin_hash && p.pin_temp), preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
 function previewMe(role) {
+  if (role === "setter") return { email: "preview-setter@preview.invalid", name: "Setter preview", role: "setter", project_ids: "", projects: [], active: "yes", avatar: "", preview: role };
   if (["client", "architect", "crew"].indexOf(role) < 0) throw new Error("Pick #client, #architect or #crew to preview.");
   var ids = rows("Projects").filter(function (p) { return p.status !== "deleted"; }).map(function (p) { return p.id; });
   return { email: "preview-" + role + "@preview.invalid", name: { client: "Client preview", architect: "Architect preview", crew: "Crew preview" }[role], role: role,
@@ -238,6 +239,8 @@ function previewMe(role) {
 }
 /* Roles: admin (Jesús: everything), staff (project managers), crew (field: their projects, #team, plans and schedule, no money), client, architect. */
 function isTeam(p) { return isStaff(p) || p.role === "crew"; }
+/* The appointment setter: no projects, no chat, no money. Only Outreach → Calls (who to call, what to say, Jesús's free times). */
+function isSetter(p) { return !!p && p.role === "setter"; }
 function pkey(email) { return sha("bsp:" + normEmail(email)).slice(0, 10); }      // a person id that never reveals the email
 function isDm(ch) { return /^dm:[0-9a-f]{10}-[0-9a-f]{10}$/.test(String(ch)); }
 function dmOf(a, b) { return "dm:" + [a, b].sort().join("-"); }
@@ -366,28 +369,34 @@ var ACTIONS = {
 
   addPerson: function (me, b) {
     needStaff(me);
-    var email = normEmail(b.email), role = ["staff", "architect", "crew"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
-    if (role === "staff" && !admin) throw new Error("Only Jesús can add team members.");
+    var email = normEmail(b.email), role = ["staff", "architect", "crew", "setter"].indexOf(b.role) > -1 ? b.role : "client", admin = me.role === "admin";
+    if ((role === "staff" || role === "setter") && !admin) throw new Error("Only Jesús can add team members.");
+    if (role === "setter" && b.projectId) throw new Error("The setter isn't added to projects. Add them from the Team page.");
     if (!b.projectId && (role === "client" || role === "architect")) throw new Error("Add clients and architects from a project's People tab, so they only see that project.");
     if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) throw new Error("That email doesn't look right.");
     var p = b.projectId ? needProject(me, b.projectId) : null;
     purgeOrphans();                                        // clear leftovers first, so a returning email always starts fresh
     var existing = findPerson(email);
     if (existing) {
-      if (isStaff(existing) && !admin) throw new Error("Only Jesús can change team members.");
+      if ((isStaff(existing) || isSetter(existing)) && !admin) throw new Error("Only Jesús can change team members.");
       if (!isTrue(existing.active) && !admin) throw new Error("This person's access was turned off. Ask Jesús to turn it back on.");
-      var ids = splitIds(existing.project_ids); if (p && role !== "staff" && ids.indexOf(p.id) < 0) ids.push(p.id);
+      var ids = role === "setter" ? [] : splitIds(existing.project_ids); if (p && role !== "staff" && ids.indexOf(p.id) < 0) ids.push(p.id);
       var patch = { project_ids: ids.join(","), active: "yes" };
       if (existing.role !== role && existing.role !== "admin" && (admin || (!isStaff(existing) && role !== "staff"))) patch.role = role;   // only admins touch team roles
       if (b.name && clean(b.name, 120) && (!isStaff(existing) || admin)) patch.name = clean(b.name, 120);     // the name you type now wins
       if (admin && b.money != null) patch.money = (patch.role || existing.role) === "staff" && b.money ? "yes" : "";
       update("People", "email", email, patch);
     } else {
-      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" ? p.id : "", active: "yes", created_at: now(), money: admin && role === "staff" && b.money ? "yes" : "" });
+      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" && role !== "setter" ? p.id : "", active: "yes", created_at: now(), money: admin && role === "staff" && b.money ? "yes" : "" });
     }
     if (b.invite && !p && (role === "staff" || role === "crew")) safeMail(function () {
       sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
         "<p>Hi " + esc(first(b.name || "")) + ",</p><p>Jesús added you to the " + CONFIG.COMPANY + " project portal. You can see every project: schedule, photos, chat, contract and invoices.</p>" +
+        button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
+    }, "Added, but the invitation email couldn't be sent.");
+    if (b.invite && role === "setter") safeMail(function () {
+      sendMail(email, "Your call list at " + CONFIG.COMPANY,
+        "<p>Hi " + esc(first(b.name || "")) + ",</p><p>Jesús added you to the " + CONFIG.COMPANY + " portal. You'll see your call list there: the architects and builders to call, their numbers, what to say about their projects, and Jesús's free times so you can book meetings straight onto his calendar.</p>" +
         button("Open the portal") + "<p>The first time, type this email address and we'll send you a 6-digit code. Then pick a PIN, and from then on you log in with your email and PIN.</p>");
     }, "Added, but the invitation email couldn't be sent.");
     if (b.invite && p) safeMail(function () {
@@ -403,13 +412,14 @@ var ACTIONS = {
     needStaff(me);
     var person = findPerson(b.email), admin = me.role === "admin", role = String(b.role || "");
     if (!person) throw new Error("Person not found.");
-    if (["admin", "staff", "crew", "client", "architect"].indexOf(role) < 0) throw new Error("Pick a role.");
+    if (["admin", "staff", "crew", "client", "architect", "setter"].indexOf(role) < 0) throw new Error("Pick a role.");
+    if ((role === "setter" || isSetter(person)) && !admin) throw new Error("Only Jesús changes team roles.");
     if (person.email === me.email && role !== person.role) throw new Error("You can't change your own role.");
     if (!admin && (isStaff(person) || role === "staff" || role === "admin")) throw new Error("Only Jesús changes team roles.");
     var p = b.projectId ? needProject(me, b.projectId) : null, ids = splitIds(person.project_ids);
     if (p && ["client", "architect", "crew"].indexOf(role) > -1 && ids.indexOf(p.id) < 0) ids.push(p.id);
     if ((role === "client" || role === "architect") && !ids.length) throw new Error("Clients and architects need a project. Change it from that project's People tab.");
-    var patch = { role: role, project_ids: ids.join(",") };
+    var patch = { role: role, project_ids: role === "setter" ? "" : ids.join(",") };
     if (b.money != null && !admin) throw new Error("Only Jesús decides who sees #money.");
     patch.money = role === "staff" && (b.money != null ? !!b.money : isTrue(person.money)) ? "yes" : "";
     update("People", "email", person.email, patch);
@@ -435,7 +445,7 @@ var ACTIONS = {
     var person = findPerson(normEmail(b.email)); if (!person) return {};
     if (person.email === me.email) throw new Error(b.projectId ? "You can't remove yourself." : "You can't turn off your own access.");
     if (person.role === "admin") throw new Error("Jesús can't be removed.");
-    if (isStaff(person) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
+    if ((isStaff(person) || isSetter(person)) && me.role !== "admin") throw new Error("Only Jesús can remove team members.");
     var ids = splitIds(person.project_ids).filter(function (x) { return x !== String(b.projectId); });
     // Removed from the team page, or from their last project: they leave the portal completely (sessions, PIN, presence),
     // so they disappear from Who's around and adding the email again starts fresh. Their old chat messages stay as history.
@@ -768,7 +778,7 @@ var ACTIONS = {
   },
   listTeam: function (me) {
     needStaff(me);
-    return { team: rows("People").filter(isTeam).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length, phone: x.phone ? String(x.phone).replace(/\D/g, "").slice(-10) : "", level: x.role === "crew" ? (x.crew_level || "supervisor") : "" }; }) };
+    return { team: rows("People").filter(function (x) { return isTeam(x) || isSetter(x); }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), since: String(x.created_at || "").slice(0, 10), avatar: x.avatar || "", projects: splitIds(x.project_ids).length, phone: x.phone ? String(x.phone).replace(/\D/g, "").slice(-10) : "", level: x.role === "crew" ? (x.crew_level || "supervisor") : "" }; }) };
   },
 
   answerQuestion: function (me, b) {
@@ -2365,7 +2375,7 @@ function keyOf(email) { return email ? (_KEYS[email] = _KEYS[email] || pkey(emai
 function avatarsByEmail() { var o = {}; rows("People").forEach(function (x) { o[x.email] = x.avatar || ""; }); return o; }
 /* Someone counts as "in the portal" only if their access is on and they're on the team or on a live project. */
 function liveProjectIds() { var ids = {}; rows("Projects").forEach(function (p) { if (p.status !== "deleted") ids[p.id] = 1; }); return ids; }
-function inPortal(x, live) { return isTrue(x.active) && (isTeam(x) || splitIds(x.project_ids).some(function (id) { return live[id]; })); }
+function inPortal(x, live) { return isTrue(x.active) && (isTeam(x) || isSetter(x) || splitIds(x.project_ids).some(function (id) { return live[id]; })); }
 function purgePerson(person) {
   var c = CacheService.getScriptCache();
   rows("Sessions").forEach(function (sn) { if (sn.email === person.email) c.remove("sess:" + sn.token_hash); });
@@ -2375,7 +2385,7 @@ function purgePerson(person) {
 }
 /* Leftovers from older versions: people whose access was turned off, or who have no project at all and aren't on the team. */
 function purgeOrphans() {
-  rows("People").filter(function (x) { return x.role !== "admin" && (!isTrue(x.active) || (!isTeam(x) && !splitIds(x.project_ids).length)); }).forEach(purgePerson);
+  rows("People").filter(function (x) { return x.role !== "admin" && (!isTrue(x.active) || (!isTeam(x) && !isSetter(x) && !splitIds(x.project_ids).length)); }).forEach(purgePerson);
 }
 function membersOf(p) { return rows("People").filter(function (x) { return isTrue(x.active) && (isStaff(x) || splitIds(x.project_ids).indexOf(p.id) > -1); }); }
 function mentions(text, name) { return !!name && String(text || "").toLowerCase().indexOf("@" + String(name).toLowerCase()) > -1; }
