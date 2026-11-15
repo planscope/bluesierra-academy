@@ -2674,7 +2674,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115135233";
+  var BUILD = "20261115141128";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6075,6 +6075,7 @@
      Outreach: permits → firms → contacts → emails and follow-ups → bid invites. One place, playful, with the rules built in.
      ====================================================================================================== */
   var OX_SEG = { warm: ["🔥", "Warm"], known: ["👋", "Known"], cold: ["❄️", "Cold"], excluded: ["⛔", "Excluded"] };
+  var OX_PSTAGE_L = { "1": "Design review", "2": "In review", "3": "Approved", "4": "Issued", "5": "Finaled", "0": "Unknown" };
   var OX_TYPE_L = { new_home: "New home", major_remodel: "Remodel", landscape: "Landscape", grading: "Grading / site", pool: "Pool", tree: "Tree", other: "Other" };
   var OX_ROLE_L = { architect: "Architect", landscape_architect: "Landscape architect", contractor: "Builder / GC", engineer: "Engineer", applicant: "Applicant", owner: "Owner" };
   var OX_STEP_L = { day0: "First email", day3: "LinkedIn · day 3", day7: "Call · day 7", day14: "Follow-up email · day 14" };
@@ -6149,7 +6150,9 @@
     var s = { A: 30, B: 15, C: 0 }[p.priority] || 0, st = String(p.status || "").toLowerCase();
     s += { new_home: 20, landscape: 18, major_remodel: 15, grading: 12, pool: 8 }[p.type] || 0;
     var age = (Date.now() - new Date(String(p.date).slice(0, 10) + "T12:00:00")) / 864e5; if (age < 31) s += 15; else if (age < 61) s += 8; else if (age > 365) s -= 10;
-    if (/review|adrb|asrb|applied|scheduled|plan check|under|pending|submitted/.test(st)) s += 10; if (/final|closed|expired|withdrawn|denied/.test(st)) s -= 25;
+    if (p.stage) s += { "1": 12, "2": 10, "3": 12, "4": /landscape|pool/.test(p.type) ? 8 : 2, "5": -25 }[p.stage] || 0;
+    else { if (/review|adrb|asrb|applied|scheduled|plan check|under|pending|submitted/.test(st)) s += 10; if (/final|closed|expired|withdrawn|denied/.test(st)) s -= 25; }
+    if (p.fit) s += Number(p.fit) >= 88 ? 10 : Number(p.fit) >= 70 ? 5 : 0;
     var fs = oxRolesOf(p.id).filter(function (x) { return x.firm_id; }).map(function (x) { return oxF(x.firm_id); }).filter(function (f) { return f && !f.flag.excluded; });
     if (fs.some(function (f) { return f.segment === "warm" || f.segment === "known"; })) s += 8; if (fs.some(function (f) { return oxContacts(f.id).some(function (c) { return c.email; }); })) s += 5; if (!fs.length) s -= 15;
     return s;
@@ -6194,16 +6197,17 @@
   /* ---------- Projects ---------- */
   function oxProjects() {
     var d = S.ox, f = S.oxPF || {}, list = d.projects.filter(function (p) {
-      return (!f.town || p.town === f.town) && (!f.type || p.type === f.type) && (!f.pri || p.priority === f.pri) && (!f.q || (p.address + " " + p.description + " " + p.status + " " + p.permit_no).toLowerCase().indexOf(f.q.toLowerCase()) > -1) && (!f.fresh || p.first_seen === d.projects.reduce(function (a, x) { return x.first_seen > a ? x.first_seen : a; }, ""));
-    }).sort(function (a, b) { return (a.priority || "Z").localeCompare(b.priority || "Z") || String(b.date).localeCompare(String(a.date)); });
+      return (!f.town || p.town === f.town) && (!f.zone || p.zone === f.zone) && (!f.stage || p.stage === f.stage) && (!f.type || p.type === f.type) && (!f.pri || p.priority === f.pri) && (!f.q || (p.address + " " + p.description + " " + p.status + " " + p.permit_no).toLowerCase().indexOf(f.q.toLowerCase()) > -1) && (!f.fresh || p.first_seen === d.projects.reduce(function (a, x) { return x.first_seen > a ? x.first_seen : a; }, ""));
+    }).sort(function (a, b) { return (a.priority || "Z").localeCompare(b.priority || "Z") || (Number(b.fit) || 0) - (Number(a.fit) || 0) || String(b.date).localeCompare(String(a.date)); });
+    var zones = d.projects.map(function (p) { return p.zone; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort();
     var towns = d.projects.map(function (p) { return p.town; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort();
     var sel = function (k, opts, lab) { return '<select data-ox-pf="' + k + '"><option value="">' + lab + "</option>" + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (f[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>"; };
-    return '<div class="ox-filters"><input type="search" data-ox-pf="q" placeholder="Search address, permit, status…" value="' + esc(f.q || "") + '">' + sel("town", towns.map(function (t) { return [t, t]; }), "All towns") +
+    return '<div class="ox-filters"><input type="search" data-ox-pf="q" placeholder="Search address, permit, status…" value="' + esc(f.q || "") + '">' + (zones.length ? sel("zone", zones.map(function (z) { return [z, z]; }), "All zones") : "") + sel("town", towns.map(function (t) { return [t, t]; }), "All towns") + sel("stage", ["1", "2", "3", "4", "5"].map(function (k) { return [k, OX_PSTAGE_L[k]]; }), "Any stage") +
       sel("type", Object.keys(OX_TYPE_L).map(function (t) { return [t, OX_TYPE_L[t]]; }), "All types") + sel("pri", [["A", "Priority A"], ["B", "Priority B"], ["C", "Priority C"]], "Any priority") +
       '<label class="ls-chk"><input type="checkbox" data-ox-pf="fresh"' + (f.fresh ? " checked" : "") + "> New this week</label></div>" +
-      '<div class="card ox-tbl-card"><div class="ox-tbl-wrap"><table class="ox-tbl"><thead><tr><th>Pri</th><th>Address</th><th>Town</th><th>Type</th><th>Status</th><th>Firms</th></tr></thead><tbody>' +
+      '<div class="card ox-tbl-card"><div class="ox-tbl-wrap"><table class="ox-tbl"><thead><tr><th>Fit</th><th>Address</th><th>Town</th><th>Type</th><th>Stage</th><th>Firms</th></tr></thead><tbody>' +
       list.slice(0, S.oxPLim || 120).map(function (p) { var rl = oxRolesOf(p.id).filter(function (x) { return x.role !== "owner"; }), fs = rl.filter(function (x) { return x.firm_id; }).map(function (x) { return oxF(x.firm_id); }).filter(function (x, i, l) { return x && l.indexOf(x) === i; });
-        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span></td><td><b>" + oxAddr(p).split(",")[0] + "</b>" + (p.first_seen === p.last_seen && p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill gold">new</span>' : "") + '</td><td>' + esc(p.town) + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + '</td><td class="ox-st">' + esc(String(p.status).slice(0, 60)) + "</td><td>" + (fs.length ? fs.slice(0, 2).map(function (x) { return oxSegPill(x).replace(/<\/span>$/, "") + " " + esc(x.name.split(" (")[0].slice(0, 22)) + "</span>"; }).join(" ") + (fs.length > 2 ? " +" + (fs.length - 2) : "") : rl.length ? '<span class="muted small">' + rl.length + " named, not linked</span>" : '<span class="muted small">—</span>') + "</td></tr>"; }).join("") +
+        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span>" + (p.fit ? ' <small class="muted">' + esc(String(Math.round(Number(p.fit)))) + "</small>" : "") + "</td><td><b>" + oxAddr(p).split(",")[0] + "</b>" + (p.first_seen === p.last_seen && p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill gold">new</span>' : "") + '</td><td>' + esc(p.town) + (p.sub_area ? '<small class="muted">' + esc(p.sub_area) + "</small>" : "") + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + '</td><td class="ox-st">' + (p.stage && OX_PSTAGE_L[p.stage] ? "<b>" + esc(OX_PSTAGE_L[p.stage]) + "</b> " : "") + '<small class="muted">' + esc(String(p.status).slice(0, 50)) + "</small></td><td>" + (fs.length ? fs.slice(0, 2).map(function (x) { return oxSegPill(x).replace(/<\/span>$/, "") + " " + esc(x.name.split(" (")[0].slice(0, 22)) + "</span>"; }).join(" ") + (fs.length > 2 ? " +" + (fs.length - 2) : "") : rl.length ? '<span class="muted small">' + rl.length + " named, not linked</span>" : '<span class="muted small">—</span>') + "</td></tr>"; }).join("") +
       "</tbody></table></div>" + (list.length > (S.oxPLim || 120) ? '<button class="link small ox-more" data-a="oxPMore">Show all ' + list.length + "</button>" : "") + '<p class="muted small ox-count">' + list.length + " of " + d.projects.length + " projects</p></div>";
   }
   /* ---------- Firms ---------- */
@@ -6291,8 +6295,8 @@
   }
   function oxProjCard(m) {
     var p = oxP(m.id); if (!p) return "<p>Project not found.</p>"; var rl = oxRolesOf(p.id), d = S.ox, tl = d.touches.filter(function (t) { return t.project_id === p.id; });
-    return '<div class="ox-card-h"><div><h2>' + oxAddr(p) + '</h2><div class="ox-sub"><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span> " + esc(OX_TYPE_L[p.type] || p.type) + (p.other_types && p.other_types !== p.type ? " · " + esc(p.other_types) : "") + (p.permit_no ? " · " + esc(p.permit_no) : "") + (p.date ? " · " + oxWhen(p.date) : "") + "</div></div></div>" +
-      '<p class="small">' + esc(p.description) + "</p><p class=\"small\"><b>Status:</b> " + esc(p.status) + "</p>" + (p.next_step ? '<p class="small muted">Next: ' + esc(p.next_step) + "</p>" : "") + (p.known && !/no match/i.test(p.known) ? '<p class="small">🤝 ' + esc(p.known) + "</p>" : "") +
+    return '<div class="ox-card-h"><div><h2>' + oxAddr(p) + '</h2><div class="ox-sub"><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span> " + esc(OX_TYPE_L[p.type] || p.type) + (p.other_types && p.other_types !== p.type ? " · " + esc(p.other_types) : "") + (p.permit_no ? " · " + esc(p.permit_no) : "") + (p.date ? " · " + oxWhen(p.date) : "") + "</div>" + (p.zone || p.stage || p.fit ? '<div class="ox-sub small">' + [p.zone ? esc(p.zone) + (p.sub_area ? " · " + esc(p.sub_area) : "") : "", p.stage && OX_PSTAGE_L[p.stage] ? "Stage: " + esc(OX_PSTAGE_L[p.stage]) : "", p.fit ? "Fit " + esc(String(Math.round(Number(p.fit)))) + "/100" : ""].filter(Boolean).join(" · ") + "</div>" : "") + "</div></div>" +
+      '<p class="small">' + esc(p.description) + "</p><p class=\"small\"><b>Status:</b> " + esc(p.status) + "</p>" + (p.next_step ? '<p class="small muted">Next: ' + esc(p.next_step) + "</p>" : "") + (p.reach ? '<p class="small">🎯 Reach first: <b>' + esc(p.reach) + "</b></p>" : "") + (p.known && !/no match/i.test(p.known) ? '<p class="small">🤝 ' + esc(p.known) + "</p>" : "") +
       (p.source_url ? '<p class="small"><a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Open the source ↗</a></p>' : "") +
       '<div class="eyebrow" style="margin-top:12px">Who’s on it</div>' + (rl.length ? rl.map(function (x) { var f = x.firm_id ? oxF(x.firm_id) : null;
         if (x.role === "owner") return '<div class="ox-who owner"><span>' + esc(OX_ROLE_L.owner) + '</span><b>' + esc(x.raw) + '</b><small>Owners are never contacted.</small></div>';
@@ -6432,7 +6436,7 @@
     if (t.matches && t.matches("[data-ox-files]")) {
       var files = [].slice.call(t.files || []); S.oxPend = [];
       Promise.all(files.map(function (fl) { return fl.text().then(function (txt) { var p = oxCsv(txt), h = p.head;
-        var kind = h.indexOf("application_permit_no") > -1 ? "projects" : h.indexOf("public_email") > -1 ? "contacts" : h.indexOf("firm_type") > -1 && h.indexOf("segment") > -1 ? "firms" : h.indexOf("day0_email_date") > -1 ? "tracker" : "";
+        var kind = h.indexOf("application_permit_no") > -1 || (h.indexOf("permit_no") > -1 && h.indexOf("city") > -1) ? "projects" : h.indexOf("public_email") > -1 ? "contacts" : h.indexOf("firm_type") > -1 && h.indexOf("segment") > -1 ? "firms" : h.indexOf("day0_email_date") > -1 ? "tracker" : "";
         S.oxPend.push({ file: fl.name, kind: kind, rows: p.rows }); }); })).then(function () { keepScroll(render); }).catch(function (er) { toast(er.message); });
       return;
     }

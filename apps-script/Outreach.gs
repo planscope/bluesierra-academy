@@ -15,7 +15,7 @@
      firms with a verified email are skipped, and nobody is looked up twice.
    ====================================================================================================== */
 TABLES.OxProjects = ["id", "key", "town", "address", "type", "other_types", "description", "permit_no", "status", "date", "priority", "source_url", "known", "next_step",
-  "owner", "first_seen", "last_seen", "import_id", "updated_at"];
+  "owner", "first_seen", "last_seen", "import_id", "updated_at", "zone", "sub_area", "stage", "fit", "reach"];
 TABLES.OxFirms = ["id", "name", "norm", "firm_type", "segment", "priority", "wave", "channel", "website", "phone", "flags", "notes", "individual", "confirmed",
   "status", "next_step", "next_date", "email_source", "created_at", "updated_at"];
 TABLES.OxContacts = ["id", "firm_id", "name", "role", "email", "phone", "linkedin", "source", "verified", "rr_id", "created_at", "updated_at"];
@@ -27,7 +27,7 @@ TABLES.OxEnrich = ["id", "firm_id", "person", "rr_id", "status", "result", "at",
 TABLES.OxAlerts = ["id", "firm_id", "project_id", "kind", "status", "created_at", "done_at"];
 TABLES.OxImports = ["id", "kind", "file", "at", "by", "counts"];
 var OX_T = ["OxProjects", "OxFirms", "OxContacts", "OxRoles", "OxTouches", "OxOutbox", "OxOpps", "OxEnrich", "OxAlerts", "OxImports"];
-var OX_TOWNS = ["Atherton", "Burlingame", "Hillsborough", "Los Altos", "Los Altos Hills", "Los Gatos", "Saratoga", "Woodside"];
+var OX_TOWNS = ["Atherton", "Burlingame", "Hillsborough", "Los Altos", "Los Altos Hills", "Los Gatos", "Saratoga", "Woodside", "Portola Valley", "Menlo Park", "Palo Alto", "Monte Sereno", "Cupertino"];
 var OX_STAGES = ["invited", "plans", "site_walk", "bid_sent", "won", "lost"];
 var OX_ROLES = ["architect", "landscape_architect", "contractor", "engineer", "applicant", "owner"];
 var OX_DAILY = 10;                                                                  // new first emails a day
@@ -93,7 +93,14 @@ ACTIONS.oxImport = function (me, b) {
   imp.counts = JSON.stringify(c); insert("OxImports", imp);
   return { counts: c };
 };
+/* The ranked file (ALL_permit_leads_ranked.csv and its zone_*.csv parts) names some columns differently and adds zone, stage and fit. */
+function oxProjRow(r) {
+  if (r.application_permit_no != null || r.permit_no == null) return r;
+  return Object.assign({}, r, { application_permit_no: r.permit_no, town: r.city, project_description: r.description, status: r.status_raw, owner: r.owner_do_not_contact,
+    other_project_types: r.all_types, priority: r.fit_tier || r.original_priority || "" });
+}
 function oxImportProjects(list, g, imp) {
+  list = list.map(oxProjRow);
   var all = rows("OxProjects").slice(), byKey = {}, t = now(), today = oxToday(), c = { rows: list.length, new: 0, updated: 0, skipped: 0, roles: 0, alerts: 0 }, fresh = [];
   all.forEach(function (p) { byKey[p.key] = p; });
   list.forEach(function (r) {
@@ -101,7 +108,8 @@ function oxImportProjects(list, g, imp) {
     var key = (g(r, "application_permit_no").toUpperCase() + "|" + oxAddrKey(addr, town)), p = byKey[key];
     if (!p && !g(r, "application_permit_no")) { all.forEach(function (x) { if (!p && x.key.split("|").slice(1).join("|") === oxAddrKey(addr, town) && !x.permit_no) p = x; }); }
     var f = { town: town, address: addr, type: g(r, "project_type"), other_types: g(r, "other_project_types"), description: g(r, "project_description"), permit_no: g(r, "application_permit_no"),
-      status: g(r, "status"), date: g(r, "date"), priority: g(r, "priority").toUpperCase().slice(0, 1), source_url: g(r, "source_url"), known: g(r, "known_to_jesus"), next_step: g(r, "next_step"), owner: g(r, "owner"), last_seen: today, updated_at: t };
+      status: g(r, "status"), date: g(r, "date"), priority: g(r, "priority").toUpperCase().slice(0, 1), source_url: g(r, "source_url"), known: g(r, "known_to_jesus"), next_step: g(r, "next_step"), owner: g(r, "owner"), last_seen: today, updated_at: t,
+      zone: g(r, "zone"), sub_area: g(r, "sub_area"), stage: (g(r, "stage_order") || g(r, "permit_stage")).replace(/^(\d).*$/, "$1").slice(0, 1).replace(/\D/, ""), fit: String(g(r, "fit_score")).replace(/[^\d.]/g, "").slice(0, 5), reach: g(r, "firm_to_reach").slice(0, 200) };
     if (p) { Object.keys(f).forEach(function (k) { if (f[k] !== "" || k === "status") p[k] = f[k]; }); c.updated++; }
     else { p = Object.assign({ id: newId("op"), key: key, first_seen: today, import_id: imp.id }, f); all.push(p); byKey[key] = p; c.new++; fresh.push(p.id); }
     p._raw = r;
@@ -111,21 +119,23 @@ function oxImportProjects(list, g, imp) {
   var firms = rows("OxFirms"), touched = {}; all.forEach(function (p) { if (p._raw) touched[p.id] = 1; });
   var old = rows("OxRoles"), prevLink = {};                                         // keep the firm a person already linked, by project + role + name
   old.forEach(function (x) { if (x.source === "permit" && x.firm_id) prevLink[x.project_id + "|" + x.role + "|" + x.raw] = x.firm_id; });
-  var out = old.filter(function (x) { return !(x.source === "permit" && touched[x.project_id]); });
+  var out = old.filter(function (x) { return !(x.source === "permit" && touched[x.project_id]); }), seenOut = {}, seenOld = {};
+  out.forEach(function (x) { seenOut[x.project_id + "|" + x.role + "|" + x.raw] = 1; }); old.forEach(function (x) { seenOld[x.project_id + "|" + x.role + "|" + x.raw] = 1; });
   all.forEach(function (p) {
     if (!p._raw) return; var r = p._raw;
     [["architect", "architect"], ["landscape_architect", "landscape_architect"], ["contractor", "contractor"], ["engineer", "engineer"], ["applicant", "applicant"], ["owner", "owner"]].forEach(function (col) {
       String(g(r, col[0])).split(";").map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (raw) {
-        if (out.some(function (x) { return x.project_id === p.id && x.role === col[1] && x.raw === raw; })) return;
+        var rk = p.id + "|" + col[1] + "|" + raw; if (seenOut[rk]) return; seenOut[rk] = 1;
         var fm = col[1] === "owner" ? null : oxFindFirm(firms, raw), keepId = prevLink[p.id + "|" + col[1] + "|" + raw] || "";
-        out.push({ id: newId("or"), project_id: p.id, firm_id: col[1] === "owner" ? "" : keepId || (fm ? fm.id : ""), role: col[1], raw: raw, source: "permit" }); if (!old.some(function (x) { return x.project_id === p.id && x.raw === raw && x.role === col[1]; })) c.roles++;
+        out.push({ id: newId("or"), project_id: p.id, firm_id: col[1] === "owner" ? "" : keepId || (fm ? fm.id : ""), role: col[1], raw: raw, source: "permit" }); if (!seenOld[rk]) c.roles++;
       });
     });
   });
   oxWriteAll("OxRoles", out);
   // a new project for a firm we're already talking to is a reason to write again
   var active = {}; rows("OxTouches").forEach(function (x) { active[x.firm_id] = 1; });
-  var al = []; out.forEach(function (x) { if (x.firm_id && active[x.firm_id] && fresh.indexOf(x.project_id) > -1 && !al.some(function (a) { return a.firm_id === x.firm_id && a.project_id === x.project_id; })) al.push({ id: newId("oa"), firm_id: x.firm_id, project_id: x.project_id, kind: "new_project", status: "open", created_at: t, done_at: "" }); });
+  var freshM = {}; fresh.forEach(function (id) { freshM[id] = 1; });
+  var al = []; out.forEach(function (x) { if (x.firm_id && active[x.firm_id] && freshM[x.project_id] && !al.some(function (a) { return a.firm_id === x.firm_id && a.project_id === x.project_id; })) al.push({ id: newId("oa"), firm_id: x.firm_id, project_id: x.project_id, kind: "new_project", status: "open", created_at: t, done_at: "" }); });
   oxAppend("OxAlerts", al); c.alerts = al.length;
   return c;
 }
