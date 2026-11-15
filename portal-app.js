@@ -2674,7 +2674,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115141128";
+  var BUILD = "20261115145128";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6094,7 +6094,11 @@
   function oxProjOf(fid) { var d = S.ox; return d.roles.filter(function (x) { return x.firm_id === fid; }).map(function (x) { return { p: oxP(x.project_id), role: x.role }; }).filter(function (x) { return x.p; }); }
   function oxRolesOf(pid) { return S.ox.roles.filter(function (x) { return x.project_id === pid; }); }
   function oxSegPill(f) { var s = OX_SEG[f.segment] || ["", f.segment || ""]; return '<span class="ox-seg ox-' + esc(f.segment || "none") + '">' + s[0] + " " + esc(s[1]) + "</span>"; }
-  function oxAddr(p) { return p ? esc(String(p.address || "").toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); })) + ", " + esc(p.town) : ""; }
+  function oxStreetU(p) {                                            // the street with its unit ("2066 Sterling Ave, Unit A"), without repeating the town
+    var a = String((p && p.address) || "").replace(new RegExp(",\\s*" + String((p && p.town) || "-").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\s*,?\\s*ca)?(\\s*\\d{5})?\\s*$", "i"), "");
+    return esc(a.toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }));
+  }
+  function oxAddr(p) { return p ? oxStreetU(p) + ", " + esc(p.town) : ""; }
   function oxWhen(d) { if (!d) return ""; var x = new Date(String(d).slice(0, 10) + "T12:00:00"); return isNaN(x) ? esc(d) : x.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
   function oxWho(c) {                                                // a name to show: their name, else the first part of their email (lisa@ → Lisa), else "General inbox"
     if (c.name) return c.name; var lp = String(c.email || "").split("@")[0];
@@ -6207,7 +6211,7 @@
       '<label class="ls-chk"><input type="checkbox" data-ox-pf="fresh"' + (f.fresh ? " checked" : "") + "> New this week</label></div>" +
       '<div class="card ox-tbl-card"><div class="ox-tbl-wrap"><table class="ox-tbl"><thead><tr><th>Fit</th><th>Address</th><th>Town</th><th>Type</th><th>Stage</th><th>Firms</th></tr></thead><tbody>' +
       list.slice(0, S.oxPLim || 120).map(function (p) { var rl = oxRolesOf(p.id).filter(function (x) { return x.role !== "owner"; }), fs = rl.filter(function (x) { return x.firm_id; }).map(function (x) { return oxF(x.firm_id); }).filter(function (x, i, l) { return x && l.indexOf(x) === i; });
-        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span>" + (p.fit ? ' <small class="muted">' + esc(String(Math.round(Number(p.fit)))) + "</small>" : "") + "</td><td><b>" + oxAddr(p).split(",")[0] + "</b>" + (p.first_seen === p.last_seen && p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill gold">new</span>' : "") + '</td><td>' + esc(p.town) + (p.sub_area ? '<small class="muted">' + esc(p.sub_area) + "</small>" : "") + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + '</td><td class="ox-st">' + (p.stage && OX_PSTAGE_L[p.stage] ? "<b>" + esc(OX_PSTAGE_L[p.stage]) + "</b> " : "") + '<small class="muted">' + esc(String(p.status).slice(0, 50)) + "</small></td><td>" + (fs.length ? fs.slice(0, 2).map(function (x) { return oxSegPill(x).replace(/<\/span>$/, "") + " " + esc(x.name.split(" (")[0].slice(0, 22)) + "</span>"; }).join(" ") + (fs.length > 2 ? " +" + (fs.length - 2) : "") : rl.length ? '<span class="muted small">' + rl.length + " named, not linked</span>" : '<span class="muted small">—</span>') + "</td></tr>"; }).join("") +
+        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span>" + (p.fit ? ' <small class="muted">' + esc(String(Math.round(Number(p.fit)))) + "</small>" : "") + "</td><td><b>" + oxStreetU(p) + "</b>" + (p.first_seen === p.last_seen && p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill gold">new</span>' : "") + '</td><td>' + esc(p.town) + (p.sub_area ? '<small class="muted">' + esc(p.sub_area) + "</small>" : "") + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + '</td><td class="ox-st">' + (p.stage && OX_PSTAGE_L[p.stage] ? "<b>" + esc(OX_PSTAGE_L[p.stage]) + "</b> " : "") + '<small class="muted">' + esc(String(p.status).slice(0, 50)) + "</small></td><td>" + (fs.length ? fs.slice(0, 2).map(function (x) { return oxSegPill(x).replace(/<\/span>$/, "") + " " + esc(x.name.split(" (")[0].slice(0, 22)) + "</span>"; }).join(" ") + (fs.length > 2 ? " +" + (fs.length - 2) : "") : rl.length ? '<span class="muted small">' + rl.length + " named, not linked</span>" : '<span class="muted small">—</span>') + "</td></tr>"; }).join("") +
       "</tbody></table></div>" + (list.length > (S.oxPLim || 120) ? '<button class="link small ox-more" data-a="oxPMore">Show all ' + list.length + "</button>" : "") + '<p class="muted small ox-count">' + list.length + " of " + d.projects.length + " projects</p></div>";
   }
   /* ---------- Firms ---------- */
@@ -6297,7 +6301,7 @@
     var p = oxP(m.id); if (!p) return "<p>Project not found.</p>"; var rl = oxRolesOf(p.id), d = S.ox, tl = d.touches.filter(function (t) { return t.project_id === p.id; });
     return '<div class="ox-card-h"><div><h2>' + oxAddr(p) + '</h2><div class="ox-sub"><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span> " + esc(OX_TYPE_L[p.type] || p.type) + (p.other_types && p.other_types !== p.type ? " · " + esc(p.other_types) : "") + (p.permit_no ? " · " + esc(p.permit_no) : "") + (p.date ? " · " + oxWhen(p.date) : "") + "</div>" + (p.zone || p.stage || p.fit ? '<div class="ox-sub small">' + [p.zone ? esc(p.zone) + (p.sub_area ? " · " + esc(p.sub_area) : "") : "", p.stage && OX_PSTAGE_L[p.stage] ? "Stage: " + esc(OX_PSTAGE_L[p.stage]) : "", p.fit ? "Fit " + esc(String(Math.round(Number(p.fit)))) + "/100" : ""].filter(Boolean).join(" · ") + "</div>" : "") + "</div></div>" +
       '<p class="small">' + esc(p.description) + "</p><p class=\"small\"><b>Status:</b> " + esc(p.status) + "</p>" + (p.next_step ? '<p class="small muted">Next: ' + esc(p.next_step) + "</p>" : "") + (p.reach ? '<p class="small">🎯 Reach first: <b>' + esc(p.reach) + "</b></p>" : "") + (p.known && !/no match/i.test(p.known) ? '<p class="small">🤝 ' + esc(p.known) + "</p>" : "") +
-      (p.source_url ? '<p class="small"><a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Open the source ↗</a></p>' : "") +
+      (p.source_url ? '<p class="small"><a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Open the source ↗</a></p>' : "") + '<p class="small"><button class="link small" data-a="oxProjDel" data-p="' + esc(p.id) + '">Delete project</button> <span class="muted">(a duplicate, or not ours)</span></p>' +
       '<div class="eyebrow" style="margin-top:12px">Who’s on it</div>' + (rl.length ? rl.map(function (x) { var f = x.firm_id ? oxF(x.firm_id) : null;
         if (x.role === "owner") return '<div class="ox-who owner"><span>' + esc(OX_ROLE_L.owner) + '</span><b>' + esc(x.raw) + '</b><small>Owners are never contacted.</small></div>';
         return '<div class="ox-who"><span>' + esc(OX_ROLE_L[x.role] || x.role) + "</span>" + (f ? '<button class="link" data-a="oxFirm" data-f="' + esc(f.id) + '"><b>' + esc(f.name) + "</b></button> " + oxSegPill(f) : "<b>" + esc(x.raw) + '</b> <button class="link small" data-a="oxLinkAsk" data-r="' + esc(x.id) + '">Link to a firm</button>') + "</div>"; }).join("") : '<p class="muted small">No names on this permit yet. ' + esc(p.next_step || "") + "</p>") +
@@ -6387,6 +6391,7 @@
     if (a === "oxMore") { S.oxMore = !S.oxMore; return keepScroll(render); }
     if (a === "oxPMore") { S.oxPLim = 5000; return keepScroll(render); }
     if (a === "oxFirm") { S.modal = { type: "lsxOxFirm", id: b.dataset.f }; return keepScroll(render); }
+    if (a === "oxProjDel") { var pid0 = b.dataset.p; return sure("Delete this project from Outreach? Its permit links and alerts go too. Firms, people and history stay.", function () { call("oxDeleteProject", { id: pid0 }).then(function () { S.modal = null; toast("🗑️ Project deleted"); S.oxBusy = 0; oxLoad(); keepScroll(render); }).catch(function (e) { toast(e.message); }); }, "Delete"); }
     if (a === "oxProj") { S.modal = { type: "lsxOxProj", id: b.dataset.p }; return keepScroll(render); }
     if (a === "oxNewVer") { if (S.modal && S.modal.type === "lsxOxMail") oxMore(S.modal); return; }
     if (a === "oxVer") { var mv = S.modal; if (!mv || mv.type !== "lsxOxMail" || mv.busy) return; oxKeepEdits(mv); mv.idx = Math.max(0, Math.min(mv.hist.length - 1, mv.idx + Number(b.dataset.v))); return oxShowVer(mv); }

@@ -41,6 +41,8 @@ function oxAdmin(me) { if (!me || me.role !== "admin" || me.preview) throw new E
 /* ---------- names, addresses and dates ---------- */
 var OX_STREET = { lane: "ln", road: "rd", avenue: "ave", av: "ave", drive: "dr", court: "ct", street: "st", place: "pl", circle: "cir", boulevard: "blvd", terrace: "ter", highway: "hwy", parkway: "pkwy", way: "way", trail: "trl", lne: "ln" };
 function oxAddrKey(addr, town) {
+  var tn = String(town || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");     // "1 Tynan Way, Portola Valley" is the same place as "1 Tynan Way"
+  if (tn) addr = String(addr || "").replace(new RegExp(",\\s*" + tn + "(\\s*,?\\s*ca)?(\\s*\\d{5})?\\s*$", "i"), "");
   var w = String(addr || "").toLowerCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim().split(" ").map(function (x) { return OX_STREET[x] || x; });
   return (w.join(" ") + "|" + String(town || "").toLowerCase().trim()).trim();
 }
@@ -103,10 +105,11 @@ function oxImportProjects(list, g, imp) {
   list = list.map(oxProjRow);
   var all = rows("OxProjects").slice(), byKey = {}, t = now(), today = oxToday(), c = { rows: list.length, new: 0, updated: 0, skipped: 0, roles: 0, alerts: 0 }, fresh = [];
   all.forEach(function (p) { byKey[p.key] = p; });
+  all.forEach(function (p) { var k2 = String(p.permit_no || "").toUpperCase() + "|" + oxAddrKey(p.address, p.town); if (!byKey[k2]) byKey[k2] = p; });   // also by today's address rules
   list.forEach(function (r) {
     var town = oxTitle(g(r, "town")), addr = g(r, "address"); if (!addr || !town) { c.skipped++; return; }
     var key = (g(r, "application_permit_no").toUpperCase() + "|" + oxAddrKey(addr, town)), p = byKey[key];
-    if (!p && !g(r, "application_permit_no")) { all.forEach(function (x) { if (!p && x.key.split("|").slice(1).join("|") === oxAddrKey(addr, town) && !x.permit_no) p = x; }); }
+    if (!p && !g(r, "application_permit_no")) { all.forEach(function (x) { if (!p && oxAddrKey(x.address, x.town) === oxAddrKey(addr, town) && !x.permit_no) p = x; }); }
     var f = { town: town, address: addr, type: g(r, "project_type"), other_types: g(r, "other_project_types"), description: g(r, "project_description"), permit_no: g(r, "application_permit_no"),
       status: g(r, "status"), date: g(r, "date"), priority: g(r, "priority").toUpperCase().slice(0, 1), source_url: g(r, "source_url"), known: g(r, "known_to_jesus"), next_step: g(r, "next_step"), owner: g(r, "owner"), last_seen: today, updated_at: t,
       zone: g(r, "zone"), sub_area: g(r, "sub_area"), stage: (g(r, "stage_order") || g(r, "permit_stage")).replace(/^(\d).*$/, "$1").slice(0, 1).replace(/\D/, ""), fit: String(g(r, "fit_score")).replace(/[^\d.]/g, "").slice(0, 5), reach: g(r, "firm_to_reach").slice(0, 200) };
@@ -559,6 +562,16 @@ ACTIONS.oxSaveContact = function (me, b) {
   if (ct) { data.updated_at = t; update("OxContacts", "id", ct.id, data); return { id: ct.id }; }
   var id = newId("oc"); insert("OxContacts", Object.assign({ id: id, source: "manual", verified: "no", rr_id: "", created_at: t, updated_at: t }, data)); return { id: id };
 };
+/* Delete a project (a duplicate, or one that isn't ours). Its permit links and alerts go; firms, people and the history stay. */
+ACTIONS.oxDeleteProject = function (me, b) {
+  oxNeed(me); var id = String(b.id || ""), p = findBy("OxProjects", "id", id); if (!p) throw new Error("Project not found.");
+  if (rows("OxOpps").some(function (o) { return o.project_id === id; })) throw new Error("This project has a bid in Bids. Move or delete the bid first.");
+  rows("OxTouches").filter(function (t) { return t.project_id === id; }).forEach(function (t) { update("OxTouches", "id", t.id, { project_id: "" }); });
+  removeWhere("OxRoles", function (x) { return x.project_id === id; });
+  removeWhere("OxAlerts", function (x) { return x.project_id === id; });
+  removeWhere("OxProjects", function (x) { return x.id === id; });
+  return { deleted: id };
+};
 ACTIONS.oxDeleteContact = function (me, b) { oxNeed(me); removeWhere("OxContacts", function (c) { return c.id === String(b.id || ""); }); return {}; };
 ACTIONS.oxSaveOpp = function (me, b) {
   oxNeed(me); var x = b.opp || {}, t = now(), o = x.id ? findBy("OxOpps", "id", String(x.id)) : null;
@@ -761,5 +774,5 @@ ACTIONS.oxExport = function (me, b) {
   return { file: "outreach_" + t + "_" + oxToday() + ".csv", csv: [h.join(",")].concat(rows(map[t]).map(function (r) { return h.map(function (k) { return q(r[k]); }).join(","); })).join("\n") };
 };
 NO_LOCK.oxExport = 1; NO_LOCK.oxEnrichPlan = 1;
-["oxAiSave", "oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
+["oxDeleteProject", "oxAiSave", "oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
 ["oxHome", "oxDraft", "oxAiDraft", "oxExport", "oxEnrichPlan"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
