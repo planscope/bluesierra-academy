@@ -2674,7 +2674,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115145128";
+  var BUILD = "20261115150413";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6094,6 +6094,14 @@
   function oxProjOf(fid) { var d = S.ox; return d.roles.filter(function (x) { return x.firm_id === fid; }).map(function (x) { return { p: oxP(x.project_id), role: x.role }; }).filter(function (x) { return x.p; }); }
   function oxRolesOf(pid) { return S.ox.roles.filter(function (x) { return x.project_id === pid; }); }
   function oxSegPill(f) { var s = OX_SEG[f.segment] || ["", f.segment || ""]; return '<span class="ox-seg ox-' + esc(f.segment || "none") + '">' + s[0] + " " + esc(s[1]) + "</span>"; }
+  function oxSigBlock(g) {                                           // the signature exactly as it goes out in the email
+    if (!g || !g.name) return ""; var gray = "color:#808080", red = "color:#c0504d", web = String(g.website || ""), out = ['<b style="' + gray + '">' + esc(g.name) + "</b>"];
+    if (g.title) out.push('<i style="' + red + '">' + esc(g.title) + "</i>"); if (g.company) out.push('<span style="' + gray + '">' + esc(g.company) + "</span>");
+    if (g.email) out.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
+    [["P", g.phone], ["F", g.fax], ["C", g.cell]].forEach(function (x) { if (x[1]) out.push('<span style="' + red + '">' + x[0] + '</span> <span style="' + gray + '">' + esc(x[1]) + "</span>"); });
+    if (web) out.push('<a href="' + esc(/^https?:/i.test(web) ? web : "https://" + web) + '" target="_blank" rel="noopener">' + esc(web.replace(/^https?:\/\//i, "")) + "</a>");
+    return '<div class="ox-sig" style="font-family:Verdana,Geneva,sans-serif">' + out.join("<br>") + "</div>";
+  }
   function oxStreetU(p) {                                            // the street with its unit ("2066 Sterling Ave, Unit A"), without repeating the town
     var a = String((p && p.address) || "").replace(new RegExp(",\\s*" + String((p && p.town) || "-").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\s*,?\\s*ca)?(\\s*\\d{5})?\\s*$", "i"), "");
     return esc(a.toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }));
@@ -6260,6 +6268,9 @@
       (li ? '<p class="muted small">Last import: ' + esc(li.file || li.kind) + " · " + oxWhen(li.at) + " · " + esc(Object.keys(parseJ(li.counts)).filter(function (k) { return typeof parseJ(li.counts)[k] === "number"; }).map(function (k) { return parseJ(li.counts)[k] + " " + k; }).join(", ")) + "</p>" : "") + "</div>" +
       '<div class="card"><h3>🤖 The weekly permit search</h3><p class="muted small">Give this to Grok (or any research assistant) every Monday, then import the CSV it returns here. Towns: ' + esc(d.towns.join(", ")) + ".</p>" +
       '<pre class="ox-prompt">' + esc(oxGrokPrompt()) + '</pre><button class="btn ghost sm" data-a="oxCopyPrompt">Copy the prompt</button></div>' +
+      (function () { var g = d.sig || {}, fld = function (k, lab, ph) { return '<label class="f">' + lab + '<input name="' + k + '" value="' + esc(g[k] || "") + '" placeholder="' + esc(ph || "") + '"></label>'; };
+        return '<div class="card ox-sigcard"><h3>✍️ Email signature</h3><p class="muted small">Added under every outreach email, like your normal Gmail signature. ' + (g.name ? "This is how it looks:" : "Not set yet.") + "</p>" + (g.name ? oxSigBlock(g) : "") +
+          (d.can_send ? '<details' + (g.name ? "" : " open") + '><summary class="small">' + (g.name ? "Edit" : "Set it up") + '</summary><form class="form" data-form="oxSig"><div class="row2">' + fld("name", "Name", "Jesus Toto") + fld("title", "Title", "Principal") + '</div><div class="row2">' + fld("company", "Company", "Blue Sierra Construction, Inc.") + fld("email", "Email", "you@bluesierracorp.com") + '</div><div class="row2">' + fld("phone", "Phone (P)") + fld("fax", "Fax (F)") + '</div><div class="row2">' + fld("cell", "Cell (C)") + fld("website", "Website", "www.bluesierracorp.com") + '</div><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Save signature</button></div></form></details>' : "") + "</div>"; })() +
       '<div class="card ox-ai"><h3>✨ AI email writer</h3>' + (d.ai && d.ai.on
         ? '<p>Connected. “Write email” starts with a fresh draft and “✨ New version” writes another one, each different. It only uses the firm, the first name, the street and town and the type of project. Owners are never sent.</p>' + (d.can_send ? '<button class="link small" data-a="oxAiOff">Disconnect</button>' : "")
         : '<p class="muted small">Off. “New version” still works with the saved versions. To have Claude write each email, paste an Anthropic API key (console.anthropic.com → API keys). It’s stored on the server, never shown again and never sent to browsers. About 1–2 cents per draft.</p>' + (d.can_send ? '<form class="form" data-form="oxAiKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects the AI writer.</p>')) + "</div>" +
@@ -6321,8 +6332,9 @@
         '<form class="form" data-form="oxMail"><div class="row2"><label class="f">To<input name="to" type="email" required value="' + esc(dr.to) + '" list="ox-to"><datalist id="ox-to">' + cs.map(function (c) { return '<option value="' + esc(c.email) + '">' + esc(oxWho(c)) + "</option>"; }).join("") + "</datalist></label>" +
         '<label class="f">About<select name="project">' + pr.map(function (x) { return '<option value="' + esc(x.p.id) + '"' + (x.p.id === dr.project_id ? " selected" : "") + (held.indexOf(x.p.id) > -1 ? " disabled" : "") + ">" + oxAddr(x.p).replace(/&amp;/g, "&") + (held.indexOf(x.p.id) > -1 ? " (waits for warm)" : "") + "</option>"; }).join("") + "</select></label></div>" +
         (gu ? '<div class="ox-wait">🤞 This address is a guess (built from the firm’s email format). It may bounce: if you have a real one, use it.</div>' : "") +
-        oxVerBar(m) + '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(oxCur(m).subject) + '"></label><label class="f">Message<textarea name="body" rows="6" required>' + esc(oxCur(m).body) + "</textarea></label>" +
-        '<p class="muted small">Short on purpose: the project, one ask, the site walk. No sign-off. It goes from your Gmail and its replies come back to you.</p>' +
+        oxVerBar(m) + '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(oxCur(m).subject) + '"></label><label class="f">Message<textarea name="body" rows="8" required>' + esc(oxCur(m).body) + "</textarea></label>" +
+        (S.ox.sig && S.ox.sig.name ? '<div class="ox-sig-prev"><span class="muted small">Your signature is added below the message:</span>' + oxSigBlock(S.ox.sig) + "</div>" : '<div class="ox-wait">✍️ No signature yet. Add it in Import & tools → Email signature so the email ends like your normal ones.</div>') +
+        '<p class="muted small">Reads like a quick note from you: the project, one ask, the site walk. It goes from your Gmail like any email you write, and replies come back to you.</p>' +
         '<div class="actions">' + cancel + (S.ox.can_send ? '<button class="btn" type="submit">Send from my Gmail ✉️</button>' : '<span class="muted small">Only Jesús sends outreach emails.</span>') + "</div></form>";
     }
     if (m.type === "lsxOxNote") return '<h2>💼 LinkedIn note</h2><p class="muted small">Under 300 characters, for the connection request. Copy, open their profile, “Connect → Add a note”.</p><textarea class="ox-notebox" rows="4" readonly>' + esc(oxNoteText(m.firm_id)) + '</textarea><div class="actions">' + cancel + '<button class="btn" data-a="oxNoteCopy" data-f="' + esc(m.firm_id) + '">Copy</button></div>';
@@ -6466,6 +6478,7 @@
     if (f.dataset.form === "oxLink") return run(btn, async function () { var fid = g("firm"); if (!fid && g("newname")) { var nf = await call("oxSaveFirm", { firm: { name: g("newname") } }); fid = nf.id; } if (!fid) throw new Error("Pick a firm or write a new name."); await call("oxLinkRole", { role_id: m.role_id, firm_id: fid }); S.modal = m.back ? { type: "lsxOxProj", id: m.back } : null; toast("Linked"); S.oxBusy = 0; oxLoad(); });
     if (f.dataset.form === "oxNewFirm") return run(btn, function () { return call("oxSaveFirm", { firm: { name: g("name"), firm_type: g("firm_type"), segment: g("segment"), website: g("website"), phone: g("phone") } }).then(function (r) { S.modal = { type: "lsxOxFirm", id: r.id }; S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxFirmEdit") return run(btn, function () { return call("oxSaveFirm", { firm: { id: m.id, name: g("name"), website: g("website"), phone: g("phone"), firm_type: g("firm_type"), segment: g("segment"), wave: g("wave"), priority: g("priority"), notes: g("notes") } }).then(function () { S.modal = { type: "lsxOxFirm", id: m.id }; toast("Saved"); S.oxBusy = 0; oxLoad(); }); });
+    if (f.dataset.form === "oxSig") return run(btn, function () { return call("oxSigSave", { sig: { name: g("name"), title: g("title"), company: g("company"), email: g("email"), phone: g("phone"), fax: g("fax"), cell: g("cell"), website: g("website") } }).then(function () { toast("✍️ Signature saved"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxAiKey") return run(btn, function () { return call("oxAiSave", { key: g("key") }).then(function () { toast("✨ AI writer connected"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxRrKey") return run(btn, function () { return call("oxRrSave", { key: g("key") }).then(function () { toast("🔎 RocketReach connected"); S.oxBusy = 0; oxLoad(); }); });
   }, true);

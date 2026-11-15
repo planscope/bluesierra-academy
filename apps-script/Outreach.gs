@@ -271,7 +271,7 @@ ACTIONS.oxHome = function (me, b) {
     firms: firms.map(function (f) { var fl = oxFlags(f), s = st[f.id]; return Object.assign({}, f, { flag: fl, state: s.state, emailed: s.emailed, replied: s.replied, last: s.last, due: s.due, blocked: block[f.id] || null }); }),
     contacts: contacts, roles: roles, opps: opps, alerts: rows("OxAlerts").filter(function (a) { return a.status === "open"; }),
     touches: touches.slice(-1500).map(function (x) { var o = Object.assign({}, x); var p = people[normEmail(x.by)]; o.by_name = p ? p.name : x.by; o.by_avatar = p ? p.avatar : ""; o.by_key = p ? p.key : ""; return o; }),
-    rr: oxRrInfo(), ai: { on: !!aiKey() }, last_import: (rows("OxImports").slice(-1)[0] || null) };
+    rr: oxRrInfo(), ai: { on: !!aiKey() }, sig: oxSig(), last_import: (rows("OxImports").slice(-1)[0] || null) };
 };
 NO_LOCK.oxHome = 1;
 /* Where a firm is in the cadence: day 0 email → day 3 LinkedIn → day 7 call → day 14 follow-up, unless they replied. */
@@ -337,24 +337,43 @@ function oxQueue(firms, contacts, roles, projects, st, block, today, sentToday) 
 /* ====================================== emails: drafted here, Jesús sends ====================================== */
 var OX_TYPE = { new_home: "new home", major_remodel: "remodel", landscape: "landscape", grading: "site work", pool: "pool", tree: "", other: "" };
 function oxStreet(p) { return oxTitle(String(p.address || "").replace(/\s+/g, " ")).replace(/\b(Ln|Rd|Ave|Dr|Ct|St|Pl|Cir|Blvd|Way)\b/g, function (x) { return x; }); }
-/* Hand-written versions of each email (n = 0 is the original). "New version" walks through them when the AI writer isn't connected. */
+/* How a project reads in an email: "32 Encina Avenue in Atherton just had landscape permits filed". */
+var OX_SUF_LONG = { ln: "Lane", rd: "Road", ave: "Avenue", av: "Avenue", dr: "Drive", ct: "Court", st: "Street", pl: "Place", cir: "Circle", blvd: "Boulevard", ter: "Terrace", hwy: "Highway", pkwy: "Parkway", trl: "Trail" };
+var OX_SUF_SHORT = { lane: "Ln", road: "Rd", avenue: "Ave", drive: "Dr", court: "Ct", street: "St", place: "Pl", circle: "Cir", boulevard: "Blvd", terrace: "Ter", highway: "Hwy", parkway: "Pkwy", trail: "Trl" };
+function oxStreetWords(p) {
+  var a = String(p.address || "").split(",")[0].replace(/\s+new$/i, "").replace(/\./g, "").trim();
+  var w = oxTitle(a).split(/\s+/).filter(Boolean); if (/^0+$/.test(w[0] || "")) w = w.slice(1);   // "00 Eugenia Way" → "Eugenia Way"
+  return w;
+}
+function oxStreetFull(p) { var w = oxStreetWords(p), k = (w[w.length - 1] || "").toLowerCase(); if (OX_SUF_LONG[k]) w[w.length - 1] = OX_SUF_LONG[k]; return w.join(" "); }
+function oxStreetName(p) {                                              // "Encina Ave": no number, short suffix (for the subject)
+  var w = oxStreetWords(p); if (/^\d/.test(w[0] || "")) w = w.slice(1); var k = (w[w.length - 1] || "").toLowerCase();
+  if (OX_SUF_SHORT[k]) w[w.length - 1] = OX_SUF_SHORT[k]; else if (OX_SUF_LONG[k]) w[w.length - 1] = oxTitle(k); return w.join(" ");
+}
+function oxScope(p) { return { landscape: "the landscape", grading: "the grading and site work", pool: "the pool and hardscape" }[p.type] || "the site work and landscape"; }
+function oxStagePhrase(p) {
+  var kw = { landscape: "landscape ", pool: "pool ", grading: "grading " }[p.type] || "", st = String(p.stage || ""), raw = String(p.status || "").toLowerCase();
+  if (!st) st = /issued|final/.test(raw) ? "4" : /approv/.test(raw) ? "3" : /review|asrb|adrb|ascc|hearing|scheduled/.test(raw) ? "1" : /applied|submitted|plan check|pending/.test(raw) ? "2" : "";
+  return { "1": "is going through design review", "2": "just had " + kw + "permits filed", "3": "just got planning approval", "4": "just had " + kw + "permits issued" }[st] || "is moving";
+}
+/* Hand-written versions of each email (n picks one). A greeting, a blank line, one short paragraph, no sign-off: the signature is added when it's sent. */
 var OX_TPL = {
   day0: [
-    function (v) { return v.hi + "\nSaw " + v.firm + " on " + v.where + v.kp + ". Blue Sierra does the site work, hardscape and landscape on projects like this across the Peninsula.\nCould you add us to the bid list?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nI noticed " + v.where + v.kp + " has " + v.firm + " on it. We're Blue Sierra, a site work, hardscape and landscape contractor here on the Peninsula.\nWould you put us on the bid list for it?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nQuick one about " + v.where + ". If the site work, hardscape or landscape is going out to bid, we'd like a shot at it.\nCould you add Blue Sierra to the list?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nBlue Sierra builds the outside of projects like " + v.where + v.kp + ": grading, drainage, hardscape and landscape.\nCan we get on the bid list for this one?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nWho's handling bids on " + v.where + "? Blue Sierra would like to price the site work, hardscape and landscape.\nCould you add us to the list?\nHappy to walk the site or give early numbers."; }
+    function (v) { return v.hi + "\n\nHope you're doing well. I saw " + v.a + (v.b ? ", and " + v.b + " is moving too" : "") + ". Would love to bid " + v.scope + (v.b ? " on either one" : "") + " when you're ready. Happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nI noticed " + v.a + (v.b ? ", and " + v.b + " is coming up as well" : "") + ". We'd love a shot at " + v.scope + (v.b ? " on either one" : "") + " when it goes out to bid. Happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nHope all is well. Saw that " + v.a + (v.b ? ", and " + v.b + " is moving too" : "") + ". If you're putting together a bid list for " + v.scope + ", we'd love to be on it. Happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nQuick note on " + v.addrA + (v.addrB ? " and " + v.addrB : "") + ". We'd love to bid " + v.scope + " whenever you're ready, and I'm happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nHope you're doing well. " + v.A + (v.b ? ", and " + v.b + " looks like it's moving too" : "") + ". Would love to put numbers together for " + v.scope + " when you're ready, and I can walk the site anytime."; }
   ],
   day14: [
-    function (v) { return v.hi + "\nCircling back on " + v.where + ". Happy to walk the site or give early numbers whenever it's useful.\nCould you add Blue Sierra to the bid list?"; },
-    function (v) { return v.hi + "\nFollowing up on " + v.where + ". Is the bid list for the site work and landscape set yet?\nWe'd still like to be on it. Happy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nChecking in on " + v.where + ". If it helps, I can walk the site this week and get you early numbers.\nCould you add Blue Sierra to the bid list?"; }
+    function (v) { return v.hi + "\n\nJust following up on " + v.addrA + ". Still happy to walk the site or give early numbers whenever it's useful, and we'd love to be on the bid list."; },
+    function (v) { return v.hi + "\n\nChecking back in on " + v.addrA + (v.addrB ? " and " + v.addrB : "") + ". If the bid list for " + v.scope + " is coming together, we'd love to be on it. Happy to walk the site anytime."; },
+    function (v) { return v.hi + "\n\nHope all is well. Wanted to circle back on " + v.addrA + ". I can walk the site this week and get you early numbers if that helps."; }
   ],
   again: [
-    function (v) { return v.hi + "\nSaw " + v.firm + " is also on " + v.where + v.kp + ". Could you add Blue Sierra to the bid list for this one?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nNew one on our radar: " + v.where + v.kp + ", with " + v.firm + " on it. We'd like to bid the site work and landscape.\nCould you add us to the list?\nHappy to walk the site or give early numbers."; },
-    function (v) { return v.hi + "\nI see " + v.where + " came up with your team on it. Could Blue Sierra get on the bid list for the outside work?\nHappy to walk the site or give early numbers."; }
+    function (v) { return v.hi + "\n\nHope you're doing well. I saw " + v.a + ". Would love to bid " + v.scope + " on this one when you're ready. Happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nNoticed " + v.addrA + " in " + v.town + " came up with your team on it. We'd love a shot at " + v.scope + ". Happy to walk the site or give early numbers if that helps."; },
+    function (v) { return v.hi + "\n\nAnother one I saw: " + v.a + ". If you're lining up bids for " + v.scope + ", we'd love to be included. Happy to walk the site anytime."; }
   ]
 };
 ACTIONS.oxDraft = function (me, b) {
@@ -365,14 +384,14 @@ ACTIONS.oxDraft = function (me, b) {
   var hold = oxHoldOf(f); if (!b.project_id && hold) { var freeL = mine.filter(function (x) { return hold.held.indexOf(x.id) < 0; }); if (freeL.length) mine = freeL; }
   var p = b.project_id ? findBy("OxProjects", "id", String(b.project_id)) : mine.sort(function (a, c) { return ("ABC".indexOf(a.priority) - "ABC".indexOf(c.priority)) || (a.date < c.date ? 1 : -1); })[0];
   if (!p) throw new Error("This firm has no project on the list to mention.");
-  var first = ct && ct.name ? oxNorm(ct.name).split(" ")[0] : "", hi = first ? "Hi " + oxTitle(first) + "," : "Hi there,", where = oxStreet(p) + ", " + p.town, kind = OX_TYPE[p.type] || "";
+  var first = ct && ct.name ? oxNorm(ct.name).split(" ")[0] : "", hi = first ? "Hi " + oxTitle(first) + "," : "Hi there,", where = oxStreetFull(p) + ", " + p.town;
+  var q = step === "day0" ? mine.filter(function (x) { return x.id !== p.id && x.stage !== "5" && oxStreetFull(x) !== oxStreetFull(p) && !(hold && hold.held.indexOf(x.id) > -1); })
+    .sort(function (x, y) { return (Number(y.fit) || 0) - (Number(x.fit) || 0) || ("ABC".indexOf(x.priority) - "ABC".indexOf(y.priority)) || (x.date < y.date ? 1 : -1); })[0] : null;
   var prev = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.step === "day0"; }).slice(-1)[0];
-  var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : where + " · bid list";
-  if (step === "again") subject = where + " · bid list";
-  var vs = OX_TPL[step], n = Math.abs(Math.floor(Number(b.n) || 0)) % vs.length, kp = kind ? " (" + kind + ")" : "";
-  var body = vs[n]({ hi: hi, firm: f.name, where: where, kp: kp, street: oxStreet(p) });
-  if (step === "day0" && n % 2 === 1) subject = oxStreet(p) + " · " + p.town;
-  return { subject: subject, body: body, n: n, versions: vs.length, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
+  var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : oxStreetName(p) + (q ? " / " + oxStreetName(q) : "");
+  var vs = OX_TPL[step], n = Math.abs(Math.floor(Number(b.n) || 0)) % vs.length, a = oxStreetFull(p) + " in " + p.town + " " + oxStagePhrase(p);
+  var body = vs[n]({ hi: hi, firm: f.name, a: a, A: a.charAt(0).toUpperCase() + a.slice(1), b: q ? oxStreetFull(q) + (q.town === p.town ? "" : " in " + q.town) : "", addrA: oxStreetFull(p), addrB: q ? oxStreetFull(q) : "", town: p.town, scope: oxScope(p) });
+  return { subject: subject, body: body, n: n, versions: vs.length, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, also: q ? { id: q.id, street: oxStreetFull(q), town: q.town } : null, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
 };
 NO_LOCK.oxDraft = 1;
 
@@ -386,20 +405,21 @@ function aiKey() { return PropertiesService.getScriptProperties().getProperty("A
 function oxAiSystem() {
   return [
     "You write short outreach emails for Jesús Toto, owner of Blue Sierra Construction, a site work, hardscape and landscape contractor on the San Francisco Peninsula.",
-    "Each email goes from his Gmail to a design or building firm named on a public permit or design-review agenda. The goal is one thing: get Blue Sierra added to the bid list for that project.",
+    "Each email goes from his Gmail to a design or building firm named on a public permit or design-review agenda. The goal: get Blue Sierra on the bid list for the project(s).",
     "",
-    "How the email reads:",
-    "- First line is the greeting: \"Hi <first name>,\" when a first name is given, otherwise \"Hi there,\".",
-    "- Then 2 to 3 short lines, plain text. Name the project by street and town.",
-    "- Exactly one ask: add Blue Sierra to the bid list for this project.",
-    "- Include the offer to walk the site or give early numbers, in your own words or as \"Happy to walk the site or give early numbers.\"",
-    "- No sign-off, no signature and no name at the end. Gmail adds his signature.",
-    "- Sound like a busy local contractor typing a quick note: plain words, direct, friendly. No flattery, no \"I hope this finds you well\", no \"reach out\", \"leverage\", \"excited\", \"delighted\", \"partner with\", \"synergy\".",
-    "- No em dashes or en dashes, no exclamation marks, no emojis, no bullet points, no links.",
-    "- Use only the facts given. Do not claim past work with this firm, awards, years in business, licenses or anything else not listed. Never mention the property owner.",
+    "It must read like a quick personal note he typed himself, never like a marketing email. This is the tone to match:",
+    "\"Hi Michael,\\n\\nHope you're doing well. I saw 32 Encina Avenue in Atherton just had landscape permits filed, and 2555 Summit Drive in Hillsborough is moving too. Would love to bid the landscape on either one when you're ready. Happy to walk the site or give early numbers if that helps.\"",
     "",
-    "Subject: under 60 characters, plain, includes the street. For a follow-up, use the subject you are given unchanged.",
-    "Each request may list versions already shown. Write one that is clearly different in its opening and wording, not a light edit."
+    "Rules:",
+    "- First line: \"Hi <first name>,\" (or \"Hi there,\" with no name). Then a blank line, then ONE paragraph of 2 to 4 sentences.",
+    "- Name each project by its street and town as given, with the stage phrase given (for example \"just had landscape permits filed\"). If two projects are given, mention both in one sentence.",
+    "- One ask: to bid the scope given (or to be on the bid list). Offer to walk the site or give early numbers.",
+    "- No sign-off and no name at the end: his signature is added automatically.",
+    "- Plain, warm, direct. No flattery, no \"I hope this email finds you well\", no \"reach out\", \"leverage\", \"excited\", \"delighted\", \"partner\", \"synergy\", \"touch base\". No em dashes or en dashes, no exclamation marks, no emojis, no bullets, no links.",
+    "- Use only the facts given. Do not claim past work together, awards, years in business or licenses. Never mention the property owner.",
+    "",
+    "Subject: the street names only, like \"Encina Ave / Summit Dr\" (use the suggested subject unless you have a better plain one). For a follow-up, keep the subject you are given unchanged.",
+    "Each request may list versions already shown. Write one that is clearly different in its opening and wording."
   ].join("\n");
 }
 function oxAiCall(facts, avoid, angle) {
@@ -428,9 +448,12 @@ function oxAiCall(facts, avoid, angle) {
   return out;
 }
 function oxAiTidy(t) {
-  var lines = String(t || "").replace(/\r/g, "").replace(/\s*[—–]\s*/g, ", ").replace(/!/g, ".").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
-  while (lines.length > 1 && /^(best|thanks|thank you|cheers|regards|best regards|sincerely|talk soon)[,.]?$|^jes[uú]s|^blue sierra/i.test(lines[lines.length - 1])) lines.pop();
-  return lines.join("\n").slice(0, 900);
+  var lines = String(t || "").replace(/\r/g, "").replace(/\s*[—–]\s*/g, ", ").replace(/!/g, ".").split("\n").map(function (x) { return x.trim(); });
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  while (lines.length > 1 && /^(best|thanks|thank you|cheers|regards|best regards|sincerely|talk soon)[,.]?$|^jes[uú]s|^blue sierra/i.test(lines[lines.length - 1])) { lines.pop(); while (lines.length && !lines[lines.length - 1]) lines.pop(); }
+  var paras = lines.join("\n").split(/\n\s*\n/).map(function (x) { return x.split("\n").map(function (y) { return y.trim(); }).filter(Boolean).join(" "); }).filter(Boolean);
+  var m = paras.length && paras[0].match(/^((?:hi|hello|hey)\s[^,]{1,40},)\s+(.+)$/i); if (m) paras.splice(0, 1, m[1], m[2]);
+  return paras.join("\n\n").slice(0, 900);
 }
 ACTIONS.oxAiDraft = function (me, b) {
   var base = ACTIONS.oxDraft(me, b);                                           // checks access, picks contact + project, and is the fallback
@@ -439,7 +462,8 @@ ACTIONS.oxAiDraft = function (me, b) {
   var first = ct && ct.name ? oxTitle(oxNorm(ct.name).split(" ")[0]) : "";
   var facts = { email_kind: { day0: "first email", day14: "follow-up 14 days after the first email (no reply yet)", again: "first email about a NEW project; we've written this firm before about another one" }[base.step],
     recipient_first_name: first || null, recipient_role: ct && ct.role && ct.role !== "General inbox" ? ct.role : null, firm: f.name, firm_type: f.firm_type || null,
-    project_street: oxStreet(p), project_town: p.town, project_type: OX_TYPE[p.type] || null, project_stage: p.status ? clean(p.status, 120) : null,
+    projects: [{ street: oxStreetFull(p), town: p.town, stage_phrase: oxStagePhrase(p) }].concat(base.also ? [(function (q) { return { street: oxStreetFull(q), town: q.town, stage_phrase: oxStagePhrase(q) }; })(findBy("OxProjects", "id", base.also.id))] : []),
+    scope_to_bid: oxScope(p), suggested_subject: base.subject,
     blue_sierra_does: "site work (grading, drainage, utilities), hardscape and landscape", subject_to_keep: base.step === "day14" ? base.subject : null };
   var avoid = [].concat(b.avoid || []).map(function (x) { return clean(x, 900); }).filter(Boolean).slice(-4);
   var n = Math.abs(Math.floor(Number(b.n) || 0)), angle = OX_ANGLES[n % OX_ANGLES.length];
@@ -483,7 +507,7 @@ ACTIONS.oxSend = function (me, b) {
   var ob = done || { id: newId("ob"), key: key, firm_id: f.id, contact_id: ct ? ct.id : "", project_id: String(b.project_id || ""), step: step, to: to, subject: subject, body: text, status: "pending", msg_id: "", thread_id: "", error: "", created_by: me.email, created_at: oxStamp(), sent_at: "" };
   if (!done) insert("OxOutbox", ob);                                    // recorded first: a crash leaves "pending", never a silent send
   try {
-    var msg = GmailApp.createDraft(to, subject, text, { name: me.name || CONFIG.COMPANY, htmlBody: "<div style='font-family:Arial,sans-serif;font-size:15px;color:#111;line-height:1.5;max-width:560px'>" + nl2br(esc(text)) + "</div>", from: fromAddress() || undefined }).send();
+    var sig = oxSig(), msg = GmailApp.createDraft(to, subject, text + (sig ? "\n\n" + oxSigText(sig) : ""), { name: me.name || CONFIG.COMPANY, htmlBody: oxMailHtml(text, sig), from: fromAddress() || undefined }).send();
     var mid = msg && msg.getId ? msg.getId() : "", tid = msg && msg.getThread ? msg.getThread().getId() : "";
     update("OxOutbox", "id", ob.id, { status: "sent", msg_id: mid, thread_id: tid, sent_at: oxStamp(), error: "" });
     insert("OxTouches", { id: newId("ot"), firm_id: f.id, contact_id: ct ? ct.id : "", project_id: String(b.project_id || ""), date: today, channel: "email", step: step, summary: subject, outcome: "sent", by: me.email, at: now(), outbox_id: ob.id, thread_id: tid });
@@ -491,6 +515,32 @@ ACTIONS.oxSend = function (me, b) {
     if (b.alert_id) update("OxAlerts", "id", String(b.alert_id), { status: "done", done_at: now() });
     return { status: "sent", to: to };
   } catch (e) { update("OxOutbox", "id", ob.id, { status: "failed", error: String(e.message || e).slice(0, 300) }); throw new Error("Gmail didn't send it: " + String(e.message || e)); }
+};
+/* The email as Gmail itself writes it: no forced font or size, a <div> per line, then the signature block. */
+function oxMailHtml(text, sig) {
+  var paras = String(text || "").replace(/\r/g, "").split(/\n\s*\n/).map(function (p) { return "<div>" + esc(p.trim()).replace(/\n/g, "<br>") + "</div>"; });
+  return '<div dir="ltr">' + paras.join("<div><br></div>") + (sig ? '<div><br></div><div><br></div><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">' + oxSigHtml(sig) + "</div>" : "") + "</div>";
+}
+/* Jesús's signature (Import & tools → Email signature). Stored on the server, not in the code. */
+var OX_SIG_F = ["name", "title", "company", "email", "phone", "fax", "cell", "website"];
+function oxSig() { try { var j = JSON.parse(PropertiesService.getScriptProperties().getProperty("OX_SIG") || "null"); return j && j.name ? j : null; } catch (e) { return null; } }
+function oxSigHtml(g) {
+  var gray = "color:#808080", red = "color:#c0504d", web = String(g.website || ""), href = /^https?:/i.test(web) ? web : "https://" + web, out = [];
+  out.push('<b style="' + gray + '">' + esc(g.name) + "</b>");
+  if (g.title) out.push('<i style="' + red + '">' + esc(g.title) + "</i>");
+  if (g.company) out.push('<span style="' + gray + '">' + esc(g.company) + "</span>");
+  if (g.email) out.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
+  [["P", g.phone], ["F", g.fax], ["C", g.cell]].forEach(function (x) { if (x[1]) out.push('<span style="' + red + '">' + x[0] + '</span> <span style="' + gray + '">' + esc(x[1]) + "</span>"); });
+  if (web) out.push('<a href="' + esc(href) + '">' + esc(web.replace(/^https?:\/\//i, "")) + "</a>");
+  return '<div style="font-family:Verdana,Geneva,sans-serif">' + out.join("<br>") + "</div>";
+}
+function oxSigText(g) { return [g.name, g.title, g.company, g.email, g.phone ? "P " + g.phone : "", g.fax ? "F " + g.fax : "", g.cell ? "C " + g.cell : "", String(g.website || "").replace(/^https?:\/\//i, "")].filter(Boolean).join("\n"); }
+ACTIONS.oxSigSave = function (me, b) {
+  oxAdmin(me); var x = b.sig || {}, g = {};
+  OX_SIG_F.forEach(function (k) { g[k] = clean(x[k], 120); });
+  if (!g.name) throw new Error("Write your name.");
+  if (g.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(g.email)) throw new Error("Check the email.");
+  PropertiesService.getScriptProperties().setProperty("OX_SIG", JSON.stringify(g)); return { sig: g };
 };
 function oxHoldOf(f) {
   var today = oxToday(), firms = rows("OxFirms"), touches = rows("OxTouches"), st = {};
@@ -774,5 +824,5 @@ ACTIONS.oxExport = function (me, b) {
   return { file: "outreach_" + t + "_" + oxToday() + ".csv", csv: [h.join(",")].concat(rows(map[t]).map(function (r) { return h.map(function (k) { return q(r[k]); }).join(","); })).join("\n") };
 };
 NO_LOCK.oxExport = 1; NO_LOCK.oxEnrichPlan = 1;
-["oxDeleteProject", "oxAiSave", "oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
+["oxSigSave", "oxDeleteProject", "oxAiSave", "oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
 ["oxHome", "oxDraft", "oxAiDraft", "oxExport", "oxEnrichPlan"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
