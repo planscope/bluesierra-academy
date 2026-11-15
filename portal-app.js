@@ -2674,7 +2674,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115133339";
+  var BUILD = "20261115135233";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6177,13 +6177,14 @@
       return '<div class="card ox-row"><div class="ox-row-t"><span class="ox-l1"><b>' + esc(f.name) + "</b> " + oxSegPill(f) + "</span>" + '<span>' + esc(OX_STEP_L[x.step]) + (x.late ? ' · <span class="bad-t">' + x.late + " day" + (x.late > 1 ? "s" : "") + " late</span>" : "") + "</span></div><div class=\"ox-row-a\">" + act + "</div></div>";
     }).join("");
     var ready = q.ready;
+    if (S.oxUndo) html += '<div class="ox-undo"><span>Removed <b>' + esc(S.oxUndo.name) + '</b> from outreach.</span><button class="link" data-a="oxUndo">Undo</button></div>';
     html += '<h3 class="ox-h">✉️ Ready for a first email <span class="muted small">' + (d.new_email_day && !d.blackout ? q.room + " left today" : "next sending day: Tue–Thu") + "</span></h3>";
     html += ready.length ? ready.slice(0, S.oxMore ? 40 : 8).map(function (x) {
       var f = oxF(x.firm_id); if (!f) return ""; var ct = oxContacts(f.id).filter(function (c) { return c.id === x.contact_id; })[0] || {}, pr = oxProjOf(f.id);
       var warn = x.blocked ? '<span class="ox-wait">⏳ Waits for ' + esc(x.blocked.waiting_on.join(", ")) + " (warm, same project)</span>" : x.individual ? '<span class="ox-wait">🙋 Named on a permit: confirm they’re a designer or engineer, not the owner</span>' : "";
       return '<div class="card ox-row ox-ready' + (x.blocked || x.individual ? " held" : "") + '"><div class="ox-row-t"><span class="ox-l1"><b>' + esc(f.name) + "</b> " + oxSegPill(f) + "</span>" + '<span>' + esc(f.firm_type || "") + (f.wave ? " · wave " + esc(f.wave) : "") + " · " + pr.length + " project" + (pr.length === 1 ? "" : "s") + (pr[0] ? " · " + oxAddr(pr[0].p) : "") + "</span>" +
         '<span class="muted small">→ ' + esc(oxWho(ct)) + " · " + esc(ct.email || "") + "</span>" + (f.notes ? '<span class="ox-note">⚠️ ' + esc(f.notes) + "</span>" : "") + warn + '</div><div class="ox-row-a">' +
-        (x.individual ? '<button class="btn ghost sm" data-a="oxConfirm" data-f="' + esc(f.id) + '">They’re a pro ✓</button>' : "") + '<button class="btn sm" data-a="oxWrite" data-f="' + esc(f.id) + '" data-c="' + esc(x.contact_id) + '" data-step="day0"' + (x.blocked || x.individual ? " disabled" : "") + ">Write email</button></div></div>";
+        (x.individual ? '<button class="btn ghost sm" data-a="oxConfirm" data-f="' + esc(f.id) + '">They’re a pro ✓</button>' : "") + '<button class="btn sm" data-a="oxWrite" data-f="' + esc(f.id) + '" data-c="' + esc(x.contact_id) + '" data-step="day0"' + (x.blocked || x.individual ? " disabled" : "") + '>Write email</button><button class="btn ghost sm ox-x" data-a="oxRemove" data-f="' + esc(f.id) + '" title="Not for us: take it off the list" aria-label="Remove ' + esc(f.name) + '">✕</button></div></div>';
     }).join("") + (ready.length > 8 ? '<button class="link small" data-a="oxMore">' + (S.oxMore ? "Show fewer" : "Show " + (Math.min(40, ready.length) - 8) + " more") + "</button>" : "") : '<p class="muted small">Nobody with an email is waiting. Find emails below.</p>';
     if (q.no_email_total) html += '<h3 class="ox-h">🔎 Need an email <span class="muted small">' + q.no_email_total + " firms</span></h3>" + '<div class="card ox-row"><div class="ox-row-t"><span>' + q.no_email.slice(0, 6).map(function (x) { var f = oxF(x.firm_id); return f ? '<button class="link" data-a="oxFirm" data-f="' + esc(f.id) + '">' + esc(f.name) + "</button>" : ""; }).join(" · ") + (q.no_email_total > 6 ? " and " + (q.no_email_total - 6) + " more" : "") + "</span></div>" +
       '<div class="ox-row-a"><button class="btn sm" data-a="oxFreeGo" data-ids="' + esc(q.no_email.slice(0, 24).map(function (x) { return x.firm_id; }).join(",")) + '">🔎 Find emails (free)</button>' + (d.can_send && d.rr && d.rr.on ? '<button class="btn ghost sm" data-a="oxEnrichGo" data-ids="' + esc(q.no_email.slice(0, 12).map(function (x) { return x.firm_id; }).join(",")) + '">RocketReach</button>' : "") + "</div></div>" +
@@ -6207,8 +6208,8 @@
   }
   /* ---------- Firms ---------- */
   function oxFirms() {
-    var d = S.ox, f = S.oxFF || {}, ST = { new: "Not contacted", in_cadence: "In outreach", replied: "Replied", closed: "Closed" };
-    var list = d.firms.filter(function (x) { return (!f.seg || x.segment === f.seg) && (!f.wave || String(x.wave) === f.wave) && (!f.state || x.state === f.state) && (!f.q || (x.name + " " + x.firm_type + " " + x.notes).toLowerCase().indexOf(f.q.toLowerCase()) > -1); })
+    var d = S.ox, f = S.oxFF || {}, ST = { new: "Not contacted", in_cadence: "In outreach", replied: "Replied", closed: "Closed", removed: "Removed" };
+    var list = d.firms.filter(function (x) { return (!f.seg || x.segment === f.seg) && (!f.wave || String(x.wave) === f.wave) && (f.state === "removed" ? x.status === "removed" : (!f.state || x.state === f.state) && (f.state || x.status !== "removed")) && (!f.q || (x.name + " " + x.firm_type + " " + x.notes).toLowerCase().indexOf(f.q.toLowerCase()) > -1); })
       .sort(function (a, b) { var SO = { warm: 0, known: 1, cold: 2, excluded: 3 }, sa = a.segment in SO ? SO[a.segment] : 4, sb = b.segment in SO ? SO[b.segment] : 4; return sa - sb || (Number(a.wave) || 9) - (Number(b.wave) || 9) || a.name.localeCompare(b.name); });
     var sel = function (k, opts, lab) { return '<select data-ox-ff="' + k + '"><option value="">' + lab + "</option>" + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (f[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>"; };
     return '<div class="ox-filters"><input type="search" data-ox-ff="q" placeholder="Search firms…" value="' + esc(f.q || "") + '">' + sel("seg", Object.keys(OX_SEG).map(function (s) { return [s, OX_SEG[s][0] + " " + OX_SEG[s][1]]; }), "All segments") +
@@ -6251,6 +6252,9 @@
       (li ? '<p class="muted small">Last import: ' + esc(li.file || li.kind) + " · " + oxWhen(li.at) + " · " + esc(Object.keys(parseJ(li.counts)).filter(function (k) { return typeof parseJ(li.counts)[k] === "number"; }).map(function (k) { return parseJ(li.counts)[k] + " " + k; }).join(", ")) + "</p>" : "") + "</div>" +
       '<div class="card"><h3>🤖 The weekly permit search</h3><p class="muted small">Give this to Grok (or any research assistant) every Monday, then import the CSV it returns here. Towns: ' + esc(d.towns.join(", ")) + ".</p>" +
       '<pre class="ox-prompt">' + esc(oxGrokPrompt()) + '</pre><button class="btn ghost sm" data-a="oxCopyPrompt">Copy the prompt</button></div>' +
+      '<div class="card ox-ai"><h3>✨ AI email writer</h3>' + (d.ai && d.ai.on
+        ? '<p>Connected. “Write email” starts with a fresh draft and “✨ New version” writes another one, each different. It only uses the firm, the first name, the street and town and the type of project. Owners are never sent.</p>' + (d.can_send ? '<button class="link small" data-a="oxAiOff">Disconnect</button>' : "")
+        : '<p class="muted small">Off. “New version” still works with the saved versions. To have Claude write each email, paste an Anthropic API key (console.anthropic.com → API keys). It’s stored on the server, never shown again and never sent to browsers. About 1–2 cents per draft.</p>' + (d.can_send ? '<form class="form" data-form="oxAiKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects the AI writer.</p>')) + "</div>" +
       '<details class="card ox-rr"' + (rr.on ? " open" : "") + '><summary><h3>💳 RocketReach <span class="muted small">optional · paid</span></h3></summary><p class="muted small">You don’t need it: “Find emails (free)” uses your Gmail, the firms’ websites and their email format. Connect it only if you want a paid backup.</p>' + (rr.on ? '<p>Connected' + (rr.credits != null ? " · <b>" + esc(String(rr.credits)) + "</b> lookup credits left" : "") + (rr.err ? ' · <span class="bad-t">' + esc(rr.err) + "</span>" : "") + '</p><p class="muted small">One lookup per firm (the principal, project architect or estimator). Firms with a verified email are skipped, nobody is looked up twice, and you see the cost before anything runs.</p>' +
         (d.can_send ? '<div class="actions" style="justify-content:flex-start;flex-wrap:wrap">' + ["1", "2", "3"].map(function (w) { return '<button class="btn ghost sm" data-a="oxEnrichWave" data-w="' + w + '">Enrich wave ' + w + "</button>"; }).join("") + '<button class="btn ghost sm" data-a="oxEnrichCheck">Check pending lookups</button><button class="link small" data-a="oxRrOff">Disconnect</button></div>' : "")
         : (d.can_send ? '<p class="muted small">Paste your RocketReach API key (rocketreach.co → Account → API). It’s stored on the server, never shown again and never sent to browsers.</p><form class="form" data-form="oxRrKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects RocketReach.</p>')) + "</details>" +
@@ -6276,7 +6280,7 @@
       '<button class="btn ghost sm" data-a="oxDone" data-f="' + esc(f.id) + '" data-ch="reply" data-o="replied">💬 They replied</button><button class="btn ghost sm" data-a="oxInvite" data-f="' + esc(f.id) + '">🏗️ Invited to bid</button>' +
       '<button class="btn ghost sm" data-a="oxFreeGo" data-ids="' + esc(f.id) + '">🔎 Find emails (free)</button><button class="btn ghost sm" data-a="oxNote" data-f="' + esc(f.id) + '">LinkedIn note</button>' +
       (d.can_send && d.rr && d.rr.on && !cs.some(function (c) { return c.email && c.verified === "yes"; }) ? '<button class="btn ghost sm" data-a="oxEnrichGo" data-ids="' + esc(f.id) + '">RocketReach</button>' : "") +
-      '<button class="link small" data-a="oxPause" data-f="' + esc(f.id) + '" data-v="' + (f.status === "paused" ? "active" : "paused") + '">' + (f.status === "paused" ? "Resume" : "Pause") + "</button></div>";
+      (f.status === "removed" ? '<button class="btn sm" data-a="oxPause" data-f="' + esc(f.id) + '" data-v="active">↩︎ Bring back to outreach</button>' : '<button class="link small" data-a="oxPause" data-f="' + esc(f.id) + '" data-v="' + (f.status === "paused" ? "active" : "paused") + '">' + (f.status === "paused" ? "Resume" : "Pause") + '</button><button class="link small" data-a="oxRemove" data-f="' + esc(f.id) + '">Remove from outreach</button>') + "</div>";
     return '<div class="ox-card-h"><div><h2>' + esc(f.name) + ' <button class="link small" data-a="oxFirmEdit" data-f="' + esc(f.id) + '">Edit</button></h2><div class="ox-sub">' + oxSegPill(f) + " " + esc(f.firm_type || "") + (f.wave ? " · wave " + esc(f.wave) : "") + (f.website ? ' · <a href="' + esc(/^http/.test(f.website) ? f.website : "https://" + f.website) + '" target="_blank" rel="noopener">website ↗</a>' : "") + (f.phone ? " · 📞 " + esc(f.phone) : "") + "</div>" + (flags ? '<div class="ox-flags">' + flags + "</div>" : "") + "</div></div>" +
       (f.notes ? '<div class="ox-note big">⚠️ ' + esc(f.notes) + "</div>" : "") + (f.channel ? '<p class="muted small">How to reach them: ' + esc(f.channel) + "</p>" : "") + (f.blocked && f.blocked.held.length ? '<div class="ox-wait">⏳ ' + f.blocked.held.length + " project" + (f.blocked.held.length > 1 ? "s wait" : " waits") + " for " + esc(f.blocked.waiting_on.join(", ")) + " (warm, same project): their email goes first.</div>" : "") + acts +
       '<div class="ox-cols"><div><div class="eyebrow">People</div>' + (cs.length ? cs.map(function (c) { return '<div class="ox-person"><b>' + esc(oxWho(c)) + "</b>" + (c.role && c.role !== oxWho(c) ? "<small>" + esc(c.role) + "</small>" : "") + (c.email ? '<span>✉️ ' + esc(c.email) + " " + oxSrc(c) + "</span>" : "") + (c.phone ? "<span>📞 " + esc(c.phone) + "</span>" : "") + (c.linkedin ? '<a href="' + esc(c.linkedin) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : "") + '<button class="link small" data-a="oxContactEdit" data-f="' + esc(f.id) + '" data-c="' + esc(c.id) + '">Edit</button></div>'; }).join("") : '<p class="muted small">No people yet.</p>') +
@@ -6309,7 +6313,7 @@
         '<form class="form" data-form="oxMail"><div class="row2"><label class="f">To<input name="to" type="email" required value="' + esc(dr.to) + '" list="ox-to"><datalist id="ox-to">' + cs.map(function (c) { return '<option value="' + esc(c.email) + '">' + esc(oxWho(c)) + "</option>"; }).join("") + "</datalist></label>" +
         '<label class="f">About<select name="project">' + pr.map(function (x) { return '<option value="' + esc(x.p.id) + '"' + (x.p.id === dr.project_id ? " selected" : "") + (held.indexOf(x.p.id) > -1 ? " disabled" : "") + ">" + oxAddr(x.p).replace(/&amp;/g, "&") + (held.indexOf(x.p.id) > -1 ? " (waits for warm)" : "") + "</option>"; }).join("") + "</select></label></div>" +
         (gu ? '<div class="ox-wait">🤞 This address is a guess (built from the firm’s email format). It may bounce: if you have a real one, use it.</div>' : "") +
-        '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(dr.subject) + '"></label><label class="f">Message<textarea name="body" rows="6" required>' + esc(dr.body) + "</textarea></label>" +
+        oxVerBar(m) + '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(oxCur(m).subject) + '"></label><label class="f">Message<textarea name="body" rows="6" required>' + esc(oxCur(m).body) + "</textarea></label>" +
         '<p class="muted small">Short on purpose: the project, one ask, the site walk. No sign-off. It goes from your Gmail and its replies come back to you.</p>' +
         '<div class="actions">' + cancel + (S.ox.can_send ? '<button class="btn" type="submit">Send from my Gmail ✉️</button>' : '<span class="muted small">Only Jesús sends outreach emails.</span>') + "</div></form>";
     }
@@ -6339,9 +6343,32 @@
     }
     return _lsModalOx(m);
   };
+  /* The composer keeps every version it was given (AI or saved), so you can go back to one you liked. */
   function oxOpenDraft(fid, cid, step, pid, alert) {
-    S.modal = { type: "lsxOxMail", firm_id: fid, step: step, alert: alert || "" }; keepScroll(render);
-    call("oxDraft", { firm_id: fid, contact_id: cid || "", step: step, project_id: pid || "" }).then(function (r) { if (S.modal && S.modal.type === "lsxOxMail" && S.modal.firm_id === fid) { S.modal.draft = r; keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); });
+    var m = { type: "lsxOxMail", firm_id: fid, step: step, alert: alert || "", cid: cid || "", pid: pid || "", hist: [], idx: -1, n: Math.floor(Math.random() * 6) };
+    S.modal = m; keepScroll(render); oxMore(m);
+  }
+  function oxCur(m) { return m.hist[m.idx] || m.draft || {}; }
+  function oxField(n) { var el = document.querySelector('[data-form="oxMail"] [name="' + n + '"]'); return el ? el.value : null; }
+  function oxKeepEdits(m) { var h = m.hist[m.idx]; if (!h) return; var sj = oxField("subject"), bd = oxField("body"); if (sj != null) h.subject = sj; if (bd != null) h.body = bd; }
+  function oxShowVer(m) { keepScroll(render); var h = oxCur(m), a = document.querySelector('[data-form="oxMail"] [name="subject"]'), b = document.querySelector('[data-form="oxMail"] [name="body"]'); if (a) a.value = h.subject || ""; if (b) b.value = h.body || ""; }
+  function oxMore(m) {
+    if (m.busy) return; oxKeepEdits(m); m.busy = 1; if (m.draft) keepScroll(render);
+    var to = oxField("to"), pj = oxField("project"), cs = oxContacts(m.firm_id).filter(function (c) { return c.email && c.email === to; })[0];
+    call(S.ox && S.ox.ai && S.ox.ai.on ? "oxAiDraft" : "oxDraft", { firm_id: m.firm_id, contact_id: m.draft ? (cs ? cs.id : "") : m.cid, step: m.step, project_id: m.draft ? (pj || "") : m.pid, n: m.n++, avoid: m.hist.map(function (h) { return h.body; }) })
+      .then(function (r) {
+        if (S.modal !== m) return; m.busy = 0;
+        var same = m.hist.filter(function (h) { return h.body === r.body; })[0];
+        if (same && !r.ai) { m.idx = m.hist.indexOf(same); if (m.hist.length >= (r.versions || 1)) toast("That’s every saved version. Connect the AI writer for endless new ones."); }
+        else { m.hist.push({ subject: r.subject, body: r.body, ai: !!r.ai }); m.idx = m.hist.length - 1; }
+        m.draft = Object.assign({}, r, to ? { to: to } : {}, pj ? { project_id: pj } : {}); if (r.ai_err) toast(r.ai_err); oxShowVer(m);
+      })
+      .catch(function (e) { if (S.modal !== m) return; m.busy = 0; toast(e.message); if (!m.draft) S.modal = null; keepScroll(render); });
+  }
+  function oxVerBar(m) {
+    var h = oxCur(m), n = m.hist.length;
+    return '<div class="ox-ver"><span class="ox-ver-nav"><button type="button" class="btn ghost sm" data-a="oxVer" data-v="-1"' + (m.idx > 0 && !m.busy ? "" : " disabled") + ' aria-label="Previous version">‹</button><span class="small">' + (n ? "Version " + (m.idx + 1) + " of " + n : "") + (h.ai ? ' · <b class="ox-ai-tag">✨ AI</b>' : n ? ' · <span class="muted">saved</span>' : "") + '</span><button type="button" class="btn ghost sm" data-a="oxVer" data-v="1"' + (m.idx < n - 1 && !m.busy ? "" : " disabled") + ' aria-label="Next version">›</button></span>' +
+      '<button type="button" class="btn ghost sm" data-a="oxNewVer"' + (m.busy ? " disabled" : "") + ">" + (m.busy ? "Writing…" : "✨ New version") + "</button></div>" + (h.ai ? '<p class="muted small">Written by AI from the permit facts. Read it before you send it.</p>' : "");
   }
   function oxEnrichOpen(ids, wave) {
     S.modal = { type: "lsxOxEnrich", ids: ids }; keepScroll(render);
@@ -6357,6 +6384,13 @@
     if (a === "oxPMore") { S.oxPLim = 5000; return keepScroll(render); }
     if (a === "oxFirm") { S.modal = { type: "lsxOxFirm", id: b.dataset.f }; return keepScroll(render); }
     if (a === "oxProj") { S.modal = { type: "lsxOxProj", id: b.dataset.p }; return keepScroll(render); }
+    if (a === "oxNewVer") { if (S.modal && S.modal.type === "lsxOxMail") oxMore(S.modal); return; }
+    if (a === "oxVer") { var mv = S.modal; if (!mv || mv.type !== "lsxOxMail" || mv.busy) return; oxKeepEdits(mv); mv.idx = Math.max(0, Math.min(mv.hist.length - 1, mv.idx + Number(b.dataset.v))); return oxShowVer(mv); }
+    if (a === "oxRemove") { var fr = oxF(b.dataset.f); if (!fr) return; var before = fr.status || ""; fr.status = "removed"; S.ox.queue.ready = S.ox.queue.ready.filter(function (x) { return x.firm_id !== fr.id; }); S.ox.queue.no_email = (S.ox.queue.no_email || []).filter(function (x) { return x.firm_id !== fr.id; });
+      clearTimeout(S.oxUndoT); S.oxUndo = { id: fr.id, name: fr.name, before: before }; S.oxUndoT = setTimeout(function () { S.oxUndo = null; keepScroll(render); }, 10000); keepScroll(render);
+      return oxDo(call("oxSaveFirm", { firm: { id: fr.id, status: "removed" } })); }
+    if (a === "oxUndo") { var u = S.oxUndo; if (!u) return; S.oxUndo = null; clearTimeout(S.oxUndoT); keepScroll(render); return oxDo(call("oxSaveFirm", { firm: { id: u.id, status: u.before || "active" } }), "↩︎ " + u.name + " is back"); }
+    if (a === "oxAiOff") return sure("Disconnect the AI writer? Drafts go back to the saved versions.", function () { oxDo(call("oxAiSave", { off: true }), "AI writer disconnected"); }, "Disconnect");
     if (a === "oxWrite") { if (b.disabled) return; return oxOpenDraft(b.dataset.f, b.dataset.c, b.dataset.step || "day0", b.dataset.p, b.dataset.alert); }
     if (a === "oxDone") { var fx = b.dataset.f; return run(b, function () { return call("oxTouch", { firm_id: fx, channel: b.dataset.ch, step: b.dataset.step || "", outcome: b.dataset.o || "done", summary: b.dataset.ch === "linkedin" ? "LinkedIn" : "" }).then(function () { toast(b.dataset.ch === "reply" ? "💬 Nice! Marked as replied" : b.dataset.ch === "linkedin" ? "💼 LinkedIn done" : "📞 Call logged"); S.oxBusy = 0; oxLoad(); }); }); }
     if (a === "oxNote") { S.modal = { type: "lsxOxNote", firm_id: b.dataset.f }; return keepScroll(render); }
@@ -6372,7 +6406,7 @@
     if (a === "oxOppEdit") { S.modal = { type: "lsxOxOpp", id: b.dataset.id }; return keepScroll(render); }
     if (a === "oxStage") { var op = S.ox.opps.filter(function (x) { return x.id === b.dataset.id; })[0]; if (op) op.stage = b.dataset.v; keepScroll(render); if (b.dataset.v === "won") toast("🏆 Won! Nice work."); return oxDo(call("oxSaveOpp", { opp: { id: b.dataset.id, stage: b.dataset.v } })); }
     if (a === "oxConfirm") return run(b, function () { return oxDo(call("oxSaveFirm", { firm: { id: b.dataset.f, confirmed: true } }), "Confirmed: they’re a pro, not the owner"); });
-    if (a === "oxPause") return run(b, function () { return oxDo(call("oxSaveFirm", { firm: { id: b.dataset.f, status: b.dataset.v } }), b.dataset.v === "paused" ? "Paused: no follow-ups for now" : "Back in the cadence"); });
+    if (a === "oxPause") return run(b, function () { return oxDo(call("oxSaveFirm", { firm: { id: b.dataset.f, status: b.dataset.v } }), b.dataset.v === "paused" ? "Paused: no follow-ups for now" : "Back in outreach"); });
     if (a === "oxContactEdit") { var cc = b.dataset.c ? oxContacts(b.dataset.f).filter(function (x) { return x.id === b.dataset.c; })[0] : null; S.modal = { type: "lsxOxContact", firm_id: b.dataset.f, c: cc || {}, back: b.dataset.f }; return keepScroll(render); }
     if (a === "oxContactDel") return sure("Delete this person from the firm?", function () { var fid = S.modal.firm_id; oxDo(call("oxDeleteContact", { id: b.dataset.c }), "Deleted").then(function () { S.modal = { type: "lsxOxFirm", id: fid }; keepScroll(render); }); }, "Delete");
     if (a === "oxAlertNo") return oxDo(call("oxAlert", { id: b.dataset.id }));
@@ -6423,6 +6457,7 @@
     if (f.dataset.form === "oxLink") return run(btn, async function () { var fid = g("firm"); if (!fid && g("newname")) { var nf = await call("oxSaveFirm", { firm: { name: g("newname") } }); fid = nf.id; } if (!fid) throw new Error("Pick a firm or write a new name."); await call("oxLinkRole", { role_id: m.role_id, firm_id: fid }); S.modal = m.back ? { type: "lsxOxProj", id: m.back } : null; toast("Linked"); S.oxBusy = 0; oxLoad(); });
     if (f.dataset.form === "oxNewFirm") return run(btn, function () { return call("oxSaveFirm", { firm: { name: g("name"), firm_type: g("firm_type"), segment: g("segment"), website: g("website"), phone: g("phone") } }).then(function (r) { S.modal = { type: "lsxOxFirm", id: r.id }; S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxFirmEdit") return run(btn, function () { return call("oxSaveFirm", { firm: { id: m.id, name: g("name"), website: g("website"), phone: g("phone"), firm_type: g("firm_type"), segment: g("segment"), wave: g("wave"), priority: g("priority"), notes: g("notes") } }).then(function () { S.modal = { type: "lsxOxFirm", id: m.id }; toast("Saved"); S.oxBusy = 0; oxLoad(); }); });
+    if (f.dataset.form === "oxAiKey") return run(btn, function () { return call("oxAiSave", { key: g("key") }).then(function () { toast("✨ AI writer connected"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxRrKey") return run(btn, function () { return call("oxRrSave", { key: g("key") }).then(function () { toast("🔎 RocketReach connected"); S.oxBusy = 0; oxLoad(); }); });
   }, true);
   liveLoop();

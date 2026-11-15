@@ -2357,3 +2357,12 @@
 #bs-portal .ox-rr summary::-webkit-details-marker{display:none}
 #bs-portal .ox-rr summary h3{display:flex;gap:8px;align-items:baseline}
 @media (max-width:760px){#bs-portal .ox-net{grid-template-columns:1fr}#bs-portal .ox-fun{grid-template-columns:110px 1fr 40px}#bs-portal .ox-nb{grid-template-columns:1fr 1fr auto}}
+/* Outreach: email versions, remove + undo */
+#bs-portal .ox-ver{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 2px}
+#bs-portal .ox-ver-nav{display:inline-flex;align-items:center;gap:6px}
+#bs-portal .ox-ver-nav .btn{min-width:34px;padding-left:8px;padding-right:8px}
+#bs-portal .ox-ai-tag{color:var(--warn);font-weight:600}
+#bs-portal .ox-x{min-width:34px;padding-left:8px;padding-right:8px;color:var(--ink-2)}
+#bs-portal .ox-x:hover{color:var(--bad);border-color:var(--bad-soft)}
+#bs-portal .ox-undo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-soft);border:1px solid #e8d6b6;border-radius:12px;padding:10px 14px;margin:8px 0;font-size:14px}
+#bs-portal .ox-ai p{margin:6px 0}

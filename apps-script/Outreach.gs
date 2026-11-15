@@ -258,7 +258,7 @@ ACTIONS.oxHome = function (me, b) {
     firms: firms.map(function (f) { var fl = oxFlags(f), s = st[f.id]; return Object.assign({}, f, { flag: fl, state: s.state, emailed: s.emailed, replied: s.replied, last: s.last, due: s.due, blocked: block[f.id] || null }); }),
     contacts: contacts, roles: roles, opps: opps, alerts: rows("OxAlerts").filter(function (a) { return a.status === "open"; }),
     touches: touches.slice(-1500).map(function (x) { var o = Object.assign({}, x); var p = people[normEmail(x.by)]; o.by_name = p ? p.name : x.by; o.by_avatar = p ? p.avatar : ""; o.by_key = p ? p.key : ""; return o; }),
-    rr: oxRrInfo(), last_import: (rows("OxImports").slice(-1)[0] || null) };
+    rr: oxRrInfo(), ai: { on: !!aiKey() }, last_import: (rows("OxImports").slice(-1)[0] || null) };
 };
 NO_LOCK.oxHome = 1;
 /* Where a firm is in the cadence: day 0 email → day 3 LinkedIn → day 7 call → day 14 follow-up, unless they replied. */
@@ -307,7 +307,7 @@ function oxQueue(firms, contacts, roles, projects, st, block, today, sentToday) 
   var due = [], ready = [], noEmail = [];
   var rank = function (f) { return (f.segment === "warm" ? 0 : f.segment === "known" ? 1 : 2) * 100 + (Number(f.wave) || 9) * 10 + ("ABC".indexOf(f.priority) + 1 || 9); };
   firms.forEach(function (f) {
-    var fl = oxFlags(f), s = st[f.id]; if (fl.excluded || s.replied || f.status === "closed" || f.status === "paused") return;
+    var fl = oxFlags(f), s = st[f.id]; if (fl.excluded || s.replied || f.status === "closed" || f.status === "paused" || f.status === "removed") return;
     if (s.due && s.due.date <= today && !oxBlackout(today)) due.push({ firm_id: f.id, step: s.due.step, channel: s.due.channel, date: s.due.date, late: Math.max(0, Math.round((oxDayMs(today) - oxDayMs(s.due.date)) / 864e5)) });
     if (!s.emailed) {
       var ct = best(f), pr = roles.filter(function (x) { return x.firm_id === f.id; }).map(function (x) { return pById[x.project_id]; }).filter(Boolean);
@@ -324,6 +324,26 @@ function oxQueue(firms, contacts, roles, projects, st, block, today, sentToday) 
 /* ====================================== emails: drafted here, Jesús sends ====================================== */
 var OX_TYPE = { new_home: "new home", major_remodel: "remodel", landscape: "landscape", grading: "site work", pool: "pool", tree: "", other: "" };
 function oxStreet(p) { return oxTitle(String(p.address || "").replace(/\s+/g, " ")).replace(/\b(Ln|Rd|Ave|Dr|Ct|St|Pl|Cir|Blvd|Way)\b/g, function (x) { return x; }); }
+/* Hand-written versions of each email (n = 0 is the original). "New version" walks through them when the AI writer isn't connected. */
+var OX_TPL = {
+  day0: [
+    function (v) { return v.hi + "\nSaw " + v.firm + " on " + v.where + v.kp + ". Blue Sierra does the site work, hardscape and landscape on projects like this across the Peninsula.\nCould you add us to the bid list?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nI noticed " + v.where + v.kp + " has " + v.firm + " on it. We're Blue Sierra, a site work, hardscape and landscape contractor here on the Peninsula.\nWould you put us on the bid list for it?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nQuick one about " + v.where + ". If the site work, hardscape or landscape is going out to bid, we'd like a shot at it.\nCould you add Blue Sierra to the list?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nBlue Sierra builds the outside of projects like " + v.where + v.kp + ": grading, drainage, hardscape and landscape.\nCan we get on the bid list for this one?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nWho's handling bids on " + v.where + "? Blue Sierra would like to price the site work, hardscape and landscape.\nCould you add us to the list?\nHappy to walk the site or give early numbers."; }
+  ],
+  day14: [
+    function (v) { return v.hi + "\nCircling back on " + v.where + ". Happy to walk the site or give early numbers whenever it's useful.\nCould you add Blue Sierra to the bid list?"; },
+    function (v) { return v.hi + "\nFollowing up on " + v.where + ". Is the bid list for the site work and landscape set yet?\nWe'd still like to be on it. Happy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nChecking in on " + v.where + ". If it helps, I can walk the site this week and get you early numbers.\nCould you add Blue Sierra to the bid list?"; }
+  ],
+  again: [
+    function (v) { return v.hi + "\nSaw " + v.firm + " is also on " + v.where + v.kp + ". Could you add Blue Sierra to the bid list for this one?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nNew one on our radar: " + v.where + v.kp + ", with " + v.firm + " on it. We'd like to bid the site work and landscape.\nCould you add us to the list?\nHappy to walk the site or give early numbers."; },
+    function (v) { return v.hi + "\nI see " + v.where + " came up with your team on it. Could Blue Sierra get on the bid list for the outside work?\nHappy to walk the site or give early numbers."; }
+  ]
+};
 ACTIONS.oxDraft = function (me, b) {
   oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
   var ct = b.contact_id ? findBy("OxContacts", "id", String(b.contact_id)) : null, step = b.step === "day14" || b.step === "again" ? b.step : "day0";
@@ -336,14 +356,97 @@ ACTIONS.oxDraft = function (me, b) {
   var prev = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.step === "day0"; }).slice(-1)[0];
   var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : where + " · bid list";
   if (step === "again") subject = where + " · bid list";
-  var body = step === "again"
-    ? hi + "\nSaw " + f.name + " is also on " + where + (kind ? " (" + kind + ")" : "") + ". Could you add Blue Sierra to the bid list for this one?\nHappy to walk the site or give early numbers."
-    : step === "day14"
-    ? hi + "\nCircling back on " + where + ". Happy to walk the site or give early numbers whenever it's useful.\nCould you add Blue Sierra to the bid list?"
-    : hi + "\nSaw " + f.name + " on " + where + (kind ? " (" + kind + ")" : "") + ". Blue Sierra does the site work, hardscape and landscape on projects like this across the Peninsula.\nCould you add us to the bid list?\nHappy to walk the site or give early numbers.";
-  return { subject: subject, body: body, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
+  var vs = OX_TPL[step], n = Math.abs(Math.floor(Number(b.n) || 0)) % vs.length, kp = kind ? " (" + kind + ")" : "";
+  var body = vs[n]({ hi: hi, firm: f.name, where: where, kp: kp, street: oxStreet(p) });
+  if (step === "day0" && n % 2 === 1) subject = oxStreet(p) + " · " + p.town;
+  return { subject: subject, body: body, n: n, versions: vs.length, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
 };
 NO_LOCK.oxDraft = 1;
+
+/* ====================================== AI writer (Claude) ======================================
+   "Write email" and "New version" ask Claude for a fresh draft built only from the facts below (firm, first name,
+   street + town, project type). Owners are never sent. The key lives in a Script Property (ANTHROPIC_KEY) and never
+   reaches the browser. Without a key, or if the call fails, the hand-written versions above are used instead. */
+var OX_AI = { url: "https://api.anthropic.com/v1/messages", model: "claude-opus-5-5", version: "2026-10-21", perHour: 60 };
+var OX_ANGLES = ["Open with the project address.", "Open with what Blue Sierra does on projects like this.", "Keep it to two short sentences plus the site-walk line.", "Open with a short question about who handles bids.", "Mention the type of project first, then the address.", "Lead with the offer to walk the site."];
+function aiKey() { return PropertiesService.getScriptProperties().getProperty("ANTHROPIC_KEY") || ""; }
+function oxAiSystem() {
+  return [
+    "You write short outreach emails for Jesús Toto, owner of Blue Sierra Construction, a site work, hardscape and landscape contractor on the San Francisco Peninsula.",
+    "Each email goes from his Gmail to a design or building firm named on a public permit or design-review agenda. The goal is one thing: get Blue Sierra added to the bid list for that project.",
+    "",
+    "How the email reads:",
+    "- First line is the greeting: \"Hi <first name>,\" when a first name is given, otherwise \"Hi there,\".",
+    "- Then 2 to 3 short lines, plain text. Name the project by street and town.",
+    "- Exactly one ask: add Blue Sierra to the bid list for this project.",
+    "- Include the offer to walk the site or give early numbers, in your own words or as \"Happy to walk the site or give early numbers.\"",
+    "- No sign-off, no signature and no name at the end. Gmail adds his signature.",
+    "- Sound like a busy local contractor typing a quick note: plain words, direct, friendly. No flattery, no \"I hope this finds you well\", no \"reach out\", \"leverage\", \"excited\", \"delighted\", \"partner with\", \"synergy\".",
+    "- No em dashes or en dashes, no exclamation marks, no emojis, no bullet points, no links.",
+    "- Use only the facts given. Do not claim past work with this firm, awards, years in business, licenses or anything else not listed. Never mention the property owner.",
+    "",
+    "Subject: under 60 characters, plain, includes the street. For a follow-up, use the subject you are given unchanged.",
+    "Each request may list versions already shown. Write one that is clearly different in its opening and wording, not a light edit."
+  ].join("\n");
+}
+function oxAiCall(facts, avoid, angle) {
+  var key = aiKey(); if (!key) return null;
+  var c = CacheService.getScriptCache(), hk = "oxai:" + Utilities.formatDate(new Date(), "UTC", "yyyyMMddHH"), used = Number(c.get(hk) || 0);
+  if (used >= OX_AI.perHour) throw new Error("The AI writer did " + OX_AI.perHour + " drafts this hour. Using a saved version for now.");
+  c.put(hk, String(used + 1), 3700);
+  var user = "Facts:\n" + JSON.stringify(facts, null, 1) + "\n\nAngle for this version: " + angle + (avoid.length ? "\n\nVersions already shown (write something clearly different):\n" + avoid.map(function (x, i) { return "--- " + (i + 1) + " ---\n" + x; }).join("\n") : "");
+  var payload = { model: OX_AI.model, max_tokens: 16000, system: oxAiSystem(), messages: [{ role: "user", content: user }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: { type: "object", properties: { subject: { type: "string" }, body: { type: "string" } }, required: ["subject", "body"], additionalProperties: false } } },
+    fallbacks: "default" };
+  var go = function (pl, beta) {
+    var h = { "x-api-key": key, "anthropic-version": OX_AI.version }; if (beta) h["anthropic-beta"] = beta;
+    var r = UrlFetchApp.fetch(OX_AI.url, { method: "post", contentType: "application/json", payload: JSON.stringify(pl), headers: h, muteHttpExceptions: true }), j = null;
+    try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    return { code: r.getResponseCode(), j: j };
+  };
+  var r = go(payload, "server-side-fallback-2026-07-01");
+  if (r.code === 400 && /fallback/i.test(JSON.stringify(r.j || ""))) { delete payload.fallbacks; r = go(payload, ""); }   // the account can't use fallbacks: plain request
+  if (r.code === 401 || r.code === 403) throw new Error("The AI key was rejected. Reconnect it in Import & tools.");
+  if (r.code === 429 || r.code === 529) throw new Error("The AI writer is busy. Using a saved version for now.");
+  if (r.code >= 300 || !r.j) throw new Error("The AI writer didn't answer (" + r.code + "). Using a saved version.");
+  if (r.j.stop_reason === "refusal") throw new Error("The AI writer declined this one. Using a saved version.");
+  var txt = (r.j.content || []).filter(function (x) { return x.type === "text"; }).map(function (x) { return x.text; }).join("");
+  var out = null; try { out = JSON.parse(txt); } catch (e) { throw new Error("The AI draft came back incomplete. Using a saved version."); }
+  return out;
+}
+function oxAiTidy(t) {
+  var lines = String(t || "").replace(/\r/g, "").replace(/\s*[—–]\s*/g, ", ").replace(/!/g, ".").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+  while (lines.length > 1 && /^(best|thanks|thank you|cheers|regards|best regards|sincerely|talk soon)[,.]?$|^jes[uú]s|^blue sierra/i.test(lines[lines.length - 1])) lines.pop();
+  return lines.join("\n").slice(0, 900);
+}
+ACTIONS.oxAiDraft = function (me, b) {
+  var base = ACTIONS.oxDraft(me, b);                                           // checks access, picks contact + project, and is the fallback
+  if (!aiKey()) return Object.assign(base, { ai: false });
+  var f = findBy("OxFirms", "id", String(b.firm_id || "")), p = findBy("OxProjects", "id", base.project_id), ct = base.contact_id ? findBy("OxContacts", "id", base.contact_id) : null;
+  var first = ct && ct.name ? oxTitle(oxNorm(ct.name).split(" ")[0]) : "";
+  var facts = { email_kind: { day0: "first email", day14: "follow-up 14 days after the first email (no reply yet)", again: "first email about a NEW project; we've written this firm before about another one" }[base.step],
+    recipient_first_name: first || null, recipient_role: ct && ct.role && ct.role !== "General inbox" ? ct.role : null, firm: f.name, firm_type: f.firm_type || null,
+    project_street: oxStreet(p), project_town: p.town, project_type: OX_TYPE[p.type] || null, project_stage: p.status ? clean(p.status, 120) : null,
+    blue_sierra_does: "site work (grading, drainage, utilities), hardscape and landscape", subject_to_keep: base.step === "day14" ? base.subject : null };
+  var avoid = [].concat(b.avoid || []).map(function (x) { return clean(x, 900); }).filter(Boolean).slice(-4);
+  var n = Math.abs(Math.floor(Number(b.n) || 0)), angle = OX_ANGLES[n % OX_ANGLES.length];
+  try {
+    var r = oxAiCall(facts, avoid, angle); if (!r || !r.body) return Object.assign(base, { ai: false });
+    var body = oxAiTidy(r.body), subject = base.step === "day14" ? base.subject : clean(r.subject, 80).replace(/[—–]/g, "-");
+    if (body.length < 40) return Object.assign(base, { ai: false, ai_err: "The AI draft was too short. Using a saved version." });
+    return Object.assign(base, { subject: subject || base.subject, body: body, ai: true });
+  } catch (e) { return Object.assign(base, { ai: false, ai_err: String(e.message || e) }); }
+};
+NO_LOCK.oxAiDraft = 1;
+ACTIONS.oxAiSave = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús connects the AI writer."); var pr = PropertiesService.getScriptProperties();
+  if (b.off) { pr.deleteProperty("ANTHROPIC_KEY"); return { ai: { on: false } }; }
+  var key = String(b.key || "").trim(); if (!/^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(key)) throw new Error("Paste an API key from console.anthropic.com → API keys (it starts with sk-ant-).");
+  var r = UrlFetchApp.fetch("https://api.anthropic.com/v1/models/" + OX_AI.model, { method: "get", headers: { "x-api-key": key, "anthropic-version": OX_AI.version }, muteHttpExceptions: true });
+  if (r.getResponseCode() === 401 || r.getResponseCode() === 403) throw new Error("Anthropic rejected that key. Check it and paste it again.");
+  if (r.getResponseCode() >= 300) throw new Error("Couldn't check the key right now (" + r.getResponseCode() + "). Try again in a minute.");
+  pr.setProperty("ANTHROPIC_KEY", key); return { ai: { on: true } };
+};
 ACTIONS.oxSend = function (me, b) {
   oxAdmin(me); var key = String(b.key || ""); if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new Error("Reload the portal and try again (missing send key).");
   var done = findBy("OxOutbox", "key", key); if (done && done.status === "sent") return { status: "sent", again: true };
@@ -423,7 +526,7 @@ ACTIONS.oxSaveFirm = function (me, b) {
   oxNeed(me); var x = b.firm || {}, f = x.id ? findBy("OxFirms", "id", String(x.id)) : null, t = now();
   var data = {}; ["name", "firm_type", "segment", "priority", "wave", "channel", "website", "phone", "notes", "status", "next_step", "next_date"].forEach(function (k) { if (x[k] != null) data[k] = clean(x[k], k === "notes" ? 2000 : 300); });
   if (data.segment && ["warm", "known", "cold", "excluded"].indexOf(data.segment) < 0) throw new Error("Unknown segment.");
-  if (data.status && ["", "active", "paused", "replied", "closed"].indexOf(data.status) < 0) throw new Error("Unknown status.");
+  if (data.status && ["", "active", "paused", "replied", "closed", "removed"].indexOf(data.status) < 0) throw new Error("Unknown status.");
   if (x.confirmed != null) data.confirmed = x.confirmed ? "yes" : "";
   if (data.name) data.norm = oxNorm(data.name);
   if (f) { data.updated_at = t; update("OxFirms", "id", f.id, data); return { id: f.id }; }
@@ -648,5 +751,5 @@ ACTIONS.oxExport = function (me, b) {
   return { file: "outreach_" + t + "_" + oxToday() + ".csv", csv: [h.join(",")].concat(rows(map[t]).map(function (r) { return h.map(function (k) { return q(r[k]); }).join(","); })).join("\n") };
 };
 NO_LOCK.oxExport = 1; NO_LOCK.oxEnrichPlan = 1;
-["oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
-["oxHome", "oxDraft", "oxExport", "oxEnrichPlan"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
+["oxAiSave", "oxFindFree", "oxImport", "oxSend", "oxTouch", "oxSaveFirm", "oxLinkRole", "oxSaveContact", "oxDeleteContact", "oxSaveOpp", "oxAlert", "oxEnrich", "oxEnrichCheck", "oxCheckReplies", "oxRrSave"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
+["oxHome", "oxDraft", "oxAiDraft", "oxExport", "oxEnrichPlan"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
