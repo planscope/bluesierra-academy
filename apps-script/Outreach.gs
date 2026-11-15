@@ -559,6 +559,7 @@ function oxRrSaveContact(f, d, me) {
    person's email is known (pcarlino@…), the others are built the same way and marked "guessed". */
 var OX_JUNK = /\.(png|jpe?g|gif|svg|webp|css|js|ico)$|^(example|test|user|name|your|email)@|@(example|domain|email|sentry|wixpress|sentry-next|godaddy)\.|noreply|no-reply|donotreply/i;
 var OX_GENERIC = /^(info|contact|hello|office|admin|studio|design|projects?|bids?|estimat\w*|mail|team|inquir\w*|general|reception|careers|jobs|marketing|press|media|sales)$/i;
+var OX_MAILBOX = /^(gmail|yahoo|hotmail|outlook|icloud|aol|me|comcast|sbcglobal|att)\.(com|net)$/i;
 function oxDomain(f) { var m = String(f.website || "").trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[\/?#]/)[0].toLowerCase(); return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(m) ? m : ""; }
 function oxDomainFits(f, dom) {                                    // does this email domain belong to the firm? (its website, or its name in the domain)
   dom = String(dom || "").toLowerCase(); if (!dom || /^(gmail|yahoo|hotmail|outlook|icloud|aol|me|comcast|sbcglobal|att)\./.test(dom)) return false;
@@ -597,7 +598,11 @@ function oxFromWebsite(f) {
     var text = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
     (text.match(/(?:\+?1[\s.-]?)?\(?\b[2-9]\d{2}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g) || []).forEach(function (p) { var d = p.replace(/\D/g, "").slice(-10); if (d.length === 10) phones[d] = 1; });
   });
-  var list = Object.keys(emails).sort(function (a, b) { return (oxDomainFits(f, b.split("@")[1]) ? 1 : 0) - (oxDomainFits(f, a.split("@")[1]) ? 1 : 0); }).slice(0, 8);
+  var keep = {}; Object.keys(emails).forEach(function (e) {             // only the firm's own domain (or a plain mailbox like Gmail); sites that hide emails with ROT13 get decoded
+    var r13 = e.replace(/[a-z]/g, function (c) { return String.fromCharCode((c.charCodeAt(0) - 97 + 13) % 26 + 97); });
+    if (oxDomainFits(f, e.split("@")[1]) || OX_MAILBOX.test(e.split("@")[1])) keep[e] = 1; else if (oxDomainFits(f, r13.split("@")[1])) keep[r13] = 1;
+  });
+  var list = Object.keys(keep).sort(function (a, b) { return (oxDomainFits(f, b.split("@")[1]) ? 1 : 0) - (oxDomainFits(f, a.split("@")[1]) ? 1 : 0); }).slice(0, 8);
   return { emails: list, phones: Object.keys(phones).slice(0, 3), pages: ok };
 }
 /* first.last@, flast@, first@ … learned from one known person at the firm */
