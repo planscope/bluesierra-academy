@@ -2523,3 +2523,14 @@
 #bs-portal .ox-rd-new{color:#a5551f;font-weight:600}
 #bs-portal .ox-rd-o .btn{align-self:flex-start;margin-top:6px}
 #bs-portal .ox-rd-o .btn{white-space:normal;text-align:left;height:auto;line-height:1.3;max-width:100%;padding-top:7px;padding-bottom:7px}
+/* Link firm suggestions + the cities card */
+#bs-portal .ox-lks{display:flex;flex-direction:column;gap:10px;margin:10px 0}
+#bs-portal .ox-lk{border:1px solid #e6e1d8;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;background:#fff}
+#bs-portal .ox-lk.web{border-color:#cddcf2;background:#f7faff}
+#bs-portal .ox-lk-h{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+#bs-portal .ox-lk-src{font-size:11px;padding:1px 7px}
+#bs-portal .ox-lk .btn{align-self:flex-start;margin-top:4px;white-space:normal;height:auto;line-height:1.3}
+#bs-portal .ox-lk-srcs a{margin-right:6px}
+#bs-portal .ox-lk-man{margin-top:12px}
+#bs-portal .ox-lk-man>summary{cursor:pointer;color:#5b5145}
+#bs-portal .ox-city-t{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;margin:8px 0}

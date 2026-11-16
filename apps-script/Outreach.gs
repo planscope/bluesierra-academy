@@ -144,11 +144,15 @@ function oxImportProjects(list, g, imp) {
   oxAppend("OxAlerts", al); c.alerts = al.length;
   return c;
 }
-function oxFindFirm(firms, raw) {
-  var n = oxNorm(raw.replace(/\s+-\s+.*$/, "")); if (!n) return null;
+function oxFindFirm(firms, raw, inner) {
+  var n = oxNorm(String(raw).replace(/\s+-\s+.*$/, "")); if (!n || (inner && n.length < 6)) return null;
   var hit = firms.filter(function (f) { return f.norm === n; })[0]; if (hit) return hit;
   hit = firms.filter(function (f) { return f.norm.length >= 6 && (n.indexOf(f.norm) === 0 || f.norm.indexOf(n) === 0); })[0];
-  return hit || null;
+  if (hit || inner) return hit || null;
+  var parts = oxSplitRaw(raw); if (parts.length < 2) return null;                  // "Pete Mason, Mason Architects": try each part, the firm-like one first
+  parts.sort(function (a, b) { return (oxFirmish(b) ? 1 : 0) - (oxFirmish(a) ? 1 : 0); });
+  for (var i = 0; i < parts.length; i++) { hit = oxFindFirm(firms, parts[i], true); if (hit) return hit; }
+  return null;
 }
 function oxImportFirms(list, g, me) {
   var all = rows("OxFirms").slice(), contacts = rows("OxContacts").slice(), roles = rows("OxRoles").slice(), projects = rows("OxProjects"), touches = [], t = now(), c = { rows: list.length, new: 0, updated: 0, contacts: 0, links: 0, linkedin_touches: 0 };
@@ -284,7 +288,7 @@ ACTIONS.oxHome = function (me, b) {
       act: cx.act[f.id] }); }),
     contacts: contacts, roles: roles, opps: opps, alerts: rows("OxAlerts").filter(function (a) { return a.status === "open"; }),
     touches: touches.slice(-1500).map(function (x) { var o = Object.assign({}, x); var p = people[normEmail(x.by)]; o.by_name = p ? p.name : x.by; o.by_avatar = p ? p.avatar : ""; o.by_key = p ? p.key : ""; return o; }),
-    rr: oxRrInfo(), ai: { on: !!aiKey() }, sig: oxSig(), last_import: (rows("OxImports").slice(-1)[0] || null), calls: oxCallsHome(today) };
+    rr: oxRrInfo(), ai: { on: !!aiKey() }, city: oxCityHome(), sig: oxSig(), last_import: (rows("OxImports").slice(-1)[0] || null), calls: oxCallsHome(today) };
 };
 NO_LOCK.oxHome = 1;
 /* What the setter did, for Jesús: meetings booked, today's and this week's calls, and who still needs a phone number. */
@@ -1707,3 +1711,303 @@ ACTIONS.oxSaveDraft = function (me, b) {
 ACTIONS.oxDropDraft = function (me, b) { oxNeed(me); removeWhere("OxOutbox", function (m) { return m.key === String(b.key || "") && m.status === "draft"; }); return {}; };
 ["oxBidStatus", "oxProjLog", "oxSaveDraft", "oxDropDraft"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
 PREFETCH.oxBrief = OX_T.concat(["People"]);
+
+/* ====================================== Link firm: who is "<name on the permit>"? ======================================
+   Free first: your own firms (their names and their people), then Jesús's Gmail. The internet (Claude with web search,
+   a few cents) only when someone asks for it. Nothing is linked until a person picks a suggestion. */
+var OX_GENERIC_W = ["architect", "architects", "architecture", "architectural", "design", "designs", "designer", "studio", "associates", "group", "partners", "landscape", "construction", "builders", "builder", "building", "development", "engineering", "engineers", "homes", "company", "and", "the", "of", "planning", "interiors", "inc", "llc", "general", "contractor", "contractors"];
+var OX_WEB = { model: "claude-sonnet-5-5", perHour: 20, inPerM: 2, outPerM: 10, perSearch: 0.01 };
+OX_SRC_TXT.web = "the internet";
+function oxSigTokens(s) { return oxNorm(s).split(" ").filter(function (w) { return w.length > 1 && OX_GENERIC_W.indexOf(w) < 0; }); }
+function oxNameScore(a, b) {                                                // shared words that matter; a shared first name alone ("James …") never counts
+  var x = oxSigTokens(a), y = oxSigTokens(b); if (!x.length || !y.length) return 0; var hit = x.filter(function (w) { return y.indexOf(w) > -1; }), sc = hit.length / Math.max(x.length, y.length);
+  if (sc >= 0.67) return sc; return hit.length && x[x.length - 1] === y[y.length - 1] ? sc : 0;
+}
+function oxSplitRaw(raw) {                                                  // "Peter Mason, Mason Architects" → ["Peter Mason", "Mason Architects"]
+  return String(raw || "").replace(/\([^)]*\)/g, " ").split(/\s*[,;\/|]\s*|\s+-\s+|\s+&\s+(?=[A-Z])/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 2; });
+}
+function oxFirmish(s) { return /architect|design|studio|associates|group|partners|landscape|construct|build|develop|engineer|homes|inc\b|llc\b|aia\b|company/i.test(s); }
+function oxLocalMatches(raw) {
+  var firms = rows("OxFirms").filter(function (f) { return f.status !== "removed"; }), byId = {}, out = {}; firms.forEach(function (f) { byId[f.id] = f; });
+  var add = function (f, score, why) { if (!f) return; var o = out[f.id]; if (!o || score > o.score) out[f.id] = { firm_id: f.id, name: f.name, firm_type: f.firm_type || "", website: f.website || "", phone: f.phone || "", score: Math.round(score * 100) / 100, why: why, source: "yours" }; };
+  var exact = oxFindFirm(firms, raw); if (exact) add(exact, 1, "Same name as your firm “" + exact.name + "”");
+  var parts = [raw].concat(oxSplitRaw(raw));
+  parts.forEach(function (pt) {
+    firms.forEach(function (f) { var s = oxNameScore(pt, f.name); if (s >= 0.5) add(f, 0.45 + s * 0.45, "Name matches your firm “" + f.name + "”"); });
+    if (oxNorm(pt).split(" ").length >= 2) rows("OxContacts").forEach(function (c) { if (c.name && oxNorm(c.name) === oxNorm(pt)) add(byId[c.firm_id], 0.92, c.name + " works there" + (c.role ? " (" + c.role + ")" : "")); });
+  });
+  return Object.keys(out).map(function (k) { return out[k]; }).sort(function (a, b) { return b.score - a.score; }).slice(0, 4);
+}
+function oxFirmByDomain(dom) {
+  if (!dom) return null; var f = rows("OxFirms").filter(function (x) { return oxDomain(x) === dom; })[0]; if (f) return f;
+  var c = rows("OxContacts").filter(function (x) { return String(x.email || "").split("@")[1] === dom; })[0]; return c ? findBy("OxFirms", "id", c.firm_id) : null;
+}
+function oxGmailFirm(raw, me) {
+  if (me.role !== "admin" || me.preview) return [];
+  var parts = [raw].concat(oxSplitRaw(raw)).filter(function (x, i, l) { return l.indexOf(x) === i; }).slice(0, 3), q = parts.map(function (p) { return '"' + p.replace(/"/g, "") + '"'; }).join(" OR ");
+  var threads = []; try { threads = GmailApp.search("(" + q + ") newer_than:3y", 0, 15); } catch (e) { return []; }
+  if (!threads.length) return []; var msgs = GmailApp.getMessagesForThreads(threads), ours = {}, dom = {};
+  rows("People").forEach(function (x) { ours[normEmail(x.email)] = 1; });
+  msgs.forEach(function (ms) { (ms || []).forEach(function (m) { [m.getFrom(), m.getTo(), m.getCc ? m.getCc() : ""].forEach(function (h) { oxParseAddrs(h).forEach(function (a) {
+    var d = a.email.split("@")[1] || ""; if (!d || ours[a.email] || /bluesierracorp\.com$/.test(d) || OX_MAILBOX.test(d) || OX_JUNK.test(a.email)) return;
+    var x = dom[d] = dom[d] || { domain: d, n: 0, people: {} }; x.n++; if (a.name && !/@/.test(a.name)) x.people[a.email] = a.name; else if (!x.people[a.email]) x.people[a.email] = "";
+  }); }); }); });
+  return Object.keys(dom).map(function (k) { return dom[k]; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 3).map(function (x) {
+    var f = oxFirmByDomain(x.domain), ppl = Object.keys(x.people).slice(0, 3).map(function (e) { return { email: e, name: x.people[e] }; }), why = "In your Gmail: " + x.n + " message" + (x.n === 1 ? "" : "s") + " with @" + x.domain + " mention this name";
+    return f ? { firm_id: f.id, name: f.name, firm_type: f.firm_type || "", website: f.website || "", score: 0.8, why: why, source: "gmail" }
+      : { firm_id: "", name: oxFirmish(parts[parts.length - 1]) ? parts[parts.length - 1] : oxTitle(x.domain.split(".")[0]), website: "https://" + x.domain, people: ppl, score: 0.6, why: why, source: "gmail" };
+  });
+}
+function oxAiPost(payload, beta) {
+  var key = aiKey(); if (!key) throw new Error("Connect the AI key first (Import & tools → AI email writer).");
+  var h = { "x-api-key": key, "anthropic-version": OX_AI.version }; if (beta) h["anthropic-beta"] = beta;
+  var r = UrlFetchApp.fetch(OX_AI.url, { method: "post", contentType: "application/json", payload: JSON.stringify(payload), headers: h, muteHttpExceptions: true }), j = null;
+  try { j = JSON.parse(r.getContentText()); } catch (e) {}
+  var code = r.getResponseCode();
+  if (code === 401 || code === 403) throw new Error("The AI key was rejected. Reconnect it in Import & tools.");
+  if (code === 429 || code === 529) throw new Error("Claude is busy right now. Try again in a minute.");
+  if (code >= 300 || !j) throw new Error("Claude didn't answer (" + code + ").");
+  return j;
+}
+function oxJsonIn(txt) {
+  var s = String(txt || ""), a = s.indexOf("{"), b = s.lastIndexOf("}"); if (a < 0 || b < a) return null;
+  try { return JSON.parse(s.slice(a, b + 1)); } catch (e) {}
+  var c = s.lastIndexOf("{", b); while (c > -1) { try { return JSON.parse(s.slice(c, b + 1)); } catch (e2) {} c = s.lastIndexOf("{", c - 1); }
+  return null;
+}
+function oxAiText(j) { return (j.content || []).filter(function (x) { return x.type === "text"; }).map(function (x) { return x.text; }).join("\n"); }
+function oxAiWebFirm(r, p) {
+  var c = CacheService.getScriptCache(), hk = "oxweb:" + Utilities.formatDate(new Date(), "UTC", "yyyyMMddHH"), used = Number(c.get(hk) || 0);
+  if (used >= OX_WEB.perHour) throw new Error("That's " + OX_WEB.perHour + " internet searches this hour. Try again later."); c.put(hk, String(used + 1), 3700);
+  var role = OX_ROLE_TXT[r.role] || r.role, prompt = [
+    "A building permit or design-review agenda in " + (p ? p.town : "the San Francisco Peninsula") + ", California names this " + role + ": \"" + r.raw + "\".",
+    p ? "Project: " + oxStreetFull(p) + ", " + p.town + ". " + String(p.description || "").slice(0, 300) : "",
+    "Use web search to find the design or building firm this refers to. If it's a person, find the firm they work for. Prefer the firm's own website, the California contractors or architects license boards, AIA and Houzz listings.",
+    "Only report what the sources show. If you can't tell which firm it is, say found: false.",
+    "Reply with only this JSON: {\"found\": true, \"firm_name\": \"\", \"firm_type\": \"Architect | Landscape Architect | Designer | Builder | Engineer | Other\", \"website\": \"\", \"phone\": \"\", \"city\": \"\", \"person\": \"\", \"person_title\": \"\", \"email\": \"\", \"confidence\": \"high | medium | low\", \"why\": \"one sentence\", \"sources\": [\"url\"]}"
+  ].filter(Boolean).join("\n");
+  var msgs = [{ role: "user", content: prompt }], j = null, searches = 0, tin = 0, tout = 0;
+  for (var i = 0; i < 3; i++) {
+    j = oxAiPost({ model: OX_WEB.model, max_tokens: 3000, messages: msgs, tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }], output_config: { effort: "low" } });
+    var u = j.usage || {}; tin += u.input_tokens || 0; tout += u.output_tokens || 0; searches += ((u.server_tool_use || {}).web_search_requests) || 0;
+    if (j.stop_reason !== "pause_turn") break; msgs = [msgs[0], { role: "assistant", content: j.content }];
+  }
+  if (j.stop_reason === "refusal") throw new Error("Claude declined this search.");
+  var out = oxJsonIn(oxAiText(j)) || { found: false, why: "No clear answer." };
+  out.cost = Math.round((tin / 1e6 * OX_WEB.inPerM + tout / 1e6 * OX_WEB.outPerM + searches * OX_WEB.perSearch) * 1000) / 1000; out.searches = searches;
+  return out;
+}
+ACTIONS.oxLinkSuggest = function (me, b) {
+  oxNeed(me); var r = findBy("OxRoles", "id", String(b.role_id || "")); if (!r) throw new Error("Not found."); if (r.role === "owner") throw new Error("Owners are never linked to outreach.");
+  var p = findBy("OxProjects", "id", r.project_id), same = rows("OxRoles").filter(function (x) { return x.id !== r.id && !x.firm_id && x.role !== "owner" && oxNorm(x.raw) === oxNorm(r.raw); }).length;
+  var out = { raw: r.raw, role: OX_ROLE_TXT[r.role] || r.role, town: p ? p.town : "", street: p ? oxStreetFull(p) : "", same: same, web_ok: !!aiKey(), candidates: oxLocalMatches(r.raw) };
+  oxGmailFirm(r.raw, me).forEach(function (g) { if (!out.candidates.some(function (c) { return (g.firm_id && c.firm_id === g.firm_id) || (!g.firm_id && c.website === g.website); })) out.candidates.push(g); });
+  if (b.web) {
+    var w = oxAiWebFirm(r, p); out.web = { cost: w.cost, searches: w.searches, found: !!w.found && !!w.firm_name, why: w.why || "" };
+    if (out.web.found) {
+      var dom = oxDomain({ website: w.website || "" }), f = oxFirmByDomain(dom) || rows("OxFirms").filter(function (x) { return oxNameScore(w.firm_name, x.name) >= 0.75; })[0];
+      var cand = { firm_id: f ? f.id : "", name: f ? f.name : w.firm_name, firm_type: (f && f.firm_type) || w.firm_type || "", website: (f && f.website) || (dom ? "https://" + dom : ""), phone: (f && f.phone) || w.phone || "", city: w.city || "",
+        person: w.person || "", person_title: w.person_title || "", email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w.email || "") ? normEmail(w.email) : "", confidence: w.confidence || "low", why: (f ? "Found online, and it's already your firm. " : "Found online. ") + (w.why || ""),
+        sources: [].concat(w.sources || []).filter(function (s) { return /^https?:\/\//.test(s); }).slice(0, 4), score: { high: 0.85, medium: 0.65, low: 0.4 }[w.confidence] || 0.4, source: "web" };
+      out.candidates = out.candidates.filter(function (c) { return !(cand.firm_id && c.firm_id === cand.firm_id); }); out.candidates.unshift(cand);
+    }
+  }
+  out.candidates.sort(function (a, c) { return (c.source === "web" ? 1 : 0) - (a.source === "web" ? 1 : 0) || c.score - a.score; });
+  return out;
+};
+NO_LOCK.oxLinkSuggest = 1; PREFETCH.oxLinkSuggest = OX_T.concat(["People"]);
+/* Link it: to a firm you have, or a new one from a suggestion (with the person and email it found). "same" links every other
+   unlinked mention of the same name too. */
+ACTIONS.oxLinkFirm = function (me, b) {
+  oxNeed(me); var r = findBy("OxRoles", "id", String(b.role_id || "")); if (!r) throw new Error("Not found."); if (r.role === "owner") throw new Error("Owners are never linked to outreach.");
+  var fid = String(b.firm_id || ""), nf = b.new_firm, t = now(), made = false;
+  if (!fid && nf) {
+    var nm = clean(nf.name, 200); if (!nm) throw new Error("Write the firm's name.");
+    var ex = rows("OxFirms").filter(function (x) { return x.norm === oxNorm(nm); })[0] || oxFirmByDomain(oxDomain({ website: nf.website || "" }));
+    if (ex) fid = ex.id;
+    else { fid = ACTIONS.oxSaveFirm(me, { firm: { name: nm, firm_type: clean(nf.firm_type, 80), website: clean(nf.website, 200), phone: clean(nf.phone, 40), segment: "cold",
+      notes: nf.why ? "Found by " + (nf.source === "web" ? "internet search" : nf.source === "gmail" ? "your Gmail" : "the portal") + ": " + clean(nf.why, 300) + ([].concat(nf.sources || []).length ? " Sources: " + [].concat(nf.sources).slice(0, 3).join(" ") : "") : "" } }).id; made = true; }
+    var ppl = [].concat(nf.people || []); if (nf.person || nf.email) ppl.unshift({ name: nf.person || "", email: nf.email || "", role: nf.person_title || "" });
+    var have = rows("OxContacts").filter(function (c) { return c.firm_id === fid; });
+    ppl.slice(0, 4).forEach(function (x) { var e = normEmail(x.email || ""); if (!x.name && !e) return; if (have.some(function (c) { return (e && normEmail(c.email) === e) || (x.name && c.name && oxSame(c.name, x.name)); })) return;
+      var ct = { id: newId("oc"), firm_id: fid, name: clean(x.name, 120), role: clean(x.role, 120), email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) ? e : "", phone: "", source: nf.source === "gmail" ? "gmail" : "web", verified: nf.source === "gmail" ? "yes" : "no", created_at: t, updated_at: t };
+      insert("OxContacts", ct); have.push(ct); });
+  }
+  if (!fid || !findBy("OxFirms", "id", fid)) throw new Error("Pick a firm.");
+  var n = 0; rows("OxRoles").filter(function (x) { return x.id === r.id || (b.same && !x.firm_id && x.role !== "owner" && oxNorm(x.raw) === oxNorm(r.raw)); }).forEach(function (x) { update("OxRoles", "id", x.id, { firm_id: fid, source: "manual" }); n++; });
+  return { firm_id: fid, created: made, linked: n };
+};
+PREFETCH.oxLinkFirm = OX_T.concat(["People"]);
+
+/* ====================================== The cities, read every week ======================================
+   Instead of asking Grok each week, the portal reads the towns' own meeting agendas (design review boards and planning
+   commissions, where a project shows up first with its architect) and Palo Alto's open permit list.
+   - agendas: Claude (Haiku, a fraction of a cent each) turns each agenda's text into project rows; Palo Alto needs no AI
+   - only residential work we'd bid (A/B fit); owners are kept only to never contact them
+   - an address you already track isn't re-imported: its new names are added, nothing is overwritten
+   - each agenda is read once; the job runs every Monday morning and from the "Check the cities now" button */
+TABLES.OxCityLog = ["id", "town", "source", "ref", "url", "title", "meeting_date", "at", "status", "found", "added", "note", "cost", "by"];
+OX_T.push("OxCityLog");
+var OX_CITY_BODY = /architect|design review|site review|planning commission|site development|special project|zoning administrator/i, OX_CITY_SKIP = /cancel|packet|minutes|notice of/i;
+var OX_CITY = [
+  { town: "Palo Alto", kind: "paloalto", url: "https://data.paloalto.gov/rest/datastreams/298718/data.csv" },
+  { town: "Woodside", kind: "civicplus", base: "https://www.woodsideca.gov" },
+  { town: "Hillsborough", kind: "civicplus", base: "https://www.hillsborough.net" },
+  { town: "Los Altos Hills", kind: "civicplus", base: "https://www.losaltoshills.ca.gov" },
+  { town: "Saratoga", kind: "civicplus", base: "https://www.saratoga.ca.us" },
+  { town: "Burlingame", kind: "legistar", client: "burlingameca" },
+  { town: "Atherton", kind: "primegov", host: "https://atherton.primegov.com" },
+  { town: "Los Altos", kind: "civicclerk", host: "https://losaltosca.api.civicclerk.com" }
+];
+var OX_READ = { model: "claude-haiku-5-5", inPerM: 0.1, outPerM: 0.5, maxChars: 60000, perRun: 8, lookbackDays: 21 };
+function oxCityGet(url, json) {
+  var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Blue Sierra permit reader)", Accept: json ? "application/json" : "*/*" } });
+  if (r.getResponseCode() >= 300) throw new Error(url.split("/")[2] + " answered " + r.getResponseCode());
+  return json ? JSON.parse(r.getContentText()) : r.getContentText();
+}
+function oxHtmlText(h) {
+  return String(h || "").replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&rsquo;|&#8217;/g, "'")
+    .replace(/[ \t ]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+}
+/* each source → its recent agendas: { ref, title, date, url, textUrl | itemsUrl } */
+function oxCityAgendas(src, since, until) {
+  var out = [];
+  if (src.kind === "civicplus") {
+    var x = oxCityGet(src.base + "/RSSFeed.aspx?ModID=65&CID=All-0");
+    (x.match(/<item>[\s\S]*?<\/item>/g) || []).forEach(function (it) {
+      var title = oxHtmlText((it.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || ""), link = ((it.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "").trim(), id = (link.match(/(\d+)\s*$/) || [])[1];
+      if (!id || !OX_CITY_BODY.test(title) || OX_CITY_SKIP.test(title)) return;
+      out.push({ ref: "cp-" + id, title: title, date: "", url: "", page: /^http/.test(link) ? link : src.base + link, id: id });
+    });
+    out.forEach(function (a) { try { var pg = oxCityGet(a.page), m = pg.match(new RegExp("/AgendaCenter/ViewFile/Agenda/_(\\d{2})(\\d{2})(\\d{4})-" + a.id)); if (m) { a.date = m[3] + "-" + m[1] + "-" + m[2]; a.url = src.base + "/AgendaCenter/ViewFile/Agenda/_" + m[1] + m[2] + m[3] + "-" + a.id; a.textUrl = a.url + "?html=true"; } } catch (e) { a.err = e.message; } });
+    out = out.filter(function (a) { return a.url; });
+  } else if (src.kind === "legistar") {
+    var ev = oxCityGet("https://webapi.legistar.com/v1/" + src.client + "/events?$top=25&$orderby=EventDate%20desc", true);
+    ev.forEach(function (e) { if (!OX_CITY_BODY.test(e.EventBodyName || "")) return; out.push({ ref: "lg-" + e.EventId, title: e.EventBodyName, date: String(e.EventDate || "").slice(0, 10), url: e.EventInSiteURL || e.EventAgendaFile || "", itemsUrl: "https://webapi.legistar.com/v1/" + src.client + "/events/" + e.EventId + "/eventitems" }); });
+  } else if (src.kind === "primegov") {
+    var ms = oxCityGet(src.host + "/api/v2/PublicPortal/ListUpcomingMeetings", true); try { ms = ms.concat(oxCityGet(src.host + "/api/v2/PublicPortal/ListArchivedMeetings?year=" + since.slice(0, 4), true)); } catch (e) {}
+    ms.forEach(function (m) { if (!OX_CITY_BODY.test(m.title || "")) return; var doc = (m.documentList || []).filter(function (d) { return /html agenda/i.test(d.templateName || ""); })[0] || (m.documentList || []).filter(function (d) { return /^agenda$/i.test(d.templateName || ""); })[0]; if (!doc) return;
+      out.push({ ref: "pg-" + m.id + "-" + doc.templateId, title: m.title, date: String(m.dateTime || "").slice(0, 10), url: src.host + "/Portal/Meeting?meetingTemplateId=" + doc.templateId, textUrl: src.host + "/Portal/Meeting?meetingTemplateId=" + doc.templateId }); });
+  } else if (src.kind === "civicclerk") {
+    var j = oxCityGet(src.host + "/v1/Events?$filter=startDateTime%20ge%20" + since + "T00:00:00Z%20and%20startDateTime%20le%20" + until + "T23:59:59Z&$orderby=startDateTime%20desc&$top=30", true);
+    (j.value || []).forEach(function (e) { if (!OX_CITY_BODY.test(e.eventName || "")) return; (e.publishedFiles || []).forEach(function (f) { if (!/^agenda$/i.test(f.type || "") || OX_CITY_SKIP.test(f.name || "")) return;
+      out.push({ ref: "cc-" + f.fileId, title: e.eventName, date: String(e.startDateTime || "").slice(0, 10), url: src.host + "/v1/Meetings/GetMeetingFileStream(fileId=" + f.fileId + ",plainText=false)", textUrl: src.host + "/v1/Meetings/GetMeetingFileStream(fileId=" + f.fileId + ",plainText=true)" }); }); });
+  }
+  return out.filter(function (a) { return a.date && a.date >= since && a.date <= until; });
+}
+function oxAgendaText(a) {                                                  // the agenda as text, or { pdf: base64 } when the town only publishes a PDF
+  if (a.itemsUrl) return oxCityGet(a.itemsUrl, true).map(function (x) { return String(x.EventItemTitle || "").trim(); }).filter(function (t) { return /\d/.test(t.slice(0, 80)) && t.length > 30; }).join("\n\n");
+  var r = UrlFetchApp.fetch(a.textUrl, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Blue Sierra permit reader)" } });
+  if (r.getResponseCode() >= 300) throw new Error(a.textUrl.split("/")[2] + " answered " + r.getResponseCode());
+  var b = r.getContent();
+  if (b.length > 4 && b[0] === 37 && b[1] === 80 && b[2] === 68 && b[3] === 70) { if (b.length > 9000000) throw new Error("agenda PDF is too big to read (" + Math.round(b.length / 1e6) + " MB)"); return { pdf: Utilities.base64Encode(b) }; }
+  var t = r.getContentText(); return /<html|<body|<div/i.test(t.slice(0, 2000)) ? oxHtmlText(t) : t;
+}
+var OX_READ_SCHEMA = { type: "object", additionalProperties: false, required: ["items"], properties: { items: { type: "array", items: { type: "object", additionalProperties: false,
+  required: ["address", "case_numbers", "description", "project_type", "fit_tier", "architect", "landscape_architect", "applicant", "contractor", "engineer", "owner"],
+  properties: { address: { type: "string" }, case_numbers: { type: "string" }, description: { type: "string" }, project_type: { type: "string", enum: ["new_home", "major_remodel", "landscape", "grading", "pool", "tree", "other"] },
+    fit_tier: { type: "string", enum: ["A", "B", "C"] }, architect: { type: "string" }, landscape_architect: { type: "string" }, applicant: { type: "string" }, contractor: { type: "string" }, engineer: { type: "string" }, owner: { type: "string" } } } } } };
+function oxAiReadAgenda(text, town, title, date) {
+  var sys = ["You read a town meeting agenda from " + town + ", California and list each private property project on it.",
+    "Blue Sierra Construction bids site work, hardscape, pools and landscape on custom homes. Fit: A = new home, a full rebuild, or a remodel with a new pool, landscape, grading or site work; B = a major remodel or addition that likely changes the yard; C = anything else (interior, signs, commercial, policy items, minutes, trees only).",
+    "For each project item: the street address as written (number and street), the case or permit numbers, a one-sentence description, the type, the fit, and the names given for the architect or designer, landscape architect, applicant, contractor, engineer and property owner (\"\" when not named). When a line says \"Applicant and Architect: X\", put X in both. Keep firm names with the person (\"Peter Mason, Mason Architects\").",
+    "Skip items with no street address. Use only what the agenda says."].join("\n");
+  var content = text && text.pdf ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: text.pdf } }, { type: "text", text: title + " · " + date + ": list the projects on this agenda." }] : title + " · " + date + "\n\n" + String(text).slice(0, OX_READ.maxChars);
+  var j = oxAiPost({ model: OX_READ.model, max_tokens: 8000, system: sys, messages: [{ role: "user", content: content }], output_config: { effort: "low", format: { type: "json_schema", schema: OX_READ_SCHEMA } } });
+  if (j.stop_reason === "refusal") throw new Error("Claude declined this agenda.");
+  var u = j.usage || {}, out = oxJsonIn(oxAiText(j)) || { items: [] };
+  out.cost = Math.round(((u.input_tokens || 0) / 1e6 * OX_READ.inPerM + (u.output_tokens || 0) / 1e6 * OX_READ.outPerM) * 10000) / 10000;
+  return out;
+}
+var OX_PA_YES = /single[- ]family|new (residence|home|dwelling|sfd|sfr)|addition|remodel|swimming pool|\bpool\b|landscap|hardscap|grading|retaining wall|site work|site improvement/i, OX_PA_NO = /instant permit|re-?roof|solar|photovoltaic|heat pump|water heater|ev charger|electric(al)? (service|panel)|hvac|furnace|window replacement|like[- ]for[- ]like|sewer lateral|demolition only|fire sprinkler|tenant improvement|commercial/i;
+function oxPaloAltoRows(since) {
+  var csv = Utilities.parseCsv(oxCityGet(OX_CITY.filter(function (s) { return s.kind === "paloalto"; })[0].url)); if (!csv.length) return [];
+  var h = csv[0].map(function (x) { return String(x).replace(/^﻿/, "").trim().toUpperCase(); }), ix = function (k) { return h.indexOf(k); }, out = [];
+  csv.slice(1).forEach(function (r) {
+    var g = function (k) { var i = ix(k); return i > -1 ? String(r[i] || "").trim() : ""; }, desc = g("DESCRIPTION"), d = g("DATE OPENED").match(/^(\d+)\/(\d+)\/(\d{4})/), val = Number(g("JOB VALUE").replace(/[^\d.]/g, "")) || 0;
+    if (!d) return; var ymd = d[3] + "-" + ("0" + d[1]).slice(-2) + "-" + ("0" + d[2]).slice(-2); if (ymd < since || !/building/i.test(g("RECORD MODULE"))) return;
+    if (!OX_PA_YES.test(desc) || OX_PA_NO.test(desc) || /^\s*(com|comm|commercial|mf|multi[- ]?family)\b/i.test(desc) || !/^\s*(res|residential)\b|single[- ]family/i.test(desc)) return;   // homes only
+    var type = /\bnew\b.{0,40}(residence|home|dwelling|single[- ]family|sfd|sfr)/i.test(desc) ? "new_home" : /pool/i.test(desc) ? "pool" : /landscap|hardscap/i.test(desc) ? "landscape" : /grading|retaining|site work|site improvement/i.test(desc) ? "grading" : "major_remodel";
+    if (type === "major_remodel" && val < 250000) return; if (val && val < 30000) return;
+    var addr = g("ADDR FULL LINE").split(",")[0].replace(/\b([A-Z])([A-Z]+)\b/g, function (m0, a, b) { return a + b.toLowerCase(); });
+    out.push({ permit_no: g("RECORD ID"), address: addr, city: "Palo Alto", description: desc.slice(0, 600), status_raw: g("RECORD STATUS") + " " + g("RECORD STATUS DATE"), project_type: type, all_types: type, fit_tier: type === "major_remodel" && val < 600000 ? "B" : "A",
+      stage_order: /issued/i.test(g("RECORD STATUS")) ? "4" : "2", date: ymd, contractor: g("BUSINESS NAME"), source_url: "https://data.paloalto.gov/dataviews/265480/", next_step: "Permit " + (/issued/i.test(g("RECORD STATUS")) ? "issued " : "filed ") + ymd + (val ? " · job value $" + Math.round(val).toLocaleString() : "") });
+  });
+  return out;
+}
+/* rows from a reader → new projects through the normal import; addresses you already track only gain the new names */
+function oxCityIngest(list, me, label) {
+  var have = rows("OxProjects"), byAddr = {}; have.forEach(function (p) { byAddr[oxAddrKey(p.address, p.town)] = p; });
+  var zoneOf = {}; have.forEach(function (p) { if (p.zone) { var z = zoneOf[p.town] = zoneOf[p.town] || {}; z[p.zone] = (z[p.zone] || 0) + 1; } });
+  var fresh = [], seen = {}, rolesAdd = [], firms = rows("OxFirms"), roles = rows("OxRoles"), names = 0;
+  list.forEach(function (r) {
+    if (!/^\d+[A-Za-z]?\s+\S/.test(String(r.address || "").trim())) return; var k = oxAddrKey(r.address, r.city); if (seen[k]) return; seen[k] = 1;
+    var p = byAddr[k];
+    if (!p) { var z = zoneOf[r.city] || {}; r.zone = r.zone || Object.keys(z).sort(function (a, b) { return z[b] - z[a]; })[0] || ""; fresh.push(r); return; }
+    [["architect", "architect"], ["landscape_architect", "landscape_architect"], ["contractor", "contractor"], ["engineer", "engineer"], ["applicant", "applicant"], ["owner_do_not_contact", "owner"]].forEach(function (col) {
+      String(r[col[0]] || "").split(";").map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (raw) {
+        if (roles.concat(rolesAdd).some(function (x) { return x.project_id === p.id && x.role === col[1] && oxNorm(x.raw) === oxNorm(raw); })) return;
+        var f = col[1] === "owner" ? null : oxFindFirm(firms, raw); rolesAdd.push({ id: newId("or"), project_id: p.id, firm_id: f ? f.id : "", role: col[1], raw: raw, source: "agenda" }); names++;
+      }); });
+    if (r.source_url && String(p.source_url || "").indexOf(r.source_url) < 0) update("OxProjects", "id", p.id, { source_url: (p.source_url ? p.source_url + " ; " : "") + r.source_url + " " + (r.next_step || ""), updated_at: now() });
+  });
+  if (rolesAdd.length) oxAppend("OxRoles", rolesAdd);
+  var c = fresh.length ? ACTIONS.oxImport(me, { kind: "projects", rows: fresh, file: label }).counts : { new: 0 };
+  return { added: c.new || 0, names: names };
+}
+function oxCityRun(me, b) {
+  var start = Date.now(), today = oxToday(), log = rows("OxCityLog"), done = {}, out = { towns: [], added: 0, names: 0, cost: 0, more: false, ai: !!aiKey() };
+  log.forEach(function (x) { if (x.status === "read" || x.status === "empty") done[x.town + "|" + x.ref] = 1; });
+  var since = oxAdd(today, -(Number(b.days) || OX_READ.lookbackDays)), until = oxAdd(today, 30), reads = 0, towns = b.towns ? [].concat(b.towns) : null;
+  for (var i = 0; i < OX_CITY.length; i++) {
+    var src = OX_CITY[i]; if (towns && towns.indexOf(src.town) < 0) continue; var res = { town: src.town, agendas: 0, read: 0, added: 0, names: 0, note: "" };
+    try {
+      if (src.kind === "paloalto") {
+        var last = log.filter(function (x) { return x.town === "Palo Alto" && x.status === "read"; }).map(function (x) { return String(x.at); }).sort().pop(), from = last && !b.days ? oxAdd(last.slice(0, 10), -3) : since;
+        if (last && last.slice(0, 10) === today && !b.force) { res.note = "already read today"; }
+        else { var pa = oxPaloAltoRows(from), ig = oxCityIngest(pa, me, "Palo Alto open data " + today); res.agendas = 1; res.read = 1; res.added = ig.added; res.names = ig.names; res.found = pa.length;
+          insert("OxCityLog", { id: newId("ol"), town: "Palo Alto", source: "open data", ref: "pa-" + today, url: src.url, title: "Permits since " + from, meeting_date: today, at: now(), status: "read", found: pa.length, added: ig.added, note: "", cost: 0, by: me.email }); }
+      } else {
+        var ags = oxCityAgendas(src, since, until).filter(function (a) { return !done[src.town + "|" + a.ref]; }); res.agendas = ags.length;
+        for (var k = 0; k < ags.length; k++) {
+          var a = ags[k];
+          if (!out.ai) { res.note = "needs the AI key to read agendas"; break; }
+          if (reads >= OX_READ.perRun || Date.now() - start > 240000) { out.more = true; break; }
+          var txt = oxAgendaText(a); reads++;
+          if (!txt || (typeof txt === "string" && txt.length < 200)) { insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "no text", cost: 0, by: me.email }); continue; }
+          var ai = oxAiReadAgenda(txt, src.town, a.title, a.date), items = (ai.items || []).filter(function (x) { return x.fit_tier !== "C"; });
+          var rowsIn = items.map(function (x) { return { permit_no: x.case_numbers, address: x.address, city: src.town, description: x.description, status_raw: a.title + " " + a.date, project_type: x.project_type, all_types: x.project_type, fit_tier: x.fit_tier,
+            stage_order: "1", date: a.date, architect: x.architect, landscape_architect: x.landscape_architect, applicant: x.applicant, contractor: x.contractor, engineer: x.engineer, owner_do_not_contact: x.owner, source_url: a.url, next_step: "On the " + a.title + " agenda " + a.date }; });
+          var ig2 = oxCityIngest(rowsIn, me, src.town + " · " + a.title + " " + a.date); res.read++; res.added += ig2.added; res.names += ig2.names; out.cost += ai.cost || 0;
+          insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "read", found: (ai.items || []).length, added: ig2.added, note: items.length + " fit", cost: ai.cost || 0, by: me.email });
+        }
+      }
+    } catch (e) { res.note = String(e.message || e).slice(0, 160); insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: "err-" + today + "-" + i, url: "", title: "", meeting_date: today, at: now(), status: "error", found: 0, added: 0, note: res.note, cost: 0, by: me.email }); }
+    out.added += res.added; out.names += res.names; out.towns.push(res);
+    if (out.more) break;
+  }
+  out.cost = Math.round(out.cost * 1000) / 1000;
+  return out;
+}
+function oxCityEnsure() {
+  try { var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "oxCityWeekly"; });
+    if (!has) ScriptApp.newTrigger("oxCityWeekly").timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ).create(); return true; } catch (e) { console.warn("oxCityEnsure: " + e.message); return false; }
+}
+function oxCityWeekly() {                                                    // the Monday job: runs as Jesús, reads everything new
+  var adm = rows("People").filter(function (x) { return x.role === "admin" && isTrue(x.active); })[0]; if (!adm) return;
+  var me = { email: adm.email, name: adm.name, role: "admin" }, r = oxCityRun(me, {}); if (r.more) r = oxCityRun(me, {});
+  PropertiesService.getScriptProperties().setProperty("OX_CITY_LAST", JSON.stringify({ at: now(), added: r.added, names: r.names, cost: r.cost, auto: true }));
+}
+ACTIONS.oxCityRun = function (me, b) {
+  oxNeed(me); var r = oxCityRun(me, b || {}); r.weekly = oxCityEnsure();
+  PropertiesService.getScriptProperties().setProperty("OX_CITY_LAST", JSON.stringify({ at: now(), added: r.added, names: r.names, cost: r.cost, by: me.name || me.email }));
+  return r;
+};
+PREFETCH.oxCityRun = OX_T.concat(["People"]);
+function oxCityHome() {
+  var last = null; try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty("OX_CITY_LAST") || "null"); } catch (e) {}
+  var log = rows("OxCityLog"), towns = OX_CITY.map(function (s) { var l = log.filter(function (x) { return x.town === s.town; }), ok = l.filter(function (x) { return x.status === "read"; }).pop(), err = l.filter(function (x) { return x.status === "error"; }).pop();
+    return { town: s.town, kind: s.kind, last: ok ? String(ok.at).slice(0, 10) : "", title: ok ? ok.title : "", added: l.reduce(function (t, x) { return t + (Number(x.added) || 0); }, 0), error: err && (!ok || String(err.at) > String(ok.at)) ? err.note : "" }; });
+  return { last: last, towns: towns, ai: !!aiKey() };
+}
