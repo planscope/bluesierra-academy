@@ -16,21 +16,21 @@
      firms with a verified email are skipped, and nobody is looked up twice.
    ====================================================================================================== */
 TABLES.OxProjects = ["id", "key", "town", "address", "type", "other_types", "description", "permit_no", "status", "date", "priority", "source_url", "known", "next_step",
-  "owner", "first_seen", "last_seen", "import_id", "updated_at", "zone", "sub_area", "stage", "fit", "reach", "bid_status", "bid_by", "bid_at", "bid_due", "bid_note"];
+  "owner", "first_seen", "last_seen", "import_id", "updated_at", "zone", "sub_area", "stage", "fit", "reach", "bid_status", "bid_by", "bid_at", "bid_due", "bid_note", "task_owner", "task_text", "task_date"];
 TABLES.OxFirms = ["id", "name", "norm", "firm_type", "segment", "priority", "wave", "channel", "website", "phone", "flags", "notes", "individual", "confirmed",
   "status", "next_step", "next_date", "email_source", "created_at", "updated_at", "assignee"];
-TABLES.OxContacts = ["id", "firm_id", "name", "role", "email", "phone", "linkedin", "source", "verified", "rr_id", "created_at", "updated_at", "phones", "bid_contact"];
+TABLES.OxContacts = ["id", "firm_id", "name", "role", "email", "phone", "linkedin", "source", "verified", "rr_id", "created_at", "updated_at", "phones", "bid_contact", "referred_by"];
 TABLES.OxRoles = ["id", "project_id", "firm_id", "role", "raw", "source"];
 TABLES.OxTouches = ["id", "firm_id", "contact_id", "project_id", "date", "channel", "step", "summary", "outcome", "by", "at", "outbox_id", "thread_id"];
 TABLES.OxOutbox = ["id", "key", "firm_id", "contact_id", "project_id", "step", "to", "subject", "body", "status", "msg_id", "thread_id", "error", "created_by", "created_at", "sent_at", "send_on"];
-TABLES.OxOpps = ["id", "firm_id", "project_id", "stage", "amount", "due", "notes", "created_by", "created_at", "updated_at"];
+TABLES.OxOpps = ["id", "firm_id", "project_id", "stage", "amount", "due", "notes", "created_by", "created_at", "updated_at", "scope", "contact_id", "plans_url", "next_step", "next_date", "assignee", "referred_by", "lost_note", "handoff_to", "handoff_at"];
 TABLES.OxEnrich = ["id", "firm_id", "person", "rr_id", "status", "result", "at", "by"];
 TABLES.OxAlerts = ["id", "firm_id", "project_id", "kind", "status", "created_at", "done_at"];
 TABLES.OxImports = ["id", "kind", "file", "at", "by", "counts"];
 TABLES.OxMeetings = ["id", "firm_id", "contact_id", "project_id", "day", "time", "minutes", "kind", "where", "email", "event_id", "link", "status", "booked_by", "note", "created_at", "updated_at"];
 var OX_T = ["OxProjects", "OxFirms", "OxContacts", "OxRoles", "OxTouches", "OxOutbox", "OxOpps", "OxEnrich", "OxAlerts", "OxImports", "OxMeetings"];
 var OX_TOWNS = ["Atherton", "Burlingame", "Hillsborough", "Los Altos", "Los Altos Hills", "Los Gatos", "Saratoga", "Woodside", "Portola Valley", "Menlo Park", "Palo Alto", "Monte Sereno", "Cupertino"];
-var OX_STAGES = ["invited", "plans", "site_walk", "bid_sent", "won", "lost"];
+var OX_STAGES = ["prospect", "invited", "plans", "site_walk", "bid_sent", "won", "lost"];          // a "bid track": one firm buying one scope on one property
 var OX_ROLES = ["architect", "landscape_architect", "contractor", "engineer", "applicant", "owner"];
 var OX_DAILY = 10;                                                                  // new first emails a day
 var OX_NOW = 0;                                                                     // tests set a fixed clock
@@ -270,12 +270,13 @@ ACTIONS.oxHome = function (me, b) {
   touches.forEach(function (x) { if (x.date >= wk && x.date <= today) { if (x.channel === "email") week.email++; else if (x.channel === "linkedin") week.linkedin++; else if (x.channel === "call") week.call++; else if (x.channel === "reply") week.reply++; if (x.outcome === "invited") week.invites++; } });
   return { week: week, today: today, can_send: me.role === "admin", new_email_day: oxNewEmailDay(today), blackout: oxBlackout(today), kpi: kpi, queue: queue, towns: OX_TOWNS, stages: OX_STAGES,
     projects: projects.map(function (p) { var o = Object.assign({}, p), a = oxProjAct(p, cx), bd = oxBidOf(p, opps); delete o.key; delete o.owner;
-      o.act = { kind: a.kind, label: a.label, firm_id: a.firm_id || "", contact_id: a.contact_id || "", phone: a.phone || "", step: a.step || "", alt: (a.alt || []).map(function (x) { return { kind: x.kind, label: x.label, contact_id: x.contact_id || "", phone: x.phone || "", step: x.step || "" }; }) }; o.bid = bd.status; o.scope_conf = oxScopeOf(p).confirmed;
+      o.act = { kind: a.kind, label: a.label, firm_id: a.firm_id || "", contact_id: a.contact_id || "", phone: a.phone || "", step: a.step || "", role_id: a.role_id || "", opp_id: a.opp_id || "", who: a.who || null, firm: a.firm || "", alt: (a.alt || []).map(function (x) { return { kind: x.kind, label: x.label, contact_id: x.contact_id || "", phone: x.phone || "", step: x.step || "" }; }) }; o.bid = bd.status; o.bid_label = bd.label; o.bid_due = bd.due; o.why = oxWhy(p, cx); o.scope_conf = oxScopeOf(p).confirmed;
       o.score = oxProjScore(p, a, bd, today); return o; }),
     priority: (function () { var top = projects.map(function (p) { return { p: p, s: oxProjScore(p, oxProjAct(p, cx), oxBidOf(p, opps), today) }; }).filter(function (x) { return x.s > -999; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 12);
       return top.map(function (x) { return oxBrief(x.p, cx, me); }); })(),
     tracked: { towns: projects.map(function (p) { return p.town; }).filter(function (x, i, l) { return x && l.indexOf(x) === i; }).sort(), week_start: oxWeekStart(today),
       reachable: projects.filter(function (p) { return ["email", "call", "ask", "log"].indexOf(oxProjAct(p, cx).kind) > -1 && p.stage !== "5"; }).length },
+    agenda: oxAgenda(cx, projects, today), tracks: opps.map(oxTrackOut),
     drafts: rows("OxOutbox").filter(function (m) { return m.status === "draft"; }).map(function (m) { return { key: m.key, firm_id: m.firm_id, contact_id: m.contact_id, project_id: m.project_id, step: m.step, to: m.to, subject: m.subject, body: m.body, send_on: m.send_on, by: personName(m.created_by) }; }),
     team: rows("People").filter(function (x) { return isStaff(x) && isTrue(x.active); }).map(function (x) { return { email: x.email, name: x.name }; }),
     firms: firms.map(function (f) { var fl = oxFlags(f), s = st[f.id]; return Object.assign({}, f, { flag: fl, state: s.state, emailed: s.emailed, replied: s.replied, last: s.last, due: s.due, blocked: block[f.id] || null,
@@ -408,6 +409,8 @@ var OX_BANK = {
   followAsk: ["If the bid list for {scope} is coming together, we'd love to be on it.", "Would love to be considered when it goes out to bid.", "Still very interested in bidding {scope}.", "Let me know if there's a spot for us on the bid list."],
   inbox: ["Who is coordinating bids for the exterior site work at {A}, and is there still time for Blue Sierra to be considered?", "Could you point me to whoever is putting together the bid list for the exterior site work at {A}? We'd love to be considered if there's still time.", "Who's the right person to talk to about bidding the exterior site work at {A}? We'd love to be considered if it isn't too late."],
   pitch: ["We do the site work, hardscape and landscape on a lot of the homes around here.", "Blue Sierra builds the site work, hardscape and landscape on custom homes around the Peninsula."],
+  thanksinv: ["Thanks for including us on {A}.", "Thanks for thinking of us for {A}.", "Glad to be bidding {A} with you."],
+  poolq: ["The permit mentions a pool: is the hardscape around it part of this package too?", "Since the permit includes a pool, is the hardscape around it being bid as well?"],
   thanks: ["Thanks for the time on the phone about {A}.", "Thanks for pointing me in the right direction on {A}.", "Good talking with your team about {A}."],
   plans: ["Could you send the plan set for {scope} when it's ready, along with the bid date?", "When the plans for {scope} are ready, could you send them over with the bid date?", "Whenever the plan set for {scope} is out, we'd love a copy and the bid date."],
   again: ["Saw your team is on {A2} too.", "Noticed {A} {stage}, and your team is on it.", "Another one I saw: {A} {stage}.", "Looks like your team has {A2} as well."]
@@ -417,8 +420,9 @@ function oxFill(t, v) { return String(t).replace(/\{(\w+)\}/g, function (m, k) {
 function oxCompose(step, v, seed) {
   var pk = function (k) { return oxPick(OX_BANK[k], seed, k); }, hi = v.first ? (v.familiar && oxPick([0, 1, 1], seed, "hey") ? "Hey " : "Hi ") + v.first + "," : "Hi there,", parts = [];
   var wk = "";
-  if (step === "ask") { wk = v.work ? oxWorkLine(v.town, seed) : ""; parts = [pk("open"), pk("inbox"), wk ? "" : pk("pitch"), pk("close")]; }
-  else if (step === "reply") parts = [pk("thanks"), pk("plans"), pk("close")];          // after a conversation: ask for the plans             // a general inbox: one practical question
+  if (step === "ask") { wk = v.work ? oxWorkLine(v.town, seed) : ""; parts = [pk("open"), pk("inbox"), v.pool ? pk("poolq") : "", wk ? "" : pk("pitch"), pk("close")]; }
+  else if (step === "reply") parts = [pk("thanks"), pk("plans"), v.pool ? pk("poolq") : "", pk("close")];          // after a conversation: ask for the plans
+  else if (step === "invited") parts = [pk("thanksinv"), oxNeedLine(v.need || [], seed), v.pool ? pk("poolq") : "", pk("close")];             // a general inbox: one practical question
   else if (step === "day14") parts = [oxPick(OX_BANK.open.slice(0, 4).concat(["", "", "", ""]), seed, "o14"), pk("follow"), pk("followAsk"), pk("close")];
   else if (step === "again") parts = [pk("open"), pk("again"), oxFill(pk("ask"), { scope: v.scope, either: "" }), pk("close")];
   else { wk = v.work ? oxWorkLine(v.town, seed) : "";                                 // new firms: a few real projects from our portfolio, with a link (its own short paragraph)
@@ -428,7 +432,7 @@ function oxCompose(step, v, seed) {
 }
 ACTIONS.oxDraft = function (me, b) {
   oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
-  var ct = b.contact_id ? findBy("OxContacts", "id", String(b.contact_id)) : null, ask = b.step === "ask", reply = b.step === "reply", step = reply ? "again" : b.step === "day14" || b.step === "again" ? b.step : "day0";
+  var ct = b.contact_id ? findBy("OxContacts", "id", String(b.contact_id)) : null, ask = b.step === "ask", reply = b.step === "reply", invited = b.step === "invited", step = reply || invited ? "again" : b.step === "day14" || b.step === "again" ? b.step : "day0";
   if (ct && ct.firm_id !== f.id) ct = null;
   if (!ct) ct = oxBestContact(rows("OxContacts").filter(function (c) { return c.firm_id === f.id && c.email; }));
   var mine = rows("OxRoles").filter(function (x) { return x.firm_id === f.id; }).map(function (x) { return findBy("OxProjects", "id", x.project_id); }).filter(Boolean);
@@ -438,18 +442,27 @@ ACTIONS.oxDraft = function (me, b) {
   var first = ct && ct.name ? oxNorm(ct.name).split(" ")[0] : "", hi = first ? "Hi " + oxTitle(first) + "," : "Hi there,", where = oxStreetFull(p) + ", " + p.town;
   var q = step === "day0" && !ask && !reply && !b.single ? mine.filter(function (x) { return x.id !== p.id && x.stage !== "5" && oxStreetFull(x) !== oxStreetFull(p) && !(hold && hold.held.indexOf(x.id) > -1); })
     .sort(function (x, y) { return (Number(y.fit) || 0) - (Number(x.fit) || 0) || ("ABC".indexOf(x.priority) - "ABC".indexOf(y.priority)) || (x.date < y.date ? 1 : -1); })[0] : null;
-  var prev = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.step === "day0"; }).slice(-1)[0];
+  var firstSent = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.step === "day0"; }).slice(-1)[0];
+  // "Re:" and replies only follow the conversation about THIS project with THIS person (an estimator can have several jobs with us)
+  var mail = ct && ct.email ? normEmail(ct.email) : "", conv = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.project_id === p.id && (!ct || normEmail(m.to) === mail || m.contact_id === ct.id); });
+  var prev = conv.slice(-1)[0] || null;
   var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : oxStreetName(p) + (q ? " / " + oxStreetName(q) : "");
   var v = { town: p.town, work: f.segment !== "warm", first: first ? oxTitle(first) : "", familiar: f.segment === "warm" || f.segment === "known", cold: !f.segment || f.segment === "cold",
     A: oxStreetFull(p) + " in " + p.town, A2: oxStreetFull(p) + " in " + p.town, stage: oxStagePhrase(p), B: q ? oxStreetFull(q) + (q.town === p.town ? "" : " in " + q.town) : "", b: !!q,
-    addrA: oxStreetFull(p), scope: oxScope(p), either: q ? " on either one" : "" };
+    addrA: oxStreetFull(p), scope: oxScope(p), either: q ? " on either one" : "", pool: /\bpools?\b|\bspa\b/i.test(String(p.description || "") + " " + String(p.other_types || "")) };
+  var opp = invited ? (b.opp_id ? findBy("OxOpps", "id", String(b.opp_id)) : rows("OxOpps").filter(function (o) { return o.project_id === p.id && o.firm_id === f.id && ["won", "lost"].indexOf(o.stage) < 0; })[0]) : null;
+  if (invited) { v.need = [!opp || !opp.plans_url ? "plans" : "", !opp || !opp.due ? "due" : "", !opp || !opp.scope ? "scope" : ""].filter(Boolean); v.oscope = opp && opp.scope ? opp.scope : ""; }
   var avoid = [].concat(b.avoid || []).map(String), n = Math.abs(Math.floor(Number(b.n) || 0)), body = "", k = 0;
-  if (ask) { v.first = ct && ct.name && !OX_GENERIC.test(String(ct.email || "").split("@")[0]) ? v.first : ""; if (!prev) subject = oxStreetName(p) + " bid list"; }
-  if (reply) subject = (prev && !/^re:/i.test(prev.subject) ? "Re: " : "") + (prev ? prev.subject : oxStreetName(p) + " plans");
-  do { body = oxCompose(ask ? "ask" : reply ? "reply" : step, v, f.id + "|" + (n + k)); k++; } while (avoid.indexOf(body) > -1 && k < 60);
-  if (ask && prev) step = "again";                                                  // already emailed: the question goes as a new note, not a second "first email"
+  var re = function (fresh) { return prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : fresh; };
+  if (ask) { v.first = ct && ct.name && !OX_GENERIC.test(String(ct.email || "").split("@")[0]) ? v.first : ""; subject = re(oxStreetName(p) + " bid list"); }
+  if (reply) subject = re(oxStreetName(p) + " plans");
+  if (invited) subject = re(oxStreetName(p) + (v.oscope ? " " + v.oscope : "") + " bid");
+  var kind = ask ? "ask" : reply ? "reply" : invited ? "invited" : step === "day14" && !prev ? "again" : step;   // a follow-up with no earlier note about THIS project reads as a new note
+  do { body = oxCompose(kind, v, f.id + "|" + (n + k)); k++; } while (avoid.indexOf(body) > -1 && k < 60);
+  if (ask && firstSent) step = "again";                                                  // already emailed: the question goes as a new note, not a second "first email"
   var sendOn = oxToday(), sentToday = rows("OxOutbox").filter(function (m) { return m.status === "sent" && m.step === "day0" && String(m.sent_at).slice(0, 10) === sendOn; }).length;
-  return { send_on: sendOn, can_send_today: step !== "day0" || sentToday < OX_DAILY, best_day: oxNewEmailDay(sendOn), holiday: oxBlackout(sendOn), ask: ask, subject: subject, body: body, n: n + k - 1, versions: 999, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, also: q ? { id: q.id, street: oxStreetFull(q), town: q.town } : null, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
+  return { send_on: sendOn, can_send_today: step !== "day0" || sentToday < OX_DAILY, best_day: oxNewEmailDay(sendOn), holiday: oxBlackout(sendOn), ask: ask, subject: subject, body: body, n: n + k - 1, versions: 999, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, firm: f.name, to_name: ct ? ct.name || "" : "", opp_id: opp ? opp.id : "",
+    history: conv.slice(-4).reverse().map(function (m) { return { date: String(m.sent_at).slice(0, 10), subject: m.subject, to: m.to, step: m.step }; }).concat(rows("OxTouches").filter(function (t) { return t.firm_id === f.id && t.project_id === p.id && t.channel !== "email"; }).slice(-4).reverse().map(function (t) { return { date: t.date, subject: t.summary, to: "", step: t.channel }; })), also: q ? { id: q.id, street: oxStreetFull(q), town: q.town } : null, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
 };
 NO_LOCK.oxDraft = 1;
 
@@ -686,11 +699,15 @@ ACTIONS.oxDeleteContact = function (me, b) { oxNeed(me); removeWhere("OxContacts
 ACTIONS.oxSaveOpp = function (me, b) {
   oxNeed(me); var x = b.opp || {}, t = now(), o = x.id ? findBy("OxOpps", "id", String(x.id)) : null;
   var data = {}; if (x.stage != null) { if (OX_STAGES.indexOf(x.stage) < 0) throw new Error("Unknown stage."); data.stage = x.stage; }
-  ["amount", "due", "notes"].forEach(function (k) { if (x[k] != null) data[k] = clean(x[k], k === "notes" ? 1000 : 40); });
+  ["amount", "due", "notes", "scope", "contact_id", "plans_url", "next_step", "next_date", "lost_note"].forEach(function (k) { if (x[k] != null) data[k] = clean(x[k], k === "notes" || k === "plans_url" ? 1000 : k === "next_step" || k === "lost_note" ? 300 : 60); });
+  if (data.plans_url && !/^https?:\/\//i.test(data.plans_url)) throw new Error("The plans link should start with https://");
+  if (x.assignee != null) { var asg = x.assignee ? findPerson(normEmail(x.assignee)) : null; if (x.assignee && (!asg || !isStaff(asg))) throw new Error("Pick someone on the Blue Sierra team."); data.assignee = asg ? asg.email : ""; }
   if (o) { data.updated_at = t; update("OxOpps", "id", o.id, data); return { id: o.id }; }
   var f = findBy("OxFirms", "id", String(x.firm_id || "")); if (!f) throw new Error("Pick the firm that invited us.");
-  var id = newId("oo"); insert("OxOpps", Object.assign({ id: id, firm_id: f.id, project_id: clean(x.project_id, 40), stage: "invited", created_by: me.email, created_at: t, updated_at: t }, data));
-  insert("OxTouches", { id: newId("ot"), firm_id: f.id, contact_id: "", project_id: clean(x.project_id, 40), date: oxToday(), channel: "note", step: "", summary: "Invited to bid", outcome: "invited", by: me.email, at: t, outbox_id: "", thread_id: "" });
+  if (x.project_id && !rows("OxRoles").some(function (r) { return r.project_id === String(x.project_id) && r.firm_id === f.id; }))   // a buyer on this property is "on it"
+    insert("OxRoles", { id: newId("or"), project_id: clean(x.project_id, 40), firm_id: f.id, role: "contractor", raw: f.name, source: "bid" });
+  var id = newId("oo"), st0 = data.stage || "invited"; insert("OxOpps", Object.assign({ id: id, firm_id: f.id, project_id: clean(x.project_id, 40), stage: st0, created_by: me.email, created_at: t, updated_at: t }, data));
+  insert("OxTouches", { id: newId("ot"), firm_id: f.id, contact_id: data.contact_id || "", project_id: clean(x.project_id, 40), date: oxToday(), channel: "note", step: "", summary: st0 === "prospect" ? "Collecting bids" + (data.scope ? " (" + data.scope + ")" : "") : "Invited to bid" + (data.scope ? " (" + data.scope + ")" : ""), outcome: st0 === "prospect" ? "open" : "invited", by: me.email, at: t, outbox_id: "", thread_id: "" });
   if (f.status !== "replied") update("OxFirms", "id", f.id, { status: "replied", updated_at: t });
   return { id: id };
 };
@@ -1218,13 +1235,44 @@ function oxScopeOf(p) {
   (OX_SCOPE_BY_TYPE[p.type] || ["site improvements"]).forEach(function (k) { if (conf.indexOf(k) < 0) poss.push(k); });
   return { confirmed: conf, possible: poss };
 }
+var OX_TRACK_TXT = { prospect: "Collecting prices (not invited yet)", invited: "Invited", plans: "Plans in", site_walk: "Site walk", bid_sent: "Bid sent", won: "Won", lost: "Lost / passed" };
+var OX_DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], OX_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function oxShortDay(d) { var x = new Date(oxDayMs(d)); return isNaN(x) ? String(d || "") : OX_DOW[x.getDay()] + " " + OX_MON[x.getMonth()] + " " + x.getDate(); }
+function oxTrackOut(o) {
+  var f = findBy("OxFirms", "id", o.firm_id) || {}, c = o.contact_id ? findBy("OxContacts", "id", o.contact_id) : null;
+  return { id: o.id, project_id: o.project_id, firm_id: o.firm_id, firm: f.name || "", scope: o.scope || "", stage: o.stage, label: OX_TRACK_TXT[o.stage] || o.stage, active: ["won", "lost"].indexOf(o.stage) < 0, due: o.due || "", plans_url: o.plans_url || "",
+    contact: c ? { id: c.id, name: c.name || "", title: c.role || "", email: c.email || "", phone: oxPhoneOk(c.phone) ? oxPhoneFmt(c.phone) : "" } : null, next_step: o.next_step || "", next_date: o.next_date || "",
+    referred_by: o.referred_by || "", assignee: o.assignee ? personName(o.assignee) : "", lost_note: o.lost_note || "", handoff_to: o.handoff_to ? personName(o.handoff_to) : "", handoff_at: String(o.handoff_at || "").slice(0, 10), notes: o.notes || "", amount: o.amount || "",
+    missing: [!o.plans_url ? "plans" : "", !o.due ? "due date" : "", !o.scope ? "scope" : ""].filter(Boolean) };
+}
+/* The property's bid picture, built from every buyer's track: one builder passing never closes a job another builder still wants priced. */
 function oxBidOf(p, opps) {
-  var o = opps.filter(function (x) { return x.project_id === p.id; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; });
-  var won = o.filter(function (x) { return x.stage === "won"; })[0], lost = o.filter(function (x) { return x.stage === "lost"; })[0];
-  if (won || lost) { var x = won || lost; return { status: "closed", label: OX_BID_TXT.closed, note: won ? "We won it" : "Awarded to someone else", by: personName(x.created_by), at: String(x.updated_at || x.created_at).slice(0, 10), due: x.due || "" }; }
-  if (o.length) return { status: "invited", label: OX_BID_TXT.invited, by: personName(o[0].created_by), at: String(o[0].created_at).slice(0, 10), due: o[0].due || "", note: o[0].notes || "" };
-  if (OX_BID_TXT[p.bid_status] && p.bid_status !== "unknown") return { status: p.bid_status, label: OX_BID_TXT[p.bid_status], by: p.bid_by ? personName(p.bid_by) : "", at: String(p.bid_at || "").slice(0, 10), due: p.bid_due || "", note: p.bid_note || "" };
-  return { status: "unknown", label: OX_BID_TXT.unknown, by: "", at: "", due: "", note: "" };
+  var tr = opps.filter(function (x) { return x.project_id === p.id; }), act = tr.filter(function (x) { return ["won", "lost"].indexOf(x.stage) < 0; }), inv = act.filter(function (x) { return x.stage !== "prospect"; });
+  var due = act.map(function (x) { return x.due; }).filter(Boolean).sort()[0] || "", n = function (k, w) { return k + " " + w + (k === 1 ? "" : "s"); };
+  var base = { tracks: tr.map(oxTrackOut), due: due, by: "", at: "", note: "" };
+  if (inv.length) return Object.assign(base, { status: "invited", label: n(inv.length, "active invitation") + (due ? " · due " + oxShortDay(due) : "") });
+  if (act.length) return Object.assign(base, { status: "open", label: n(act.length, "buyer") + " collecting prices" + (due ? " · due " + oxShortDay(due) : "") });
+  if (tr.some(function (x) { return x.stage === "won"; })) return Object.assign(base, { status: "closed", label: "We won it" });
+  if (p.bid_status === "closed" || p.bid_status === "open") return Object.assign(base, { status: p.bid_status, label: OX_BID_TXT[p.bid_status], by: p.bid_by ? personName(p.bid_by) : "", at: String(p.bid_at || "").slice(0, 10), due: p.bid_due || "", note: p.bid_note || "" });
+  if (tr.length) return Object.assign(base, { status: "unknown", label: n(tr.length, "buyer") + " passed · others unknown" });
+  return Object.assign(base, { status: "unknown", label: OX_BID_TXT.unknown });
+}
+/* What to do next with one buyer's track: a promised callback first, then what an invitation still lacks. */
+function oxTrackAction(o, f, c) {
+  var ct = o.contact_id ? ((c.cs[f.id] || []).filter(function (k) { return k.id === o.contact_id; })[0] || null) : null, today = c.today, nm = ct && ct.name ? oxTitle(oxNorm(ct.name).split(" ")[0]) : "";
+  var ph = ct && oxPhoneOk(ct.phone) ? oxPhoneFmt(ct.phone) : oxPhoneOk(f.phone) ? oxPhoneFmt(f.phone) : "", em = ct ? oxEmailInfo(ct) : null, who = nm ? nm + (ct.role ? " (" + ct.role + ", " + f.name + ")" : " (" + f.name + ")") : f.name;
+  var scope = o.scope ? o.scope : "our", miss = [!o.plans_url ? "the plans" : "", !o.due ? "the due date" : ""].filter(Boolean);
+  if (o.next_date && o.next_date <= today && ph && !oxFlags(f).noCall) return { kind: "call", label: "Call " + who + (o.next_date === today ? ": callback today" : ": callback was due " + oxShortDay(o.next_date)), contact_id: ct ? ct.id : "", phone: ph, opp_id: o.id };
+  if (o.stage !== "prospect" && em && em.kind !== "inbox") return { kind: "email", label: "Email " + who + ": invited us" + (miss.length ? ", ask for " + miss.join(" and ") : " (" + scope + " price)"), contact_id: ct.id, step: "invited", opp_id: o.id };
+  if (o.stage === "prospect" && ph && !oxFlags(f).noCall) return { kind: "call", label: "Call " + who + ": collecting " + scope + " prices", contact_id: ct ? ct.id : "", phone: ph, opp_id: o.id };
+  if (em && em.kind !== "inbox") return { kind: "email", label: "Email " + who + " about the " + scope + " price", contact_id: ct.id, step: "invited", opp_id: o.id };
+  return c.act[f.id];
+}
+function oxNeedLine(need, seed) {
+  var L = { plans: "send the current plan set", due: "confirm the bid due date", scope: "let me know which parts of the exterior work you'd like us to price" }, it = need.map(function (k) { return L[k]; }).filter(Boolean);
+  if (!it.length) return oxPick(["We're on it and will have our number to you before the due date.", "We'll have our number to you before the due date. Let me know if anything changes on the plans."], seed, "need0");
+  var list = it.length === 1 ? it[0] : it.slice(0, -1).join(", ") + " and " + it[it.length - 1];
+  return oxPick(["Could you " + list + "?", "When you get a chance, could you " + list + "?"], seed, "need");
 }
 function oxSources(p) {
   return String(p.source_url || "").split(/\s*;\s*|\s+\|\s+/).map(function (part) {
@@ -1244,8 +1292,8 @@ function oxEmailInfo(c) {
 function oxPhoneInfo(c, f) {
   if (!oxPhoneOk(c.phone)) return null; var d = String(c.phone).replace(/\D/g, "").slice(-10), office = String(f.phone || "").replace(/\D/g, "").slice(-10);
   var typed = String(c.phones || "").split(/,\s*/).filter(function (x) { return x.replace(/\D/g, "").slice(-10) === d; })[0] || "", ty = (typed.match(/\(([a-z ]+)\)/) || [])[1] || "";
-  var kind = d === office || /office|main|switchboard|hq/.test(ty) ? "switchboard" : /mobile|cell/.test(ty) ? "mobile" : c.source === "rocketreach" || c.source === "setter" || /direct/.test(ty) ? "direct" : "unconfirmed";
-  return { num: oxPhoneFmt(c.phone), kind: kind, label: { switchboard: "Office switchboard", mobile: "Mobile", direct: "Direct business phone", unconfirmed: "Phone on file (not confirmed direct)" }[kind], source: OX_SRC_TXT[c.source] || c.source || "" };
+  var kind = d === office || /office|main|switchboard|hq/.test(ty) ? "switchboard" : /mobile|cell/.test(ty) ? "mobile" : c.source === "told" ? "verified" : c.source === "rocketreach" || c.source === "setter" || /direct/.test(ty) ? "direct" : "unconfirmed";
+  return { num: oxPhoneFmt(c.phone), kind: kind, label: { switchboard: "Office switchboard", mobile: "Mobile", direct: "Direct business phone", verified: "Verified phone (the firm told us)", unconfirmed: "Phone on file (not confirmed direct)" }[kind], source: OX_SRC_TXT[c.source] || c.source || "" };
 }
 function oxRelation(c) {
   if (isTrue(c.bid_contact)) return { kind: "confirmed", label: "Confirmed bid contact" };
@@ -1260,7 +1308,7 @@ function oxFirmAction(f, cs, st, me) {
   if (fl.individual) return { kind: "confirm", label: "Confirm they're a pro, not the owner" };
   var work = named.filter(function (c) { var e = oxEmailInfo(c); return e && e.kind === "work"; }).sort(rank)[0];
   var guess = named.filter(function (c) { var e = oxEmailInfo(c); return e && e.kind === "guessed"; }).sort(rank)[0];
-  var direct = named.filter(function (c) { var ph = oxPhoneInfo(c, f); return ph && (ph.kind === "direct" || ph.kind === "mobile"); }).sort(rank)[0];
+  var direct = named.filter(function (c) { var ph = oxPhoneInfo(c, f); return ph && (ph.kind === "direct" || ph.kind === "mobile" || ph.kind === "verified"); }).sort(rank)[0];
   var who = named.slice().sort(rank)[0] || null, office = oxPhoneOk(f.phone) ? oxPhoneFmt(f.phone) : "";
   var inbox = cs.filter(function (c) { var e = oxEmailInfo(c); return e && e.kind === "inbox"; })[0];
   var nm = function (c) { return oxTitle(oxNorm(c.name).split(" ")[0]); };
@@ -1277,7 +1325,7 @@ function oxFirmAction(f, cs, st, me) {
   var other = [mail, phone].filter(function (x) { return x && x !== best && !(best.kind === x.kind && best.contact_id === x.contact_id); });
   return Object.assign({}, best, { alt: other });
 }
-var OX_ACT_RANK = { email: 0, call: 1, ask: 2, log: 3, wait: 4, find: 5, confirm: 6, none: 9 };
+var OX_ACT_RANK = { email: 0, call: 1, ask: 2, log: 3, link: 4, wait: 4, find: 5, confirm: 6, none: 9 };
 var OX_ROLE_PREF = { landscape_architect: 0, architect: 1, contractor: 2, applicant: 3, engineer: 4 };
 function oxCtx(today) {
   var c = { today: today, firms: {}, cs: {}, roles: {}, opps: rows("OxOpps"), touches: {}, st: {} }, firms = rows("OxFirms");
@@ -1286,24 +1334,31 @@ function oxCtx(today) {
   rows("OxRoles").forEach(function (x) { (c.roles[x.project_id] = c.roles[x.project_id] || []).push(x); });
   rows("OxTouches").forEach(function (x) { (c.touches[x.firm_id] = c.touches[x.firm_id] || []).push(x); });
   firms.forEach(function (f) { c.st[f.id] = oxState(f, c.touches[f.id] || [], today); });
-  c.block = oxBlocks(firms, rows("OxRoles"), c.st, today); c.act = {};
+  c.block = oxBlocks(firms, rows("OxRoles"), c.st, today); c.act = {}; c.oppsBy = {};
+  c.opps.forEach(function (o) { (c.oppsBy[o.project_id] = c.oppsBy[o.project_id] || []).push(o); });
   firms.forEach(function (f) { c.act[f.id] = oxFirmAction(f, c.cs[f.id] || [], c.st[f.id]); });
   return c;
 }
 /* The firms on a project (each once, with every role it has there) and the one to approach first. */
 function oxProjFirms(p, c) {
-  var by = {}, order = [];
+  var by = {}, order = [], tr = (c.oppsBy && c.oppsBy[p.id]) || [];
   (c.roles[p.id] || []).forEach(function (r) { if (r.role === "owner" || !r.firm_id || !c.firms[r.firm_id]) return; if (!by[r.firm_id]) { by[r.firm_id] = []; order.push(r.firm_id); } if (by[r.firm_id].indexOf(r.role) < 0) by[r.firm_id].push(r.role); });
   return order.map(function (fid) {
-    var f = c.firms[fid], hold = c.block[fid], held = hold && (hold.all || hold.held.indexOf(p.id) > -1), act = held ? { kind: "wait", label: "Waits for " + hold.waiting_on.join(", ") + " (warm, same project)" } : c.act[fid];
-    return { f: f, roles: by[fid], act: act, pref: Math.min.apply(null, by[fid].map(function (r) { return r in OX_ROLE_PREF ? OX_ROLE_PREF[r] : 5; })) };
-  }).sort(function (a, b) { return (OX_ACT_RANK[a.act.kind] || 5) - (OX_ACT_RANK[b.act.kind] || 5) || ({ warm: 0, known: 1 }[a.f.segment] !== undefined ? { warm: 0, known: 1 }[a.f.segment] : 2) - ({ warm: 0, known: 1 }[b.f.segment] !== undefined ? { warm: 0, known: 1 }[b.f.segment] : 2) || a.pref - b.pref; });
+    var f = c.firms[fid], hold = c.block[fid], mine = tr.filter(function (o) { return o.firm_id === fid; }), live = mine.filter(function (o) { return ["won", "lost"].indexOf(o.stage) < 0; })[0];
+    var held = hold && (hold.all || hold.held.indexOf(p.id) > -1) && !live, act = live ? oxTrackAction(live, f, c) : mine.length && !live ? { kind: "log", label: "Lost this job / passed" + (mine[0].lost_note && mine[0].lost_note !== "Passed" ? ": " + mine[0].lost_note : "") } : held ? { kind: "wait", label: "Waits for " + hold.waiting_on.join(", ") + " (warm, same project)" } : c.act[fid];
+    var cs = c.cs[fid] || [], trk = live ? (live.stage === "prospect" ? 1 : 0) : mine.length ? 4 : 2;      // invited > collecting prices > nothing yet > passed on this job
+    return { f: f, roles: by[fid], act: act, track: trk, buyer: cs.some(function (k) { return isTrue(k.bid_contact); }) ? 0 : 1, pref: Math.min.apply(null, by[fid].map(function (r) { return r in OX_ROLE_PREF ? OX_ROLE_PREF[r] : 5; })) };
+  }).sort(function (a, b) { var ra = a.act.kind in OX_ACT_RANK ? OX_ACT_RANK[a.act.kind] : 5, rb = b.act.kind in OX_ACT_RANK ? OX_ACT_RANK[b.act.kind] : 5;
+    return a.track - b.track || a.buyer - b.buyer || ra - rb || ({ warm: 0, known: 1 }[a.f.segment] !== undefined ? { warm: 0, known: 1 }[a.f.segment] : 2) - ({ warm: 0, known: 1 }[b.f.segment] !== undefined ? { warm: 0, known: 1 }[b.f.segment] : 2) || a.pref - b.pref; });
 }
+function oxUnlinked(p, c) { return (c.roles[p.id] || []).filter(function (r) { return r.role !== "owner" && !r.firm_id && String(r.raw || "").trim().length > 2; }).map(function (r) { return { role_id: r.id, raw: r.raw, role: OX_ROLE_TXT[r.role] || r.role, source: r.source === "manual" ? "added by hand" : "the permit" }; }); }
 function oxProjAct(p, c) {
-  var fs = oxProjFirms(p, c), lead = fs.filter(function (x) { return x.act.kind !== "none"; })[0];
+  var fs = oxProjFirms(p, c), lead = fs.filter(function (x) { return x.act.kind !== "none"; })[0], un = oxUnlinked(p, c);
+  if (!lead && un.length) return { kind: "link", label: "Link firm: " + un[0].raw + " (" + un[0].role.toLowerCase() + ")", role_id: un[0].role_id, firm_id: "" };   // the permit already names someone: don't research from scratch
   if (!fs.length) return { kind: "find", label: "Find who's on it", firm_id: "" };
   if (!lead) return { kind: "none", label: "No outreach (excluded firms only)", firm_id: "" };
-  return Object.assign({ firm_id: lead.f.id, firm: lead.f.name }, lead.act);
+  var who = lead.act.contact_id ? ((c.cs[lead.f.id] || []).filter(function (k) { return k.id === lead.act.contact_id; })[0] || null) : null;
+  return Object.assign({ firm_id: lead.f.id, firm: lead.f.name, who: who && who.name && !/general inbox/i.test(who.role || "") ? { name: who.name, title: who.role || "", rel: oxRelation(who).kind } : null }, lead.act);
 }
 function oxWeekStart(today) { return oxAdd(today, -((oxDow(today) + 6) % 7)); }
 /* Which projects to pursue first: early stage, our kind of work, fresh, a firm we can reach, nothing closed. */
@@ -1312,7 +1367,7 @@ function oxProjScore(p, a, bid, today) {
   var s = { A: 30, B: 15, C: 0 }[p.priority] || 0; s += { new_home: 20, landscape: 18, major_remodel: 15, grading: 12, pool: 8 }[p.type] || 0;
   var age = (oxDayMs(today) - oxDayMs(String(p.date).slice(0, 10))) / 864e5; if (age < 31) s += 15; else if (age < 61) s += 8; else if (age > 365) s -= 10;
   s += { "1": 12, "2": 10, "3": 12, "4": /landscape|pool/.test(p.type) ? 8 : 2 }[p.stage] || 0; s += Number(p.fit) >= 88 ? 10 : Number(p.fit) >= 70 ? 5 : 0;
-  s += { email: 12, call: 10, ask: 6, log: 8, wait: -5, find: -8, confirm: -10 }[a.kind] || 0; s += bid.status === "open" ? 25 : bid.status === "invited" ? 15 : 0;
+  s += { email: 12, call: 10, ask: 6, log: 8, link: 2, wait: -5, find: -8, confirm: -10 }[a.kind] || 0; s += bid.status === "open" ? 25 : bid.status === "invited" ? 15 : 0;
   return s;
 }
 function oxBrief(p, c, me) {
@@ -1330,7 +1385,8 @@ function oxBrief(p, c, me) {
   var street = oxStreetFull(p), mine = String((me && me.name) || "").split(" ")[0] || "Jesús";
   var owners = (c.roles[p.id] || []).filter(function (r) { return r.role === "owner"; }).length;
   return { id: p.id, street: street, town: p.town, type: OX_TYPE[p.type] || p.type || "", stage: { n: p.stage || "", label: OX_STAGE_TXT[p.stage] || (p.status ? "See permit status" : "Unknown") }, bid: bid, scope: sc,
-    action: act, firms: firms, owners_named: owners, last_seen: p.last_seen, first_seen: p.first_seen, new_week: p.first_seen >= oxWeekStart(c.today), import_id: p.import_id,
+    action: act, firms: firms, owners_named: owners, unlinked: oxUnlinked(p, c), why: oxWhy(p, c),
+    task: p.task_text || p.task_owner ? { owner: p.task_owner ? personName(p.task_owner) : "", owner_email: p.task_owner || "", text: p.task_text || "", date: p.task_date || "" } : null, last_seen: p.last_seen, first_seen: p.first_seen, new_week: p.first_seen >= oxWeekStart(c.today), import_id: p.import_id,
     say: { front: "Hi, this is " + mine + " with Blue Sierra Construction. " + (ask && ask.name && ask.relation.kind !== "inbox" ? "Is " + ask.name.split(" ")[0] + " in? " : "") + "It's about " + street + " in " + p.town + ".",
       ask: "Who is coordinating bids for the exterior site work on this project, and is there still time for Blue Sierra to be considered?" },
     raw: { description: p.description || "", status: p.status || "", permit_no: p.permit_no || "", date: p.date || "", fit: p.fit || "", priority: p.priority || "" }, sources: oxSources(p),
@@ -1352,7 +1408,7 @@ ACTIONS.oxBidStatus = function (me, b) {
   return { bid: oxBidOf(findBy("OxProjects", "id", p.id), rows("OxOpps")) };
 };
 /* After a call or email about a project: what happened, who on our side owns it, when to follow up, and anyone new they named. */
-var OX_PROJ_OUT = { talked: "Talked", voicemail: "Left a voicemail", no_answer: "No answer", send_plans: "They'll send plans / asked for info", open: "Bid list is open", invited: "Invited us to bid", not_bidding: "Not bidding it out / closed", wrong_person: "Wrong person: referred us", note: "Note" };
+var OX_PROJ_OUT = { talked: "Talked", voicemail: "Left a voicemail", no_answer: "No answer", send_plans: "They'll send plans / asked for info", referred: "Referred us to who's collecting prices", open: "Bid list is open", invited: "Invited us to bid", passed: "This firm lost the job / passed", not_bidding: "Not bidding it out / closed", wrong_person: "Wrong person", note: "Note" };
 ACTIONS.oxProjLog = function (me, b) {
   oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
   var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Pick the firm.");
@@ -1374,13 +1430,110 @@ ACTIONS.oxProjLog = function (me, b) {
   var fp = { updated_at: t }; if (who) fp.assignee = who.email; if (b.next_step != null) fp.next_step = clean(b.next_step, 200); if (b.next_date != null) fp.next_date = nd;
   if (["talked", "send_plans", "open", "invited"].indexOf(out) > -1 && f.status !== "meeting") fp.status = "replied";        // a conversation stops the automatic email cadence
   update("OxFirms", "id", f.id, fp);
-  var due = /^\d{4}-\d\d-\d\d$/.test(String(b.bid_due || "")) ? b.bid_due : "";
+  var due = /^\d{4}-\d\d-\d\d$/.test(String(b.bid_due || "")) ? b.bid_due : "", scope = clean(b.scope, 60), refOut = null;
+  if (["no_answer", "voicemail", "note"].indexOf(out) < 0)                               // we reached them: the promised callback on this job is done (or moved to the new date)
+    rows("OxOpps").filter(function (o) { return o.project_id === p.id && o.firm_id === f.id && ["won", "lost"].indexOf(o.stage) < 0; }).forEach(function (o) { update("OxOpps", "id", o.id, { next_date: nd, next_step: b.next_step != null ? clean(b.next_step, 200) : "", updated_at: t }); });
+  if (out === "referred") refOut = oxReferral(me, p, f, b.ref || {}, newC || clean(b.contact_id, 40), touch);
+  if (out === "passed") { var mineT = rows("OxOpps").filter(function (o) { return o.project_id === p.id && o.firm_id === f.id && ["won", "lost"].indexOf(o.stage) < 0; });
+    if (mineT.length) mineT.forEach(function (o) { update("OxOpps", "id", o.id, { stage: "lost", lost_note: clean(b.note, 300) || "Passed", updated_at: t }); });
+    else insert("OxOpps", { id: newId("oo"), firm_id: f.id, project_id: p.id, stage: "lost", amount: "", due: "", notes: "", created_by: me.email, created_at: t, updated_at: t, scope: scope, contact_id: "", plans_url: "", next_step: "", next_date: "", assignee: "", referred_by: "", lost_note: clean(b.note, 300) || "Passed", handoff_to: "", handoff_at: "" }); }
   if (out === "open") update("OxProjects", "id", p.id, { bid_status: "open", bid_by: me.email, bid_at: oxStamp(), bid_due: due, bid_note: clean(b.note, 300) });
   if (out === "not_bidding") update("OxProjects", "id", p.id, { bid_status: "closed", bid_by: me.email, bid_at: oxStamp(), bid_note: clean(b.note, 300) });
-  if (out === "invited" && !rows("OxOpps").some(function (o) { return o.project_id === p.id && o.firm_id === f.id; }))
-    insert("OxOpps", { id: newId("oo"), firm_id: f.id, project_id: p.id, stage: "invited", amount: "", due: due, notes: clean(b.note, 1000), created_by: me.email, created_at: t, updated_at: t });
-  return { touch: touch, brief: oxBrief(findBy("OxProjects", "id", p.id), oxCtx(today), me) };
+  if (out === "invited") { var live = rows("OxOpps").filter(function (o) { return o.project_id === p.id && o.firm_id === f.id && ["won", "lost"].indexOf(o.stage) < 0 && (!scope || !o.scope || o.scope === scope); })[0];
+    var plans = /^https?:\/\//i.test(String(b.plans_url || "")) ? clean(b.plans_url, 1000) : "";
+    if (live) update("OxOpps", "id", live.id, { stage: live.stage === "prospect" ? "invited" : live.stage, due: due || live.due, scope: scope || live.scope, plans_url: plans || live.plans_url, contact_id: live.contact_id || newC || clean(b.contact_id, 40), updated_at: t });
+    else insert("OxOpps", { id: newId("oo"), firm_id: f.id, project_id: p.id, stage: "invited", amount: "", due: due, notes: clean(b.note, 1000), created_by: me.email, created_at: t, updated_at: t, scope: scope, contact_id: newC || clean(b.contact_id, 40), plans_url: plans, next_step: "", next_date: "", assignee: who ? who.email : "", referred_by: "", lost_note: "", handoff_to: "", handoff_at: "" }); }
+  return { touch: touch, referral: refOut, brief: oxBrief(findBy("OxProjects", "id", p.id), oxCtx(today), me) };
 };
+/* "I'm the architect. Ridge Builders is collecting landscape bids. Ask for Taylor in estimating and call Thursday."
+   One entry: the buyer firm (picked or created) is linked to the property, Taylor is saved as the bid contact with who referred
+   us, and a "collecting prices" track carries the callback, what to ask and who on our side owns it. The original call stays
+   on the architect's history. */
+function oxReferral(me, p, from, r, fromContactId, touch) {
+  var t = now(), firm = r.firm_id ? findBy("OxFirms", "id", String(r.firm_id)) : null;
+  if (!firm) { var nm = clean(r.firm_name, 120); if (!nm) throw new Error("Which firm is collecting the prices?");
+    firm = rows("OxFirms").filter(function (x) { return oxNorm(x.name) === oxNorm(nm); })[0];
+    if (!firm) { firm = { id: newId("of"), name: nm, norm: oxNorm(nm), firm_type: clean(r.firm_type, 60) || "Builder/GC", segment: "cold", priority: "", wave: "", channel: "", website: "", phone: oxPhoneOk(r.firm_phone) ? oxPhoneFmt(r.firm_phone) : "", flags: "", notes: "", individual: "", confirmed: "", status: "", next_step: "", next_date: "", email_source: "", created_at: t, updated_at: t, assignee: "" };
+      insert("OxFirms", firm); } }
+  if (oxFlags(firm).excluded) throw new Error(firm.name + " is excluded from outreach.");
+  if (!rows("OxRoles").some(function (x) { return x.project_id === p.id && x.firm_id === firm.id; }))
+    insert("OxRoles", { id: newId("or"), project_id: p.id, firm_id: firm.id, role: r.role && OX_ROLES.indexOf(r.role) > -1 && r.role !== "owner" ? r.role : "contractor", raw: firm.name, source: "referral" });
+  var fromC = fromContactId ? findBy("OxContacts", "id", fromContactId) : null, by = (fromC && fromC.name ? fromC.name + ", " : "") + from.name;
+  var ct = r.contact_id ? findBy("OxContacts", "id", String(r.contact_id)) : null; if (ct && ct.firm_id !== firm.id) ct = null;
+  var pr = r.person || {};
+  if (!ct && clean(pr.name, 120)) { var em = String(pr.email || "").trim().toLowerCase(); if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) throw new Error("Check the email of the person they named.");
+    ct = { id: newId("oc"), firm_id: firm.id, name: clean(pr.name, 120), role: clean(pr.role, 120), email: em, phone: oxPhoneOk(pr.phone) ? oxPhoneFmt(pr.phone) : "", linkedin: "", source: "told", verified: em ? "yes" : "no", rr_id: "", created_at: t, updated_at: t, phones: "", bid_contact: "yes", referred_by: by };
+    insert("OxContacts", ct); }
+  else if (ct) update("OxContacts", "id", ct.id, { bid_contact: "yes", referred_by: ct.referred_by || by, updated_at: t });
+  var asg = r.assignee ? findPerson(normEmail(r.assignee)) : null; if (r.assignee && (!asg || !isStaff(asg))) throw new Error("Pick someone on the Blue Sierra team.");
+  var cb = /^\d{4}-\d\d-\d\d$/.test(String(r.callback_date || "")) ? r.callback_date : "", scope = clean(r.scope, 60), ask = clean(r.ask, 300);
+  var nmF = ct && ct.name ? oxTitle(oxNorm(ct.name).split(" ")[0]) : "the estimator";
+  var o = { id: newId("oo"), firm_id: firm.id, project_id: p.id, stage: "prospect", amount: "", due: /^\d{4}-\d\d-\d\d$/.test(String(r.due || "")) ? r.due : "", notes: ask, created_by: me.email, created_at: t, updated_at: t, scope: scope, contact_id: ct ? ct.id : "",
+    plans_url: "", next_step: "Call " + nmF + (ask ? ": " + ask : scope ? " about the " + scope + " bid" : ""), next_date: cb, assignee: asg ? asg.email : me.email, referred_by: by, lost_note: "", handoff_to: "", handoff_at: "" };
+  insert("OxOpps", o);
+  insert("OxTouches", { id: newId("ot"), firm_id: firm.id, contact_id: ct ? ct.id : "", project_id: p.id, date: oxToday(), channel: "note", step: "", summary: "Referred by " + by + (scope ? " for the " + scope + " bids" : "") + (cb ? ". Call " + nmF + " " + oxShortDay(cb) : ""), outcome: "referral", by: me.email, at: t, outbox_id: "", thread_id: "" });
+  update("OxTouches", "id", touch.id, { summary: ("Referred us to " + (ct && ct.name ? ct.name + " at " : "") + firm.name + (scope ? " (" + scope + ")" : "") + (touch.summary.indexOf(": ") > -1 ? touch.summary.slice(touch.summary.indexOf(": ")) : "")).slice(0, 500) });
+  return { firm_id: firm.id, contact_id: ct ? ct.id : "", opp_id: o.id };
+}
+/* Nobody named on the permit: someone on the team takes the research, with a date. */
+ACTIONS.oxProjTask = function (me, b) {
+  oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
+  var who = b.owner ? findPerson(normEmail(b.owner)) : null; if (b.owner && (!who || !isStaff(who))) throw new Error("Pick someone on the Blue Sierra team.");
+  update("OxProjects", "id", p.id, { task_owner: who ? who.email : "", task_text: clean(b.text, 200), task_date: /^\d{4}-\d\d-\d\d$/.test(String(b.date || "")) ? b.date : "", updated_at: now() });
+  return {};
+};
+/* Invited: hand it to our estimator with everything they need to price it, and say what's still missing. */
+function oxHandoffSheet(o, p) {
+  var tr = oxTrackOut(o), sc = oxScopeOf(p), f = findBy("OxFirms", "id", o.firm_id) || {}, pool = /\bpools?\b|\bspa\b/i.test(String(p.description || ""));
+  var q = tr.missing.map(function (m) { return { plans: "Get the current plan set", "due date": "Confirm the bid due date", scope: "Confirm exactly which scope we're pricing" }[m]; });
+  if (pool) q.push("Is the hardscape around the pool part of this package?");
+  return { property: oxStreetFull(p) + ", " + p.town, permit: p.permit_no || "", buyer: f.name || "", contact: tr.contact, scope: tr.scope || "Not confirmed yet", permit_scope: sc.confirmed, possible: sc.possible, plans_url: tr.plans_url, due: tr.due,
+    referred_by: tr.referred_by, notes: tr.notes, questions: q, stage: tr.label };
+}
+ACTIONS.oxHandoff = function (me, b) {
+  oxNeed(me); var o = findBy("OxOpps", "id", String(b.opp_id || "")); if (!o) throw new Error("Bid not found."); if (o.stage === "prospect") throw new Error("They haven't invited us yet. Record the invitation first.");
+  var to = findPerson(normEmail(b.to)); if (!to || !isStaff(to) || !isTrue(to.active)) throw new Error("Pick our estimator (someone on the team).");
+  var p = findBy("OxProjects", "id", o.project_id); if (!p) throw new Error("Project not found."); var sh = oxHandoffSheet(o, p), t = now();
+  update("OxOpps", "id", o.id, { handoff_to: to.email, handoff_at: t, updated_at: t });
+  insert("OxTouches", { id: newId("ot"), firm_id: o.firm_id, contact_id: o.contact_id || "", project_id: p.id, date: oxToday(), channel: "note", step: "", summary: "Handed to estimating: " + to.name + (b.note ? ": " + clean(b.note, 300) : ""), outcome: "handoff", by: me.email, at: t, outbox_id: "", thread_id: "" });
+  var li = function (k, v) { return v ? "<tr><td style=\"color:#77736c;padding:3px 12px 3px 0;vertical-align:top\">" + esc(k) + "</td><td style=\"padding:3px 0\">" + v + "</td></tr>" : ""; };
+  safeMail(function () { sendMail(to.email, "To price: " + sh.property + " · " + sh.buyer + (sh.due ? " · due " + oxShortDay(sh.due) : ""),
+    "<p>Hi " + esc(first(to.name)) + ",</p><p>" + esc(me.name) + " handed you a bid to price.</p><table style=\"border-collapse:collapse\">" +
+    li("Property", esc(sh.property) + (sh.permit ? " <span style=\"color:#77736c\">(" + esc(sh.permit) + ")</span>" : "")) + li("Buyer", esc(sh.buyer) + (sh.contact ? ": " + esc(sh.contact.name) + (sh.contact.title ? ", " + esc(sh.contact.title) : "") + (sh.contact.email ? " · " + esc(sh.contact.email) : "") + (sh.contact.phone ? " · " + esc(sh.contact.phone) : "") : "")) +
+    li("We're asked to price", esc(sh.scope)) + li("In the permit", esc(sh.permit_scope.join(", "))) + li("Plans", sh.plans_url ? '<a href="' + esc(sh.plans_url) + '">' + esc(sh.plans_url) + "</a>" : "Not received yet") + li("Due", sh.due ? esc(oxShortDay(sh.due)) : "Not confirmed yet") +
+    li("Referred by", esc(sh.referred_by)) + li("Notes", esc([sh.notes, clean(b.note, 300)].filter(Boolean).join(" · "))) + "</table>" +
+    (sh.questions.length ? "<p><b>Still open</b></p><ul>" + sh.questions.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + button("Open the portal")); }, "Handed off, but the email to the estimator couldn't be sent.");
+  return { sheet: sh };
+};
+ACTIONS.oxHandoffSheet = function (me, b) { oxNeed(me); var o = findBy("OxOpps", "id", String(b.opp_id || "")); if (!o) throw new Error("Bid not found."); return { sheet: oxHandoffSheet(o, findBy("OxProjects", "id", o.project_id) || {}) }; };
+NO_LOCK.oxHandoffSheet = 1;
+/* Where to spend the next hour, in order: bid deadlines, promised callbacks, then new projects worth pursuing. One plain reason each. */
+function oxWhy(p, c) {
+  var rl = (c.roles[p.id] || []).filter(function (r) { return r.role !== "owner" && (r.firm_id || r.raw); }), sc = oxScopeOf(p).confirmed.filter(function (k) { return k !== "site improvements"; }).slice(0, 2);
+  var who = rl.some(function (r) { return r.role === "landscape_architect"; }) ? "a landscape architect" : rl.some(function (r) { return r.role === "architect"; }) ? "an architect" : rl.some(function (r) { return r.role === "contractor"; }) ? "a builder" : rl.length ? "a professional" : "";
+  var parts = []; if (who) parts.push("Permit names " + who); if (sc.length) parts.push((who ? "and " : "Permit ") + "explicitly includes " + sc.join(", "));
+  var st = { "1": "early design review", "2": "permits in review", "3": "just approved" }[p.stage];
+  return (parts.join(" ") || "Our kind of work") + (st ? " · " + st : "");
+}
+function oxAgenda(c, projects, today) {
+  var pById = {}; projects.forEach(function (p) { pById[p.id] = p; }); var out = { deadlines: [], callbacks: [], fresh: [] }, seen = {};
+  c.opps.forEach(function (o) { var p = pById[o.project_id], f = c.firms[o.firm_id]; if (!p || !f || ["won", "lost"].indexOf(o.stage) > -1) return; var a = oxTrackAction(o, f, c), ct = o.contact_id ? ((c.cs[f.id] || []).filter(function (k) { return k.id === o.contact_id; })[0] || {}) : {};
+    var whoS = ct.name ? ct.name.split(" ")[0] + (ct.role ? " (" + ct.role + ", " + f.name + ")" : " (" + f.name + ")") : f.name;
+    if (o.due && o.stage !== "won") out.deadlines.push({ project_id: p.id, firm_id: f.id, opp_id: o.id, date: o.due, street: oxStreetFull(p), town: p.town, reason: "Bid due " + oxShortDay(o.due) + ": " + whoS + " wants our " + (o.scope ? o.scope + " " : "") + "price", act: a, overdue: o.due < today });
+    if (o.next_date && o.next_date <= today) { seen[f.id + "|" + p.id] = 1; out.callbacks.push({ project_id: p.id, firm_id: f.id, opp_id: o.id, date: o.next_date, street: oxStreetFull(p), town: p.town, reason: (ct.name ? whoS + " asked us to call " : "Follow up with " + f.name + " ") + (o.next_date === today ? "today" : "(was due " + oxShortDay(o.next_date) + ")") + (o.referred_by ? " · referred by " + o.referred_by : "") + (o.next_step ? " · " + o.next_step : ""), act: a, assignee: o.assignee ? personName(o.assignee) : "" }); } });
+  Object.keys(c.firms).forEach(function (fid) { var f = c.firms[fid]; if (!f.next_date || f.next_date > today || !f.next_step || oxFlags(f).excluded || /^call back/i.test(f.next_step)) return;
+    var t = (c.touches[fid] || []).filter(function (x) { return x.project_id; }).slice(-1)[0], p = t ? pById[t.project_id] : null; if (p && seen[fid + "|" + p.id]) return;
+    out.callbacks.push({ project_id: p ? p.id : "", firm_id: fid, date: f.next_date, street: p ? oxStreetFull(p) : "", town: p ? p.town : "", reason: f.name + ": " + f.next_step + (f.next_date < today ? " (was due " + oxShortDay(f.next_date) + ")" : " (today)"), act: p ? oxProjAct(p, c) : c.act[fid], assignee: f.assignee ? personName(f.assignee) : "" }); });
+  projects.forEach(function (p) { if (p.task_date && p.task_date <= today && p.task_text) out.callbacks.push({ project_id: p.id, firm_id: "", date: p.task_date, street: oxStreetFull(p), town: p.town, reason: "Research: " + p.task_text, act: { kind: "find", label: "Find who's on it" }, assignee: p.task_owner ? personName(p.task_owner) : "" }); });
+  var touched = {}; Object.keys(c.touches).forEach(function (k) { c.touches[k].forEach(function (t) { if (t.project_id) touched[t.project_id] = 1; }); });
+  out.fresh = projects.filter(function (p) { return !touched[p.id] && !(c.oppsBy[p.id] || []).length && p.stage !== "5"; }).map(function (p) { var a = oxProjAct(p, c), bd = oxBidOf(p, c.opps); return { p: p, a: a, s: oxProjScore(p, a, bd, today) }; })
+    .filter(function (x) { return x.s > -999 && ["email", "call", "ask", "link"].indexOf(x.a.kind) > -1; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5)
+    .map(function (x) { return { project_id: x.p.id, firm_id: x.a.firm_id || "", street: oxStreetFull(x.p), town: x.p.town, reason: oxWhy(x.p, c), act: x.a }; });
+  out.deadlines.sort(function (a, b) { return a.date < b.date ? -1 : 1; }); out.callbacks.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  return out;
+}
+["oxProjTask", "oxHandoff"].forEach(function (a) { PREFETCH[a] = OX_T.concat(["People"]); });
+PREFETCH.oxHandoffSheet = OX_T.concat(["People"]);
 /* A first email can be prepared any day; it goes out on the next allowed day (Tue to Thu for first emails). Staff prepare, Jesús sends. */
 function oxNextSendDay(step, today) { return today; }                               // Jesús sends whenever he wants; drafts are for the team to prepare
 ACTIONS.oxSaveDraft = function (me, b) {
