@@ -376,6 +376,23 @@ function oxStreetName(p) {                                              // "Enci
   var w = oxStreetWords(p); if (/^\d/.test(w[0] || "")) w = w.slice(1); var k = (w[w.length - 1] || "").toLowerCase();
   if (OX_SUF_SHORT[k]) w[w.length - 1] = OX_SUF_SHORT[k]; else if (OX_SUF_LONG[k]) w[w.length - 1] = oxTitle(k); return w.join(" ");
 }
+/* Our licenses, said the way that fits the job: Class A (general engineering) + C-27 (landscaping). A new home (or a big
+   remodel, or grading) → we can take the whole site development, foundations included; landscape → the full landscape and
+   hardscape package; a pool → the grading, drainage and hardscape around it. */
+var OX_LIC = "Class A (general engineering) and C-27 (landscaping)";
+function oxLicKind(p) { var t = [p.type].concat(String(p.other_types || "").split(/\s*[;,]\s*/)).join(" ");
+  return p.type === "landscape" ? "landscape" : p.type === "pool" ? "pool" : /new_home|major_remodel|grading/.test(t) || !p.type ? "site" : /landscape/.test(t) ? "landscape" : "site"; }
+var OX_LIC_SAY = {
+  site: ["We hold a Class A general engineering license and a C-27, so we can take the site development from grading, drainage, utilities and foundations through the hardscape and landscape.",
+    "With our Class A and C-27 licenses we can handle the site development on a new home, from grading, utilities and foundations to the hardscape and landscape.",
+    "We're licensed Class A and C-27, so the site development (grading, drainage, utilities, foundations) and the hardscape and landscape can all sit with one contractor."],
+  landscape: ["As a licensed C-27 landscape contractor (we also hold a Class A), we handle the full landscape and hardscape package, drainage and irrigation included.",
+    "We're a C-27 landscape contractor with a Class A license too, so the whole landscape and hardscape package, drainage and irrigation included, can sit with us.",
+    "With our C-27 and Class A licenses we take the full landscape and hardscape scope, from drainage and irrigation to the planting."],
+  pool: ["With our Class A and C-27 licenses we can do the grading, drainage and hardscape around the pool along with the landscape.",
+    "We're licensed Class A and C-27, so the grading, drainage and hardscape around the pool and the landscape can all be one package."]
+};
+function oxLicLine(p, seed) { return oxPick(OX_LIC_SAY[oxLicKind(p)], seed, "lic"); }
 function oxScope(p) { return { landscape: "the landscape", grading: "the grading and site work", pool: "the pool and hardscape" }[p.type] || "the site work and landscape"; }
 function oxStagePhrase(p) {
   var kw = { landscape: "landscape ", pool: "pool ", grading: "grading " }[p.type] || "", st = String(p.stage || ""), raw = String(p.status || "").toLowerCase();
@@ -425,13 +442,13 @@ function oxFill(t, v) { return String(t).replace(/\{(\w+)\}/g, function (m, k) {
 function oxCompose(step, v, seed) {
   var pk = function (k) { return oxPick(OX_BANK[k], seed, k); }, hi = v.first ? (v.familiar && oxPick([0, 1, 1], seed, "hey") ? "Hey " : "Hi ") + v.first + "," : "Hi there,", parts = [];
   var wk = "";
-  if (step === "ask") { wk = v.work ? oxWorkLine(v.town, seed) : ""; parts = [pk("open"), pk("inbox"), v.pool ? pk("poolq") : "", wk ? "" : pk("pitch"), pk("close")]; }
+  if (step === "ask") { wk = v.work ? oxWorkLine(v.town, seed) : ""; parts = [pk("open"), pk("inbox"), v.pool ? pk("poolq") : "", v.lic || (wk ? "" : pk("pitch")), pk("close")]; }
   else if (step === "reply") parts = [pk("thanks"), pk("plans"), v.pool ? pk("poolq") : "", pk("close")];          // after a conversation: ask for the plans
   else if (step === "invited") parts = [pk("thanksinv"), oxNeedLine(v.need || [], seed), v.pool ? pk("poolq") : "", pk("close")];             // a general inbox: one practical question
   else if (step === "day14") parts = [oxPick(OX_BANK.open.slice(0, 4).concat(["", "", "", ""]), seed, "o14"), pk("follow"), pk("followAsk"), pk("close")];
-  else if (step === "again") parts = [pk("open"), pk("again"), oxFill(pk("ask"), { scope: v.scope, either: "" }), pk("close")];
+  else if (step === "again") parts = [pk("open"), pk("again"), oxFill(pk("ask"), { scope: v.scope, either: "" }), pk("close")];   // they've heard from us: no license pitch again
   else { wk = v.work ? oxWorkLine(v.town, seed) : "";                                 // new firms: a few real projects from our portfolio, with a link (its own short paragraph)
-    parts = [pk("open"), v.familiar ? pk("known") : v.cold && !wk ? pk("intro") : "", v.b ? pk("two") : pk("one"), pk("ask"), pk("close")]; }
+    parts = [pk("open"), v.familiar ? pk("known") : v.cold && !wk && !v.lic ? pk("intro") : "", v.b ? pk("two") : pk("one"), v.familiar ? "" : v.lic, pk("ask"), pk("close")]; }
   var text = parts.filter(Boolean).map(function (x) { return oxFill(x, v); }).join(" ").replace(/\s+/g, " ").trim();
   return hi + "\n\n" + text + (wk ? "\n\n" + wk : "");
 }
@@ -454,7 +471,7 @@ ACTIONS.oxDraft = function (me, b) {
   var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : oxStreetName(p) + (q ? " / " + oxStreetName(q) : "");
   var v = { town: p.town, work: f.segment !== "warm", first: first ? oxTitle(first) : "", familiar: f.segment === "warm" || f.segment === "known", cold: !f.segment || f.segment === "cold",
     A: oxStreetFull(p) + " in " + p.town, A2: oxStreetFull(p) + " in " + p.town, stage: oxStagePhrase(p), B: q ? oxStreetFull(q) + (q.town === p.town ? "" : " in " + q.town) : "", b: !!q,
-    addrA: oxStreetFull(p), scope: oxScope(p), either: q ? " on either one" : "", pool: /\bpools?\b|\bspa\b/i.test(String(p.description || "") + " " + String(p.other_types || "")) };
+    addrA: oxStreetFull(p), scope: oxScope(p), either: q ? " on either one" : "", lic: oxLicLine(p, f.id + "|" + p.id), pool: /\bpools?\b|\bspa\b/i.test(String(p.description || "") + " " + String(p.other_types || "")) };
   var opp = invited ? (b.opp_id ? findBy("OxOpps", "id", String(b.opp_id)) : rows("OxOpps").filter(function (o) { return o.project_id === p.id && o.firm_id === f.id && ["won", "lost"].indexOf(o.stage) < 0; })[0]) : null;
   if (invited) { v.need = [!opp || !opp.plans_url ? "plans" : "", !opp || !opp.due ? "due" : "", !opp || !opp.scope ? "scope" : ""].filter(Boolean); v.oscope = opp && opp.scope ? opp.scope : ""; }
   var avoid = [].concat(b.avoid || []).map(String), n = Math.abs(Math.floor(Number(b.n) || 0)), body = "", k = 0;
@@ -492,7 +509,8 @@ function oxAiSystem() {
     "- One ask: to bid the scope given (or to be on the bid list). Offer to walk the site or give early numbers.",
     "- No sign-off and no name at the end: his signature is added automatically.",
     "- Plain, warm, direct. No flattery, no \"I hope this email finds you well\", no \"reach out\", \"leverage\", \"excited\", \"delighted\", \"partner\", \"synergy\", \"touch base\". No em dashes or en dashes, no exclamation marks, no emojis, no bullets, no links.",
-    "- Use only the facts given. Do not claim past work together, awards, years in business or licenses. Never mention the property owner.",
+    "- Use only the facts given. Do not claim past work together, awards or years in business. Never mention the property owner.",
+    "- Licenses: Blue Sierra holds the licenses in blue_sierra_licenses. When license_angle is given, mention them once, in one short clause that fits it: \"site\" means a new home or big remodel, so say we can take the site development (grading, drainage, utilities, foundations) through hardscape and landscape; \"landscape\" means the full landscape and hardscape package (drainage, irrigation, planting); \"pool\" means the grading, drainage and hardscape around the pool plus the landscape. Never list other license classes.",
     "",
     "Subject: the street names only, like \"Encina Ave / Summit Dr\" (use the suggested subject unless you have a better plain one). For a follow-up, keep the subject you are given unchanged.",
     "Each request may list versions already shown. Write one that is clearly different in its opening and wording."
@@ -540,7 +558,7 @@ ACTIONS.oxAiDraft = function (me, b) {
     recipient_first_name: first || null, recipient_role: ct && ct.role && ct.role !== "General inbox" ? ct.role : null, firm: f.name, firm_type: f.firm_type || null,
     projects: [{ street: oxStreetFull(p), town: p.town, stage_phrase: oxStagePhrase(p) }].concat(base.also ? [(function (q) { return { street: oxStreetFull(q), town: q.town, stage_phrase: oxStagePhrase(q) }; })(findBy("OxProjects", "id", base.also.id))] : []),
     scope_to_bid: oxScope(p), suggested_subject: base.subject,
-    blue_sierra_does: "site work (grading, drainage, utilities), hardscape and landscape", subject_to_keep: base.step === "day14" ? base.subject : null };
+    blue_sierra_does: "site work (grading, drainage, utilities, foundations), hardscape and landscape", blue_sierra_licenses: OX_LIC, license_angle: base.step === "day14" || base.step === "again" || (f.segment === "warm" || f.segment === "known") ? null : oxLicKind(p), subject_to_keep: base.step === "day14" ? base.subject : null };
   var avoid = [].concat(b.avoid || []).map(function (x) { return clean(x, 900); }).filter(Boolean).slice(-4);
   var n = Math.abs(Math.floor(Number(b.n) || 0)), angle = OX_ANGLES[n % OX_ANGLES.length];
   try {
@@ -892,12 +910,13 @@ ACTIONS.oxEnrich = function (me, b) {
       var score = dm ? function (p) { return oxDmTitle(f, p.current_title); } : function (p) { for (var i = 0; i < TITLE.length; i++) if (TITLE[i].test(p.current_title || "")) return i; return 9; };
       people.sort(function (a, c) { return score(a) - score(c) || (/california|\bca\b/i.test(c.region || c.location || "") ? 1 : 0) - (/california|\bca\b/i.test(a.region || a.location || "") ? 1 : 0); });
       var p = people[0];
-      if (!p) { res.status = dm ? "no principal, owner or estimator on RocketReach (no credit used)" : "nobody found"; insert("OxEnrich", { id: newId("oe"), firm_id: f.id, person: "", rr_id: "", status: "done", result: "none", at: now(), by: me.email, goal: b.goal || "" }); out.push(res); return; }
+      if (!p) { res.status = dm ? "no principal, owner or estimator on RocketReach (no credit used)" : "nobody found"; insert("OxEnrich", { id: newId("oe"), firm_id: f.id, person: "", rr_id: "", status: "done", result: "none", at: now(), by: me.email, goal: b.goal || "" }); oxRrAfter(f, res, me, b, null); out.push(res); return; }
       var d = rrCall("get", "/person/lookup?id=" + encodeURIComponent(p.id)) || {};
       var done = d.status === "complete" || d.status === "progress" || !!(d.emails || []).length;
       oxRrSaveContact(f, d.name ? d : Object.assign({}, p, d), me);
       res.found = (d.name || p.name || "") + (d.current_title || p.current_title ? " · " + (d.current_title || p.current_title) : ""); res.phone = (d.phones || []).length > 0; res.email = oxRrEmail(d); res.status = done ? (dm && !res.email ? "found them, but RocketReach has no work email yet" : "found") : "searching (check again in a minute)";
       res.guessed = oxFillPattern(f);                                    // one real email → the rest of the firm, free
+      oxRrAfter(f, res, me, b, { name: d.name || p.name || "", title: d.current_title || p.current_title || "", website: d.current_employer_domain || d.current_employer_website || p.current_employer_domain || p.current_employer_website || "", pending: !done || d.status === "progress" });
       insert("OxEnrich", { id: newId("oe"), firm_id: f.id, person: d.name || p.name || "", rr_id: String(p.id), status: done && d.status === "complete" ? "done" : "pending", result: oxRrEmail(d) ? "email" : "no email yet", at: now(), by: me.email, goal: b.goal || "" });
     } catch (e) { res.status = e.message; if (/credits|key|rate/i.test(e.message)) { out.push(res); throw new Error(e.message + " (" + out.length + " firms done before this)"); } }
     out.push(res);
@@ -905,6 +924,61 @@ ACTIONS.oxEnrich = function (me, b) {
   CacheService.getScriptCache().remove("rr:acct");
   return { results: out, rr: oxRrInfo() };
 };
+/* RocketReach came back without an email (or, for calls, without a phone): look elsewhere before giving up.
+   Free first: the website RocketReach knows (saved if we had none), the firm's own site, your Gmail and the firm's email format.
+   Then, only if there's still no real email (or phone) and the AI key is on, the internet (Claude + web search, about 5 cents). */
+function oxRrAfter(f, res, me, b, who) {
+  var calls = b.goal === "calls", needPhone = function () { return calls && !res.phone && !rows("OxContacts").some(function (c) { return c.firm_id === f.id && oxPhoneOk(c.phone); }); };
+  if (b.fallback === false || (res.email && !needPhone())) return;
+  var fb = { website: 0, gmail: 0, guessed: 0, phone: "", web: null, note: "" }, t = now();
+  try {
+    if (who && who.website && !oxDomain(f)) { var w0 = String(who.website).replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0]; if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(w0)) { update("OxFirms", "id", f.id, { website: "https://" + w0, updated_at: t }); f = findBy("OxFirms", "id", f.id); fb.site_from_rr = w0; } }
+    var fr = oxFreeFirm(f, me); fb.website = fr.website; fb.gmail = fr.gmail; fb.guessed = fr.guessed; if (fr.phone) fb.phone = oxPhoneFmt(fr.phone); f = findBy("OxFirms", "id", f.id);
+    var stillEmail = !calls && !res.email && !oxHasRealEmail(f.id), stillPhone = needPhone() && !oxPhoneOk(f.phone);   // a phone lookup only needs a phone
+    if ((stillEmail || stillPhone) && b.web !== false && aiKey() && !(who && who.pending)) {
+      var w = oxAiWebContact(f, who), saved = oxWebContactSave(f, w, who); fb.web = { cost: w.cost, searches: w.searches, emails: saved.emails, phone: saved.phone, website: saved.website, why: w.why || "" };
+      if (saved.website) { var fr2 = oxFreeFirm(findBy("OxFirms", "id", f.id), me); fb.website += fr2.website; fb.guessed += fr2.guessed; }
+    }
+  } catch (e) { fb.note = String(e.message || e).slice(0, 160); }
+  var bits = [fb.website ? fb.website + " email" + (fb.website === 1 ? "" : "s") + " on their website" : "", fb.gmail ? fb.gmail + " in your Gmail" : "", fb.guessed ? fb.guessed + " guessed from their format" : "", fb.phone ? "office phone " + fb.phone : "",
+    fb.web ? (fb.web.emails || fb.web.phone || fb.web.website ? "online: " + [fb.web.emails ? fb.web.emails + " email" + (fb.web.emails === 1 ? "" : "s") : "", fb.web.phone ? "phone " + fb.web.phone : "", fb.web.website ? "website" : ""].filter(Boolean).join(", ") : "nothing more online") + " (≈" + Math.max(1, Math.round(fb.web.cost * 100)) + "¢)" : ""].filter(Boolean);
+  fb.summary = bits.length ? "Also found: " + bits.join(" · ") : "Nothing more on their website" + (me.role === "admin" ? " or in your Gmail" : "") + (aiKey() ? "" : " (connect the AI key to also search the internet)");
+  if (fb.note) fb.summary += " · " + fb.note;
+  res.fallback = fb;
+}
+function oxAiWebContact(f, who) {
+  var c = CacheService.getScriptCache(), hk = "oxweb:" + Utilities.formatDate(new Date(), "UTC", "yyyyMMddHH"), used = Number(c.get(hk) || 0);
+  if (used >= OX_WEB.perHour) throw new Error("internet searches paused for this hour"); c.put(hk, String(used + 1), 3700);
+  var prompt = ["Find public contact details for this firm in the San Francisco Bay Area, California: \"" + f.name + "\"" + (f.firm_type ? " (" + f.firm_type + ")" : "") + (oxDomain(f) ? ", website " + oxDomain(f) : "") + ".",
+    "We want: the firm's website, its main office phone, any email address shown publicly (a general one like info@ is fine)" + (who && who.name ? ", and if public, the work email or direct phone of " + who.name + (who.title ? " (" + who.title + ")" : "") : "") + ".",
+    "Look at the firm's own site (contact and team pages), the California license board, Houzz, AIA, Google Business and similar listings. Only report what a source shows; never guess an email.",
+    "Reply with only this JSON: {\"website\": \"\", \"phone\": \"\", \"emails\": [{\"email\": \"\", \"name\": \"\", \"title\": \"\"}], \"person_email\": \"\", \"person_phone\": \"\", \"why\": \"one sentence\", \"sources\": [\"url\"]}"].join("\n");
+  var msgs = [{ role: "user", content: prompt }], j = null, searches = 0, tin = 0, tout = 0;
+  for (var i = 0; i < 3; i++) {
+    j = oxAiPost({ model: OX_WEB.model, max_tokens: 3000, messages: msgs, tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }], output_config: { effort: "low" } });
+    var u = j.usage || {}; tin += u.input_tokens || 0; tout += u.output_tokens || 0; searches += ((u.server_tool_use || {}).web_search_requests) || 0;
+    if (j.stop_reason !== "pause_turn") break; msgs = [msgs[0], { role: "assistant", content: j.content }];
+  }
+  var out = (j && j.stop_reason !== "refusal" && oxJsonIn(oxAiText(j))) || {};
+  out.cost = Math.round((tin / 1e6 * OX_WEB.inPerM + tout / 1e6 * OX_WEB.outPerM + searches * OX_WEB.perSearch) * 1000) / 1000; out.searches = searches;
+  return out;
+}
+function oxWebContactSave(f, w, who) {
+  var t = now(), r = { emails: 0, phone: "", website: false }, okE = function (e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !OX_JUNK.test(e); };
+  var dom = oxDomain({ website: w.website || "" }); if (dom && !oxDomain(f)) { update("OxFirms", "id", f.id, { website: "https://" + dom, updated_at: t }); r.website = true; }
+  if (oxPhoneOk(w.phone) && !oxPhoneOk(f.phone)) { update("OxFirms", "id", f.id, { phone: oxPhoneFmt(w.phone), updated_at: t }); r.phone = oxPhoneFmt(w.phone); }
+  var have = rows("OxContacts").filter(function (c) { return c.firm_id === f.id; });
+  var list = [].concat(w.emails || []).map(function (x) { return typeof x === "string" ? { email: x } : x || {}; });
+  if (who && who.name && (okE(w.person_email || "") || oxPhoneOk(w.person_phone))) list.unshift({ email: w.person_email || "", name: who.name, title: who.title || "", phone: w.person_phone || "" });
+  list.slice(0, 5).forEach(function (x) {
+    var e = normEmail(x.email || ""), ph = oxPhoneOk(x.phone) ? oxPhoneFmt(x.phone) : ""; if (!okE(e) && !ph) return; if (e && !okE(e)) e = "";
+    var same = have.filter(function (c) { return (e && normEmail(c.email) === e) || (x.name && c.name && oxSame(c.name, x.name)); })[0];
+    if (same) { var up = {}; if (e && !same.email) up.email = e; if (ph && !oxPhoneOk(same.phone)) up.phone = ph; if (Object.keys(up).length) { up.updated_at = t; if (up.email) { up.source = "web"; up.verified = "no"; } update("OxContacts", "id", same.id, up); if (up.email) r.emails++; } return; }
+    var ct = { id: newId("oc"), firm_id: f.id, name: clean(x.name || "", 120), role: clean(x.title || (e && OX_GENERIC.test(e.split("@")[0]) ? "General inbox" : ""), 120), email: e, phone: ph, source: "web", verified: "no", created_at: t, updated_at: t };
+    insert("OxContacts", ct); have.push(ct); if (e) r.emails++;
+  });
+  return r;
+}
 /* Free first: a RocketReach SEARCH (names, titles, the company's website; no contact info) for each firm, then the free
    finder on that website. Credits are spent only later, and only on firms that still have no real email. If a search
    ever lowers the credits on this plan, it stops right away. */
@@ -1146,6 +1220,7 @@ function oxCallProjects(mine) {
     .map(function (p) { return { id: p.id, street: oxStreetFull(p), town: p.town, stage: oxStagePhrase(p), scope: oxScope(p), type: OX_TYPE[p.type] || "", date: p.date }; });
 }
 /* What to say: short, in Jesús's voice, no dashes. The same firm and number give the same words. */
+var OX_LIC_CALL = { site: "We're licensed Class A and C-27, so we can take the whole site, from grading and foundations to the landscape.", landscape: "We're a licensed C-27 landscape contractor, with a Class A too.", pool: "We're licensed Class A and C-27, so the grading and hardscape around the pool can be ours too." };
 var OX_SAY = {
   why: ["I'm calling about {A}. I saw it {stage}.", "I saw {A} {stage}, and I wanted to reach out.", "Quick call about {A}. Looks like it {stage}."],
   pitch: ["We do the site work, hardscape and landscape on a lot of the homes around here.", "Blue Sierra builds the site work, hardscape and landscape on custom homes around the Peninsula.", "We're the site work, hardscape and landscape contractor on a lot of homes like this one."],
@@ -1162,7 +1237,7 @@ function oxCallScript(it, me, n) {
     opener: (first ? "Hi " + first + ", " : "Hi, ") + "this is " + mine + " with Blue Sierra Construction.",
     front: "Hi, this is " + mine + " with Blue Sierra Construction. " + (who ? "Is " + who.split(" ")[0] + " in? " : "Who handles the bid lists for your projects? ") + "It's about " + (p.street || "one of your projects") + ".",
     why: why + two,
-    pitch: oxPick(OX_SAY.pitch, seed, "pitch"),
+    pitch: oxPick(OX_SAY.pitch, seed, "pitch") + (p.id ? " " + OX_LIC_CALL[oxLicKind(findBy("OxProjects", "id", p.id) || {})] : ""),
     ask: oxFill(oxPick(OX_SAY.ask, seed, "ask"), v),
     meet: oxPick(OX_SAY.meet, seed, "meet"),
     voicemail: (first ? "Hi " + first + ", " : "Hi, ") + "this is " + mine + " with Blue Sierra Construction, about " + v.A + ". We'd love to bid " + v.scope + ". " + (sigPh ? "You can reach us at " + sigPh + ". " : "") + "Thank you."

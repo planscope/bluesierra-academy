@@ -1,6 +1,7 @@
 /* Blue Sierra Academy — course content and settings. Generated from Grok's academy_handoff.md. Edit text here; the engine is academy-app.js. */
 window.BSA_CONTENT = {
  "demoAllowed": false,
+ "portalCalls": "https://www.bluesierracorp.com/portal",
  "calls": {
   "api": "PASTE_APPS_SCRIPT_URL",
   "keyField": "call-key"
@@ -26,7 +27,7 @@ window.BSA_CONTENT = {
   "passMark": 80,
   "finalCount": 20,
   "finalPassMark": 85,
-  "acknowledge": "I completed this course. I will follow the playbook and the do-not-call rule, and I will never share prices or the internal project floor with a prospect.",
+  "acknowledge": "I completed this course. I will call only the firms on my portal list, never property owners, follow the do-not-call rule, log every call right after it, and never share prices or the internal project floor with a prospect.",
   "modules": [
    {
     "id": "m1",
@@ -36,16 +37,16 @@ window.BSA_CONTENT = {
     "video": "https://drive.google.com/file/d/1z6FHwTOvDtWxKcRt9j3LjbwfgsziE7Yn/view",
     "points": [
      "Blue Sierra Construction, Inc. is based at 652 Giguere Court, San José, CA 95133. Phone (408) 458-7917, info@bluesierracorp.com.",
-     "Founded in 2005. High-end landscape and hardscape for Bay Area homes and businesses. Tagline: \"Crafting sites, one space at a time.\"",
-     "Works with architects, landscape architects, developers and homeowners on design support, planning, site preparation, construction and long-term stewardship.",
-     "Your role: book 20-minute intro meetings between design/building firms and our principal, Jesús Toto. You set meetings. You do not sell or quote."
+     "Founded in 2005. High-end site work, hardscape and landscape for Bay Area homes. Tagline: \"Crafting sites, one space at a time.\"",
+     "Licensed Class A (general engineering) and C-27 (landscaping): on a new home we can take the whole site, from grading, drainage, utilities and foundations to the hardscape and landscape.",
+     "Your role: call the design and building firms named on new permits and town agendas, get Blue Sierra on the bid list for that property, and book short meetings with our principal, Jesús Toto. You set meetings. You do not sell or quote."
     ],
     "quiz": [
      {
       "q": "What is your job in this role?",
       "options": [
        "Sell projects and send quotes",
-       "Book 20-minute intro meetings with Jesús Toto",
+       "Get us on the bid list for specific properties and book meetings with Jesús",
        "Manage job sites",
        "Design landscapes"
       ],
@@ -64,12 +65,12 @@ window.BSA_CONTENT = {
      {
       "q": "Which of these may you say to a prospect?",
       "options": [
-       "Our license number and headcount",
-       "Our reviews and ratings",
-       "Founded in 2005, based in San José",
-       "How we compare to a competitor"
+       "Our prices or minimum job size",
+       "\"We're licensed Class A and C-27, so we can take the whole site\"",
+       "How we compare to a competitor",
+       "A start date"
       ],
-      "answer": 2
+      "answer": 1
      },
      {
       "q": "A prospect asks something you don't know. What do you say?",
@@ -100,10 +101,10 @@ window.BSA_CONTENT = {
     "duration": "~7 min · video 2:46",
     "video": "https://drive.google.com/file/d/1Fq376u1Ea1cdgLL-fI-2eKOUGjfoP4VB/view",
     "points": [
-     "Softscape: planting, drainage, irrigation.",
-     "Hardscape: foundations, driveways, walkways, walls, decorative concrete, masonry, paving.",
-     "Outdoor living: pools, spas, kitchens.",
-     "This program only pursues large full site and landscape packages: site work, drainage, irrigation and full landscape construction. Hardscape counts only inside a full package."
+     "Site work: grading, drainage, utilities and foundations (Class A). Landscape: planting, irrigation (C-27).",
+     "Hardscape: driveways, walkways, walls, decorative concrete, masonry, paving. Outdoor living: pools, spas, kitchens.",
+     "We go after full site and landscape packages on custom homes, big remodels and pools. Each call is about a real property on a permit or agenda, so the scope comes from that permit.",
+     "New home → \"the site work and landscape\". Landscape permit → \"the landscape and hardscape\". Pool → \"the pool and the hardscape around it\". The portal writes this for you in What to say."
     ],
     "quiz": [
      {
@@ -159,67 +160,68 @@ window.BSA_CONTENT = {
     ]
    },
    {
-    "id": "m3",
-    "title": "Who we call and the do-not-call rule",
-    "summary": "Which firms you call, in what order, and the do-not-call rule.",
-    "duration": "~7 min · video 2:40",
-    "video": "https://drive.google.com/file/d/1khXxvp7-ev98N58-02xhcLqPZDRtke1a/view",
+    "id": "m3p",
+    "title": "Your call list (the portal)",
+    "summary": "Where your calls come from, the order, and who never shows up on your list.",
+    "duration": "~8 min",
     "points": [
-     "Who you call: residential architects, landscape architects, developers/spec builders and custom-home builders on the Peninsula and in the South Bay.",
-     "Only firms on the Setter Call List (98 firms). Work priority A first, then B, then C.",
-     "Before each call, spend a minute on the firm's website and the source_url page so you can name the city and type of work.",
-     "Do-not-call rule: never contact a firm that isn't on the sheet. Some firms are left off on purpose."
+     "Log in at bluesierracorp.com/portal with your work email and the code we send you. Your screen is Calls.",
+     "Each card is one firm and the property it's on: who to ask for (with their title), the phone to dial, the property, its permit stage, and why it's on your list today.",
+     "The order is set for you: promised callbacks first, then the follow-up call after Jesús's email (day 7), then firms Jesús emailed with no reply, then new firms from this week's permits and agendas.",
+     "Who never shows up: firms Jesús handles himself, do-not-call firms, firms that already replied or have a meeting booked, and property owners. Never call a firm that isn't on your list; tell Jesús if you think one is missing.",
+     "After no answer or a voicemail, the firm comes back in two work days. After five tries without talking to anyone, it leaves your list (email only from then on).",
+     "Before you dial, open the card: read the property, who's named on the permit and the earlier history. One minute, then call."
     ],
     "quiz": [
      {
-      "q": "A colleague refers you to a great architect who isn't on the call list. What do you do?",
+      "q": "Where is your call list?",
+      "options": [
+       "A Google Sheet",
+       "The Calls screen in the portal (bluesierracorp.com/portal)",
+       "Your own notes",
+       "Calendly"
+      ],
+      "answer": 1
+     },
+     {
+      "q": "Which card comes first?",
+      "options": [
+       "The newest permit",
+       "A callback you promised for today",
+       "Alphabetical order",
+       "The biggest firm"
+      ],
+      "answer": 1
+     },
+     {
+      "q": "A friend tells you about a great architect who isn't on your list. What do you do?",
       "options": [
        "Call them today",
        "Email them first",
-       "Suggest the firm in your weekly summary and don't contact it",
-       "Add them to the sheet yourself"
+       "Tell Jesús; don't contact them",
+       "Add them yourself"
       ],
       "answer": 2
      },
      {
-      "q": "Which firms do you work first?",
+      "q": "You left a voicemail. When does that firm come back?",
       "options": [
-       "Priority C",
-       "Priority A",
-       "Whichever is closest",
-       "Alphabetical order"
+       "Tomorrow morning",
+       "In two work days, by itself",
+       "Never",
+       "When you remember"
       ],
       "answer": 1
      },
      {
-      "q": "A contact says they already work with Blue Sierra. What do you do?",
+      "q": "May you ever call a property owner named on a permit?",
       "options": [
-       "Pitch a second project",
-       "Thank them, stop, and note it",
-       "Ask for a referral to their competitors",
-       "Book a meeting anyway"
+       "Yes, if the firm doesn't answer",
+       "No, owners are never contacted",
+       "Only on weekends",
+       "Only by text"
       ],
       "answer": 1
-     },
-     {
-      "q": "What should you do before each call?",
-      "options": [
-       "Nothing — speed matters",
-       "Spend a minute on the firm's website and the source_url page",
-       "Call the homeowner first",
-       "Send a price sheet"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which is a starting weekly target?",
-      "options": [
-       "40 firms touched",
-       "200 dials per day",
-       "1 conversation",
-       "No targets"
-      ],
-      "answer": 0
      }
     ]
    },
@@ -230,13 +232,14 @@ window.BSA_CONTENT = {
     "duration": "~9 min · video 2:49",
     "video": "https://drive.google.com/file/d/14vyhvo5CkLVK1KyLbKcWl3r8kjTWRiGb/view",
     "points": [
-     "A meeting is QUALIFIED only if all five are true:",
-     "1) The firm is an architect, landscape architect, developer or builder/GC doing residential work.",
-     "2) It has active or upcoming projects on the Peninsula or in the South Bay.",
+     "A call is a WIN when one of these happens: they put us on the bid list for that property, they tell us who is collecting prices (a referral), they'll send plans, or they agree to meet Jesús.",
+     "A meeting COUNTS only if all five are true:",
+     "1) The firm is an architect, landscape architect, designer, developer or builder doing residential work.",
+     "2) It has active or upcoming projects on the Peninsula or in the South Bay (the portal shows them).",
      "3) The contact is a decision maker or influencer: principal, PM, project architect or estimator.",
-     "4) The project fits our large full site and landscape package scope.",
-     "5) They accepted a calendar invite for a specific date and time.",
-     "A lead is HOT when the project goes out to bid within 6 months."
+     "4) The project fits our full site and landscape scope.",
+     "5) They accepted the calendar invite for a specific date and time (the portal sends it from Jesús's calendar).",
+     "A lead is HOT when the property goes out to bid within 6 months."
     ],
     "quiz": [
      {
@@ -298,10 +301,10 @@ window.BSA_CONTENT = {
     "duration": "~9 min · video 2:47",
     "video": "https://drive.google.com/file/d/1HCqbChkl_XvRcCqBrchSCpc_72vCIfx0/view",
     "points": [
-     "Call flow: Opener → Reason → Qualify (2–4 discovery questions) → Ask for the meeting → Handle objections, then ask again.",
-     "Gatekeeper: \"Hi, this is [Setter] calling for Jesús Toto at Blue Sierra Construction in San José… Who handles residential projects and contractor relationships?\"",
-     "Pick the opener for the firm type: architects, landscape architects, or developers/builders (playbook §8.2). Name the city from the list.",
-     "Value points (use only these): one contractor for the whole site; built for the design team; track record since 2005; long-term stewardship; local and responsive (response within 1 business day, complimentary 30-minute consultation)."
+     "Every card has What to say, written for that property: the front desk line, your opener, why you're calling, the one-line pitch (with our licenses), the bid-list ask, the meeting ask and the voicemail.",
+     "Flow: opener → the property → ask who's collecting prices for it / to be on the bid list → if it fits, ask for 15 minutes with Jesús → handle the objection, then ask again.",
+     "Front desk: \"Hi, this is [Setter] with Blue Sierra Construction. Is [name] in? It's about [street].\" If nobody is named: \"Who handles the bid lists for your projects?\"",
+     "Value points (use only these): one contractor for the whole site (Class A + C-27); built to the design team's drawings; since 2005; local and responsive."
     ],
     "quiz": [
      {
@@ -327,10 +330,10 @@ window.BSA_CONTENT = {
      {
       "q": "How do you ask for the meeting?",
       "options": [
-       "Send the Calendly link first",
-       "Offer two specific times from Jesús's open Calendly slots",
+       "Send a link and hope",
+       "Offer two of Jesús's free times from the portal",
        "Ask them to call Jesús",
-       "Offer any time they want, even weekends"
+       "Offer any time, even weekends"
       ],
       "answer": 1
      },
@@ -345,12 +348,12 @@ window.BSA_CONTENT = {
       "answer": 1
      },
      {
-      "q": "Your architect opener must NOT include:",
+      "q": "Your opener must NOT include:",
       "options": [
-       "Jesús Toto / Blue Sierra / San José",
-       "A 20-minute intro request",
+       "Your name and Blue Sierra Construction",
+       "The property you're calling about",
        "Prices or our internal minimum project size",
-       "Since 2005"
+       "A short ask about the bid list"
       ],
       "answer": 2
      }
@@ -366,7 +369,8 @@ window.BSA_CONTENT = {
      "\"Just send me an email.\" → Get the address, then suggest a tentative 20 minutes so it doesn't get buried.",
      "\"We already have a landscape contractor.\" → \"Makes sense. Most firms we talk to do. A second trusted option helps when your go-to is booked or a bid needs another number.\"",
      "\"No projects right now.\" → Ask when the next one goes to bid; log a follow-up date.",
-     "\"What do you charge?\" → \"Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.\""
+     "\"What do you charge?\" → \"Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.\"",
+     "\"The GC is collecting the prices, not us.\" → Thank them, ask which GC and who there (name, title, phone or email), then log it as a referral. That GC shows up on your list with the contact."
     ],
     "quiz": [
      {
@@ -382,8 +386,8 @@ window.BSA_CONTENT = {
      {
       "q": "\"The GC picks the subs, not us.\" What do you do?",
       "options": [
-       "Call every GC they mention",
-       "Ask which GCs they use, note them for Jesús, and only call GCs on the list",
+       "Call every GC you can find",
+       "Ask which GC and who there, and log it so it lands on your list",
        "End the call",
        "Argue with them"
       ],
@@ -422,35 +426,36 @@ window.BSA_CONTENT = {
     ]
    },
    {
-    "id": "m7",
-    "title": "Booking, phone system, voicemail and email",
-    "summary": "Calling hours, RingCentral, voicemail and booking rules.",
-    "duration": "~7 min · video 2:29",
-    "video": "https://drive.google.com/file/d/1z_70OCLn-CAqnN-S2aKT-DLeopgwu_vP/view",
+    "id": "m7p",
+    "title": "Booking Jesús, phone and voicemail",
+    "summary": "Booking straight into Jesús's calendar, calling hours and voicemail.",
+    "duration": "~7 min",
     "points": [
-     "Calling hours: 8:00 am–4:00 pm Pacific, Monday–Friday. No weekends. Follow Jesús's calendar blocks.",
-     "Use your Blue Sierra RingCentral extension with the assigned Blue Sierra business number (local 408/650). Never your personal phone. Never block caller ID.",
-     "If recording is on: \"Quick note, this call may be recorded for quality.\" If they object, stop recording or end politely.",
-     "Voicemail: live, under 25 seconds. Never pre-recorded or AI voice messages."
+     "Calling hours: 8:00 am–4:00 pm Pacific, Monday–Friday. No weekends.",
+     "Use your Blue Sierra RingCentral extension with the business number (408/650). Never your personal phone. Never block caller ID. The 📞 Call button on the card dials it.",
+     "They want to meet? Tap 📅 They want to meet? Book Jesús on the card. Pick a type (phone, video, at their office, site walk), the length and one of Jesús's free times. Only free times are shown (Mon–Fri, 9:00–4:30 PT, at least an hour ahead).",
+     "Type their email: the invite goes out from Jesús's Google Calendar right away (video calls get a Meet link). Add a note for Jesús: what they said, scope, bid date. The guest never sees your note.",
+     "Voicemail: live, under 25 seconds, use the voicemail line on the card. Never pre-recorded or AI voices.",
+     "After the meeting day, mark it Held ✓, No-show or Cancel in Upcoming meetings."
     ],
     "quiz": [
      {
-      "q": "Which booking rule is correct?",
+      "q": "How do you book a meeting?",
       "options": [
-       "Book any day including holidays",
-       "Only offer times that appear open on Jesús's Calendly; follow published calendar blocks",
-       "Never book on Thursdays",
-       "Book without confirming email"
+       "Send the Calendly link",
+       "📅 Book Jesús on the card: pick one of his free times and type their email",
+       "Text Jesús and wait",
+       "Promise a time and fix it later"
       ],
       "answer": 1
      },
      {
-      "q": "Which phone and caller ID do you use for prospect calls?",
+      "q": "Which phone and caller ID do you use?",
       "options": [
        "Personal cell, caller ID blocked",
-       "Your Blue Sierra RingCentral extension with the assigned business number (408/650)",
+       "Your Blue Sierra RingCentral extension with the business number",
        "Any free calling app",
-       "Personal cell showing your own number"
+       "Your personal number"
       ],
       "answer": 1
      },
@@ -465,14 +470,14 @@ window.BSA_CONTENT = {
       "answer": 1
      },
      {
-      "q": "How fast do you send Jesús the handoff brief?",
+      "q": "Who sees the note you write when booking?",
       "options": [
-       "Within 1 hour of booking",
-       "Next week",
-       "Never",
-       "Only if they ask"
+       "The guest",
+       "Only Jesús and the team",
+       "Everyone on the invite",
+       "Nobody"
       ],
-      "answer": 0
+      "answer": 1
      },
      {
       "q": "Which voicemail is allowed?",
@@ -487,67 +492,68 @@ window.BSA_CONTENT = {
     ]
    },
    {
-    "id": "m8",
-    "title": "Logging and daily reporting",
-    "summary": "How to log every touch and send your daily report.",
-    "duration": "~7 min · video 2:32",
-    "video": "https://drive.google.com/file/d/19An9LtPU_xWC-ePvL9_YswfIX7_ryQM3/view",
+    "id": "m8p",
+    "title": "Logging every call (it's your report)",
+    "summary": "One tap after every call. The portal keeps your numbers and Jesús's report.",
+    "duration": "~6 min",
     "points": [
-     "Log every touch (call, voicemail, email, LinkedIn) the same day in the firm's row.",
-     "outcome is one of: no_answer, vm, conversation, booked, declined. Dates as YYYY-MM-DD; meeting time in PT.",
-     "qualified = y or n, based on the five criteria.",
-     "Add new touches to the START of notes with the date. Never delete earlier notes. Write \"hot\" if the project goes to bid within 6 months."
+     "After every call, log how it went on the card before you dial the next one: No answer · Left a voicemail · Talked to the front desk · Call back (pick the day) · Talked · Not interested · Wrong number · Do not call. Booking a meeting logs it for you.",
+     "Write one line of note: who you spoke to and what they said (\"Sam says the GC is Ridge Builders, call Taylor Thursday\").",
+     "Call back = a date they gave you. The firm comes back to the top of your list that day.",
+     "Do not call is permanent. Use it only when they ask you not to call again.",
+     "The portal counts your calls, conversations and meetings for today and this week, and Jesús sees them. No spreadsheet, no separate daily report; your notes are the report.",
+     "If you learn a new contact (name, title, email, phone), add it in the note so Jesús can save it."
     ],
     "quiz": [
      {
-      "q": "What goes in your daily report, and where do you send it?",
+      "q": "When do you log a call?",
       "options": [
-       "Just dials, by text",
-       "Dials, conversations, meetings booked, notable notes and plan for tomorrow — to the Blue Sierra bot (Jesús gets a 5:30 PM PT summary)",
-       "Weekly email with meetings held only",
-       "No report if you logged the sheet"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which is a valid outcome value?",
-      "options": [
-       "maybe",
-       "vm",
-       "sold",
-       "quoted"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "How do you update notes on a second touch?",
-      "options": [
-       "Delete old notes",
-       "Add the new touch to the start with its date",
-       "Start a new row",
-       "Skip notes"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "When do you log a touch?",
-      "options": [
-       "Same day",
-       "End of week",
-       "Only if booked",
-       "Monthly"
+       "Right after the call, before the next dial",
+       "End of the day",
+       "End of the week",
+       "Only if they book"
       ],
       "answer": 0
      },
      {
-      "q": "What do you do with firms in the sheet?",
+      "q": "They say \"call me back Thursday\". What do you log?",
       "options": [
-       "Re-sort by your preference",
-       "Delete the ones that declined",
-       "Don't add, delete or re-sort; suggest changes weekly",
-       "Add your own leads"
+       "Talked",
+       "Call back, with Thursday's date",
+       "No answer",
+       "Nothing"
       ],
-      "answer": 2
+      "answer": 1
+     },
+     {
+      "q": "When do you use Do not call?",
+      "options": [
+       "When nobody answers twice",
+       "Only when they ask not to be called again",
+       "When they're busy",
+       "Never"
+      ],
+      "answer": 1
+     },
+     {
+      "q": "Where does Jesús see your numbers?",
+      "options": [
+       "In a sheet you update",
+       "In the portal, automatically from your logged calls",
+       "In a text you send",
+       "He doesn't"
+      ],
+      "answer": 1
+     },
+     {
+      "q": "A front desk gives you the estimator's name and email. What do you do?",
+      "options": [
+       "Forget it",
+       "Put it in the call note so it gets saved on the firm",
+       "Email them from your personal account",
+       "Call the owner instead"
+      ],
+      "answer": 1
      }
     ]
    }
@@ -575,24 +581,24 @@ window.BSA_CONTENT = {
     "why": "Homeowners and small hardscape are out of scope for this program."
    },
    {
-    "prospect": "Landscape architect, Menlo Park, on the list. Principal says they have estate projects but none going to bid until next year.",
+    "prospect": "Landscape architect, Menlo Park, on your list. Principal says they have estate projects but none going to bid until next year.",
     "answer": 1,
     "why": "Good fit, no near-term bid. Ask when the next goes to bid and log a follow-up date."
    },
    {
-    "prospect": "A builder you found on Instagram, not on the call list, building in Atherton.",
+    "prospect": "A builder you found on Instagram, not on your portal list, building in Atherton.",
     "answer": 2,
-    "why": "Do-not-call rule: never contact firms that aren't on the sheet. Suggest it in your weekly summary."
+    "why": "Do-not-call rule: never contact firms that aren't on your list. Tell Jesús."
    },
    {
-    "prospect": "Developer on the list, Los Altos. Estimator wants to hear about grading, drainage, walls and planting for a spec home. Agrees to Thursday 2:00 and accepts the invite.",
+    "prospect": "Developer on your list, Los Altos. Estimator wants to hear about grading, drainage, walls and planting for a spec home. Agrees to Thursday 2:00 and accepts the invite.",
     "answer": 0,
     "why": "Decision influencer, residential, Peninsula, full package, accepted invite."
    },
    {
-    "prospect": "Architect on the list says \"Just email me,\" won't pick a time.",
+    "prospect": "Architect on your list says \"Just email me,\" won't pick a time.",
     "answer": 1,
-    "why": "Get the email, send the first follow-up the same day, set a next_step_date. Not booked until a specific time is accepted."
+    "why": "Get the email, send the first follow-up the same day, log a Call back date. Not booked until a specific time is accepted."
    },
    {
     "prospect": "Commercial office tenant improvement firm in San Francisco asking about lobby planters.",
@@ -600,12 +606,12 @@ window.BSA_CONTENT = {
     "why": "Not residential, not Peninsula/South Bay, not our large-package scope."
    },
    {
-    "prospect": "Contact on the list says they already work with Blue Sierra.",
+    "prospect": "Contact on your list says they already work with Blue Sierra.",
     "answer": 2,
     "why": "Thank them, stop, note it. Jesús owns that relationship."
    },
    {
-    "prospect": "Custom-home builder on the list, Saratoga. PM says the GC picks subs but agrees to meet Jesús Friday 9:00 and accepts the invite; project goes to bid in 3 months.",
+    "prospect": "Custom-home builder on your list, Saratoga. PM says the GC picks subs but agrees to meet Jesús Friday 9:00 and accepts the invite; project goes to bid in 3 months.",
     "answer": 0,
     "why": "PM is an influencer, residential South Bay, accepted invite, bid within 6 months → book and note HOT. Log GC names."
    },
@@ -615,12 +621,12 @@ window.BSA_CONTENT = {
     "why": "Not a decision maker. Ask who handles residential projects and reach that person."
    },
    {
-    "prospect": "Landscape architect on the list says the next job is a stand-alone small backyard paver patio for a homeowner.",
+    "prospect": "Landscape architect on your list says the next job is a stand-alone small backyard paver patio for a homeowner.",
     "answer": 1,
     "why": "That job is out of scope. Don't book it; ask about upcoming full site packages and follow up."
    },
    {
-    "prospect": "Developer on the list, San José. Says \"sounds good, maybe sometime\" but won't accept a date.",
+    "prospect": "Developer on your list, San José. Says \"sounds good, maybe sometime\" but won't accept a date.",
     "answer": 1,
     "why": "No specific date/time accepted → not a meeting yet. Offer two times again or set a follow-up."
    }
@@ -639,7 +645,7 @@ window.BSA_CONTENT = {
     "prompt": "Hello, this is Dana.",
     "options": [
      {
-      "text": "Hi Dana, this is [Setter] calling for Jesús Toto at Blue Sierra Construction in San José. We build large residential site and landscape packages with architects… I saw your residential work in Palo Alto. Could we set 20 minutes with Jesús? Do you have a minute?",
+      "text": "Hi Dana, this is [Setter] calling for Jesús Toto at Blue Sierra Construction in San José. We build large residential site and landscape packages with architects… I saw your residential work in Palo Alto. We'd love to be on the bid list for your new projects, and to set 15 minutes with Jesús. Do you have a minute?",
       "points": 2,
       "feedback": "Good: approved opener, city named, clear ask."
      },
@@ -739,19 +745,19 @@ window.BSA_CONTENT = {
     "prompt": "Full site package. Our PM should join.",
     "options": [
      {
-      "text": "Would Tuesday at 10:00 or Wednesday at 2:00 work for a 20-minute call with Jesús? Zoom, phone, or coffee near your office. What's the best email for the invite?",
+      "text": "Would Tuesday at 10:00 or Wednesday at 2:00 work for 15 minutes with Jesús? Zoom, phone, or coffee near your office. What's the best email for the invite?",
       "points": 2,
-      "feedback": "Two specific times, confirm email. Then log it, mark HOT, and send Jesús the brief within 1 hour."
+      "feedback": "Two specific times, confirm email. Then book it in the portal (📅 Book Jesús) with a note: HOT, full site package, PM joining."
      },
      {
-      "text": "Here's the Calendly link, pick anything.",
+      "text": "I'll send you a link, pick anything.",
       "points": 0,
-      "feedback": "The link is the fallback. Offer two specific times first."
+      "feedback": "Offer two of Jesús's free times from the portal instead."
      },
      {
       "text": "How about Saturday?",
       "points": -2,
-      "feedback": "No weekends; only open Calendly slots."
+      "feedback": "No weekends; only Jesús's free times in the portal."
      }
     ]
    }
@@ -779,29 +785,11 @@ window.BSA_CONTENT = {
    "label": "RingCentral extension",
    "copy": true
   },
-  "calendly": {
-   "ms": "calendly-url",
-   "label": "Booking link (Calendly)",
-   "copy": true,
-   "fallback": "https://calendly.com/bluesierracorp/blue-sierra-intro-20-min",
-   "hint": "20 min, at least 24 h ahead, only in Jesús's open slots. Offer two times first; the link is the fallback."
-  },
-  "calllist": {
-   "ms": "call-list-url",
-   "label": "Setter Call List (Google Sheet)",
-   "hint": "98 firms, priority A then B then C. Don't add, delete or re-sort."
-  },
   "hours": {
    "ms": "schedule",
    "label": "Schedule",
    "fallback": "Calls 8:00 am–4:00 pm Pacific, Mon–Fri · up to 15 h/week",
    "hint": "Follow Jesús's calendar blocks. No weekends."
-  },
-  "reports": {
-   "ms": "reports-to",
-   "label": "Reports to",
-   "fallback": "Daily report to the Blue Sierra bot · Jesús gets it at 5:30 PM PT",
-   "hint": "Send Jesús the handoff brief within 1 hour of every booked meeting."
   },
   "pay": {
    "ms": "pay",
@@ -812,51 +800,61 @@ window.BSA_CONTENT = {
   "goals": {
    "ms": "goals",
    "label": "First 60 days targets",
-   "fallback": "40 firms/week · 10 conversations/week · 4–6 qualified meetings/month",
-   "hint": "75%+ show rate · 100% logged the same day."
+   "fallback": "40 firms/week · 10 conversations/week · 4–6 meetings/month",
+   "hint": "Every call logged the same minute · 75%+ show rate."
+  },
+  "portal": {
+   "ms": "portal-url",
+   "label": "Your call list (the portal)",
+   "fallback": "https://www.bluesierracorp.com/portal",
+   "copy": true,
+   "hint": "Log in with your work email; we send you a code. Your screen is Calls."
+  },
+  "booking": {
+   "ms": "booking-rule",
+   "label": "Booking",
+   "fallback": "📅 Book Jesús on the call card · his free times only",
+   "hint": "Mon–Fri 9:00–4:30 PT, at least an hour ahead. The invite goes from his calendar."
+  },
+  "reportsto": {
+   "ms": "reports-to-v2",
+   "label": "Reports to",
+   "fallback": "Jesús Toto · your logged calls are the daily report",
+   "hint": "Log every call right after it. Notes are what Jesús reads."
   }
  },
  "infoCards": [
+  "portal",
   "email",
   "phone",
   "ext",
-  "calendly",
-  "calllist",
+  "booking",
   "hours",
-  "reports",
+  "reportsto",
   "pay",
   "goals"
  ],
- "passwordNote": "Passwords are never shown here. You'll get access to RingCentral, Google Sheets and email through a shared password manager invite.",
+ "passwordNote": "Passwords are never shown here. RingCentral and email come through a shared password manager invite. The portal needs no password: log in with your work email and the code we send.",
  "tools": [
+  {
+   "name": "Blue Sierra portal · Calls",
+   "what": "Your call list, what to say for each property, logging and booking Jesús. Everything happens here.",
+   "url": "https://www.bluesierracorp.com/portal"
+  },
   {
    "name": "RingCentral",
    "what": "All prospect calls and voicemails, with your Blue Sierra extension."
   },
   {
-   "name": "Google Sheets (CRM)",
-   "what": "The Setter Call List. Log every touch the same day in the firm's row."
-  },
-  {
-   "name": "Calendly",
-   "what": "Jesús's open 20-minute intro slots.",
-   "url": "https://calendly.com/bluesierracorp/blue-sierra-intro-20-min"
-  },
-  {
-   "name": "Blue Sierra bot",
-   "what": "Where you send your daily report: dials, conversations, meetings, notes and tomorrow's plan."
+   "name": "Jesús's Google Calendar",
+   "what": "You never open it: the portal shows his free times and sends the invite from it."
   }
  ],
  "people": [
   {
    "name": "Jesús Toto",
    "role": "Principal · your manager",
-   "contact": "Meetings you book are with him"
-  },
-  {
-   "name": "Blue Sierra bot",
-   "role": "Daily reports and questions",
-   "contact": "Summary to Jesús at 5:30 PM PT"
+   "contact": "Meetings you book are with him. He reads your call notes."
   },
   {
    "name": "Blue Sierra office",
@@ -869,7 +867,7 @@ window.BSA_CONTENT = {
    "id": "pm",
    "day": "Day 1",
    "title": "Accept the password manager invite",
-   "detail": "That's how you get RingCentral, Sheets and email access."
+   "detail": "That's how you get RingCentral and email."
   },
   {
    "id": "rc",
@@ -878,20 +876,21 @@ window.BSA_CONTENT = {
    "detail": "Use your Blue Sierra extension. Test a call to Jesús."
   },
   {
-   "id": "sheet",
+   "id": "portal",
    "day": "Day 1",
-   "title": "Open the Setter Call List",
-   "detail": "Read the columns. Don't add, delete or re-sort firms."
+   "title": "Log in to the portal and open Calls",
+   "detail": "bluesierracorp.com/portal → your work email → the code. Open three cards and read What to say."
   },
   {
-   "id": "cal",
+   "id": "slots",
    "day": "Day 1",
-   "title": "Open Jesús's Calendly and check this week's open slots"
+   "title": "Open 📅 Book Jesús on any card and look at his free times",
+   "detail": "Don't book anything yet. Just see how it works."
   },
   {
-   "id": "playbook",
+   "id": "course2",
    "day": "Day 2",
-   "title": "Read the setter playbook start to finish"
+   "title": "Finish the course, the drill and the call simulator"
   },
   {
    "id": "cert",
@@ -900,26 +899,21 @@ window.BSA_CONTENT = {
    "detail": "Required before your first prospect call."
   },
   {
-   "id": "a10",
+   "id": "calls1",
    "day": "Day 3",
-   "title": "Research your first 10 priority-A firms",
-   "detail": "One minute on each website and source_url page."
+   "title": "Make your first 10 calls from the top of your list (8 am–4 pm PT)",
+   "detail": "Log each one right after the call, with a one-line note."
   },
   {
-   "id": "calls",
+   "id": "review",
    "day": "Day 3",
-   "title": "Make your first calls (8 am–4 pm PT)"
+   "title": "Ask Jesús to read your first day's notes"
   },
   {
-   "id": "report",
-   "day": "Day 3",
-   "title": "Send your first daily report to the Blue Sierra bot"
-  },
-  {
-   "id": "weekly",
+   "id": "week1",
    "day": "Day 5",
-   "title": "Send your weekly summary",
-   "detail": "Include firms you'd suggest adding to the list."
+   "title": "Week one: 40 firms touched, every call logged",
+   "detail": "Tell Jesús which firms you think are missing from your list."
   }
  ]
 };

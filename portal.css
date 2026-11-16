@@ -2534,3 +2534,16 @@
 #bs-portal .ox-lk-man{margin-top:12px}
 #bs-portal .ox-lk-man>summary{cursor:pointer;color:#5b5145}
 #bs-portal .ox-city-t{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;margin:8px 0}
+/* project table: type chips, sortable headers, pager */
+#bs-portal .ox-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+#bs-portal .ox-chip{border:1px solid #ddd5c8;background:#fff;border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;color:#3b342c}
+#bs-portal .ox-chip b{font-weight:600;color:#8a7f70;margin-left:2px}
+#bs-portal .ox-chip.on{background:#1f1b16;border-color:#1f1b16;color:#fff}
+#bs-portal .ox-chip.on b{color:#e8dfd0}
+#bs-portal .ox-th{background:none;border:0;padding:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;white-space:nowrap;text-transform:inherit;letter-spacing:inherit}
+#bs-portal .ox-th.on{color:#1f1b16;text-decoration:underline;text-underline-offset:3px}
+#bs-portal .ox-th-i{opacity:.35;font-size:11px}
+#bs-portal .ox-tbl td small.muted{display:block}
+#bs-portal .ox-dt{white-space:nowrap}
+#bs-portal .ox-pager{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;padding:12px 8px 4px}
+#bs-portal .ox-pc-a .btn{max-width:100%;white-space:normal;height:auto;line-height:1.3;text-align:left;overflow-wrap:anywhere}

@@ -98,8 +98,24 @@
   }
 
   /* ---------------- rendering: Workspace ---------------- */
+  /* The call list moved to the Blue Sierra portal (Calls): this tab now points there and explains the screen. */
+  function renderPortalCalls(cx) {
+    var E = cx.esc, url = cx.content.portalCalls;
+    return '<div class="eyebrow">Your workspace</div><div class="section-title" style="margin-top:6px"><h2>Your calls happen in the portal</h2></div>' +
+      '<p class="muted" style="max-width:680px;margin-bottom:18px">Your call list, what to say for each property, logging and booking Jesús are all on one screen: <b>Calls</b> in the Blue Sierra portal. Log in with your work email; we send you a code.</p>' +
+      '<p style="margin-bottom:22px"><a class="btn" href="' + E(url) + '" target="_blank" rel="noopener">Open the portal ↗</a></p>' +
+      '<div class="grid g2">' + [
+        ["1 · Your list", "Cards in order: callbacks you promised, the follow-up call after Jesús's email, firms he emailed with no reply, then new firms from this week's permits and agendas. Firms that don't belong there never show up."],
+        ["2 · Open a card", "Who to ask for, the phone, the property and its permit stage, and why it's on your list today. Read it for a minute before you dial."],
+        ["3 · What to say", "The front desk line, your opener, the property, the one-line pitch with our licenses, the bid-list ask, the meeting ask and the voicemail, written for that property."],
+        ["4 · Log it", "Right after the call: No answer, Voicemail, Front desk, Call back (pick the day), Talked, Not interested, Wrong number or Do not call, plus a one-line note."],
+        ["5 · Book Jesús", "📅 They want to meet? Book Jesús: pick the type, length and one of his free times, type their email. The invite goes from his calendar."],
+        ["6 · Your numbers", "Calls, conversations and meetings for today and this week are counted for you. Jesús sees them and reads your notes: that's your report."]
+      ].map(function (x) { return '<div class="card"><h3>' + E(x[0]) + '</h3><p class="muted">' + E(x[1]) + "</p></div>"; }).join("") + "</div>";
+  }
   function renderWorkspace(cx) {
     var E = cx.esc;
+    if (cx.content.portalCalls) return renderPortalCalls(cx);
     if (!cx.certified && !st.preview) {
       return '<div class="card locked"><div class="eyebrow">Workspace</div><h2 style="font-size:30px;margin:10px 0">Get certified first.</h2><p class="muted">Your call list and workspace open after you pass the final certification exam.</p>' +
         '<div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn" data-tab="course">Go to the course</button>' +
@@ -496,7 +512,7 @@
   }
 
   window.BSA_TABS = (window.BSA_TABS || []).concat([
-    { id: "workspace", label: "Workspace", count: function () { return st.firms ? String(st.firms.filter(isDue).length || "") : ""; }, render: renderWorkspace, mounted: mount },
-    { id: "report", label: "Report", visible: function (cx) { return !!cx.member.isAdmin; }, render: renderReport, mounted: mountReport }
+    { id: "workspace", label: "Workspace", count: function (cx) { return cx && cx.content && cx.content.portalCalls ? "" : st.firms ? String(st.firms.filter(isDue).length || "") : ""; }, render: renderWorkspace, mounted: function (el, cx) { if (cx && cx.content && cx.content.portalCalls) return; return mount(el, cx); } },
+    { id: "report", label: "Report", visible: function (cx) { return !!cx.member.isAdmin && !(cx.content && cx.content.portalCalls); }, render: renderReport, mounted: mountReport }
   ]);
 })();

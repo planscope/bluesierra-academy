@@ -2676,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115204717";
+  var BUILD = "20261115223349";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6233,8 +6233,9 @@
     return html;
   }
   /* ---------- Projects ---------- */
+  function oxTypes(p) { var t = [p.type].concat(String(p.other_types || "").split(/\s*[;,]\s*/)).map(function (x) { return String(x || "").trim().toLowerCase().replace(/\s+/g, "_"); }).filter(function (x) { return OX_TYPE_L[x]; }); return t.filter(function (x, i) { return t.indexOf(x) === i; }); }
   function oxPassF(p, f, d) {                                       // the same filters for "Start here" and the full list
-    return (!f.town || p.town === f.town) && (!f.zone || p.zone === f.zone) && (!f.stage || p.stage === f.stage) && (!f.type || p.type === f.type) && (!f.pri || p.priority === f.pri) && (!f.q || (p.address + " " + p.description + " " + p.status + " " + p.permit_no).toLowerCase().indexOf(f.q.toLowerCase()) > -1) && (!f.fresh || p.first_seen >= (d.tracked || {}).week_start) && (!f.imp || (d.last_import && p.import_id === d.last_import.id)) && (!f.reach || (p.act && ["email", "call", "ask", "log"].indexOf(p.act.kind) > -1)) && (!f.bid || p.bid === f.bid) && (!f.out || (f.out === "new" ? !p.reached : !!p.reached));
+    return (!f.town || p.town === f.town) && (!f.zone || p.zone === f.zone) && (!f.stage || p.stage === f.stage) && (!f.type || oxTypes(p).indexOf(f.type) > -1) && (!f.pri || p.priority === f.pri) && (!f.q || (p.address + " " + p.description + " " + p.status + " " + p.permit_no).toLowerCase().indexOf(f.q.toLowerCase()) > -1) && (!f.fresh || p.first_seen >= (d.tracked || {}).week_start) && (!f.imp || (d.last_import && p.import_id === d.last_import.id)) && (!f.reach || (p.act && ["email", "call", "ask", "log"].indexOf(p.act.kind) > -1)) && (!f.bid || p.bid === f.bid) && (!f.out || (f.out === "new" ? !p.reached : !!p.reached));
   }
   /* "Start here": the best projects that pass the filters, each with its reason and one next step. */
   function oxStartHere() {
@@ -6302,9 +6303,29 @@
     var w = oxWhen(r.date);
     return r.how === "marked" ? "You marked it done " + w + (r.by ? " (" + r.by + ")" : "") : r.how === "firm" ? "Emailed " + r.firm + " " + w + " (another job): giving them space" : r.how === "bid" ? "Bid track with " + r.firm : r.how === "email" ? "Emailed " + r.firm + " " + w : r.how === "call" ? "Called " + r.firm + " " + w : r.how === "reply" ? r.firm + " wrote " + w : "Reached out to " + r.firm + " " + w;
   }
+  var OX_SORT = {
+    fit: function (p) { return [({ A: 0, B: 1, C: 2 }[p.priority] != null ? { A: 0, B: 1, C: 2 }[p.priority] : 3), -(Number(p.fit) || 0)]; },
+    addr: function (p) { return [String(oxStreetFull ? p.address : p.address).replace(/^\d+\s*/, "").toLowerCase(), Number((String(p.address).match(/^\d+/) || [0])[0])]; },
+    town: function (p) { return [String(p.town || "").toLowerCase()]; },
+    type: function (p) { return [OX_TYPE_L[p.type] || "zz"]; },
+    stage: function (p) { return [Number(p.stage) || 9]; },
+    bid: function (p) { return [{ invited: 0, open: 1, unknown: 2, closed: 3 }[p.bid] != null ? { invited: 0, open: 1, unknown: 2, closed: 3 }[p.bid] : 4]; },
+    date: function (p) { return [String(p.date || "")]; }
+  };
+  function oxSortList(list) {
+    var so = S.oxSort; if (!so || !OX_SORT[so.k]) return list.sort(function (a, b) { return (b.score != null && a.score != null ? b.score - a.score : 0) || (a.priority || "Z").localeCompare(b.priority || "Z") || (Number(b.fit) || 0) - (Number(a.fit) || 0) || String(b.date).localeCompare(String(a.date)); });
+    var fn = OX_SORT[so.k], dir = so.dir === "desc" ? -1 : 1;
+    return list.sort(function (a, b) { var x = fn(a), y = fn(b); for (var i = 0; i < x.length; i++) { if (x[i] < y[i]) return -dir; if (x[i] > y[i]) return dir; } return (b.score || 0) - (a.score || 0); });
+  }
+  function oxTh(k, label) { var so = S.oxSort || {}, on = so.k === k; return '<th><button class="ox-th' + (on ? " on" : "") + '" data-a="pbSort" data-k="' + k + '" title="Sort by ' + esc(label.toLowerCase()) + '">' + esc(label) + (on ? (so.dir === "desc" ? " ▼" : " ▲") : ' <span class="ox-th-i">↕</span>') + "</button></th>"; }
+  function oxTypeChips(d, f) {
+    var base = Object.assign({}, f, { type: "" }), pool = d.projects.filter(function (p) { return oxPassF(p, base, d); }), n = {};
+    pool.forEach(function (p) { oxTypes(p).forEach(function (t) { n[t] = (n[t] || 0) + 1; }); });
+    return '<div class="ox-chips">' + '<button class="ox-chip' + (!f.type ? " on" : "") + '" data-a="pbType" data-v="">All <b>' + pool.length.toLocaleString() + "</b></button>" +
+      ["new_home", "landscape", "major_remodel", "pool", "grading", "tree", "other"].filter(function (t) { return n[t]; }).map(function (t) { return '<button class="ox-chip' + (f.type === t ? " on" : "") + '" data-a="pbType" data-v="' + t + '">' + esc(OX_TYPE_L[t]) + " <b>" + n[t].toLocaleString() + "</b></button>"; }).join("") + "</div>";
+  }
   function oxProjects() {
-    var d = S.ox, f = S.oxPF || {}, list = d.projects.filter(function (p) { return oxPassF(p, f, d); 
-    }).sort(function (a, b) { return (b.score != null && a.score != null ? b.score - a.score : 0) || (a.priority || "Z").localeCompare(b.priority || "Z") || (Number(b.fit) || 0) - (Number(a.fit) || 0) || String(b.date).localeCompare(String(a.date)); });
+    var d = S.ox, f = S.oxPF || {}, list = oxSortList(d.projects.filter(function (p) { return oxPassF(p, f, d); })), lim = S.oxPLim || 120;
     var zones = d.projects.map(function (p) { return p.zone; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort();
     var towns = d.projects.map(function (p) { return p.town; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort();
     var sel = function (k, opts, lab) { return '<select data-ox-pf="' + k + '"><option value="">' + lab + "</option>" + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (f[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>"; };
@@ -6312,11 +6333,12 @@
       sel("type", Object.keys(OX_TYPE_L).map(function (t) { return [t, OX_TYPE_L[t]]; }), "All types") + sel("bid", [["unknown", "Bid unknown"], ["open", "Bid confirmed open"], ["invited", "Invited"], ["closed", "Awarded / closed"]], "Any bid status") +
       sel("out", [["new", "Not reached out yet"], ["reached", "Already reached out"]], "Reached out or not") +
       '<label class="ls-chk"><input type="checkbox" data-ox-pf="reach"' + (f.reach ? " checked" : "") + "> Someone to reach</label>" +
-      '<label class="ls-chk"><input type="checkbox" data-ox-pf="fresh"' + (f.fresh ? " checked" : "") + "> New this week</label>" + '<label class="ls-chk"><input type="checkbox" data-ox-pf="imp"' + (f.imp ? " checked" : "") + "> New in last import</label></div>" +
-      '<div class="card ox-tbl-card"><div class="ox-tbl-wrap"><table class="ox-tbl"><thead><tr><th>Fit</th><th>Address</th><th>Town</th><th>Type</th><th>Permit stage</th><th>Bid</th><th>Next step</th></tr></thead><tbody>' +
-      list.slice(0, S.oxPLim || 120).map(function (p) { var rl = oxRolesOf(p.id).filter(function (x) { return x.role !== "owner"; }), fs = rl.filter(function (x) { return x.firm_id; }).map(function (x) { return oxF(x.firm_id); }).filter(function (x, i, l) { return x && l.indexOf(x) === i; });
-        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span>" + (p.fit ? ' <small class="muted">' + esc(String(Math.round(Number(p.fit)))) + "</small>" : "") + "</td><td><b>" + oxStreetU(p) + "</b>" + (p.contacted ? " " + oxDoneMark(p, true) : p.reached ? ' <span class="pill ox-done" title="' + esc(oxReachedTxt(p.reached)) + '">✓ Reached out</span>' : "") + (p.first_seen >= (d.tracked || {}).week_start && !oxAllNew() ? ' <span class="pill gold">new this week</span>' : p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill">new in last import</span>' : "") + '</td><td>' + esc(p.town) + (p.sub_area ? '<small class="muted">' + esc(p.sub_area) + "</small>" : "") + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + '</td><td class="ox-st">' + (p.stage && OX_PSTAGE_L[p.stage] ? "<b>" + esc(OX_PSTAGE_L[p.stage]) + "</b> " : "") + '<small class="muted">' + esc(String(p.status).slice(0, 50)) + "</small></td><td>" + (p.bid === "unknown" && !/passed/.test(p.bid_label || "") ? '<span class="pill ox-bidp">Unknown</span>' : oxBidPill(p.bid || "unknown", { label: p.bid_label, due: p.bid_due })) + "</td><td>" + (p.act ? oxActBtn(p.act, p.id, "sm ox-tblact") + (p.act.firm_id && oxF(p.act.firm_id) ? '<small class="muted">' + esc(oxF(p.act.firm_id).name.split(" (")[0].slice(0, 28)) + "</small>" : "") : "") + "</td></tr>"; }).join("") +
-      "</tbody></table></div>" + (list.length > (S.oxPLim || 120) ? '<button class="link small ox-more" data-a="oxPMore">Show all ' + list.length + "</button>" : "") + '<p class="muted small ox-count">' + list.length + " of " + d.projects.length + " projects</p></div>";
+      '<label class="ls-chk"><input type="checkbox" data-ox-pf="fresh"' + (f.fresh ? " checked" : "") + "> New this week</label>" + '<label class="ls-chk"><input type="checkbox" data-ox-pf="imp"' + (f.imp ? " checked" : "") + "> New in last import</label></div>" + oxTypeChips(d, f) +
+      '<div class="card ox-tbl-card"><div class="ox-tbl-wrap"><table class="ox-tbl"><thead><tr>' + oxTh("fit", "Fit") + oxTh("addr", "Address") + oxTh("town", "Town") + oxTh("type", "Type") + oxTh("stage", "Permit stage") + oxTh("bid", "Bid") + oxTh("date", "Date") + '<th>Next step</th></tr></thead><tbody>' +
+      list.slice(0, lim).map(function (p) { var rl = oxRolesOf(p.id).filter(function (x) { return x.role !== "owner"; }), fs = rl.filter(function (x) { return x.firm_id; }).map(function (x) { return oxF(x.firm_id); }).filter(function (x, i, l) { return x && l.indexOf(x) === i; });
+        return '<tr data-a="oxProj" data-p="' + esc(p.id) + '"><td><span class="ox-pri p' + esc(p.priority || "C") + '">' + esc(p.priority || "–") + "</span>" + (p.fit ? ' <small class="muted">' + esc(String(Math.round(Number(p.fit)))) + "</small>" : "") + "</td><td><b>" + oxStreetU(p) + "</b>" + (p.contacted ? " " + oxDoneMark(p, true) : p.reached ? ' <span class="pill ox-done" title="' + esc(oxReachedTxt(p.reached)) + '">✓ Reached out</span>' : "") + (p.first_seen >= (d.tracked || {}).week_start && !oxAllNew() ? ' <span class="pill gold">new this week</span>' : p.import_id === (d.last_import && d.last_import.id) ? ' <span class="pill">new in last import</span>' : "") + '</td><td>' + esc(p.town) + (p.sub_area ? '<small class="muted">' + esc(p.sub_area) + "</small>" : "") + "</td><td>" + esc(OX_TYPE_L[p.type] || p.type) + (function () { var o = oxTypes(p).filter(function (t) { return t !== p.type; }); return o.length ? '<small class="muted">+ ' + esc(o.map(function (t) { return OX_TYPE_L[t]; }).join(", ")) + "</small>" : ""; })() + '</td><td class="ox-st">' + (p.stage && OX_PSTAGE_L[p.stage] ? "<b>" + esc(OX_PSTAGE_L[p.stage]) + "</b> " : "") + '<small class="muted">' + esc(String(p.status).slice(0, 50)) + "</small></td><td>" + (p.bid === "unknown" && !/passed/.test(p.bid_label || "") ? '<span class="pill ox-bidp">Unknown</span>' : oxBidPill(p.bid || "unknown", { label: p.bid_label, due: p.bid_due })) + '</td><td class="ox-dt">' + (p.date ? esc(oxWhen(String(p.date).slice(0, 10))) : '<span class="muted">—</span>') + "</td><td>" + (p.act ? oxActBtn(p.act, p.id, "sm ox-tblact") + (p.act.firm_id && oxF(p.act.firm_id) ? '<small class="muted">' + esc(oxF(p.act.firm_id).name.split(" (")[0].slice(0, 28)) + "</small>" : "") : "") + "</td></tr>"; }).join("") +
+      "</tbody></table></div>" + '<div class="ox-pager"><span class="small">Showing <b>' + Math.min(lim, list.length).toLocaleString() + "</b> of <b>" + list.length.toLocaleString() + "</b>" + (list.length < d.projects.length ? " (filtered from " + d.projects.length.toLocaleString() + ")" : "") + "</span>" +
+      (list.length > lim ? '<button class="btn ghost sm" data-a="pbPMore" data-n="120">Show 120 more</button><button class="btn ghost sm" data-a="pbPMore" data-n="all">Show all ' + list.length.toLocaleString() + "</button>" : "") + "</div></div>";
   }
   /* ---------- Firms ---------- */
   function oxFirms() {
@@ -6439,8 +6461,16 @@
       '<div class="ox-pk-list">' + (shown.length ? shown.map(row).join("") : '<p class="muted small">' + (go.length ? "No firm matches." : "Nothing to look up here.") + "</p>") + "</div>" +
       (sk.length ? '<details class="small ox-pk-skip"><summary>' + sk.length + " not offered (no credit)</summary>" + sk.map(function (x) { return "<div>" + esc(x.name) + ' <span class="muted">· ' + esc(x.skip) + "</span>" + (x.no_lookup ? ' <button type="button" class="link small" data-a="oxNoLookup" data-f="' + esc(x.firm_id) + '" data-on="0">Undo</button>' : "") + "</div>"; }).join("") + "</details>" : "") +
       '<p class="muted small">“Not needed” hides a firm from every lookup list for good (you can undo it below). Nobody is looked up twice, and firms that already have what you need are not offered.</p>' +
+      '<label class="check-line small"><input type="checkbox" data-ox-webfb' + (m.web === false ? "" : " checked") + (S.ox.ai && S.ox.ai.on ? "" : " disabled") + "> If RocketReach has no " + (calls ? "phone" : "email") + ", keep looking: their website, your Gmail and the email format (free)" + (S.ox.ai && S.ox.ai.on ? ", then the internet (≈5¢ a firm, only if still nothing)" : " · connect the AI key to also search the internet") + "</label>" +
       '<div class="actions">' + cancel + '<button class="btn" data-a="oxEnrichYes"' + (n && !over ? "" : " disabled") + ">" + (over ? "Only " + esc(String(cr)) + " credits left" : n ? "Spend " + n + " credit" + (n === 1 ? "" : "s") : "Check the firms you want") + "</button></div>";
   }
+  root.addEventListener("change", function (e) { var t = e.target, m = S.modal; if (!m || m.type !== "lsxOxMail" || !t.matches || !t.matches("[data-ox-to]")) return;
+    oxKeepEdits(m); if (t.value === "__other") { m.toOther = true; return keepScroll(render); }
+    var was = m.toOther; m.toOther = false; m.toOtherVal = ""; var changed = m.draft && t.value !== m.draft.to;
+    if (changed) { m.draft.to = t.value; var c0 = oxContacts(m.firm_id).filter(function (c) { return c.email === t.value; })[0]; m.draft.to_name = c0 ? (c0.name || "") : ""; m.draft.contact_id = c0 ? c0.id : ""; }
+    if (changed || was) keepScroll(render); if (changed) oxMore(m); });
+  root.addEventListener("input", function (e) { var t = e.target, m = S.modal; if (m && m.type === "lsxOxMail" && t.matches && t.matches("[data-ox-to-other]")) m.toOtherVal = t.value; });
+  root.addEventListener("change", function (e) { var t = e.target, m = S.modal; if (m && m.type === "lsxOxEnrich" && t.matches && t.matches("[data-ox-webfb]")) m.web = t.checked; });
   root.addEventListener("change", function (e) { var t = e.target, m = S.modal; if (!m || m.type !== "lsxOxEnrich" || !t.matches || !t.matches("[data-ox-pick]")) return; m.sel = m.sel || {}; if (t.checked) m.sel[t.dataset.oxPick] = 1; else delete m.sel[t.dataset.oxPick]; keepScroll(render); });
   root.addEventListener("input", function (e) { var t = e.target, m = S.modal; if (!m || m.type !== "lsxOxEnrich" || !t.matches || !t.matches("[data-ox-pq]")) return; m.q = t.value; clearTimeout(S.oxPqT); S.oxPqT = setTimeout(function () { keepScroll(render); var el = root.querySelector("[data-ox-pq]"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); });
   /* ---------- modals ---------- */
@@ -6456,7 +6486,7 @@
       return "<h2>" + ({ ask: "Ask who handles bids", reply: "Email after the call", invited: "About the invitation" }[m.step] || { day14: "Follow-up", again: "New project" }[dr.step] || "First email") + " · " + esc(f ? f.name : "") + "</h2>" +
         '<div class="ox-ctx small"><span><b>To</b> ' + esc(dr.to_name || dr.to || "—") + (dr.to_name && dr.to ? ' <span class="muted">' + esc(dr.to) + "</span>" : "") + "</span><span><b>Firm</b> " + esc(dr.firm || (f ? f.name : "")) + "</span><span><b>Property</b> " + esc(dr.project || "") + "</span>" +
         ((dr.history || []).length ? '<details><summary>Earlier about this property with them (' + dr.history.length + ")</summary>" + dr.history.map(function (x) { return "<div>" + esc(oxWhen(x.date)) + " · " + esc(x.subject) + "</div>"; }).join("") + "</details>" : (dr.already || []).some(function (x) { return x.dir === "sent"; }) ? "" : '<span class="muted">First contact with them about this property.</span>') + "</div>" + oxAlreadyBox(dr) + (dr.notes ? '<div class="ox-note big">⚠️ ' + esc(dr.notes) + "</div>" : "") + (dr.waiting ? '<div class="ox-wait">⏳ This project waits for ' + esc(dr.waiting.join(", ")) + " (warm). Pick another project or wait.</div>" : "") +
-        '<form class="form" data-form="oxMail"><div class="row2"><label class="f">To<input name="to" type="email" required value="' + esc(dr.to) + '" list="ox-to"><datalist id="ox-to">' + cs.map(function (c) { return '<option value="' + esc(c.email) + '">' + esc(oxWho(c)) + "</option>"; }).join("") + "</datalist></label>" +
+        '<form class="form" data-form="oxMail"><div class="row2"><label class="f">To' + oxToPick(cs, dr, m) + "</label>" +
         '<label class="f">About<select name="project">' + pr.map(function (x) { return '<option value="' + esc(x.p.id) + '"' + (x.p.id === dr.project_id ? " selected" : "") + (held.indexOf(x.p.id) > -1 ? " disabled" : "") + ">" + oxAddr(x.p).replace(/&amp;/g, "&") + (held.indexOf(x.p.id) > -1 ? " (waits for warm)" : "") + "</option>"; }).join("") + "</select></label></div>" +
         (gu ? '<div class="ox-wait">🤞 This address is a guess (built from the firm’s email format). It may bounce: if you have a real one, use it.</div>' : "") +
         oxVerBar(m) + '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(oxCur(m).subject) + '"></label><label class="f">Message<textarea name="body" rows="8" required>' + esc(oxCur(m).body) + "</textarea></label>" +
@@ -6493,12 +6523,23 @@
     }
     if (m.type === "lsxOxEnrich") {
       if (!m.plan) return '<div class="loading" style="min-height:140px">Checking what it would cost…</div>';
-      if (m.results) return "<h2>" + (m.goal === "dm" ? "🎯 Decision makers found" : "🔎 RocketReach results") + "</h2>" + m.results.map(function (x) { return '<p class="small"><b>' + esc(x.firm) + "</b> · " + esc(x.found || "") + (x.email ? " · ✉️ " + esc(x.email) : "") + (x.phone ? " 📞" : "") + " " + (x.status === "found" ? "✅" : '<span class="muted">' + esc(x.status) + "</span>") + "</p>"; }).join("") + (m.goal === "dm" && m.results.some(function (x) { return x.email; }) ? '<p class="muted small">Their email is now the first choice for these firms: the next draft goes to them, not to info@.</p>' : "") + '<div class="actions"><button class="btn" data-a="close">Done</button></div>';
+      if (m.results) return "<h2>" + (m.goal === "dm" ? "🎯 Decision makers found" : "🔎 RocketReach results") + "</h2>" + m.results.map(function (x) { return '<p class="small"><b>' + esc(x.firm) + "</b> · " + esc(x.found || "") + (x.email ? " · ✉️ " + esc(x.email) : "") + (x.phone ? " 📞" : "") + " " + (x.status === "found" ? "✅" : '<span class="muted">' + esc(x.status) + "</span>") + (x.fallback ? '<br><span class="small ' + (/^Also found/.test(x.fallback.summary) ? "ok-t" : "muted") + '">↳ ' + esc(x.fallback.summary) + "</span>" : "") + "</p>"; }).join("") + (m.goal === "dm" && m.results.some(function (x) { return x.email; }) ? '<p class="muted small">Their email is now the first choice for these firms: the next draft goes to them, not to info@.</p>' : "") + '<div class="actions"><button class="btn" data-a="close">Done</button></div>';
       return oxPickHtml(m, cancel);
     }
     return _lsModalOx(m);
   };
   /* The composer keeps every version it was given (AI or saved), so you can go back to one you liked. */
+  /* "To": every address we have at the firm (direct, guessed from the firm's format, general inbox), best first, or type another */
+  function oxToKind(c) { return c.source === "guessed" ? ["guessed", "🤞 guessed"] : oxWho(c) === "General inbox" || /general inbox/i.test(c.role || "") ? ["inbox", "general inbox"] : ["work", (c.verified === "yes" ? "✓ " : "") + "direct"]; }
+  function oxToPick(cs, dr, m) {
+    var R0 = { work: 0, guessed: 1, inbox: 2 }, dm = /princ|partner|owner|founder|president|director|estimat|precon|bid/i;
+    var list = cs.slice().sort(function (a, b) { return ((b.bid_contact === true || b.bid_contact === "yes") ? 1 : 0) - ((a.bid_contact === true || a.bid_contact === "yes") ? 1 : 0) || R0[oxToKind(a)[0]] - R0[oxToKind(b)[0]] || (dm.test(b.role || "") ? 1 : 0) - (dm.test(a.role || "") ? 1 : 0) || oxWho(a).localeCompare(oxWho(b)); });
+    var cur = m.toOther ? "__other" : dr.to || "", known = list.some(function (c) { return c.email === cur; });
+    var opt = function (c) { var k = oxToKind(c); return '<option value="' + esc(c.email) + '"' + (c.email === cur ? " selected" : "") + ">" + esc(oxWho(c) + (c.role && c.role !== oxWho(c) && !/general inbox/i.test(c.role) ? " · " + c.role : "") + " — " + c.email + " (" + k[1] + ")") + "</option>"; };
+    return '<select ' + (m.toOther ? "" : 'name="to" ') + 'data-ox-to required>' + (cur && !known && cur !== "__other" ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + "</option>" : "") + (list.length ? "" : '<option value="">No email saved for this firm</option>') + list.map(opt).join("") + '<option value="__other"' + (m.toOther ? " selected" : "") + ">Another address…</option></select>" +
+      (m.toOther ? '<input name="to" type="email" required placeholder="name@firm.com" value="' + esc(m.toOtherVal || "") + '" data-ox-to-other>' : "") +
+      (list.some(function (c) { return c.source === "guessed"; }) ? '<small class="muted">🤞 guessed = built from the firm’s email format; it may bounce.</small>' : "");
+  }
   function oxOpenDraft(fid, cid, step, pid, alert, saved, opp) {
     var m = { type: "lsxOxMail", firm_id: fid, step: step, opp: opp || "", alert: alert || "", cid: cid || "", pid: pid || "", single: !!pid, hist: [], idx: -1, n: Math.floor(Math.random() * 6),
       key: saved ? saved.key : "ox" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };          // one key per email: saving a draft and sending it later is the same email
@@ -6582,7 +6623,7 @@
       mp.plan.list.forEach(function (x) { if (x.skip || (qq && (x.name + " " + x.type + " " + x.top).toLowerCase().indexOf(qq) < 0)) return; if (b.dataset.v === "1") mp.sel[x.firm_id] = 1; else delete mp.sel[x.firm_id]; }); return keepScroll(render); }
     if (a === "oxEnrichWave") return oxEnrichOpen([], b.dataset.w);
     if (a === "oxEnrichYes") { var m0 = S.modal, ids = m0.plan.list.filter(function (x) { return !x.skip && m0.sel && m0.sel[x.firm_id]; }).map(function (x) { return x.firm_id; }), all = []; if (!ids.length) return;
-      return run(b, async function () { for (var i = 0; i < ids.length; i += 12) { var rr = await call("oxEnrich", { firm_ids: ids.slice(i, i + 12), confirm: true, goal: m0.goal || "" }); all = all.concat(rr.results || []); b.textContent = "Looking up… " + Math.min(ids.length, i + 12) + "/" + ids.length; }
+      return run(b, async function () { for (var i = 0; i < ids.length; i += 12) { var rr = await call("oxEnrich", { firm_ids: ids.slice(i, i + 12), confirm: true, goal: m0.goal || "", web: m0.web !== false }); all = all.concat(rr.results || []); b.textContent = "Looking up… " + Math.min(ids.length, i + 12) + "/" + ids.length; }
         m0.results = all; S.modal = m0; keepScroll(render); S.oxBusy = 0; oxLoad(); S.cl = null; }); }
     if (a === "oxGsGo") { S.oxGsBusy = 0; keepScroll(render); return oxGmailSync(true, false); }
     if (a === "oxEnrichCheck") return run(b, function () { return call("oxEnrichCheck", {}).then(function (r) { toast(r.updated ? r.updated + " lookup" + (r.updated > 1 ? "s" : "") + " finished" : "Nothing new yet"); S.oxBusy = 0; oxLoad(); }); });
@@ -6933,6 +6974,9 @@
       var go = function () { return call("oxCityRun", {}).then(function (r) { rounds++; tot.added += r.added; tot.names += r.names; tot.cost += r.cost || 0; (r.towns || []).forEach(function (t) { if (t.added) tot.towns[t.town] = (tot.towns[t.town] || 0) + t.added; }); S.oxCityBusy = r.towns.length ? r.towns[r.towns.length - 1].town : "…"; keepScroll(render); if (r.more && rounds < 5) return go(); }); };
       return go().then(function () { S.oxCityBusy = 0; var tw = Object.keys(tot.towns).map(function (k) { return k + " " + tot.towns[k]; }).join(", "); toast(tot.added ? "🏛️ " + tot.added + " new project" + (tot.added === 1 ? "" : "s") + " from the cities (" + tw + ")" : "🏛️ Cities checked: nothing new" + (tot.names ? " · " + tot.names + " new names on projects you track" : "")); S.oxBusy = 0; oxLoad(); keepScroll(render); })
         .catch(function (er) { S.oxCityBusy = 0; toast(er.message); keepScroll(render); }); }
+    if (a === "pbSort") { var sk = b.dataset.k, so = S.oxSort || {}; S.oxSort = so.k !== sk ? { k: sk, dir: sk === "date" ? "desc" : "asc" } : so.dir === "asc" ? { k: sk, dir: "desc" } : so.dir === "desc" && sk === "date" ? { k: sk, dir: "asc" } : null; return keepScroll(render); }
+    if (a === "pbType") { S.oxPF = S.oxPF || {}; S.oxPF.type = b.dataset.v || ""; S.oxPLim = 120; S.oxStartN = 12; return keepScroll(render); }
+    if (a === "pbPMore") { S.oxPLim = b.dataset.n === "all" ? 100000 : (S.oxPLim || 120) + 120; return keepScroll(render); }
     if (a === "pbMoreStart") { S.oxStartN = (S.oxStartN || 12) + 12; return keepScroll(render); }
     if (a === "pbShowReached") { S.oxPF = S.oxPF || {}; S.oxPF.out = b.dataset.v === "1" ? "reached" : ""; S.oxStartN = 12; return keepScroll(render); }
     if (a === "pbReached") { var rp = oxP(b.dataset.p), on = b.dataset.on === "1"; if (!rp) return; var was = rp.reached;
