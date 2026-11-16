@@ -2508,3 +2508,5 @@
 #bs-portal .ox-done-box{font-size:13px;color:var(--ok);background:var(--ok-soft);border:1px solid #c6dccd;border-radius:8px;padding:7px 11px;margin:6px 0}
 #bs-portal .ox-done-box details{margin-top:4px;color:#3f5a48}
 #bs-portal .ox-pc-pills .ox-done,#bs-portal .ox-pc-pills .ox-wrote{white-space:normal;max-width:100%;height:auto;line-height:1.35;text-align:left}
+#bs-portal .ox-reached{color:var(--ok);margin:4px 0 0}
+#bs-portal .ox-more-row{display:flex;align-items:center;gap:12px;justify-content:center;margin:12px 0 18px}

@@ -16,7 +16,7 @@
      firms with a verified email are skipped, and nobody is looked up twice.
    ====================================================================================================== */
 TABLES.OxProjects = ["id", "key", "town", "address", "type", "other_types", "description", "permit_no", "status", "date", "priority", "source_url", "known", "next_step",
-  "owner", "first_seen", "last_seen", "import_id", "updated_at", "zone", "sub_area", "stage", "fit", "reach", "bid_status", "bid_by", "bid_at", "bid_due", "bid_note", "task_owner", "task_text", "task_date"];
+  "owner", "first_seen", "last_seen", "import_id", "updated_at", "zone", "sub_area", "stage", "fit", "reach", "bid_status", "bid_by", "bid_at", "bid_due", "bid_note", "task_owner", "task_text", "task_date", "reached_at", "reached_by"];
 TABLES.OxFirms = ["id", "name", "norm", "firm_type", "segment", "priority", "wave", "channel", "website", "phone", "flags", "notes", "individual", "confirmed",
   "status", "next_step", "next_date", "email_source", "created_at", "updated_at", "assignee"];
 TABLES.OxContacts = ["id", "firm_id", "name", "role", "email", "phone", "linkedin", "source", "verified", "rr_id", "created_at", "updated_at", "phones", "bid_contact", "referred_by"];
@@ -271,7 +271,7 @@ ACTIONS.oxHome = function (me, b) {
   return { week: week, today: today, can_send: me.role === "admin", new_email_day: oxNewEmailDay(today), blackout: oxBlackout(today), kpi: kpi, queue: queue, towns: OX_TOWNS, stages: OX_STAGES,
     projects: projects.map(function (p) { var o = Object.assign({}, p), a = oxProjAct(p, cx), bd = oxBidOf(p, opps); delete o.key; delete o.owner;
       o.act = { kind: a.kind, label: a.label, firm_id: a.firm_id || "", contact_id: a.contact_id || "", phone: a.phone || "", step: a.step || "", role_id: a.role_id || "", opp_id: a.opp_id || "", who: a.who || null, firm: a.firm || "", alt: (a.alt || []).map(function (x) { return { kind: x.kind, label: x.label, contact_id: x.contact_id || "", phone: x.phone || "", step: x.step || "" }; }) }; o.bid = bd.status; o.bid_label = bd.label; o.bid_due = bd.due; o.why = oxWhy(p, cx); o.scope_conf = oxScopeOf(p).confirmed;
-      o.score = oxProjScore(p, a, bd, today); o.contacted = oxContacted(p, cx); return o; }),
+      o.score = oxProjScore(p, a, bd, today); o.contacted = oxContacted(p, cx); o.reached = oxReached(p, cx, a); return o; }),
     priority: (function () { var top = projects.map(function (p) { return { p: p, s: oxProjScore(p, oxProjAct(p, cx), oxBidOf(p, opps), today) }; }).filter(function (x) { return x.s > -999; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 12);
       return top.map(function (x) { return oxBrief(x.p, cx, me); }); })(),
     tracked: { towns: projects.map(function (p) { return p.town; }).filter(function (x, i, l) { return x && l.indexOf(x) === i; }).sort(), week_start: oxWeekStart(today),
@@ -1420,6 +1420,27 @@ function oxFirmAction(f, cs, st, me) {
 }
 var OX_ACT_RANK = { email: 0, call: 1, ask: 2, log: 3, link: 4, wait: 4, find: 5, confirm: 6, none: 9 };
 var OX_ROLE_PREF = { landscape_architect: 0, architect: 1, contractor: 2, applicant: 3, engineer: 4 };
+/* Already reached out on this project? Then it leaves "Start here" so new ones move up:
+   - any email, call, LinkedIn, note or reply logged on this property (portal or Gmail), or a bid track on it
+   - or the firm we'd contact first got an email from us in the last 14 days (about anything): don't hit them twice
+   - or Jesús marked it "Done" by hand (undo puts it back) */
+var OX_REACH_DAYS = 14;
+function oxReached(p, c, a) {
+  if (p.reached_at) return { how: "marked", date: String(p.reached_at).slice(0, 10), by: p.reached_by ? personName(p.reached_by) : "" };
+  var fids = (c.roles[p.id] || []).filter(function (r) { return r.firm_id; }).map(function (r) { return r.firm_id; }), best = null;
+  fids.forEach(function (fid) { (c.touches[fid] || []).forEach(function (t) { if (t.project_id === p.id && (!best || t.date > best.date)) best = { how: t.channel, date: t.date, firm: (c.firms[fid] || {}).name || "" }; }); });
+  if (best) return best;
+  var tr = (c.oppsBy[p.id] || [])[0]; if (tr) return { how: "bid", date: String(tr.updated_at || tr.created_at || "").slice(0, 10), firm: (c.firms[tr.firm_id] || {}).name || "" };
+  var lead = a && a.firm_id, since = oxAdd(c.today, -OX_REACH_DAYS), recent = null;
+  if (lead) (c.touches[lead] || []).forEach(function (t) { if (t.channel === "email" && t.date >= since && (!recent || t.date > recent.date)) recent = { how: "firm", date: t.date, firm: (c.firms[lead] || {}).name || "" }; });
+  return recent;
+}
+ACTIONS.oxProjReached = function (me, b) {
+  oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
+  update("OxProjects", "id", p.id, b.on === false ? { reached_at: "", reached_by: "" } : { reached_at: oxToday(), reached_by: me.email });
+  return { on: b.on !== false };
+};
+PREFETCH.oxProjReached = OX_T.concat(["People"]);
 /* ✅ marks: the newest email we sent and the newest one they wrote, about THIS property first, else to any firm on it. */
 function oxContacted(p, c) {
   var fids = (c.roles[p.id] || []).filter(function (r) { return r.firm_id && r.role !== "owner"; }).map(function (r) { return r.firm_id; }), best = {};
@@ -1629,7 +1650,7 @@ function oxAgenda(c, projects, today) {
   projects.forEach(function (p) { if (p.task_date && p.task_date <= today && p.task_text) out.callbacks.push({ project_id: p.id, firm_id: "", date: p.task_date, street: oxStreetFull(p), town: p.town, reason: "Research: " + p.task_text, act: { kind: "find", label: "Find who's on it" }, assignee: p.task_owner ? personName(p.task_owner) : "" }); });
   var touched = {}; Object.keys(c.touches).forEach(function (k) { c.touches[k].forEach(function (t) { if (t.project_id) touched[t.project_id] = 1; }); });
   out.fresh = projects.filter(function (p) { return !touched[p.id] && !(c.oppsBy[p.id] || []).length && p.stage !== "5"; }).map(function (p) { var a = oxProjAct(p, c), bd = oxBidOf(p, c.opps); return { p: p, a: a, s: oxProjScore(p, a, bd, today) }; })
-    .filter(function (x) { return x.s > -999 && ["email", "call", "ask", "link"].indexOf(x.a.kind) > -1; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5)
+    .filter(function (x) { return x.s > -999 && !oxReached(x.p, c, x.a) && ["email", "call", "ask", "link"].indexOf(x.a.kind) > -1; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5)
     .map(function (x) { return { project_id: x.p.id, firm_id: x.a.firm_id || "", street: oxStreetFull(x.p), town: x.p.town, reason: oxWhy(x.p, c), act: x.a }; });
   out.deadlines.sort(function (a, b) { return a.date < b.date ? -1 : 1; }); out.callbacks.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   return out;
