@@ -2676,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261116001316";
+  var BUILD = "20261116005128";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6293,12 +6293,22 @@
   function oxCityCard(d) {
     var c = d.city || { towns: [] }, l = c.last;
     return '<div class="card ox-city"><h3>🏛️ City agendas &amp; permits <span class="muted small">automatic, every Monday</span></h3>' +
-      '<p class="small">The portal reads each town’s design review and planning agendas (where a project shows up first, with its architect) and Palo Alto’s permit list, and adds the new projects. Addresses you already track only get the new names. ' + (c.ai ? "Agendas are read by Claude (a fraction of a cent each)." : "<b>Agendas need the AI key</b> (AI email writer, above); Palo Alto works without it.") + "</p>" +
+      '<p class="small">The portal reads each town’s design review and planning agendas (where a project shows up first, with its architect) and the permit lists San Jose, Palo Alto, Campbell and Gilroy publish, and adds the new projects for you and the setter. Addresses you already track only get the new names. ' + (c.ai ? "Agendas are read by Claude (a fraction of a cent each)." : "<b>Agendas need the AI key</b> (AI email writer, above); the permit lists work without it.") + "</p>" +
       (l ? '<p class="small">Last check ' + esc(oxWhen(String(l.at).slice(0, 10))) + (l.auto ? " (automatic)" : l.by ? " by " + esc(first(l.by)) : "") + ": <b>" + (l.added || 0) + " new project" + (l.added === 1 ? "" : "s") + "</b>" + (l.names ? " · " + l.names + " new name" + (l.names === 1 ? "" : "s") + " on projects you track" : "") + (l.cost ? " · cost about " + Math.max(1, Math.round(l.cost * 100)) + "¢" : "") + "</p>" : "") +
-      '<div class="ox-city-t">' + c.towns.map(function (t) { return '<div class="small"><b>' + esc(t.town) + "</b> " + (t.error ? '<span class="bad-t">⚠️ ' + esc(t.error) + "</span>" : t.last ? '<span class="ok-t">✓ ' + esc(oxWhen(t.last)) + "</span>" : '<span class="muted">not read yet</span>') + (t.added ? ' <span class="muted">· ' + t.added + " added so far</span>" : "") + "</div>"; }).join("") + "</div>" +
-      '<p class="muted small">Still by hand (their permit search pages need a person): Los Gatos, Cupertino, Menlo Park, Portola Valley, Monte Sereno and San Mateo County. Keep using the weekly Grok file for those.</p>' +
+      oxCityList(c) +
       '<div class="actions" style="justify-content:flex-start"><button class="btn sm" data-a="pbCityRun"' + (S.oxCityBusy ? " disabled" : "") + ">" + (S.oxCityBusy ? "🏛️ Reading the cities… " + esc(S.oxCityBusy) : "🏛️ Check the cities now") + "</button></div></div>";
   }
+  /* every town the portal reads, by county: ✓ when it last read, ⚠️ when the town's site failed */
+  function oxCityList(c) {
+    var ts = c.towns || [], bad = ts.filter(function (t) { return t.error; }).length, names = ts.map(function (t) { return t.town; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var wk = new Date(Date.now() - 8 * 864e5).toISOString().slice(0, 10), fresh = ts.filter(function (t) { return t.last && t.last >= wk; }).length;
+    var counties = ts.map(function (t) { return t.county || "Other"; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    return '<details class="ox-city-l"' + (S.oxCityOpen ? " open" : "") + '><summary class="small"><b>' + names.length + " towns</b> · " + ts.length + " sources · " + fresh + " read this week" + (bad ? ' · <span class="bad-t">' + bad + " with a problem</span>" : "") + "</summary>" +
+      counties.map(function (co) { return '<div class="ox-city-co"><div class="muted small"><b>' + esc(co) + (co === "Other" ? "" : " County") + "</b></div>" + ts.filter(function (t) { return (t.county || "Other") === co; }).map(function (t) {
+        return '<div class="small"><b>' + esc(t.town) + '</b> <span class="muted">' + (t.what === "permits" ? "permits" : "agendas") + "</span> " + (t.error ? '<span class="bad-t">⚠️ ' + esc(t.error) + "</span>" : t.last ? '<span class="ok-t">✓ ' + esc(oxWhen(t.last)) + "</span>" : '<span class="muted">not read yet</span>') + (t.added ? ' <span class="muted">· ' + t.added + " added</span>" : "") + "</div>"; }).join("") + "</div>"; }).join("") +
+      '<p class="muted small">Not readable by machine (their sites block it or publish no agendas online): Redwood City, Pacifica, and Santa Clara County’s zoning and design hearings. Keep those in the weekly Grok search.</p></details>';
+  }
+  root.addEventListener("toggle", function (e) { if (e.target && e.target.classList && e.target.classList.contains("ox-city-l")) S.oxCityOpen = e.target.open; }, true);
   function oxReachedTxt(r) {
     var w = oxWhen(r.date);
     return r.how === "marked" ? "You marked it done " + w + (r.by ? " (" + r.by + ")" : "") : r.how === "firm" ? "Emailed " + r.firm + " " + w + " (another job): giving them space" : r.how === "bid" ? "Bid track with " + r.firm : r.how === "email" ? "Emailed " + r.firm + " " + w : r.how === "call" ? "Called " + r.firm + " " + w : r.how === "reply" ? r.firm + " wrote " + w : "Reached out to " + r.firm + " " + w;
@@ -7184,7 +7194,7 @@
       return run(b, function () { return call("oxLinkFirm", c.firm_id ? { role_id: lk.role_id, firm_id: c.firm_id, same: !!(sameBox && sameBox.checked) } : { role_id: lk.role_id, new_firm: c, same: !!(sameBox && sameBox.checked) })
         .then(function (r) { S.modal = lk.back ? { type: "lsxOxProj", id: lk.back } : null; if (lk.back && S.oxBriefs) delete S.oxBriefs[lk.back]; toast((r.created ? "＋ Added " + c.name + " and linked" : "🔗 Linked to " + c.name) + (r.linked > 1 ? " on " + r.linked + " projects" : "")); S.oxBusy = 0; oxLoad(); keepScroll(render); }); }); }
     if (a === "pbCityRun") { if (S.oxCityBusy) return; var tot = { added: 0, names: 0, cost: 0, towns: {} }, rounds = 0; S.oxCityBusy = "…"; keepScroll(render);
-      var go = function () { return call("oxCityRun", {}).then(function (r) { rounds++; tot.added += r.added; tot.names += r.names; tot.cost += r.cost || 0; (r.towns || []).forEach(function (t) { if (t.added) tot.towns[t.town] = (tot.towns[t.town] || 0) + t.added; }); S.oxCityBusy = r.towns.length ? r.towns[r.towns.length - 1].town : "…"; keepScroll(render); if (r.more && rounds < 5) return go(); }); };
+      var from = 0, go = function () { return call("oxCityRun", { from: from }).then(function (r) { rounds++; from = r.next || 0; tot.added += r.added; tot.names += r.names; tot.cost += r.cost || 0; (r.towns || []).forEach(function (t) { if (t.added) tot.towns[t.town] = (tot.towns[t.town] || 0) + t.added; }); S.oxCityBusy = (r.towns.length ? r.towns[r.towns.length - 1].town : "…") + (r.total ? " (" + Math.min(r.total, (r.next || r.total)) + " of " + r.total + ")" : ""); keepScroll(render); if (r.more && rounds < 25) return go(); }); };
       return go().then(function () { S.oxCityBusy = 0; var tw = Object.keys(tot.towns).map(function (k) { return k + " " + tot.towns[k]; }).join(", "); toast(tot.added ? "🏛️ " + tot.added + " new project" + (tot.added === 1 ? "" : "s") + " from the cities (" + tw + ")" : "🏛️ Cities checked: nothing new" + (tot.names ? " · " + tot.names + " new names on projects you track" : "")); S.oxBusy = 0; oxLoad(); keepScroll(render); })
         .catch(function (er) { S.oxCityBusy = 0; toast(er.message); keepScroll(render); }); }
     if (a === "pbSort") { var sk = b.dataset.k, so = S.oxSort || {}; S.oxSort = so.k !== sk ? { k: sk, dir: sk === "date" ? "desc" : "asc" } : so.dir === "asc" ? { k: sk, dir: "desc" } : so.dir === "desc" && sk === "date" ? { k: sk, dir: "asc" } : null; return keepScroll(render); }

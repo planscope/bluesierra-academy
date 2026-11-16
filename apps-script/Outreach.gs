@@ -29,7 +29,8 @@ TABLES.OxAlerts = ["id", "firm_id", "project_id", "kind", "status", "created_at"
 TABLES.OxImports = ["id", "kind", "file", "at", "by", "counts"];
 TABLES.OxMeetings = ["id", "firm_id", "contact_id", "project_id", "day", "time", "minutes", "kind", "where", "email", "event_id", "link", "status", "booked_by", "note", "created_at", "updated_at"];
 var OX_T = ["OxProjects", "OxFirms", "OxContacts", "OxRoles", "OxTouches", "OxOutbox", "OxOpps", "OxEnrich", "OxAlerts", "OxImports", "OxMeetings"];
-var OX_TOWNS = ["Atherton", "Burlingame", "Hillsborough", "Los Altos", "Los Altos Hills", "Los Gatos", "Saratoga", "Woodside", "Portola Valley", "Menlo Park", "Palo Alto", "Monte Sereno", "Cupertino"];
+var OX_TOWNS = ["Atherton", "Burlingame", "Hillsborough", "Los Altos", "Los Altos Hills", "Los Gatos", "Saratoga", "Woodside", "Portola Valley", "Menlo Park", "Palo Alto", "Monte Sereno", "Cupertino",
+  "San Jose", "San Mateo", "Redwood City", "San Carlos", "Belmont", "Millbrae", "Half Moon Bay", "Mountain View", "Sunnyvale", "Campbell", "Santa Clara", "Milpitas", "Morgan Hill", "Gilroy", "Foster City", "San Bruno", "South San Francisco", "Daly City", "Pacifica", "East Palo Alto"];
 var OX_STAGES = ["prospect", "invited", "plans", "site_walk", "bid_sent", "won", "lost"];          // a "bid track": one firm buying one scope on one property
 var OX_ROLES = ["architect", "landscape_architect", "contractor", "engineer", "applicant", "owner"];
 var OX_DAILY = 10;                                                                  // new first emails a day
@@ -1948,20 +1949,56 @@ PREFETCH.oxLinkFirm = OX_T.concat(["People"]);
    - each agenda is read once; the job runs every Monday morning and from the "Check the cities now" button */
 TABLES.OxCityLog = ["id", "town", "source", "ref", "url", "title", "meeting_date", "at", "status", "found", "added", "note", "cost", "by"];
 OX_T.push("OxCityLog");
-var OX_CITY_BODY = /architect|design review|site review|planning commission|site development|special project|zoning administrator/i, OX_CITY_SKIP = /cancel|packet|minutes|notice of/i;
+var OX_CITY_BODY = /architect|design review|site review|planning commission|site development|special project|zoning administrator|director'?s hearing|development review|administrative (zoning )?hearing|zoning hearing|hearing officer|site and arch|planning and design|fast track/i,
+  OX_CITY_SKIP = /cancel|packet|minutes|notice of|action (agenda|summary)/i, OX_CITY_UA = "Mozilla/5.0 (compatible; BlueSierraPermitReader/1.0)";
+var OX_SJ_DATA = "https://data.sanjoseca.gov/dataset/2723cdec-a639-4b63-bded-175338c45473/resource/045b3678-e923-4002-b696-300955bc6d06/download/buildingpermits30.csv";
 var OX_CITY = [
-  { town: "Palo Alto", kind: "paloalto", url: "https://data.paloalto.gov/rest/datastreams/298718/data.csv" },
-  { town: "Woodside", kind: "civicplus", base: "https://www.woodsideca.gov" },
-  { town: "Hillsborough", kind: "civicplus", base: "https://www.hillsborough.net" },
-  { town: "Los Altos Hills", kind: "civicplus", base: "https://www.losaltoshills.ca.gov" },
-  { town: "Saratoga", kind: "civicplus", base: "https://www.saratoga.ca.us" },
-  { town: "Burlingame", kind: "legistar", client: "burlingameca" },
-  { town: "Atherton", kind: "primegov", host: "https://atherton.primegov.com" },
-  { town: "Los Altos", kind: "civicclerk", host: "https://losaltosca.api.civicclerk.com" }
+  // ---- San Mateo County
+  { county: "San Mateo", town: "Woodside", kind: "civicplus", base: "https://www.woodsideca.gov" },
+  { county: "San Mateo", town: "Hillsborough", kind: "civicplus", base: "https://www.hillsborough.net" },
+  { county: "San Mateo", town: "Burlingame", kind: "legistar", client: "burlingameca" },
+  { county: "San Mateo", town: "Atherton", kind: "primegov", host: "https://atherton.primegov.com" },
+  { county: "San Mateo", town: "Portola Valley", kind: "doclinks", base: "https://www.portolavalley.net", pages: [
+      { code: "ascc", body: "Architectural & Site Control Commission", url: "https://www.portolavalley.net/town-government/architectural-site-control-commission/minutes-and-agendas", match: /ascc|architectural/i },
+      { code: "pc", body: "Planning Commission", url: "https://www.portolavalley.net/town-government/planning-commission/minutes-and-agendas", match: /planning|\bpc\b/i }] },
+  { county: "San Mateo", town: "Menlo Park", kind: "doclinks", base: "https://www.menlopark.gov", pages: [
+      { code: "pc", body: "Planning Commission", url: "https://www.menlopark.gov/Agendas-and-minutes", match: /planning-commission\/20\d\d-meetings\/agenda\// }] },
+  { county: "San Mateo", town: "San Mateo", kind: "primegov", host: "https://sanmateo.primegov.com" },
+  { county: "San Mateo", town: "San Carlos", kind: "primegov", host: "https://cityofsancarlos.primegov.com" },
+  { county: "San Mateo", town: "Belmont", kind: "granicus", host: "https://belmont-ca.granicus.com", views: [7] },
+  { county: "San Mateo", town: "Foster City", kind: "escribe", host: "https://pub-fostercity.escribemeetings.com" },
+  { county: "San Mateo", town: "Half Moon Bay", kind: "granicus", host: "https://halfmoonbay.granicus.com", views: [4, 11] },
+  { county: "San Mateo", town: "Millbrae", kind: "civicplus", base: "https://www.ci.millbrae.ca.us" },
+  { county: "San Mateo", town: "San Bruno", kind: "civicplus", base: "https://www.sanbruno.ca.gov" },
+  { county: "San Mateo", town: "South San Francisco", kind: "legistar", client: "ci-ssf-ca" },
+  { county: "San Mateo", town: "Daly City", kind: "civicclerk", host: "https://dalycityca.api.civicclerk.com" },
+  { county: "San Mateo", town: "East Palo Alto", kind: "granicus", host: "https://cityofepa.granicus.com", views: [1] },
+  { county: "San Mateo", town: "San Mateo County", kind: "smcgov", base: "https://www.smcgov.org" },
+  // ---- Santa Clara County
+  { county: "Santa Clara", town: "Palo Alto", kind: "paloalto", url: "https://data.paloalto.gov/rest/datastreams/298718/data.csv", page: "https://data.paloalto.gov/dataviews/265480/" },
+  { county: "Santa Clara", town: "San Jose", kind: "sanjose", url: OX_SJ_DATA, page: "https://data.sanjoseca.gov/dataset/last-30-days-building-permits" },
+  { county: "Santa Clara", town: "San Jose", kind: "legistar", client: "sanjose" },
+  { county: "Santa Clara", town: "Los Altos Hills", kind: "civicplus", base: "https://www.losaltoshills.ca.gov" },
+  { county: "Santa Clara", town: "Saratoga", kind: "civicplus", base: "https://www.saratoga.ca.us" },
+  { county: "Santa Clara", town: "Los Altos", kind: "civicclerk", host: "https://losaltosca.api.civicclerk.com" },
+  { county: "Santa Clara", town: "Los Gatos", kind: "municode", host: "https://losgatos-ca.municodemeetings.com", cc: "LOSGATOS" },
+  { county: "Santa Clara", town: "Monte Sereno", kind: "civicweb", host: "https://montesereno.civicweb.net" },
+  { county: "Santa Clara", town: "Cupertino", kind: "legistar", client: "cupertino" },
+  { county: "Santa Clara", town: "Mountain View", kind: "legistar", client: "mountainview" },
+  { county: "Santa Clara", town: "Sunnyvale", kind: "legistar", client: "sunnyvaleca" },
+  { county: "Santa Clara", town: "Santa Clara", kind: "legistar", client: "santaclara" },
+  { county: "Santa Clara", town: "Campbell", kind: "civicplus", base: "https://www.campbellca.gov" },
+  { county: "Santa Clara", town: "Campbell", kind: "campbell", url: "https://services7.arcgis.com/RDyUffIeciKdYmX2/arcgis/rest/services/CampbellPermits/FeatureServer/0", page: "https://www.campbellca.gov/" },
+  { county: "Santa Clara", town: "Milpitas", kind: "civicclerk", host: "https://milpitasca.api.civicclerk.com" },
+  { county: "Santa Clara", town: "Morgan Hill", kind: "civicclerk", host: "https://morganhillca.api.civicclerk.com" },
+  { county: "Santa Clara", town: "Gilroy", kind: "civicclerk", host: "https://gilroyca.api.civicclerk.com" },
+  { county: "Santa Clara", town: "Gilroy", kind: "gilroy", url: "https://services8.arcgis.com/n7NW5ijV4dJUmrID/arcgis/rest/services/Permit_Activity/FeatureServer/1", page: "https://www.cityofgilroy.org/" },
+  { county: "Santa Clara", town: "Santa Clara County", kind: "iqm2", host: "https://sccgov.iqm2.com" }
 ];
+var OX_PERMIT_KINDS = /^(paloalto|sanjose|campbell|gilroy)$/;
 var OX_READ = { model: "claude-haiku-5-5", inPerM: 0.1, outPerM: 0.5, maxChars: 60000, perRun: 8, lookbackDays: 21 };
 function oxCityGet(url, json) {
-  var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Blue Sierra permit reader)", Accept: json ? "application/json" : "*/*" } });
+  var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": OX_CITY_UA, Accept: json ? "application/json" : "*/*" } });
   if (r.getResponseCode() >= 300) throw new Error(url.split("/")[2] + " answered " + r.getResponseCode());
   return json ? JSON.parse(r.getContentText()) : r.getContentText();
 }
@@ -1973,7 +2010,19 @@ function oxHtmlText(h) {
 /* each source → its recent agendas: { ref, title, date, url, textUrl | itemsUrl } */
 function oxCityAgendas(src, since, until) {
   var out = [];
-  if (src.kind === "civicplus") {
+  var mdy = function (d) { return d.slice(5, 7) + "/" + d.slice(8, 10) + "/" + d.slice(0, 4); };
+  if (src.kind === "civicplus" && !src.rss) {
+    var sh = oxCityGet(src.base + "/AgendaCenter/Search/?term=&CIDs=all&startDate=" + mdy(since) + "&endDate=" + mdy(until) + "&dateRange=&dateSelector=");
+    sh.split(/<div class="listing/).slice(1).forEach(function (blk) {
+      var body = oxHtmlText((blk.match(/<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1] || ""); if (!OX_CITY_BODY.test(body)) return;
+      var re = /id="h4(\d{2})(\d{2})(\d{4})-(\d+)"/g, m;
+      while ((m = re.exec(blk))) {
+        var near = oxHtmlText(blk.slice(m.index, m.index + 700)); if (OX_CITY_SKIP.test(near.slice(0, 200))) continue;
+        var u = src.base + "/AgendaCenter/ViewFile/Agenda/_" + m[1] + m[2] + m[3] + "-" + m[4];
+        if (!out.some(function (a) { return a.ref === "cp-" + m[4]; })) out.push({ ref: "cp-" + m[4], title: body, date: m[3] + "-" + m[1] + "-" + m[2], url: u, textUrl: u + "?html=true" });
+      }
+    });
+  } else if (src.kind === "civicplus") {
     var x = oxCityGet(src.base + "/RSSFeed.aspx?ModID=65&CID=All-0");
     (x.match(/<item>[\s\S]*?<\/item>/g) || []).forEach(function (it) {
       var title = oxHtmlText((it.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || ""), link = ((it.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "").trim(), id = (link.match(/(\d+)\s*$/) || [])[1];
@@ -1983,22 +2032,94 @@ function oxCityAgendas(src, since, until) {
     out.forEach(function (a) { try { var pg = oxCityGet(a.page), m = pg.match(new RegExp("/AgendaCenter/ViewFile/Agenda/_(\\d{2})(\\d{2})(\\d{4})-" + a.id)); if (m) { a.date = m[3] + "-" + m[1] + "-" + m[2]; a.url = src.base + "/AgendaCenter/ViewFile/Agenda/_" + m[1] + m[2] + m[3] + "-" + a.id; a.textUrl = a.url + "?html=true"; } } catch (e) { a.err = e.message; } });
     out = out.filter(function (a) { return a.url; });
   } else if (src.kind === "legistar") {
-    var ev = oxCityGet("https://webapi.legistar.com/v1/" + src.client + "/events?$top=25&$orderby=EventDate%20desc", true);
-    ev.forEach(function (e) { if (!OX_CITY_BODY.test(e.EventBodyName || "")) return; out.push({ ref: "lg-" + e.EventId, title: e.EventBodyName, date: String(e.EventDate || "").slice(0, 10), url: e.EventInSiteURL || e.EventAgendaFile || "", itemsUrl: "https://webapi.legistar.com/v1/" + src.client + "/events/" + e.EventId + "/eventitems" }); });
+    var ev = oxCityGet("https://webapi.legistar.com/v1/" + src.client + "/events?$top=60&$orderby=EventDate%20desc&$filter=" + encodeURIComponent("EventDate ge datetime'" + since + "' and EventDate le datetime'" + until + "'"), true);
+    ev.forEach(function (e) { if (!OX_CITY_BODY.test(e.EventBodyName || "") || /cancel/i.test(e.EventComment || "") || e.EventAgendaStatusName === "Draft") return; out.push({ ref: "lg-" + e.EventId, title: e.EventBodyName, date: String(e.EventDate || "").slice(0, 10), url: e.EventInSiteURL || e.EventAgendaFile || "", itemsUrl: "https://webapi.legistar.com/v1/" + src.client + "/events/" + e.EventId + "/eventitems", pdfUrl: e.EventAgendaFile || "", pageUrl: e.EventInSiteURL || "" }); });
   } else if (src.kind === "primegov") {
     var ms = oxCityGet(src.host + "/api/v2/PublicPortal/ListUpcomingMeetings", true); try { ms = ms.concat(oxCityGet(src.host + "/api/v2/PublicPortal/ListArchivedMeetings?year=" + since.slice(0, 4), true)); } catch (e) {}
-    ms.forEach(function (m) { if (!OX_CITY_BODY.test(m.title || "")) return; var doc = (m.documentList || []).filter(function (d) { return /html agenda/i.test(d.templateName || ""); })[0] || (m.documentList || []).filter(function (d) { return /^agenda$/i.test(d.templateName || ""); })[0]; if (!doc) return;
-      out.push({ ref: "pg-" + m.id + "-" + doc.templateId, title: m.title, date: String(m.dateTime || "").slice(0, 10), url: src.host + "/Portal/Meeting?meetingTemplateId=" + doc.templateId, textUrl: src.host + "/Portal/Meeting?meetingTemplateId=" + doc.templateId }); });
+    ms.forEach(function (m) { if (!OX_CITY_BODY.test(m.title || "") || OX_CITY_SKIP.test(m.title || "")) return; var html = (m.documentList || []).filter(function (d) { return /html agenda/i.test(d.templateName || ""); })[0], doc = html || (m.documentList || []).filter(function (d) { return /^agenda$/i.test(d.templateName || ""); })[0]; if (!doc) return;
+      var tu = html ? src.host + "/Portal/Meeting?meetingTemplateId=" + doc.templateId : src.host + "/Public/CompiledDocument?meetingTemplateId=" + doc.templateId + "&compileOutputType=1";
+      out.push({ ref: "pg-" + m.id + "-" + doc.templateId, title: m.title, date: String(m.dateTime || "").slice(0, 10), url: tu, textUrl: tu }); });
+  } else if (src.kind === "granicus") {                                       // Granicus agenda feeds (Belmont, Half Moon Bay, East Palo Alto)
+    [].concat(src.views).forEach(function (v) {
+      var gx = oxCityGet(src.host + "/ViewPublisherRSS.php?view_id=" + v + "&mode=agendas");
+      (gx.match(/<item>[\s\S]*?<\/item>/g) || []).forEach(function (it) {
+        var title = oxHtmlText((it.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || ""), link = ((it.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "").replace(/&amp;/g, "&").trim();
+        var pd = it.match(/yr='(\d{4})' mo='(\d{1,2})' day='(\d{1,2})'/), body = title.replace(/\s+-\s+\w{3,9}\.? \d{1,2}, \d{4}\s*$/, ""), id = (link.match(/(clip_id|event_id)=(\d+)/) || [])[2];
+        if (!pd || !id || !OX_CITY_BODY.test(body) || OX_CITY_SKIP.test(title)) return;
+        out.push({ ref: "gr-" + v + "-" + id, title: body, date: pd[1] + "-" + ("0" + pd[2]).slice(-2) + "-" + ("0" + pd[3]).slice(-2), url: link, textUrl: link });
+      });
+    });
+  } else if (src.kind === "escribe") {                                        // eScribe (Foster City)
+    var er = UrlFetchApp.fetch(src.host + "/MeetingsCalendarView.aspx/GetCalendarMeetings", { method: "post", contentType: "application/json", muteHttpExceptions: true, headers: { "User-Agent": OX_CITY_UA }, payload: JSON.stringify({ calendarStartDate: since, calendarEndDate: until }) });
+    if (er.getResponseCode() >= 300) throw new Error(src.host.split("/")[2] + " answered " + er.getResponseCode());
+    (JSON.parse(er.getContentText()).d || []).forEach(function (m) {
+      var body = String(m.MeetingType || ""), d = String(m.StartDate || "").slice(0, 10).replace(/\//g, "-"); if (!OX_CITY_BODY.test(body) || OX_CITY_SKIP.test(body)) return;
+      var docs = m.MeetingDocumentLink || [], h = docs.filter(function (x) { return x.Type === "Agenda" && /html/i.test(x.Format || ""); })[0], pdf = docs.filter(function (x) { return x.Type === "Agenda" && /pdf/i.test(x.Format || ""); })[0], doc = h || pdf; if (!doc) return;
+      out.push({ ref: "es-" + m.ID, title: body, date: d, url: src.host + doc.Url, textUrl: src.host + doc.Url });
+    });
+  } else if (src.kind === "smcgov") {                                         // San Mateo County planning hearings (county web pages)
+    var MO = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+    var lh = oxCityGet(src.base + "/planning/public-meetings"), lre = /href="(\/planning\/event\/[a-z0-9-]+)"[^>]*>([^<]+)/g, lm, seenEv = {};
+    while ((lm = lre.exec(lh))) {
+      var name = oxHtmlText(lm[2]), dm = lm[1].match(/-(january|february|march|april|may|june|july|august|september|october|november|december)-(\d{1,2})-(\d{4})$/); if (!dm || seenEv[lm[1]]) continue; seenEv[lm[1]] = 1;
+      var body = name.replace(/\s+-\s+\w+ \d{1,2}, \d{4}\s*$/, ""); if (!OX_CITY_BODY.test(body) || OX_CITY_SKIP.test(name)) continue;
+      out.push({ ref: "sm-" + lm[1].split("/").pop(), title: body, date: dm[3] + "-" + ("0" + MO[dm[1]]).slice(-2) + "-" + ("0" + dm[2]).slice(-2), url: src.base + lm[1], findMedia: src.base + lm[1], host: src.base });
+    }
+  } else if (src.kind === "doclinks") {                                       // a town page that lists agenda PDFs (Menlo Park, Portola Valley)
+    var errs = [];
+    src.pages.forEach(function (pg) {
+      var html; try { html = oxCityGet(pg.url); } catch (e) { errs.push(e.message); return; }
+      var are = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, am;
+      while ((am = are.exec(html))) {
+        var href = am[1].replace(/&amp;/g, "&"), txt = oxHtmlText(am[2]), both = href + " " + txt;
+        if (!pg.match.test(both) || !/agenda/i.test(both + " " + html.slice(Math.max(0, am.index - 120), am.index).replace(/minutes/gi, "")) || /minutes|comment|cancel|\bCX\b|staff report|summary/i.test(href.split("?")[0].split("/").pop() + " " + txt)) continue;
+        var d1 = href.match(/(20\d{2})(\d{2})(\d{2})-/), d2 = txt.match(/(\d{1,2})\.(\d{1,2})\.(20\d{2})/), d = d1 ? d1[1] + "-" + d1[2] + "-" + d1[3] : d2 ? d2[3] + "-" + ("0" + d2[1]).slice(-2) + "-" + ("0" + d2[2]).slice(-2) : "";
+        if (!d) continue; var u = /^https?:/.test(href) ? href : src.base + (href.charAt(0) === "/" ? "" : "/") + href, ref = "dl-" + pg.code + "-" + d;
+        if (!out.some(function (a) { return a.ref === ref; })) out.push({ ref: ref, title: pg.body, date: d, url: u, textUrl: u });
+      }
+    });
+    if (errs.length === src.pages.length) throw new Error(errs[0]);
+  } else if (src.kind === "municode") {                                        // Municode Meetings (Los Gatos)
+    for (var pg = 0; pg < 3; pg++) {
+      var mh = oxCityGet(src.host + "/?page=" + pg), trs = mh.match(/<tr[\s\S]*?<\/tr>/g) || [], older = false;
+      trs.forEach(function (tr) {
+        var d = (tr.match(/content="(\d{4}-\d\d-\d\d)T/) || [])[1], key = (tr.match(/me=([0-9a-f]{32})/) || [])[1], body = oxHtmlText((tr.match(/data-th="Meeting">([\s\S]*?)<\/td>/) || [])[1] || "");
+        if (!d || !key) return; if (d < since) { older = true; return; }
+        if (!OX_CITY_BODY.test(body) || OX_CITY_SKIP.test(body)) return;
+        out.push({ ref: "mc-" + key, title: body, date: d, url: "https://meetings.municode.com/adaHtmlDocument/index?cc=" + src.cc + "&me=" + key + "&ip=False", textUrl: "https://meetings.municode.com/adaHtmlDocument/index?cc=" + src.cc + "&me=" + key + "&ip=False" });
+      });
+      if (older || !trs.length) break;
+    }
+  } else if (src.kind === "civicweb") {                                       // CivicWeb / iCompass (Monte Sereno)
+    oxCityGet(src.host + "/Services/MeetingsService.svc/meetings?from=" + since + "&to=" + until, true).forEach(function (m) {
+      var body = String(m.Name || "").replace(/\s+-\s+\w{3} \d{1,2} \d{4}$/, ""); if (!m.Published || !OX_CITY_BODY.test(body) || OX_CITY_SKIP.test(m.Name || "")) return;
+      out.push({ ref: "cw-" + m.Id, title: body, date: String(m.MeetingDate || "").slice(0, 10), url: src.host + "/Portal/MeetingInformation.aspx?Org=Cal&Id=" + m.Id, findPdf: src.host + "/Portal/MeetingInformation.aspx?Org=Cal&Id=" + m.Id, host: src.host });
+    });
+  } else if (src.kind === "iqm2") {                                           // IQM2 (Santa Clara County)
+    var iq = oxCityGet(src.host + "/Citizens/Calendar.aspx?From=" + mdy(since).replace(/^0|\/0/g, function (z) { return z === "0" ? "" : "/"; }) + "&To=" + mdy(until).replace(/^0|\/0/g, function (z) { return z === "0" ? "" : "/"; })), rl = /RowLink"><a href="\/Citizens\/Detail_Meeting\.aspx\?ID=(\d+)" title="([^"]*)"\s*>([^<]*)<\/a>/g, q;
+    while ((q = rl.exec(iq))) {
+      var tt = q[2].replace(/&#13;/g, "\n").replace(/&#09;/g, " "), body = ((tt.match(/Board:\s*([^\n]+)/) || [])[1] || "").trim(), stat = ((tt.match(/Status:\s*([^\n]+)/) || [])[1] || "");
+      var dt = new Date(q[3].trim().replace(/\s+\d{1,2}:\d\d\s*[AP]M$/i, "")); if (isNaN(dt) || !OX_CITY_BODY.test(body) || /cancel/i.test(stat)) continue;
+      out.push({ ref: "iq-" + q[1], title: body, date: Utilities.formatDate(dt, CONFIG.TZ, "yyyy-MM-dd"), url: src.host + "/Citizens/Detail_Meeting.aspx?ID=" + q[1], textUrl: src.host + "/Citizens/Detail_Meeting.aspx?ID=" + q[1] });
+    }
   } else if (src.kind === "civicclerk") {
     var j = oxCityGet(src.host + "/v1/Events?$filter=startDateTime%20ge%20" + since + "T00:00:00Z%20and%20startDateTime%20le%20" + until + "T23:59:59Z&$orderby=startDateTime%20desc&$top=30", true);
+    for (var np = 0; np < 4 && j["@odata.nextLink"]; np++) { var nx = oxCityGet(j["@odata.nextLink"], true); j.value = (j.value || []).concat(nx.value || []); j["@odata.nextLink"] = nx["@odata.nextLink"]; }
     (j.value || []).forEach(function (e) { if (!OX_CITY_BODY.test(e.eventName || "")) return; (e.publishedFiles || []).forEach(function (f) { if (!/^agenda$/i.test(f.type || "") || OX_CITY_SKIP.test(f.name || "")) return;
       out.push({ ref: "cc-" + f.fileId, title: e.eventName, date: String(e.startDateTime || "").slice(0, 10), url: src.host + "/v1/Meetings/GetMeetingFileStream(fileId=" + f.fileId + ",plainText=false)", textUrl: src.host + "/v1/Meetings/GetMeetingFileStream(fileId=" + f.fileId + ",plainText=true)" }); }); });
   }
   return out.filter(function (a) { return a.date && a.date >= since && a.date <= until; });
 }
 function oxAgendaText(a) {                                                  // the agenda as text, or { pdf: base64 } when the town only publishes a PDF
-  if (a.itemsUrl) return oxCityGet(a.itemsUrl, true).map(function (x) { return String(x.EventItemTitle || "").trim(); }).filter(function (t) { return /\d/.test(t.slice(0, 80)) && t.length > 30; }).join("\n\n");
-  var r = UrlFetchApp.fetch(a.textUrl, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Blue Sierra permit reader)" } });
+  if (a.itemsUrl) {
+    var it = oxCityGet(a.itemsUrl, true).map(function (x) { return String(x.EventItemTitle || "").trim(); }).filter(function (t) { return /\d/.test(t.slice(0, 80)) && t.length > 30; }).join("\n\n");
+    if (it.length >= 200) return it;
+    var pdf = a.pdfUrl; if (!pdf && a.pageUrl) { var ph = oxCityGet(a.pageUrl), vm = ph.match(/View\.ashx\?M=A&(?:amp;)?ID=\d+&(?:amp;)?GUID=[0-9A-F-]+(?:&(?:amp;)?G=[0-9A-F-]+)?/i); if (vm) pdf = a.pageUrl.split("/").slice(0, 3).join("/") + "/" + vm[0].replace(/&amp;/g, "&"); }
+    if (!pdf) return it || null; a = { textUrl: pdf };
+  }
+  if (a.findMedia) { var mh = oxCityGet(a.findMedia), mm = mh.match(/href="(\/media\/\d+\/download\?inline=?)"[^>]*>\s*(?:Revised\s+)?Agenda/i) || mh.match(/href="(\/media\/\d+\/download[^"]*)"[^>]*>[^<]*Agenda/i); if (!mm) return null; a = { textUrl: a.host + mm[1].replace(/&amp;/g, "&") }; }
+  if (a.findPdf) { var dm = oxCityGet(a.findPdf).match(/\/document\/(\d+)\//); if (!dm) return null; a = { textUrl: a.host + "/document/" + dm[1] + "/" }; }
+  var r = UrlFetchApp.fetch(a.textUrl, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": OX_CITY_UA } });
   if (r.getResponseCode() >= 300) throw new Error(a.textUrl.split("/")[2] + " answered " + r.getResponseCode());
   var b = r.getContent();
   if (b.length > 4 && b[0] === 37 && b[1] === 80 && b[2] === 68 && b[3] === 70) { if (b.length > 9000000) throw new Error("agenda PDF is too big to read (" + Math.round(b.length / 1e6) + " MB)"); return { pdf: Utilities.base64Encode(b) }; }
@@ -2021,8 +2142,68 @@ function oxAiReadAgenda(text, town, title, date) {
   return out;
 }
 var OX_PA_YES = /single[- ]family|new (residence|home|dwelling|sfd|sfr)|addition|remodel|swimming pool|\bpool\b|landscap|hardscap|grading|retaining wall|site work|site improvement/i, OX_PA_NO = /instant permit|re-?roof|solar|photovoltaic|heat pump|water heater|ev charger|electric(al)? (service|panel)|hvac|furnace|window replacement|like[- ]for[- ]like|sewer lateral|demolition only|fire sprinkler|tenant improvement|commercial/i;
-function oxPaloAltoRows(since) {
-  var csv = Utilities.parseCsv(oxCityGet(OX_CITY.filter(function (s) { return s.kind === "paloalto"; })[0].url)); if (!csv.length) return [];
+/* homes only: a new house, a rebuild, a big addition, a pool or yard work; never solar, roofs, panels, ADUs alone, commercial */
+function oxPermitKeep(desc, val, isNew) {
+  desc = String(desc || "");
+  if (OX_PA_NO.test(desc) || /\b(re-?roof|solar|battery|\bess\b|panel upgrade|main panel|brace (and|&) bolt|temporary power|sub-?trades|sewer|water heater|bathtub|kitchen|bath remodel|tenant)\b/i.test(desc)) return null;
+  var rebuild = /demo(lition)?\s*(\/|and|&|\+)?\s*rebuild|tear\s*-?down|rebuild/i.test(desc);
+  var type = isNew || rebuild || /\bnew\b.{0,40}(residence|home|dwelling|single[- ]family|sfd|sfr|house)/i.test(desc) ? "new_home" : /\bpool\b|\bspa\b/i.test(desc) ? "pool" : /landscap|hardscap/i.test(desc) ? "landscape" : /grading|retaining|site work|site improvement/i.test(desc) ? "grading" : /addition|remodel|\badd\b|add\/alt|alteration|second[- ]story|2nd story/i.test(desc) ? "major_remodel" : "";
+  if (!type || (/\badu\b|accessory dwelling|junior/i.test(desc) && !rebuild && !/main house|single[- ]family residence/i.test(desc))) return null;
+  var sf = Number((desc.match(/(\d[\d,]{2,5})\s*(sf|sq\.? ?ft|square feet)/i) || [])[1] ? String(desc.match(/(\d[\d,]{2,5})\s*(sf|sq\.? ?ft|square feet)/i)[1]).replace(/,/g, "") : 0);
+  if (type === "major_remodel" && (val ? val < 250000 : sf < 600 && !/second[- ]story|2nd story|major/i.test(desc))) return null;
+  if (val && val < 30000 && type !== "pool") return null;
+  return { type: type, fit: type === "major_remodel" && (val ? val < 600000 : true) || type === "pool" ? "B" : "A" };
+}
+var OX_SJ_AREA = { "95135": "Evergreen", "95148": "Evergreen", "95121": "Evergreen", "95138": "Silver Creek", "95120": "Almaden Valley", "95127": "East Foothills", "95132": "Berryessa", "95125": "Willow Glen", "95124": "Cambrian", "95118": "Cambrian", "95129": "West San Jose", "95130": "West San Jose", "95117": "West San Jose", "95128": "West San Jose", "95123": "Blossom Valley", "95136": "Blossom Valley", "95119": "Santa Teresa", "95139": "Santa Teresa", "95126": "Rose Garden", "95112": "Downtown", "95110": "Downtown", "95116": "East San Jose", "95122": "East San Jose", "95133": "Berryessa", "95131": "North San Jose", "95134": "North San Jose", "95111": "South San Jose", "95113": "Downtown" };
+function oxTitleCase(a) { return String(a || "").replace(/\s+/g, " ").trim().replace(/\b([A-Z])([A-Z']+)\b/g, function (m0, x, y) { return x + y.toLowerCase(); }); }
+function oxArcRows(url, dateField, since) {                                    // an ArcGIS layer, newest first, since a date
+  var out = [], off = 0, where = encodeURIComponent(dateField + " >= DATE '" + since + "'");
+  for (var k = 0; k < 6; k++) {
+    var j = oxCityGet(url + "/query?where=" + where + "&outFields=*&orderByFields=" + dateField + "%20DESC&returnGeometry=false&resultOffset=" + off + "&resultRecordCount=1000&f=json", true);
+    if (j.error) throw new Error("map data: " + (j.error.message || "error")); out = out.concat((j.features || []).map(function (f) { return f.attributes || {}; }));
+    if (!j.exceededTransferLimit) break; off += 1000;
+  }
+  return out;
+}
+function oxYmd(ms) { return ms ? Utilities.formatDate(new Date(Number(ms)), CONFIG.TZ, "yyyy-MM-dd") : ""; }
+function oxPermitRows(src, since) {
+  if (src.kind === "paloalto") return oxPaloAltoRows(since, src);
+  var out = [];
+  if (src.kind === "sanjose") {
+    var csv = Utilities.parseCsv(oxCityGet(src.url)); if (!csv.length) return [];
+    var h = csv[0].map(function (x) { return String(x).replace(/^\uFEFF/, "").trim().toUpperCase(); });
+    csv.slice(1).forEach(function (r) {
+      var g = function (k) { var i = h.indexOf(k); return i > -1 ? String(r[i] || "").replace(/\s+/g, " ").trim() : ""; };
+      if (!/1 & 2 family/i.test(g("FOLDERDESC")) || !/-RS$/i.test(g("FOLDERNUMBER"))) return;
+      var d = g("ISSUEDATE").match(/^(\d+)\/(\d+)\/(\d{4})/); if (!d) return; var ymd = d[3] + "-" + ("0" + d[1]).slice(-2) + "-" + ("0" + d[2]).slice(-2); if (ymd < since) return;
+      var work = g("WORKDESCRIPTION"), sub = g("SUBTYPEDESCRIPTION"), name = g("FOLDERNAME"), val = Number(g("PERMITVALUATION").replace(/[^\d.]/g, "")) || 0;
+      if (/reroof|brace|sub-trades|temporary|legalization|^demolition$/i.test(work) || /\badu\b|accessory/i.test(sub) && !/rebuild|main house/i.test(name)) return;
+      var k = oxPermitKeep(name + " " + work + (/site work/i.test(work) ? " site work" : ""), val, /new construction/i.test(work) && /single/i.test(sub)); if (!k) return;
+      var loc = g("GX_LOCATION"), zip = (loc.match(/CA (\d{5})/) || [])[1] || "", addr = oxTitleCase(loc.split(",")[0]);
+      out.push({ permit_no: g("FOLDERNUMBER"), address: addr, city: "San Jose", zone: OX_SJ_AREA[zip] ? "San Jose · " + OX_SJ_AREA[zip] : "San Jose", description: (name + " · " + work + " · " + sub).slice(0, 600), status_raw: "Permit issued " + ymd, project_type: k.type, all_types: k.type, fit_tier: k.fit,
+        stage_order: "4", date: ymd, contractor: g("CONTRACTOR"), applicant: g("APPLICANT"), owner_do_not_contact: g("OWNERNAME"), source_url: src.page, next_step: "Permit issued " + ymd + (val ? " · valuation $" + Math.round(val).toLocaleString() : "") + (zip ? " · " + zip : "") });
+    });
+  } else if (src.kind === "campbell") {
+    oxArcRows(src.url, "CreateDate", since).forEach(function (x) {
+      if (!/building/i.test(x.ProjectType || "") || /MEP|trade|solar|demolition/i.test((x.DesignationType || "") + " " + (x.WorkType || ""))) return;
+      var desc = [x.ProjectName, x.ProjectDescription].filter(Boolean).join(" · "), k = oxPermitKeep(desc, 0, /new residential construction/i.test(x.DesignationType || "") && /new (single|sfd|sfr|home|house|residence)/i.test(desc)); if (!k) return;
+      var ymd = oxYmd(x.CreateDate);
+      out.push({ permit_no: x.ProjectNumber || x.ApplicationNumber || "", address: oxTitleCase(x.Address), city: "Campbell", description: desc.slice(0, 600), status_raw: String(x.Status || "") + " " + ymd, project_type: k.type, all_types: k.type, fit_tier: k.fit,
+        stage_order: x.IssuedDate ? "4" : "3", date: ymd, source_url: src.page, next_step: "Permit " + (x.IssuedDate ? "issued " + oxYmd(x.IssuedDate) : "filed " + ymd + " · " + (x.Status || "")) });
+    });
+  } else if (src.kind === "gilroy") {
+    oxArcRows(src.url, "ApplicationDate", since).forEach(function (x) {
+      if (!/residential/i.test(x.PermitType || "") || /solar|\bess\b|roof|electric|plumb|mechanical|hvac|water heater/i.test(x.WorkClass || "")) return;
+      var desc = String(x.PermitDesc || "").replace(/\s+/g, " ").trim(), k = oxPermitKeep(desc + " " + (x.WorkClass || ""), 0, /new/i.test(x.WorkClass || "") && /single|sfd|sfr|dwelling|residence/i.test(desc + " " + x.WorkClass)); if (!k) return;
+      var ymd = oxYmd(x.ApplicationDate);
+      out.push({ permit_no: x.PermitNum || "", address: oxTitleCase(x.Address), city: "Gilroy", description: desc.slice(0, 600), status_raw: String(x.PermitStatus || "") + " " + ymd, project_type: k.type, all_types: k.type, fit_tier: k.fit,
+        stage_order: x.IssueDate ? "4" : "3", date: ymd, source_url: src.page, next_step: "Permit " + (x.IssueDate ? "issued " + oxYmd(x.IssueDate) : "applied " + ymd) + (x.SquareFt ? " · " + x.SquareFt + " sq ft" : "") });
+    });
+  }
+  return out;
+}
+function oxPaloAltoRows(since, src) {
+  var csv = Utilities.parseCsv(oxCityGet((src || OX_CITY.filter(function (s) { return s.kind === "paloalto"; })[0]).url)); if (!csv.length) return [];
   var h = csv[0].map(function (x) { return String(x).replace(/^﻿/, "").trim().toUpperCase(); }), ix = function (k) { return h.indexOf(k); }, out = [];
   csv.slice(1).forEach(function (r) {
     var g = function (k) { var i = ix(k); return i > -1 ? String(r[i] || "").trim() : ""; }, desc = g("DESCRIPTION"), d = g("DATE OPENED").match(/^(\d+)\/(\d+)\/(\d{4})/), val = Number(g("JOB VALUE").replace(/[^\d.]/g, "")) || 0;
@@ -2060,23 +2241,27 @@ function oxCityRun(me, b) {
   var start = Date.now(), today = oxToday(), log = rows("OxCityLog"), done = {}, out = { towns: [], added: 0, names: 0, cost: 0, more: false, ai: !!aiKey() };
   log.forEach(function (x) { if (x.status === "read" || x.status === "empty") done[x.town + "|" + x.ref] = 1; });
   var since = oxAdd(today, -(Number(b.days) || OX_READ.lookbackDays)), until = oxAdd(today, 30), reads = 0, towns = b.towns ? [].concat(b.towns) : null;
-  for (var i = 0; i < OX_CITY.length; i++) {
-    var src = OX_CITY[i]; if (towns && towns.indexOf(src.town) < 0) continue; var res = { town: src.town, agendas: 0, read: 0, added: 0, names: 0, note: "" };
+  for (var i = Math.max(0, Number(b.from) || 0); i < OX_CITY.length; i++) {
+    var src = OX_CITY[i]; if (towns && towns.indexOf(src.town) < 0) continue;
+    if (Date.now() - start > 200000) { out.more = true; out.next = i; break; }
+    var res = { town: src.town, agendas: 0, read: 0, added: 0, names: 0, note: "" };
     try {
-      if (src.kind === "paloalto") {
-        var last = log.filter(function (x) { return x.town === "Palo Alto" && x.status === "read"; }).map(function (x) { return String(x.at); }).sort().pop(), from = last && !b.days ? oxAdd(last.slice(0, 10), -3) : since;
+      if (OX_PERMIT_KINDS.test(src.kind)) {
+        var last = log.filter(function (x) { return x.town === src.town && x.source === "open data" && x.status === "read"; }).map(function (x) { return String(x.at); }).sort().pop(), from = last && !b.days ? oxAdd(last.slice(0, 10), -3) : since;
         if (last && last.slice(0, 10) === today && !b.force) { res.note = "already read today"; }
-        else { var pa = oxPaloAltoRows(from), ig = oxCityIngest(pa, me, "Palo Alto open data " + today); res.agendas = 1; res.read = 1; res.added = ig.added; res.names = ig.names; res.found = pa.length;
-          insert("OxCityLog", { id: newId("ol"), town: "Palo Alto", source: "open data", ref: "pa-" + today, url: src.url, title: "Permits since " + from, meeting_date: today, at: now(), status: "read", found: pa.length, added: ig.added, note: "", cost: 0, by: me.email }); }
+        else { var pa = oxPermitRows(src, from), ig = oxCityIngest(pa, me, src.town + " open data " + today); res.agendas = 1; res.read = 1; res.added = ig.added; res.names = ig.names; res.found = pa.length;
+          insert("OxCityLog", { id: newId("ol"), town: src.town, source: "open data", ref: src.kind + "-" + today, url: src.page || src.url, title: "Permits since " + from, meeting_date: today, at: now(), status: "read", found: pa.length, added: ig.added, note: "", cost: 0, by: me.email }); }
       } else {
         var ags = oxCityAgendas(src, since, until).filter(function (a) { return !done[src.town + "|" + a.ref]; }); res.agendas = ags.length;
         for (var k = 0; k < ags.length; k++) {
           var a = ags[k];
           if (!out.ai) { res.note = "needs the AI key to read agendas"; break; }
           if (reads >= OX_READ.perRun || Date.now() - start > 240000) { out.more = true; break; }
-          var txt = oxAgendaText(a); reads++;
+          var txt; try { txt = oxAgendaText(a); } catch (e2) { if (!/too big|answered 404|answered 410/.test(e2.message || "")) throw e2; insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: String(e2.message).slice(0, 120), cost: 0, by: me.email }); res.note = "1 agenda skipped: " + String(e2.message).slice(0, 80); continue; } reads++;
+          if (txt === null || (!txt || typeof txt === "string" && txt.length < 200) && a.date >= today) continue;   // not posted yet: look again next time
           if (!txt || (typeof txt === "string" && txt.length < 200)) { insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "no text", cost: 0, by: me.email }); continue; }
-          var ai = oxAiReadAgenda(txt, src.town, a.title, a.date), items = (ai.items || []).filter(function (x) { return x.fit_tier !== "C"; });
+          var ai; try { ai = oxAiReadAgenda(txt, src.town, a.title, a.date); } catch (e3) { if (!/answer \((400|413)\)/.test(e3.message || "")) throw e3; insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "too long for Claude to read (over 100 pages?)", cost: 0, by: me.email }); res.note = "1 agenda too long to read"; continue; }
+          var items = (ai.items || []).filter(function (x) { return x.fit_tier !== "C"; });
           var rowsIn = items.map(function (x) { return { permit_no: x.case_numbers, address: x.address, city: src.town, description: x.description, status_raw: a.title + " " + a.date, project_type: x.project_type, all_types: x.project_type, fit_tier: x.fit_tier,
             stage_order: "1", date: a.date, architect: x.architect, landscape_architect: x.landscape_architect, applicant: x.applicant, contractor: x.contractor, engineer: x.engineer, owner_do_not_contact: x.owner, source_url: a.url, next_step: "On the " + a.title + " agenda " + a.date }; });
           var ig2 = oxCityIngest(rowsIn, me, src.town + " · " + a.title + " " + a.date); res.read++; res.added += ig2.added; res.names += ig2.names; out.cost += ai.cost || 0;
@@ -2085,8 +2270,9 @@ function oxCityRun(me, b) {
       }
     } catch (e) { res.note = String(e.message || e).slice(0, 160); insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: "err-" + today + "-" + i, url: "", title: "", meeting_date: today, at: now(), status: "error", found: 0, added: 0, note: res.note, cost: 0, by: me.email }); }
     out.added += res.added; out.names += res.names; out.towns.push(res);
-    if (out.more) break;
+    if (out.more) { out.next = i; break; }
   }
+  out.total = OX_CITY.length;
   out.cost = Math.round(out.cost * 1000) / 1000;
   return out;
 }
@@ -2094,10 +2280,23 @@ function oxCityEnsure() {
   try { var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "oxCityWeekly"; });
     if (!has) ScriptApp.newTrigger("oxCityWeekly").timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ).create(); return true; } catch (e) { console.warn("oxCityEnsure: " + e.message); return false; }
 }
-function oxCityWeekly() {                                                    // the Monday job: runs as Jesús, reads everything new
+function oxCityWeekly() { oxCityPiece(true); }                              // the Monday job: runs as Jesús, reads everything new
+function oxCityMore() { oxCityPiece(false); }                                // the next piece of the same Monday run
+function oxCityPiece(first) {
+  var pr = PropertiesService.getScriptProperties(), st = null;
+  try { ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === "oxCityMore") ScriptApp.deleteTrigger(t); }); } catch (e) {}
+  if (!first) { try { st = JSON.parse(pr.getProperty("OX_CITY_RUN") || "null"); } catch (e) { st = null; } if (!st) return; }
+  st = first || !st ? { from: 0, added: 0, names: 0, cost: 0, pieces: 0 } : st;
   var adm = rows("People").filter(function (x) { return x.role === "admin" && isTrue(x.active); })[0]; if (!adm) return;
-  var me = { email: adm.email, name: adm.name, role: "admin" }, r = oxCityRun(me, {}); if (r.more) r = oxCityRun(me, {});
-  PropertiesService.getScriptProperties().setProperty("OX_CITY_LAST", JSON.stringify({ at: now(), added: r.added, names: r.names, cost: r.cost, auto: true }));
+  var me = { email: adm.email, name: adm.name, role: "admin" }, r = oxCityRun(me, { from: st.from });
+  st.added += r.added; st.names += r.names; st.cost = Math.round((st.cost + (r.cost || 0)) * 1000) / 1000; st.pieces++;
+  if (r.more && st.pieces < 20) {
+    st.from = r.next || 0; pr.setProperty("OX_CITY_RUN", JSON.stringify(st));
+    try { ScriptApp.newTrigger("oxCityMore").timeBased().after(60000).create(); } catch (e) { console.warn("oxCityMore: " + e.message); }
+    return;
+  }
+  pr.deleteProperty("OX_CITY_RUN");
+  pr.setProperty("OX_CITY_LAST", JSON.stringify({ at: now(), added: st.added, names: st.names, cost: st.cost, auto: true, towns: OX_CITY.length }));
 }
 ACTIONS.oxCityRun = function (me, b) {
   oxNeed(me); var r = oxCityRun(me, b || {}); r.weekly = oxCityEnsure();
@@ -2107,8 +2306,8 @@ ACTIONS.oxCityRun = function (me, b) {
 PREFETCH.oxCityRun = OX_T.concat(["People"]);
 function oxCityHome() {
   var last = null; try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty("OX_CITY_LAST") || "null"); } catch (e) {}
-  var log = rows("OxCityLog"), towns = OX_CITY.map(function (s) { var l = log.filter(function (x) { return x.town === s.town; }), ok = l.filter(function (x) { return x.status === "read"; }).pop(), err = l.filter(function (x) { return x.status === "error"; }).pop();
-    return { town: s.town, kind: s.kind, last: ok ? String(ok.at).slice(0, 10) : "", title: ok ? ok.title : "", added: l.reduce(function (t, x) { return t + (Number(x.added) || 0); }, 0), error: err && (!ok || String(err.at) > String(ok.at)) ? err.note : "" }; });
+  var log = rows("OxCityLog"), towns = OX_CITY.map(function (s) { var pm = OX_PERMIT_KINDS.test(s.kind), l = log.filter(function (x) { return x.town === s.town && (x.source === s.kind || pm && x.source === "open data"); }), ok = l.filter(function (x) { return x.status === "read"; }).pop(), err = l.filter(function (x) { return x.status === "error"; }).pop();
+    return { town: s.town, county: s.county || "", what: pm ? "permits" : "agendas", kind: s.kind, last: ok ? String(ok.at).slice(0, 10) : "", title: ok ? ok.title : "", added: l.reduce(function (t, x) { return t + (Number(x.added) || 0); }, 0), error: err && (!ok || String(err.at) > String(ok.at)) ? err.note : "" }; });
   return { last: last, towns: towns, ai: !!aiKey() };
 }
 
