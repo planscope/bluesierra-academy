@@ -2500,3 +2500,11 @@
 #bs-portal .ox-why{margin-top:4px;color:var(--ink-2)}
 #bs-portal .ox-pc-why{margin:0;color:var(--ink-2)}
 @media (max-width:640px){ #bs-portal .jb-sh{grid-template-columns:1fr} }
+/* ✅ already emailed / 💬 they wrote (portal + Gmail) */
+#bs-portal .pill.ox-done{background:var(--ok-soft);border-color:#c6dccd;color:var(--ok)}
+#bs-portal .pill.ox-wrote{background:#eef3fb;border-color:#cddcf2;color:#2b4f86}
+#bs-portal .ox-tbl .ox-done,#bs-portal .ox-tbl .ox-wrote{font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
+#bs-portal .ox-ck{font-size:12px;margin-left:2px}
+#bs-portal .ox-done-box{font-size:13px;color:var(--ok);background:var(--ok-soft);border:1px solid #c6dccd;border-radius:8px;padding:7px 11px;margin:6px 0}
+#bs-portal .ox-done-box details{margin-top:4px;color:#3f5a48}
+#bs-portal .ox-pc-pills .ox-done,#bs-portal .ox-pc-pills .ox-wrote{white-space:normal;max-width:100%;height:auto;line-height:1.35;text-align:left}
