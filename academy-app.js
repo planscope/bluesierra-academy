@@ -5,7 +5,10 @@
   "use strict";
   var C = window.BSA_CONTENT;
   var root = document.getElementById("bs-academy");
-  if (!C || !root) return;
+  var HOST = null;            // inside the Blue Sierra portal: { member, load(), save(data), certify(results) } instead of Memberstack
+  if (!C) return;
+  // In the portal the page has no #bs-academy: the portal starts it with BSA_START(element, host) when the setter opens it.
+  window.BSA_START = function (el, host) { if (root && HOST) return; root = el; HOST = host || null; startAcademy(); };
   // Site settings set in the Webflow page itself (so they never live in the public repo):
   // window.BSA_SETTINGS = { loginPhoto: "...", heroPhoto: "...", callsApi: "https://script.google.com/macros/s/.../exec" }
   var SET = window.BSA_SETTINGS || {};
@@ -175,11 +178,12 @@
     root.innerHTML =
       '<header class="topbar"><div class="brand">' + LOGO + "<span>" + esc(C.brand.academyName) + "</span></div>" +
       '<div class="who"><span class="name">' + esc(member.name) + '</span><div class="avatar">' + esc(initials(member.name)) + "</div>" +
-      '<button class="btn ghost small" data-act="logout">Log out</button></div></header>' +
+      (HOST ? "" : '<button class="btn ghost small" data-act="logout">Log out</button>') + "</div></header>" +
       '<div class="layout"><nav class="nav">' +
       tabs.map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (view.tab === t[0] || (view.tab === "final" && t[0] === "practice") ? "on" : "") + '"><span>' + t[1] + '</span><span class="count">' + t[2] + "</span></button>"; }).join("") +
       '</nav><main class="main">' + body + "</main></div>";
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    if (!HOST) window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    else if (root.getBoundingClientRect && root.getBoundingClientRect().top < 0) root.scrollIntoView({ block: "start" });
     if (extTab && extTab.mounted) extTab.mounted(root.querySelector(".main"), cx);
   }
   function ctx() {
@@ -436,6 +440,7 @@
   }
 
   /* ---------- events ---------- */
+  function wireClicks() {
   root.addEventListener("click", async function (e) {
     var b = e.target.closest("button,[data-copy]"); if (!b || !root.contains(b)) return;
     var d = b.dataset;
@@ -487,6 +492,12 @@
         if (!ack || !ack.checked) { toast("Check the box first"); return; }
         var results = [member.roleLabel].concat(MODS.map(function (m, k) { return "M" + (k + 1) + " " + (modState(m.id).best || 0) + "%"; }))
           .concat(["Drill " + (S.drill ? S.drill.best + "%" : "not taken"), "Simulator " + (S.sim ? S.sim.best + "%" : "not taken"), "Final " + (S.final ? S.final.best : 0) + "%"]).join(" · ");
+        if (HOST) {
+          b.disabled = true; b.textContent = "Sending…";
+          HOST.certify(results).then(function () { S.acknowledged = today(); save(); toast("Sent to Jesús"); render(); })
+            .catch(function (er) { b.disabled = false; b.textContent = "Send certification"; toast(er && er.message ? er.message : "Could not send. Try again in a minute."); });
+          return;
+        }
         // Only mark it sent once Webflow shows its success message.
         var cform = document.querySelector('form[data-name="' + C.webflowForms.certification + '"]');
         if (!cform) { toast("Could not send. Tell Jesús the certification form is missing on this page."); return; }
@@ -505,6 +516,7 @@
         return;
     }
   });
+  }
 
   function bump(rec, score, passMark) {
     rec = rec || {}; rec.tries = (rec.tries || 0) + 1; rec.best = Math.max(rec.best || 0, score); rec.last = score;
@@ -535,7 +547,16 @@
   }
 
   /* ---------- boot ---------- */
+  function hostAsMemberstack(h) {                 // the same calls the Academy already makes, answered by the portal
+    return {
+      getCurrentMember: async function () { return { data: h.member }; },
+      getMemberJSON: async function () { return { data: { academy: (await h.load()) || undefined } }; },
+      updateMemberJSON: async function (o) { await h.save((o && o.json && o.json.academy) || {}); },
+      getMemberCookie: async function () { return null; }, logout: async function () {}, openModal: async function () {}
+    };
+  }
   function waitForMemberstack(ms_) {
+    if (HOST) return Promise.resolve(hostAsMemberstack(HOST));
     return new Promise(function (res) {
       if (window.$memberstackDom) return res(window.$memberstackDom);
       var t0 = Date.now(), h = setInterval(function () {
@@ -567,6 +588,16 @@
       if (!hadRemote) report("Started", C.course.title);
     } catch (e) { member = null; render(); }
   }
-  if (ms === null && window.$memberstackDom && window.$memberstackDom.onAuthChange) window.$memberstackDom.onAuthChange(function () { boot(); });
-  boot();
+  function startAcademy() {
+    // The Academy now lives in the portal. On the old /academy page (no portal around it) send people there.
+    if (!HOST && C.movedTo && !C.demoAllowed) {
+      root.innerHTML = '<div class="loading"><div style="text-align:center;max-width:460px"><p style="font-size:22px;margin-bottom:8px">The Academy moved to the portal.</p><p class="muted">Log in at the Blue Sierra portal and open <b>🎓 Academy</b>. Your progress there starts fresh.</p><p style="margin-top:18px"><a class="btn" href="' + esc(C.movedTo) + '">Go to the portal</a></p></div></div>';
+      setTimeout(function () { try { window.location.replace(C.movedTo); } catch (e) {} }, 4000);
+      return;
+    }
+    wireClicks();
+    if (!HOST && window.$memberstackDom && window.$memberstackDom.onAuthChange) window.$memberstackDom.onAuthChange(function () { boot(); });
+    boot();
+  }
+  if (root) startAcademy();
 })();

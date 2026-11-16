@@ -294,3 +294,6 @@ form[data-name="Academy Progress"],form[data-name="Setter Certification"]{displa
   #bs-academy .cert,#bs-academy .cert *{visibility:visible}
   #bs-academy .cert{position:fixed;inset:0;box-shadow:none;border:0}
 }
+/* Inside the Blue Sierra portal */
+#bs-academy.bsa-in-portal{min-height:0;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+#bs-academy.bsa-in-portal .topbar{position:static}

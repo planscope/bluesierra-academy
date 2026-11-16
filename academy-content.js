@@ -2,6 +2,7 @@
 window.BSA_CONTENT = {
  "demoAllowed": false,
  "portalCalls": "https://www.bluesierracorp.com/portal",
+ "movedTo": "https://www.bluesierracorp.com/portal",
  "calls": {
   "api": "PASTE_APPS_SCRIPT_URL",
   "keyField": "call-key"

@@ -452,8 +452,16 @@ function oxCompose(step, v, seed) {
   var text = parts.filter(Boolean).map(function (x) { return oxFill(x, v); }).join(" ").replace(/\s+/g, " ").trim();
   return hi + "\n\n" + text + (wk ? "\n\n" + wk : "");
 }
+/* The setter may only prepare a follow-up after a call ("reply"), to a firm on their call list; Jesús sends it. */
+function oxSetterFollowOk(me, f, step) {
+  if (!me || me.role !== "setter") return false;
+  if (step !== "reply") throw new Error("You only write follow-ups after a call. Jesús sends the first emails.");
+  var fl = oxFlags(f); if (fl.excluded || fl.individual || fl.noCall || oxJesusOwn(f)) throw new Error("Jesús handles " + f.name + " himself.");
+  return true;
+}
 ACTIONS.oxDraft = function (me, b) {
-  oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
+  var f0 = findBy("OxFirms", "id", String(b.firm_id || "")); if (!(f0 && oxSetterFollowOk(me, f0, b.step))) oxNeed(me);
+  var f = f0; if (!f) throw new Error("Firm not found.");
   var ct = b.contact_id ? findBy("OxContacts", "id", String(b.contact_id)) : null, ask = b.step === "ask", reply = b.step === "reply", invited = b.step === "invited", step = reply || invited ? "again" : b.step === "day14" || b.step === "again" ? b.step : "day0";
   if (ct && ct.firm_id !== f.id) ct = null;
   if (!ct) ct = oxBestContact(rows("OxContacts").filter(function (c) { return c.firm_id === f.id && c.email; }));
@@ -1275,7 +1283,8 @@ ACTIONS.oxCalls = function (me, b) {
   return { today: today, me: { name: me.name, first: String(me.name || "").split(" ")[0] }, stats: oxCallStats(me.role === "setter" ? me.email : "", today),
     queue: pool.items.slice(0, 40).map(function (it) { return oxCallOut(it, me, Number(b && b.n) || 0); }), total: pool.items.length, later: pool.later, done_today: pool.done_today, no_phone: pool.no_phone.length,
     meetings: rows("OxMeetings").filter(function (m) { return m.status === "booked" && m.day >= today; }).sort(function (a, c) { return (a.day + a.time) < (c.day + c.time) ? -1 : 1; }).map(oxMeetOut),
-    outcomes: OX_CALL_OUT, kinds: OX_MEET_KIND, hours: OX_HOURS };
+    outcomes: OX_CALL_OUT, kinds: OX_MEET_KIND, hours: OX_HOURS,
+    academy: me.role === "setter" ? (function () { var r = findBy("AcProgress", "email", normEmail(me.email)); return { certified: !!(r && r.certified_at) }; })() : null };
 };
 NO_LOCK.oxCalls = 1;
 ACTIONS.oxCallLog = function (me, b) {
@@ -1773,7 +1782,9 @@ PREFETCH.oxHandoffSheet = OX_T.concat(["People"]);
 /* A first email can be prepared any day; it goes out on the next allowed day (Tue to Thu for first emails). Staff prepare, Jesús sends. */
 function oxNextSendDay(step, today) { return today; }                               // Jesús sends whenever he wants; drafts are for the team to prepare
 ACTIONS.oxSaveDraft = function (me, b) {
-  oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found."); if (oxFlags(f).excluded) throw new Error(f.name + " is excluded from outreach.");
+  var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
+  var setter = oxSetterFollowOk(me, f, b.step === "again" || b.step === "reply" ? "reply" : b.step); if (setter && me.preview) throw new Error("This is a preview. Nothing is saved."); if (!setter) oxNeed(me);
+  if (oxFlags(f).excluded) throw new Error(f.name + " is excluded from outreach.");
   var key = String(b.key || ""); if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new Error("Reload the portal and try again.");
   var to = normEmail(b.to); if (to && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("Check the email address.");
   var step = b.step === "day14" || b.step === "again" ? b.step : "day0", subject = clean(b.subject, 160), text = clean(b.body, 3000); if (!subject || !text) throw new Error("Write a subject and a message.");
@@ -2086,3 +2097,79 @@ function oxCityHome() {
     return { town: s.town, kind: s.kind, last: ok ? String(ok.at).slice(0, 10) : "", title: ok ? ok.title : "", added: l.reduce(function (t, x) { return t + (Number(x.added) || 0); }, 0), error: err && (!ok || String(err.at) > String(ok.at)) ? err.note : "" }; });
   return { last: last, towns: towns, ai: !!aiKey() };
 }
+
+/* ====================================== The setter inside the portal ======================================
+   1) The Academy (the setter's course) now lives in the portal: progress is saved here per person, Jesús sees it.
+   2) "What Jesús reached": every firm we've emailed, called or heard from lately, so the setter never doubles up.
+   3) Follow-up emails: the setter prepares one after a call; it waits in Jesús's drafts and only he sends it. */
+TABLES.AcProgress = ["email", "data", "updated_at", "certified_at", "results"];
+function acNeed(me) { if (!me || (me.role !== "setter" && me.role !== "admin")) throw new Error("The Academy is for the appointment setter."); }
+ACTIONS.acLoad = function (me, b) {
+  acNeed(me); var em = me.role === "admin" && b && b.email ? normEmail(b.email) : normEmail(me.email), r = findBy("AcProgress", "email", em), d = null;
+  if (r && r.data) { try { d = JSON.parse(r.data); } catch (e) { d = null; } }
+  return { data: d, roleLabel: "Appointment Setter" };
+};
+NO_LOCK.acLoad = 1; READ_ONLY.acLoad = 1;
+ACTIONS.acSave = function (me, b) {
+  acNeed(me); if (me.preview) throw new Error("This is a preview. Nothing is saved.");
+  var d = b.data || {}; if (typeof d !== "object") throw new Error("Nothing to save.");
+  d.events = [].concat(d.events || []).slice(-200);
+  var s = JSON.stringify(d); if (s.length > 45000) throw new Error("Progress is too big to save.");
+  var em = normEmail(me.email), r = findBy("AcProgress", "email", em), t = now();
+  if (r) update("AcProgress", "email", em, { data: s, updated_at: t }); else insert("AcProgress", { email: em, data: s, updated_at: t, certified_at: "", results: "" });
+  return { ok: true };
+};
+ACTIONS.acCertify = function (me, b) {
+  acNeed(me); if (me.preview) throw new Error("This is a preview. Nothing is sent.");
+  var em = normEmail(me.email), results = clean(b.results, 1200), t = now();
+  if (!findBy("AcProgress", "email", em)) insert("AcProgress", { email: em, data: "{}", updated_at: t, certified_at: t, results: results });
+  else update("AcProgress", "email", em, { certified_at: t, results: results, updated_at: t });
+  rows("People").filter(function (x) { return x.role === "admin" && isTrue(x.active); }).forEach(function (a) {
+    safeMail(function () { sendMail(a.email, "🎓 " + (me.name || em) + " finished the setter certification", "<p><b>" + esc(me.name || em) + "</b> passed the Appointment Setter course in the portal and confirmed the rules.</p><p>" + esc(results) + "</p>"); });
+  });
+  return { ok: true, at: t };
+};
+/* For Jesús: each setter's course progress. */
+ACTIONS.acTeam = function (me) {
+  if (!me || me.role !== "admin") throw new Error("Only Jesús sees the team's progress.");
+  var mods = ["m1", "m2", "m3p", "m4", "m5", "m6", "m7p", "m8p"], prog = {}; rows("AcProgress").forEach(function (r) { prog[normEmail(r.email)] = r; });
+  return { setters: rows("People").filter(function (x) { return x.role === "setter" && isTrue(x.active); }).map(function (p) {
+    var r = prog[normEmail(p.email)], d = {}; try { d = r && r.data ? JSON.parse(r.data) : {}; } catch (e) { d = {}; }
+    var m = d.modules || {}, ev = (d.events || []).slice(-1)[0] || null;
+    return { name: p.name, email: p.email, started: d.started || "", passed: mods.filter(function (k) { return m[k] && m[k].passed; }).length, of: mods.length,
+      final: d.final ? { best: d.final.best || 0, passed: d.final.passed || "" } : null, drill: d.drill ? d.drill.best || 0 : null, sim: d.sim ? d.sim.best || 0 : null,
+      certified: r && r.certified_at ? String(r.certified_at).slice(0, 10) : "", results: r ? r.results || "" : "", last: ev ? { at: (function () { var dt = new Date(ev.at); return isNaN(dt) ? String(ev.at || "").slice(0, 10) : Utilities.formatDate(dt, CONFIG.TZ, "yyyy-MM-dd"); })(), event: ev.event, detail: ev.detail || "", score: ev.score } : null };
+  }) };
+};
+NO_LOCK.acTeam = 1;
+
+/* What Jesús (and the office) already did, by firm, newest first: so the setter knows who's been reached and how. */
+ACTIONS.oxSetterReached = function (me, b) {
+  oxCallNeed(me); var today = oxToday(), since = oxAdd(today, -(Number(b && b.days) || 45)), firms = {}, pById = {}, cts = {};
+  rows("OxFirms").forEach(function (f) { firms[f.id] = f; }); rows("OxProjects").forEach(function (p) { pById[p.id] = p; }); rows("OxContacts").forEach(function (c) { cts[c.id] = c; });
+  var pool = oxCallPool(today), onList = {}; pool.items.forEach(function (it) { onList[it.f.id] = it.kind; });
+  var meets = {}; rows("OxMeetings").forEach(function (m) { if (m.status === "booked" && m.day >= today) meets[m.firm_id] = m.day + " " + m.time; });
+  var by = {};
+  rows("OxTouches").forEach(function (t) {
+    if (t.date < since || ["email", "reply", "call", "linkedin", "note", "site_walk"].indexOf(t.channel) < 0 || !firms[t.firm_id]) return;
+    (by[t.firm_id] = by[t.firm_id] || []).push(t);
+  });
+  var CH = { email: "✉️", reply: "💬", call: "📞", linkedin: "💼", note: "📝", site_walk: "🚶" };
+  var out = Object.keys(by).map(function (fid) {
+    var f = firms[fid], fl = oxFlags(f), list = by[fid].sort(function (a, c) { return a.date < c.date ? 1 : -1; }), st = oxState(f, rows("OxTouches").filter(function (x) { return x.firm_id === fid; }), today);
+    var items = list.slice(0, 5).map(function (t) {
+      var p = t.project_id ? pById[t.project_id] : null, k = cts[t.contact_id], who = personName(t.by) || t.by, firstWho = String(who || "").split(" ")[0];
+      var what = t.channel === "email" ? firstWho + " emailed" + (k ? " " + (k.name || k.email) : "") + (t.summary ? ": “" + String(t.summary).replace(/^From your Gmail( to \S+)?: /, "") + "”" : "")
+        : t.channel === "reply" ? "They wrote back" + (t.summary ? ": “" + String(t.summary).replace(/^They wrote: |^Replied: /, "") + "”" : "")
+        : t.channel === "call" ? firstWho + " called" + (t.outcome ? " (" + (OX_CALL_OUT[t.outcome] || String(t.outcome).replace(/_/g, " ")) + ")" : "") + (t.summary ? ": " + t.summary : "")
+        : (t.summary || t.channel);
+      return { date: t.date, icon: CH[t.channel] || "•", what: clean(what, 240), street: p ? oxStreetFull(p) + ", " + p.town : "" };
+    });
+    var status = fl.excluded ? "Not on outreach" : oxJesusOwn(f) || fl.noCall ? "Jesús handles them himself: don't call"
+      : meets[fid] ? "Meeting booked " + meets[fid] : st.replied ? "They replied: Jesús follows up" : onList[fid] ? "On your call list" + (onList[fid] === "cadence" ? ": follow-up call due" : onList[fid] === "callback" ? ": callback due" : "")
+      : st.due && st.due.channel === "call" ? "Follow-up call on " + st.due.date : "Waiting: nothing for you to do now";
+    return { firm_id: fid, firm: f.name, type: f.firm_type || "", last: list[0].date, status: status, callable: !!onList[fid], items: items };
+  }).sort(function (a, c) { return a.last < c.last ? 1 : -1; }).slice(0, 150);
+  return { since: since, firms: out };
+};
+NO_LOCK.oxSetterReached = 1; READ_ONLY.oxSetterReached = 1; PREFETCH.oxSetterReached = OX_T.concat(["People"]);
