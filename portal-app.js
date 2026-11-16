@@ -2676,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115163831";
+  var BUILD = "20261115165251";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6147,10 +6147,10 @@
     if (d.err) return '<div class="card ls-incomplete">' + esc(d.err) + ' <button class="link" data-a="oxReload">Try again</button></div>';
     if (!S.oxAt || Date.now() - S.oxAt > 60000) { S.oxAt = Date.now(); setTimeout(oxLoad, 0); }       // a fresh copy behind the saved one
     var k = d.kpi, rate = k.contacted ? Math.round(k.replied / k.contacted * 100) : 0, tab = S.oxTab === "projects" ? "find" : S.oxTab || (d.projects.length ? "find" : "import");
-    var dueN = d.queue.due.length + d.alerts.length, readyN = d.new_email_day && !d.blackout ? Math.min(d.queue.room, d.queue.ready.filter(function (x) { return !x.blocked && !x.individual; }).length) : 0;
+    var dueN = d.queue.due.length + d.alerts.length, readyN = true ? Math.min(d.queue.room, d.queue.ready.filter(function (x) { return !x.blocked && !x.individual; }).length) : 0;
     var ring = '<div class="ox-ring" style="--p:' + Math.round(k.sent_today / k.daily * 100) + '"><b>' + k.sent_today + "</b><small>of " + k.daily + "</small></div>";
     var hero = '<div class="card ox-hero"><div class="ox-hero-t"><b>' + (d.blackout ? "🎄 Holiday break: no outreach today" : !d.projects.length ? "👋 Let’s load your first permits" : dueN || readyN ? "🎯 " + (dueN + readyN) + " thing" + (dueN + readyN === 1 ? "" : "s") + " to do today" : d.queue.ready.length ? "📝 " + Math.min(d.queue.ready.length, d.kpi.daily) + " first emails ready for the next sending day" : "✨ All caught up for today") + '</b><span class="muted small">' +
-      (d.blackout ? "Nothing goes out Nov 25–27 or Dec 24–Jan 1." : d.new_email_day ? "First emails go out today (Tue–Thu, 10 a day). Follow-ups any weekday." : "First emails go out Tuesday to Thursday. Today: follow-ups, calls and LinkedIn.") + "</span></div>" + ring + "</div>" +
+      (d.blackout ? "Holiday week: you can still send, the portal asks first." : d.new_email_day ? "Up to 10 first emails a day. Today is a good day to send." : "Up to 10 first emails a day, any day. Tip: Tuesday to Thursday get more replies.") + "</span></div>" + ring + "</div>" +
       '<div class="ox-kpis">' + [["Projects tracked", d.projects.length.toLocaleString()], ["With someone to reach", ((d.tracked || {}).reachable || 0) + "<small> projects</small>"], ["Follow-ups due", d.queue.due.length], ["Bid invitations", k.invites], ["Won", k.won + (k.won ? " 🏆" : "")]].map(function (x) { return '<div class="ox-kpi"><span>' + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("") + "</div>";
     var wk = d.week || {};
     hero += '<div class="ox-week"><span class="ox-week-l">This week</span>' + [["✉️", wk.email, "emails"], ["💼", wk.linkedin, "LinkedIn"], ["📞", wk.call, "calls"], ["💬", wk.reply, "replies"], ["🏗️", wk.invites, "invites"]].map(function (x) { return '<span class="ox-wk' + (x[1] ? " on" : "") + '">' + x[0] + " <b>" + (x[1] || 0) + "</b> " + x[2] + "</span>"; }).join("") + "</div>";
@@ -6198,7 +6198,7 @@
     }).join("");
     var ready = q.ready;
     if (S.oxUndo) html += '<div class="ox-undo"><span>Removed <b>' + esc(S.oxUndo.name) + '</b> from outreach.</span><button class="link" data-a="oxUndo">Undo</button></div>';
-    html += '<h3 class="ox-h">✉️ Ready for a first email <span class="muted small">' + (d.new_email_day && !d.blackout ? q.room + " left today" : "next sending day: Tue–Thu") + "</span></h3>";
+    html += '<h3 class="ox-h">✉️ Ready for a first email <span class="muted small">' + (q.room + " of " + d.kpi.daily + " left today") + "</span></h3>";
     html += ready.length ? ready.slice(0, S.oxMore ? 40 : 8).map(function (x) {
       var f = oxF(x.firm_id); if (!f) return ""; var ct = oxContacts(f.id).filter(function (c) { return c.id === x.contact_id; })[0] || {}, pr = oxProjOf(f.id);
       var warn = x.blocked ? '<span class="ox-wait">⏳ Waits for ' + esc(x.blocked.waiting_on.join(", ")) + " (warm, same project)</span>" : x.individual ? '<span class="ox-wait">🙋 Named on a permit: confirm they’re a designer or engineer, not the owner</span>' : "";
@@ -6360,7 +6360,7 @@
         oxVerBar(m) + '<label class="f">Subject<input name="subject" required maxlength="160" value="' + esc(oxCur(m).subject) + '"></label><label class="f">Message<textarea name="body" rows="8" required>' + esc(oxCur(m).body) + "</textarea></label>" +
         (S.ox.sig && S.ox.sig.name ? '<div class="ox-sig-prev"><span class="muted small">Your signature is added below the message:</span>' + oxSigBlock(S.ox.sig) + "</div>" : '<div class="ox-wait">✍️ No signature yet. Add it in Import & tools → Email signature so the email ends like your normal ones.</div>') +
         '<p class="muted small">Reads like a quick note from you: the project, one ask, the site walk. It goes from your Gmail like any email you write, and replies come back to you.</p>' +
-        (dr.can_send_today === false ? '<div class="ox-wait">📅 ' + (dr.step === "day0" ? "First emails go out Tuesday to Thursday." : "Not a sending day.") + " Save it now: it can go out " + esc(oxWhen(dr.send_on)) + ". It waits in My follow-ups.</div>" : "") +
+        (dr.can_send_today === false ? '<div class="ox-wait">✋ That’s today’s ' + esc(String(S.ox.kpi.daily)) + " first emails (it keeps your Gmail safe from spam filters). Save it and send it tomorrow.</div>" : dr.step === "day0" && dr.best_day === false && S.ox.can_send ? '<p class="muted small">💡 Tip: Tuesday to Thursday usually get more replies. You can still send it now.</p>' : "") +
         '<div class="actions">' + cancel + '<button type="button" class="btn ghost" data-a="pbSaveDraft">' + (S.ox.can_send ? "Save draft" : "Save draft for Jesús") + "</button>" +
         (S.ox.can_send && dr.can_send_today !== false ? '<button class="btn" type="submit">Send from my Gmail ✉️</button>' : !S.ox.can_send ? '<span class="muted small">Jesús sends it from his Gmail.</span>' : "") + "</div></form>";
     }
@@ -6511,8 +6511,9 @@
   root.addEventListener("submit", function (e) {
     var f = e.target; if (!f.matches || !/^ox/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal || {}, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
+    if (f.dataset.form === "oxMail" && m.draft && m.draft.holiday && !m.anyday) { e.preventDefault(); return sure("It’s a holiday week (Nov 25–27 or Dec 24–Jan 1). Send it anyway?", function () { m.anyday = true; f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true })); }, "Send anyway"); }
     if (f.dataset.form === "oxMail") return run(btn, async function () {
-      var r = await call("oxSend", { key: m.key, firm_id: m.firm_id, contact_id: (m.draft && m.draft.to === g("to") ? m.draft.contact_id : "") || "", project_id: g("project"), to: g("to"), subject: g("subject"), body: g("body"), step: m.draft.step, alert_id: m.alert || "" });
+      var r = await call("oxSend", { key: m.key, anyday: !!m.anyday, firm_id: m.firm_id, contact_id: (m.draft && m.draft.to === g("to") ? m.draft.contact_id : "") || "", project_id: g("project"), to: g("to"), subject: g("subject"), body: g("body"), step: m.draft.step, alert_id: m.alert || "" });
       S.modal = null; toast(m.draft.step === "day0" ? "✉️ Sent! Next: LinkedIn on day 3" : "✉️ Sent"); S.oxBusy = 0; oxLoad(); keepScroll(render); return r;
     });
     if (f.dataset.form === "oxCall") return run(btn, function () { return call("oxTouch", { firm_id: m.firm_id, channel: "call", step: "day7", outcome: g("outcome"), summary: g("summary") }).then(function () { S.modal = { type: "lsxOxFirm", id: m.firm_id }; toast("📞 Call logged"); S.oxBusy = 0; oxLoad(); }); });

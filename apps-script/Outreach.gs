@@ -8,7 +8,8 @@
    - Excluded firms (competitors, demo trades, partners Jesús handles himself) get no outreach; "do not call" skips calls.
    - On a shared project the warm firm goes first: cold outreach on it waits until the warm firm's email is
      3+ business days old or they replied.
-   - New first emails: at most 10 a day, Tuesday to Thursday. Nothing goes out Nov 25-27 or Dec 24 - Jan 1.
+   - New first emails: at most 10 a day. Jesús can send any day; Tuesday to Thursday is only a tip (more replies).
+     Holiday weeks (Nov 25-27, Dec 24 - Jan 1) ask him to confirm first.
    - The portal writes every email; Jesús reads it and taps Send. Follow-ups wait for his tap too, and stop
      the moment the firm replies (we look in his Gmail).
    - RocketReach lookups cost credits: the cost is shown before a batch, nothing runs without a confirm,
@@ -375,6 +376,23 @@ function oxStagePhrase(p) {
   if (!st) st = /issued|final/.test(raw) ? "4" : /approv/.test(raw) ? "3" : /review|asrb|adrb|ascc|hearing|scheduled/.test(raw) ? "1" : /applied|submitted|plan check|pending/.test(raw) ? "2" : "";
   return { "1": "is going through design review", "2": "just had " + kw + "permits filed", "3": "just got planning approval", "4": "just had " + kw + "permits issued" }[st] || "is moving";
 }
+/* Our portfolio: the public project pages on bluesierracorp.com/projects/… (location from each page). First emails to firms
+   that haven't worked with us name one or two real projects, nearest first (same town, then the same part of the Peninsula). */
+var OX_SITE = "https://www.bluesierracorp.com/projects/";
+var OX_WORK = [["eucalyptus", "Eucalyptus", "Hillsborough"], ["pinehill-residence", "Pinehill Residence", "Hillsborough"], ["chiltern-residence", "Chiltern Residence", "Hillsborough"], ["rose-residence", "Rose Residence", "Hillsborough"],
+  ["bates", "the Bates residence", "Hillsborough"], ["atherton-complex", "the Atherton Complex", "Atherton"], ["barron-ave", "Barron Ave", "Palo Alto"], ["enchanted-hotel", "the Enchanted Hotel", "Los Altos"], ["shirley", "the Shirley residence", "Los Altos"]];
+var OX_AREA = { north: ["Hillsborough", "Burlingame", "San Mateo", "Unincorporated San Mateo Co."], mid: ["Atherton", "Menlo Park", "Woodside", "Portola Valley", "Palo Alto", "Redwood City"],
+  south: ["Los Altos", "Los Altos Hills", "Cupertino", "Saratoga", "Los Gatos", "Monte Sereno", "Unincorporated Santa Clara Co."] };
+var OX_WORK_SAY = { one: ["We've done several projects around here, including {n1} in {t1}. Here's that one: {url}", "We've built several projects around here, like {n1} in {t1}: {url}"], same: ["We've done several projects in {town}, like {n1} and {n2}. Here's one: {url}", "We've built several projects in {town}, including {n1} and {n2}: {url}"],
+  near: ["We've done several projects nearby, including {n1} in {t1}: {url}", "We've built several projects around here, like {n1} in {t1}: {url}"],
+  any: ["We've done several projects around the Peninsula, like {n1} in {t1} and {n2} in {t2}. Here's one: {url}", "We've built several projects on the Peninsula, including {n1} in {t1} and {n2} in {t2}: {url}"] };
+function oxAreaOf(t) { for (var k in OX_AREA) if (OX_AREA[k].indexOf(t) > -1) return k; return ""; }
+function oxWorkLine(town, seed) {
+  var rot = function (l) { var i = Math.abs(oxPick(l.map(function (x, j) { return j; }), seed, "work")) % (l.length || 1); return l.slice(i).concat(l.slice(0, i)); };
+  var same = rot(OX_WORK.filter(function (w) { return w[2] === town; })), area = oxAreaOf(town), near = rot(OX_WORK.filter(function (w) { return w[2] !== town && area && oxAreaOf(w[2]) === area; }));
+  var pick = same.length >= 2 ? ["same", same[0], same[1]] : same.length ? ["one", same[0], same[0]] : near.length ? ["near", near[0], near[0]] : ["any", OX_WORK[0], rot(OX_WORK.filter(function (w) { return w[2] !== "Hillsborough"; }))[0]];
+  return oxFill(oxPick(OX_WORK_SAY[pick[0]], seed, "worksay"), { town: town, n1: pick[1][1], n2: pick[2][1], t1: pick[1][2], t2: pick[2][2], url: OX_SITE + pick[1][0] }).replace(/^(.)/, function (c) { return c.toUpperCase(); });
+}
 /* The phrase bank: pieces written in Jesús's own voice (from his emails), combined differently on every "Rewrite".
    Always: greeting, blank line, one short paragraph with the street(s), one ask, the site walk. No sign-off (the signature
    goes under it). No API: the same firm + the same number always gives the same email, so nothing repeats by accident. */
@@ -398,13 +416,15 @@ function oxPick(list, seed, salt) { var h = 2166136261, str = String(seed) + "|"
 function oxFill(t, v) { return String(t).replace(/\{(\w+)\}/g, function (m, k) { return v[k] != null ? v[k] : ""; }); }
 function oxCompose(step, v, seed) {
   var pk = function (k) { return oxPick(OX_BANK[k], seed, k); }, hi = v.first ? (v.familiar && oxPick([0, 1, 1], seed, "hey") ? "Hey " : "Hi ") + v.first + "," : "Hi there,", parts = [];
-  if (step === "ask") parts = [pk("open"), pk("inbox"), pk("pitch"), pk("close")];
+  var wk = "";
+  if (step === "ask") { wk = v.work ? oxWorkLine(v.town, seed) : ""; parts = [pk("open"), pk("inbox"), wk ? "" : pk("pitch"), pk("close")]; }
   else if (step === "reply") parts = [pk("thanks"), pk("plans"), pk("close")];          // after a conversation: ask for the plans             // a general inbox: one practical question
   else if (step === "day14") parts = [oxPick(OX_BANK.open.slice(0, 4).concat(["", "", "", ""]), seed, "o14"), pk("follow"), pk("followAsk"), pk("close")];
   else if (step === "again") parts = [pk("open"), pk("again"), oxFill(pk("ask"), { scope: v.scope, either: "" }), pk("close")];
-  else parts = [pk("open"), v.familiar ? pk("known") : v.cold ? pk("intro") : "", v.b ? pk("two") : pk("one"), pk("ask"), pk("close")];
+  else { wk = v.work ? oxWorkLine(v.town, seed) : "";                                 // new firms: a few real projects from our portfolio, with a link (its own short paragraph)
+    parts = [pk("open"), v.familiar ? pk("known") : v.cold && !wk ? pk("intro") : "", v.b ? pk("two") : pk("one"), pk("ask"), pk("close")]; }
   var text = parts.filter(Boolean).map(function (x) { return oxFill(x, v); }).join(" ").replace(/\s+/g, " ").trim();
-  return hi + "\n\n" + text;
+  return hi + "\n\n" + text + (wk ? "\n\n" + wk : "");
 }
 ACTIONS.oxDraft = function (me, b) {
   oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
@@ -420,7 +440,7 @@ ACTIONS.oxDraft = function (me, b) {
     .sort(function (x, y) { return (Number(y.fit) || 0) - (Number(x.fit) || 0) || ("ABC".indexOf(x.priority) - "ABC".indexOf(y.priority)) || (x.date < y.date ? 1 : -1); })[0] : null;
   var prev = rows("OxOutbox").filter(function (m) { return m.firm_id === f.id && m.status === "sent" && m.step === "day0"; }).slice(-1)[0];
   var subject = step === "day14" && prev ? (/^re:/i.test(prev.subject) ? prev.subject : "Re: " + prev.subject) : oxStreetName(p) + (q ? " / " + oxStreetName(q) : "");
-  var v = { first: first ? oxTitle(first) : "", familiar: f.segment === "warm" || f.segment === "known", cold: !f.segment || f.segment === "cold",
+  var v = { town: p.town, work: f.segment !== "warm", first: first ? oxTitle(first) : "", familiar: f.segment === "warm" || f.segment === "known", cold: !f.segment || f.segment === "cold",
     A: oxStreetFull(p) + " in " + p.town, A2: oxStreetFull(p) + " in " + p.town, stage: oxStagePhrase(p), B: q ? oxStreetFull(q) + (q.town === p.town ? "" : " in " + q.town) : "", b: !!q,
     addrA: oxStreetFull(p), scope: oxScope(p), either: q ? " on either one" : "" };
   var avoid = [].concat(b.avoid || []).map(String), n = Math.abs(Math.floor(Number(b.n) || 0)), body = "", k = 0;
@@ -428,8 +448,8 @@ ACTIONS.oxDraft = function (me, b) {
   if (reply) subject = (prev && !/^re:/i.test(prev.subject) ? "Re: " : "") + (prev ? prev.subject : oxStreetName(p) + " plans");
   do { body = oxCompose(ask ? "ask" : reply ? "reply" : step, v, f.id + "|" + (n + k)); k++; } while (avoid.indexOf(body) > -1 && k < 60);
   if (ask && prev) step = "again";                                                  // already emailed: the question goes as a new note, not a second "first email"
-  var sendOn = oxNextSendDay(step, oxToday());
-  return { send_on: sendOn, can_send_today: sendOn === oxToday(), ask: ask, subject: subject, body: body, n: n + k - 1, versions: 999, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, also: q ? { id: q.id, street: oxStreetFull(q), town: q.town } : null, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
+  var sendOn = oxToday(), sentToday = rows("OxOutbox").filter(function (m) { return m.status === "sent" && m.step === "day0" && String(m.sent_at).slice(0, 10) === sendOn; }).length;
+  return { send_on: sendOn, can_send_today: step !== "day0" || sentToday < OX_DAILY, best_day: oxNewEmailDay(sendOn), holiday: oxBlackout(sendOn), ask: ask, subject: subject, body: body, n: n + k - 1, versions: 999, to: ct ? ct.email : "", contact_id: ct ? ct.id : "", project_id: p.id, project: where, also: q ? { id: q.id, street: oxStreetFull(q), town: q.town } : null, step: step, notes: f.notes || "", flags: oxFlags(f), waiting: hold && hold.held.indexOf(p.id) > -1 ? hold.waiting_on : null };
 };
 NO_LOCK.oxDraft = 1;
 
@@ -530,14 +550,14 @@ ACTIONS.oxSend = function (me, b) {
   var fl = oxFlags(f), step = b.step === "day14" || b.step === "again" ? b.step : "day0", today = oxToday();
   if (fl.excluded) throw new Error(f.name + " is excluded from outreach.");
   if (fl.individual) throw new Error("First confirm " + f.name + " is a designer or engineer, not the owner.");
-  if (oxBlackout(today)) throw new Error("No outreach today (holiday blackout).");
+  if (oxBlackout(today) && !b.anyday) throw new Error("HOLIDAY: It's a holiday week (Nov 25-27 or Dec 24 - Jan 1). Send anyway?");
   var to = normEmail(b.to); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("Check the email address.");
   var ct = b.contact_id ? findBy("OxContacts", "id", String(b.contact_id)) : null; if (ct && ct.firm_id !== f.id) throw new Error("That contact belongs to another firm.");
   var subject = clean(b.subject, 160), text = clean(b.body, 3000); if (!subject || !text) throw new Error("Write a subject and a message.");
   var touches = rows("OxTouches").filter(function (x) { return x.firm_id === f.id; }), s = oxState(f, touches, today);
   if (step === "day0") {
     if (s.emailed) throw new Error("This firm already got its first email (" + s.day0 + "). Use the follow-up.");
-    if (!oxNewEmailDay(today)) throw new Error("New first emails go out Tuesday to Thursday.");
+    // any day works now: Tuesday to Thursday is only shown as a tip
     var block = oxHoldOf(f);
     if (block && (block.all || block.held.indexOf(String(b.project_id || "")) > -1) && !b.override) throw new Error("Wait: the warm contact on this project goes first (" + block.waiting_on.join(", ") + ").");
     var sentToday = rows("OxOutbox").filter(function (m) { return m.status === "sent" && m.step === "day0" && String(m.sent_at).slice(0, 10) === today; }).length;
@@ -557,7 +577,8 @@ ACTIONS.oxSend = function (me, b) {
 };
 /* The email as Gmail itself writes it: no forced font or size, a <div> per line, then the signature block. */
 function oxMailHtml(text, sig) {
-  var paras = String(text || "").replace(/\r/g, "").split(/\n\s*\n/).map(function (p) { return "<div>" + esc(p.trim()).replace(/\n/g, "<br>") + "</div>"; });
+  var link = function (h) { return h.replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '">' + u.replace(/^https?:\/\/(www\.)?/, "") + "</a>"; }); };
+  var paras = String(text || "").replace(/\r/g, "").split(/\n\s*\n/).map(function (p) { return "<div>" + link(esc(p.trim())).replace(/\n/g, "<br>") + "</div>"; });
   return '<div dir="ltr">' + paras.join("<div><br></div>") + (sig ? '<div><br></div><div><br></div><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">' + oxSigHtml(sig) + "</div>" : "") + "</div>";
 }
 /* Jesús's signature (Import & tools → Email signature). Stored on the server, not in the code. */
@@ -1361,7 +1382,7 @@ ACTIONS.oxProjLog = function (me, b) {
   return { touch: touch, brief: oxBrief(findBy("OxProjects", "id", p.id), oxCtx(today), me) };
 };
 /* A first email can be prepared any day; it goes out on the next allowed day (Tue to Thu for first emails). Staff prepare, Jesús sends. */
-function oxNextSendDay(step, today) { var d = today; for (var i = 0; i < 20; i++) { if (step === "day0" ? oxNewEmailDay(d) : oxWorkday(d)) return d; d = oxAdd(d, 1); } return d; }
+function oxNextSendDay(step, today) { return today; }                               // Jesús sends whenever he wants; drafts are for the team to prepare
 ACTIONS.oxSaveDraft = function (me, b) {
   oxNeed(me); var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found."); if (oxFlags(f).excluded) throw new Error(f.name + " is excluded from outreach.");
   var key = String(b.key || ""); if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new Error("Reload the portal and try again.");
