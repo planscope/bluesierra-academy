@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 msg="${1:-Update Blue Sierra Academy}"
-for f in academy-app.js academy-phone.js academy-workspace.js academy-content.js portal-app.js; do node --check "$f"; done
+for f in academy-app.js academy-content.js portal-app.js; do node --check "$f"; done
 
 # Stamp the portal's build so open portals notice a new version and refresh themselves when idle.
 build="$(date +%Y%m%d%H%M%S)"

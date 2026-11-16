@@ -10,8 +10,6 @@ The Webflow pages load these files from GitHub Pages (planscope.github.io/bluesi
 |---|---|
 | `academy.css` | Styles, all scoped to `#bs-academy` |
 | `academy-content.js` | Course content and settings (public: never put secrets here) |
-| `academy-phone.js` | Phone layer: RingCentral Embeddable when configured, otherwise tel: links |
-| `academy-workspace.js` | Workspace tab (shift clock, call queue, call/email, checked-off list) and Report tab (timesheet) |
 | `academy-app.js` | The portal engine |
 | `apps-script/Code.gs`, `apps-script/Workspace.gs` | Standalone Apps Script for the Setter Call List (calls, shifts, email, report) |
 | `portal.css`, `portal-app.js` | **/portal** (clients): project photos, updates, questions by email, invoices, messages, checklist |
