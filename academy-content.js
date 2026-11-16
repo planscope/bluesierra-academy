@@ -23,742 +23,490 @@ window.BSA_CONTENT = {
   "certification": "Setter Certification"
  },
  "course": {
-  "title": "Appointment Setter Certification",
+  "title": "Appointment Setter: Bid Lists and Plans",
   "roleLabel": "Appointment Setter",
   "passMark": 80,
-  "finalCount": 20,
+  "finalCount": 15,
   "finalPassMark": 85,
-  "acknowledge": "I completed this course. I will call only the firms on my portal list, never property owners, follow the do-not-call rule, log every call right after it, and never share prices or the internal project floor with a prospect.",
+  "acknowledge": "I completed this course. I will call only the firms on my portal list, never property owners, follow the do-not-call rule, log every call right after it, and never share prices or promise dates.",
   "modules": [
    {
-    "id": "m1",
-    "title": "Who Blue Sierra is",
-    "summary": "The company, the tagline and exactly what your job is.",
-    "duration": "~6 min · video 2:46",
-    "video": "https://drive.google.com/file/d/1z6FHwTOvDtWxKcRt9j3LjbwfgsziE7Yn/view",
+    "id": "s1",
+    "title": "Your one job",
+    "summary": "Why you're calling, what a win looks like, and how I measure it.",
+    "script": "Hey, it's Jesús. Welcome to Blue Sierra. I'm going to keep this short and real, because I want you on the phone, not stuck in training.\n\nHere's your one job. Every week, new homes and big remodels show up on permits and town agendas around the Peninsula and the South Bay. Each one has an architect, a builder, a landscape architect. Somebody on that team is going to collect prices for the site work and the landscape. I want Blue Sierra to be one of those prices.\n\nSo you call the firms on your list, and you go after two things. One: get us on the bid list for that property. Two: get the set of plans. That's it. When I have the plans and a bid date, I can win the job. Without the plans, I can't even start.\n\nA win is any of these. They say they'll send the plans. They say we're on the bid list. Or they tell you who is collecting the prices, usually the general contractor, with a name and a number. If they want to talk to me or walk the site, great, you can book me. But the meeting is a bonus, not the goal.\n\nYou are not selling. You don't quote prices, you don't promise dates, and you don't argue. You're the friendly person who makes sure our name gets on the list and the plans land in our inbox.\n\nEverything happens in the portal. You'll see your list, what to say for each property, and you'll log every call there. I read your notes every day. Your notes are your report.\n\nLast thing. Be persistent, but be nice. Most firms say yes to a second or third call when you're polite and specific. Let's go.",
     "points": [
-     "Blue Sierra Construction, Inc. is based at 652 Giguere Court, San José, CA 95133. Phone (408) 458-7917, info@bluesierracorp.com.",
-     "Founded in 2005. High-end site work, hardscape and landscape for Bay Area homes. Tagline: \"Crafting sites, one space at a time.\"",
-     "Licensed Class A (general engineering) and C-27 (landscaping): on a new home we can take the whole site, from grading, drainage, utilities and foundations to the hardscape and landscape.",
-     "Your role: call the design and building firms named on new permits and town agendas, get Blue Sierra on the bid list for that property, and book short meetings with our principal, Jesús Toto. You set meetings. You do not sell or quote."
+     "Your job: get Blue Sierra on the bid list for a specific property, and get the set of plans.",
+     "A win = they'll send the plans · we're on the bid list · they tell you who's collecting prices (name + number).",
+     "A meeting with Jesús is a bonus, not the goal.",
+     "Never quote prices, promise dates or argue. Log every call in the portal: your notes are your report."
     ],
     "quiz": [
      {
-      "q": "What is your job in this role?",
+      "q": "What is your main goal on each call?",
       "options": [
-       "Sell projects and send quotes",
-       "Get us on the bid list for specific properties and book meetings with Jesús",
-       "Manage job sites",
-       "Design landscapes"
+       "Book a meeting with Jesús",
+       "Get us on the bid list and get the set of plans",
+       "Give a price range",
+       "Sell our services"
       ],
       "answer": 1
      },
      {
-      "q": "When was Blue Sierra founded, and where is it based?",
+      "q": "Which of these counts as a win?",
       "options": [
-       "2010, Palo Alto",
-       "2005, Los Gatos",
-       "2005, San José",
-       "2015, San Francisco"
-      ],
-      "answer": 2
-     },
-     {
-      "q": "Which of these may you say to a prospect?",
-      "options": [
-       "Our prices or minimum job size",
-       "\"We're licensed Class A and C-27, so we can take the whole site\"",
-       "How we compare to a competitor",
-       "A start date"
+       "They say 'maybe later'",
+       "They tell you the GC is collecting prices, with a name and number",
+       "You leave a voicemail",
+       "They ask for a price"
       ],
       "answer": 1
      },
      {
-      "q": "A prospect asks something you don't know. What do you say?",
+      "q": "Where do you report your work?",
       "options": [
-       "Make your best guess",
-       "\"That's a great question for Jesús. It's a good reason for the 20 minutes.\"",
-       "Say you'll email a price",
-       "Hang up and call back later"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "What is Blue Sierra's tagline?",
-      "options": [
-       "\"Crafting sites, one space at a time.\"",
-       "\"Best in the Bay\"",
-       "\"Cheapest landscapes\"",
-       "\"Homes built fast\""
-      ],
-      "answer": 0
-     }
-    ]
-   },
-   {
-    "id": "m2",
-    "title": "What we build (and what we don't pursue)",
-    "summary": "The services we offer and the large packages this program goes after.",
-    "duration": "~7 min · video 2:46",
-    "video": "https://drive.google.com/file/d/1Fq376u1Ea1cdgLL-fI-2eKOUGjfoP4VB/view",
-    "points": [
-     "Site work: grading, drainage, utilities and foundations (Class A). Landscape: planting, irrigation (C-27).",
-     "Hardscape: driveways, walkways, walls, decorative concrete, masonry, paving. Outdoor living: pools, spas, kitchens.",
-     "We go after full site and landscape packages on custom homes, big remodels and pools. Each call is about a real property on a permit or agenda, so the scope comes from that permit.",
-     "New home → \"the site work and landscape\". Landscape permit → \"the landscape and hardscape\". Pool → \"the pool and the hardscape around it\". The portal writes this for you in What to say."
-    ],
-    "quiz": [
-     {
-      "q": "Which scope does this program pursue?",
-      "options": [
-       "Small driveways and patios",
-       "Large full site and landscape packages",
-       "Interior remodels",
-       "Roof repairs"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "A Los Gatos homeowner wants a new driveway and small patio and can meet next week. What do you do?",
-      "options": [
-       "Book it — any meeting counts",
-       "Do not book under this program; small homeowner hardscape is out of scope",
-       "Quote a price range and book",
-       "Add them to Calendly as \"hot\""
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which group includes pools, spas and kitchens?",
-      "options": [
-       "Softscape",
-       "Hardscape",
-       "Outdoor living",
-       "Site work"
-      ],
-      "answer": 2
-     },
-     {
-      "q": "What may you say about featured projects?",
-      "options": [
-       "Client names and project values",
-       "Only the titles: \"Atherton Complex,\" \"Palo Alto,\" \"Pinehill Residence\"",
-       "Budgets and timelines",
-       "Nothing about the website"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which of these is NOT in scope for you?",
-      "options": [
-       "Booking intro meetings",
-       "Verifying contact details",
-       "Promising a schedule to a prospect",
-       "Logging every touch"
-      ],
-      "answer": 2
-     }
-    ]
-   },
-   {
-    "id": "m3p",
-    "title": "Your call list (the portal)",
-    "summary": "Where your calls come from, the order, and who never shows up on your list.",
-    "duration": "~8 min",
-    "points": [
-     "Log in at bluesierracorp.com/portal with your work email and the code we send you. Your screen is Calls.",
-     "Each card is one firm and the property it's on: who to ask for (with their title), the phone to dial, the property, its permit stage, and why it's on your list today.",
-     "The order is set for you: promised callbacks first, then the follow-up call after Jesús's email (day 7), then firms Jesús emailed with no reply, then new firms from this week's permits and agendas.",
-     "Who never shows up: firms Jesús handles himself, do-not-call firms, firms that already replied or have a meeting booked, and property owners. Never call a firm that isn't on your list; tell Jesús if you think one is missing.",
-     "After no answer or a voicemail, the firm comes back in two work days. After five tries without talking to anyone, it leaves your list (email only from then on).",
-     "Before you dial, open the card: read the property, who's named on the permit and the earlier history. One minute, then call."
-    ],
-    "quiz": [
-     {
-      "q": "Where is your call list?",
-      "options": [
+       "A daily email",
+       "Your notes on each call in the portal",
        "A Google Sheet",
-       "The Calls screen in the portal (bluesierracorp.com/portal)",
-       "Your own notes",
-       "Calendly"
+       "A text to Jesús"
       ],
       "answer": 1
-     },
+     }
+    ],
+    "duration": "~5 min · listen 1:36",
+    "audio": "audio/academy/s1.mp3",
+    "listen": "1:36"
+   },
+   {
+    "id": "s2",
+    "title": "Who we are and what we bid",
+    "summary": "The few facts you can say, and how the scope changes with the project.",
+    "script": "Let me tell you who we are, so you can say it in one breath.\n\nBlue Sierra Construction. We're in San José, we started in 2005, and we build the outside of high-end homes on the Peninsula and in the South Bay. Site work, hardscape, pools and landscape.\n\nHere's the part that makes us different, and you can say it. We hold a Class A general engineering license and a C-27 landscape license. That means on a new home we can take the whole site: grading, drainage, utilities, foundations, then the hardscape and the landscape. One contractor for the whole outside. Architects and builders like that, because it's one less sub to chase.\n\nThe scope changes with the project, and the portal already writes it for you. A new home or a big remodel: we want the site work and the landscape. A landscape permit: the landscape and hardscape package, drainage and irrigation included. A pool: the pool and the hardscape around it.\n\nWhat you never say: prices, ranges, our minimum job size, how we compare to a competitor, or a start date. If someone asks what we charge, say: pricing depends on the scope, and Jesús prices it himself, that's why we'd love the plans. That's true, and it's a great reason to get the plans.\n\nIf they ask something you don't know, don't guess. Say: good question, let me get Jesús to answer that. Write it in your note, and I'll handle it.\n\nThat's all you need. Short, honest, and about their project.",
+    "points": [
+     "Blue Sierra Construction · San José · since 2005 · site work, hardscape, pools and landscape on high-end homes.",
+     "Class A + C-27: on a new home we can take the whole site, grading and foundations through the landscape.",
+     "Scope follows the permit: new home → site work and landscape; landscape → the landscape and hardscape package; pool → pool and hardscape around it.",
+     "Never: prices, ranges, minimums, competitors, start dates. 'Jesús prices it himself, that's why we'd love the plans.'"
+    ],
+    "quiz": [
      {
-      "q": "Which card comes first?",
+      "q": "What makes us different that you can say?",
       "options": [
-       "The newest permit",
-       "A callback you promised for today",
-       "Alphabetical order",
-       "The biggest firm"
+       "We're the cheapest",
+       "Class A and C-27: one contractor for the whole site",
+       "We can start next week",
+       "We have the most reviews"
       ],
       "answer": 1
      },
      {
-      "q": "A friend tells you about a great architect who isn't on your list. What do you do?",
+      "q": "Someone asks what we charge. You say:",
+      "options": [
+       "About $200 a square foot",
+       "Pricing depends on the scope and Jesús prices it himself, that's why we'd love the plans",
+       "We're cheaper than most",
+       "I'll email a price"
+      ],
+      "answer": 1
+     },
+     {
+      "q": "The permit is a pool. What do we want to bid?",
+      "options": [
+       "Only the planting",
+       "The pool and the hardscape around it",
+       "The whole house",
+       "Nothing"
+      ],
+      "answer": 1
+     }
+    ],
+    "duration": "~5 min · listen 1:34",
+    "audio": "audio/academy/s2.mp3",
+    "listen": "1:34"
+   },
+   {
+    "id": "s3",
+    "title": "Your list in the portal",
+    "summary": "Where your calls come from, the order, and who you never call.",
+    "script": "Now the portal. Log in at bluesierracorp.com slash portal with your work email. You'll see three tabs: Calls, What Jesús reached, and this Academy.\n\nCalls is your list, already in order. First, callbacks you promised. Then the follow-up call after I email a firm. Then firms I emailed that haven't answered. Then new firms from this week's permits and agendas. Don't re-sort it. Just start at the top.\n\nOpen a card before you dial. It tells you who to ask for and their title, the number, the property, what stage the permit is in, and why it's on your list today. Take one minute. Read the property and what's happened before. Then call.\n\nWhat Jesús reached shows every firm I've emailed or talked to lately. If you're not sure whether to call someone, look there first. If it says Jesús handles them himself, don't call.\n\nThe rules. You only call firms on your list. If a friend tells you about a great architect who isn't there, tell me, don't call them. We never, ever contact a property owner. Owners are on the permits, but they're off limits. And if someone asks you not to call again, mark Do not call. That's permanent.\n\nThe list takes care of timing for you. After no answer or a voicemail, the firm comes back in two work days. After five tries without talking to anyone, it leaves your list and I'll email them instead. When someone promises the plans, you set a check-back date, and the firm comes back to the top that day.\n\nCalling hours are eight to four Pacific, Monday to Friday. You call from the portal: tap Call on the card, and the RingCentral phone at the bottom right dials for you, with our business number. Never your personal phone. Calls are recorded so I can coach you, and the other person hears that at the start. When you hang up, the portal asks how it went.",
+    "points": [
+     "Log in at bluesierracorp.com/portal → Calls. Start at the top; don't re-sort.",
+     "Open the card first: who to ask for, the number, the property and its stage, the history. One minute, then dial.",
+     "Check 'What Jesús reached' if unsure. 'Jesús handles them himself' = don't call.",
+     "Only firms on your list. Never property owners. 'Do not call' is permanent.",
+     "No answer/voicemail → back in 2 work days · 5 tries → off your list · plans promised → back on your check-back date. Calls 8–4 PT, Mon–Fri: tap 📞 Call on the card, the portal's RingCentral phone dials. Calls are recorded for coaching."
+    ],
+    "quiz": [
+     {
+      "q": "A friend recommends an architect who isn't on your list. You:",
       "options": [
        "Call them today",
-       "Email them first",
-       "Tell Jesús; don't contact them",
-       "Add them yourself"
-      ],
-      "answer": 2
-     },
-     {
-      "q": "You left a voicemail. When does that firm come back?",
-      "options": [
-       "Tomorrow morning",
-       "In two work days, by itself",
-       "Never",
-       "When you remember"
+       "Tell Jesús and don't call",
+       "Email them yourself",
+       "Add them to the list"
       ],
       "answer": 1
      },
      {
-      "q": "May you ever call a property owner named on a permit?",
+      "q": "May you call the property owner named on a permit?",
       "options": [
-       "Yes, if the firm doesn't answer",
-       "No, owners are never contacted",
-       "Only on weekends",
-       "Only by text"
-      ],
-      "answer": 1
-     }
-    ]
-   },
-   {
-    "id": "m4",
-    "title": "Qualifying: what counts as a meeting",
-    "summary": "The five checks a meeting must pass to count.",
-    "duration": "~9 min · video 2:49",
-    "video": "https://drive.google.com/file/d/14vyhvo5CkLVK1KyLbKcWl3r8kjTWRiGb/view",
-    "points": [
-     "A call is a WIN when one of these happens: they put us on the bid list for that property, they tell us who is collecting prices (a referral), they'll send plans, or they agree to meet Jesús.",
-     "A meeting COUNTS only if all five are true:",
-     "1) The firm is an architect, landscape architect, designer, developer or builder doing residential work.",
-     "2) It has active or upcoming projects on the Peninsula or in the South Bay (the portal shows them).",
-     "3) The contact is a decision maker or influencer: principal, PM, project architect or estimator.",
-     "4) The project fits our full site and landscape scope.",
-     "5) They accepted the calendar invite for a specific date and time (the portal sends it from Jesús's calendar).",
-     "A lead is HOT when the property goes out to bid within 6 months."
-    ],
-    "quiz": [
-     {
-      "q": "Which item is NOT one of the qualification criteria?",
-      "options": [
-       "Decision maker at a residential architect / LA / developer / builder firm",
-       "Real or upcoming Peninsula or South Bay project in our large-package scope",
-       "The contact has already approved a budget for Blue Sierra",
-       "They accepted a specific date and time"
-      ],
-      "answer": 2
-     },
-     {
-      "q": "May you tell a prospect \"we only take jobs over our minimum size\"?",
-      "options": [
-       "Yes, it saves time",
-       "No — the floor is internal; qualify with discovery; Jesús discusses fit",
-       "Yes, if they ask about size",
-       "Only in voicemail"
+       "Yes, if the architect doesn't answer",
+       "No, never",
+       "Only by text",
+       "Only on weekends"
       ],
       "answer": 1
      },
      {
-      "q": "When is a lead \"hot\"?",
+      "q": "Someone promised to send plans by Thursday. What happens in the portal?",
       "options": [
-       "When they answer on the first ring",
-       "When their project goes out to bid within 6 months",
-       "When they are a homeowner",
-       "When they ask for a price"
+       "Nothing",
+       "You set a check-back date and the firm comes back to the top that day",
+       "You call them every day",
+       "You delete them"
       ],
       "answer": 1
      },
      {
-      "q": "Which contact counts as a decision maker or influencer?",
+      "q": "How do you make a call?",
       "options": [
-       "Front-desk receptionist",
-       "Project architect",
-       "A homeowner's neighbor",
-       "An intern with no project role"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "When does a booked meeting count?",
-      "options": [
-       "When they say \"maybe\"",
-       "After they accept the calendar invite for a specific date and time",
-       "When you send the Calendly link",
-       "When you log the call"
+       "From your personal cell",
+       "Tap 📞 Call on the card: the portal's RingCentral phone dials with our number",
+       "Email them instead",
+       "From any free app"
       ],
       "answer": 1
      }
-    ]
+    ],
+    "duration": "~5 min · listen 2:01",
+    "audio": "audio/academy/s3.mp3",
+    "listen": "2:01"
    },
    {
-    "id": "m5",
-    "title": "The call: openers, reason, discovery, the ask",
-    "summary": "Opener, reason, discovery and asking for the meeting.",
-    "duration": "~9 min · video 2:47",
-    "video": "https://drive.google.com/file/d/1HCqbChkl_XvRcCqBrchSCpc_72vCIfx0/view",
+    "id": "s4",
+    "title": "The call: bid list and plans",
+    "summary": "Front desk, the right person, the two asks, and what to write down.",
+    "script": "Here's how the call goes. The card gives you the exact words, but this is the flow.\n\nIf the front desk answers: hi, this is your name with Blue Sierra Construction. Is Pat in? It's about 10 Oak Lane. If there's no name on the card, ask: who handles the bid lists for your projects? Be friendly with the front desk. They decide whether you get through.\n\nWhen you get the right person: hi Pat, this is your name with Blue Sierra Construction. I'm calling about 10 Oak Lane in Woodside. I saw it's going through design review. Then one line about us: we're licensed Class A and C-27, so we can take the whole site.\n\nThen the two asks. First: who's putting together the bid list for the site work and landscape? We'd love to be on it. Second: could you send me the plan set so we can put a number together? What's the best email for it? And when are bids due?\n\nNow listen. Very often the architect says, the GC is collecting prices. Perfect. That's a win. Ask which GC, the person, their title, and their number or email. Then log it as Sent us to who's collecting prices, and that firm lands on your list.\n\nWrite down everything they give you. A name, a title, an email, a phone, the bid due date, a plans link. Exact words are gold for me.\n\nIf they want to talk to me or walk the site, book me from the card. Pick one of my free times and type their email. The invite goes out from my calendar.\n\nBefore you hang up: thank them, and repeat what happens next. Great, I'll look for the plans Monday. Short and clear.",
     "points": [
-     "Every card has What to say, written for that property: the front desk line, your opener, why you're calling, the one-line pitch (with our licenses), the bid-list ask, the meeting ask and the voicemail.",
-     "Flow: opener → the property → ask who's collecting prices for it / to be on the bid list → if it fits, ask for 15 minutes with Jesús → handle the objection, then ask again.",
-     "Front desk: \"Hi, this is [Setter] with Blue Sierra Construction. Is [name] in? It's about [street].\" If nobody is named: \"Who handles the bid lists for your projects?\"",
-     "Value points (use only these): one contractor for the whole site (Class A + C-27); built to the design team's drawings; since 2005; local and responsive."
+     "Front desk: 'Is Pat in? It's about 10 Oak Lane.' No name? 'Who handles the bid lists for your projects?'",
+     "Opener: your name, Blue Sierra, the property, its stage. One line: Class A + C-27, the whole site.",
+     "Ask 1: 'Who's putting together the bid list? We'd love to be on it.' Ask 2: 'Could you send me the plan set? Best email? When are bids due?'",
+     "'The GC is collecting prices' = a win: get the GC, the person, title and number.",
+     "Write down exact details. Meeting or site walk? Book Jesús from the card. Close by repeating the next step."
     ],
     "quiz": [
      {
-      "q": "What is the correct call flow?",
+      "q": "What are the two asks on every call?",
       "options": [
-       "Price → Opener → Ask",
-       "Opener → Reason → Qualify → Ask → Objections, then ask again",
-       "Ask → Hang up",
-       "Email only"
+       "A meeting and a budget",
+       "To be on the bid list, and the set of plans",
+       "A referral and a review",
+       "A deposit and a date"
       ],
       "answer": 1
      },
      {
-      "q": "How many discovery questions should you ask?",
+      "q": "The architect says 'the GC is collecting prices'. You:",
       "options": [
-       "None",
-       "2–4, asked naturally",
-       "All six, read as a list",
-       "Only one about price"
+       "Thank them and hang up",
+       "Ask which GC, the person and their number, and log it as a referral",
+       "Ask for the owner's number",
+       "Argue that we work with architects"
       ],
       "answer": 1
      },
      {
-      "q": "How do you ask for the meeting?",
+      "q": "How do you end the call?",
       "options": [
-       "Send a link and hope",
-       "Offer two of Jesús's free times from the portal",
-       "Ask them to call Jesús",
-       "Offer any time, even weekends"
+       "Just hang up",
+       "Thank them and repeat what happens next",
+       "Ask for a 5-star review",
+       "Promise a start date"
       ],
       "answer": 1
-     },
-     {
-      "q": "Which is an approved value point?",
-      "options": [
-       "\"We're cheaper than everyone\"",
-       "\"One contractor for the whole site\"",
-       "\"We have 5-star reviews\"",
-       "\"We can start next week\""
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Your opener must NOT include:",
-      "options": [
-       "Your name and Blue Sierra Construction",
-       "The property you're calling about",
-       "Prices or our internal minimum project size",
-       "A short ask about the bid list"
-      ],
-      "answer": 2
      }
-    ]
+    ],
+    "duration": "~5 min · listen 1:43",
+    "audio": "audio/academy/s4.mp3",
+    "listen": "1:43"
    },
    {
-    "id": "m6",
-    "title": "Objections (with the call simulator)",
-    "summary": "The four objections you will hear most, plus the call simulator.",
-    "duration": "~8 min · video 2:38",
-    "video": "https://drive.google.com/file/d/1usbUmy0CqP-XSLCtT4XdiN9Q4AL2kWSE/view",
+    "id": "s5",
+    "title": "Objections and following up",
+    "summary": "The five things people say, and how to keep the door open.",
+    "script": "You'll hear the same five things over and over. Here's what to say.\n\nOne. Just send me an email. Happy to. What's the best address? And could you send the plans to that same email when they're ready? Then log it, and if they asked for info, write a follow-up email from the card. It goes to me, I check it, and I send it.\n\nTwo. We already have a landscape contractor. Makes sense, most firms do. A second number helps when your go-to is booked or a client wants another price. Could we be on the list for this one?\n\nThree. It's too early, no plans yet. No problem. When do you think they'll be ready? Set a check-back date in the portal. Early is good. It means we're first in line.\n\nFour. The GC picks the subs. Totally fine. Who's the GC on this one, and who should I talk to there? That's a referral, and it's a win.\n\nFive. What do you charge? Pricing depends on the scope, and Jesús prices it himself. That's exactly why we'd love the plans.\n\nAfter any objection, ask one more time, nicely. Then stop. Never push, never argue, never talk bad about anybody.\n\nVoicemail: live, short, under twenty-five seconds. The card has the words. Never a recorded message and never an AI voice.\n\nFollowing up is where you win. If they promised plans and nothing came, call on the check-back date: hi Pat, just checking on the plans for 10 Oak Lane. If they invited us but there's no plan set, call back for it. Most of my best jobs came on the third or fourth touch.",
     "points": [
-     "\"Just send me an email.\" → Get the address, then suggest a tentative 20 minutes so it doesn't get buried.",
-     "\"We already have a landscape contractor.\" → \"Makes sense. Most firms we talk to do. A second trusted option helps when your go-to is booked or a bid needs another number.\"",
-     "\"No projects right now.\" → Ask when the next one goes to bid; log a follow-up date.",
-     "\"What do you charge?\" → \"Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.\"",
-     "\"The GC is collecting the prices, not us.\" → Thank them, ask which GC and who there (name, title, phone or email), then log it as a referral. That GC shows up on your list with the contact."
+     "'Just email me' → get the address, ask them to send the plans there too; write the follow-up from the card (Jesús sends it).",
+     "'We have a landscape contractor' → a second number helps when they're booked or the client wants another price.",
+     "'Too early' → when will plans be ready? Set a check-back date. Early = first in line.",
+     "'The GC picks' → who's the GC and who there? That's a referral. 'What do you charge?' → Jesús prices it, that's why we want the plans.",
+     "Ask once more, then stop. Live voicemail under 25 s. The win is in the follow-up: 3rd and 4th touches."
     ],
     "quiz": [
      {
-      "q": "A prospect asks \"What do you charge?\" Best answer?",
-      "options": [
-       "Give a rough range",
-       "\"Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.\"",
-       "\"We're the cheapest\"",
-       "\"Only big jobs, over our minimum\""
-      ],
-      "answer": 1
-     },
-     {
-      "q": "\"The GC picks the subs, not us.\" What do you do?",
-      "options": [
-       "Call every GC you can find",
-       "Ask which GC and who there, and log it so it lands on your list",
-       "End the call",
-       "Argue with them"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "\"No projects right now.\" Best response?",
+      "q": "'It's too early, there are no plans yet.' You:",
       "options": [
        "Hang up",
-       "Ask when the next one goes to bid and log a follow-up date",
-       "Push for a meeting this week anyway",
+       "Ask when they'll be ready and set a check-back date",
+       "Push for a meeting this week",
        "Offer a discount"
       ],
       "answer": 1
      },
      {
-      "q": "A landscape architect asks if we compete with them. Answer?",
+      "q": "'We already have a landscape contractor.' Best answer:",
       "options": [
-       "\"Yes, we design too\"",
-       "\"We're the builder. We build to your drawings…\"",
-       "\"No comment\"",
-       "\"Only on small jobs\""
+       "We're better than them",
+       "A second number helps when your go-to is booked or the client wants another price",
+       "Who is it? We'll beat them",
+       "OK, bye"
       ],
       "answer": 1
      },
      {
-      "q": "After handling an objection you should:",
+      "q": "They promised plans and nothing came. What do you do?",
       "options": [
-       "Ask for the meeting again",
-       "Stop selling",
-       "Send a price",
-       "Mark it declined"
+       "Wait for them",
+       "Call on the check-back date and ask for the plans",
+       "Mark Do not call",
+       "Email the owner"
       ],
-      "answer": 0
+      "answer": 1
      }
-    ]
-   },
-   {
-    "id": "m7p",
-    "title": "Booking Jesús, phone and voicemail",
-    "summary": "Booking straight into Jesús's calendar, calling hours and voicemail.",
-    "duration": "~7 min",
-    "points": [
-     "Calling hours: 8:00 am–4:00 pm Pacific, Monday–Friday. No weekends.",
-     "Use your Blue Sierra RingCentral extension with the business number (408/650). Never your personal phone. Never block caller ID. The 📞 Call button on the card dials it.",
-     "They want to meet? Tap 📅 They want to meet? Book Jesús on the card. Pick a type (phone, video, at their office, site walk), the length and one of Jesús's free times. Only free times are shown (Mon–Fri, 9:00–4:30 PT, at least an hour ahead).",
-     "Type their email: the invite goes out from Jesús's Google Calendar right away (video calls get a Meet link). Add a note for Jesús: what they said, scope, bid date. The guest never sees your note.",
-     "Voicemail: live, under 25 seconds, use the voicemail line on the card. Never pre-recorded or AI voices.",
-     "After the meeting day, mark it Held ✓, No-show or Cancel in Upcoming meetings."
     ],
-    "quiz": [
-     {
-      "q": "How do you book a meeting?",
-      "options": [
-       "Send the Calendly link",
-       "📅 Book Jesús on the card: pick one of his free times and type their email",
-       "Text Jesús and wait",
-       "Promise a time and fix it later"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which phone and caller ID do you use?",
-      "options": [
-       "Personal cell, caller ID blocked",
-       "Your Blue Sierra RingCentral extension with the business number",
-       "Any free calling app",
-       "Your personal number"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "When may you call?",
-      "options": [
-       "Any time",
-       "8:00 am–4:00 pm Pacific, Monday–Friday",
-       "Weekends only",
-       "After 6 pm"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Who sees the note you write when booking?",
-      "options": [
-       "The guest",
-       "Only Jesús and the team",
-       "Everyone on the invite",
-       "Nobody"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Which voicemail is allowed?",
-      "options": [
-       "A pre-recorded message",
-       "An AI voice message",
-       "A short live voicemail under 25 seconds",
-       "No voicemail ever"
-      ],
-      "answer": 2
-     }
-    ]
+    "duration": "~5 min · listen 1:38",
+    "audio": "audio/academy/s5.mp3",
+    "listen": "1:38"
    },
    {
-    "id": "m8p",
-    "title": "Logging every call (it's your report)",
-    "summary": "One tap after every call. The portal keeps your numbers and Jesús's report.",
-    "duration": "~6 min",
+    "id": "s6",
+    "title": "Logging every call, and your day",
+    "summary": "One tap after every call, the wins to log, and a good day of calls.",
+    "script": "Last one. Logging. It takes ten seconds, and it's how I know what you did.\n\nRight after every call, before you dial the next one, tap how it went on the card. No answer. Voicemail. Front desk. Call back, with the day they gave you. Talked. Not interested. Wrong number. Do not call, only if they ask.\n\nAnd the wins, in green. They'll send the plans: put their email and a check-back date. We're on the bid list: the bid due date, what work, and the plans link if they sent one. Sent us to who's collecting prices: the firm, the person, their title and number, and when to call them.\n\nThen one line of note, in plain words. Pat said the GC is Ridge Builders, call Taylor Thursday. Or: front desk says Pat is out until the twentieth. If you learned a new name or email, put it in the note.\n\nIf they asked for info by email, write the follow-up email from the card. It comes to me, I read it, and I send it from my email. You never send emails from your own account.\n\nA good day looks like this. Clock in at the top of your screen when you start. Open What Jesús reached for two minutes. Then work your list from the top, between eight and four. Every call logged the same minute. Clock out when you stop. At the end of the day, I can read your notes and know exactly where every job stands.\n\nThe portal counts your calls, conversations and meetings, and I see them. I care most about plans and bid invitations. Those are the ones that turn into work.\n\nThat's the whole job. Take the drill and the call simulator, pass the final, and send me your certification. Then make your first calls. Thank you for being on the team.",
     "points": [
-     "After every call, log how it went on the card before you dial the next one: No answer · Left a voicemail · Talked to the front desk · Call back (pick the day) · Talked · Not interested · Wrong number · Do not call. Booking a meeting logs it for you.",
-     "Write one line of note: who you spoke to and what they said (\"Sam says the GC is Ridge Builders, call Taylor Thursday\").",
-     "Call back = a date they gave you. The firm comes back to the top of your list that day.",
-     "Do not call is permanent. Use it only when they ask you not to call again.",
-     "The portal counts your calls, conversations and meetings for today and this week, and Jesús sees them. No spreadsheet, no separate daily report; your notes are the report.",
-     "If you learn a new contact (name, title, email, phone), add it in the note so Jesús can save it."
+     "After every call, before the next dial: tap the result. 'Do not call' only if they ask.",
+     "Wins (green): plans coming → their email + check-back date · on the bid list → due date, work, plans link · referred → firm, person, title, number, call date.",
+     "One plain line of note: who, what they said, what's next. New names and emails go in the note.",
+     "Follow-up emails: write them from the card; Jesús reads and sends them. Never from your own account.",
+     "Your day: Clock in → 2 min on 'What Jesús reached' → your list top-down, 8–4 PT, every call logged the same minute → Clock out."
     ],
     "quiz": [
      {
       "q": "When do you log a call?",
       "options": [
-       "Right after the call, before the next dial",
-       "End of the day",
-       "End of the week",
-       "Only if they book"
+       "Right after it, before the next dial",
+       "At the end of the day",
+       "Friday",
+       "Only if it's a win"
       ],
       "answer": 0
      },
      {
-      "q": "They say \"call me back Thursday\". What do you log?",
+      "q": "They'll send the plans. What do you enter?",
       "options": [
-       "Talked",
-       "Call back, with Thursday's date",
-       "No answer",
-       "Nothing"
+       "Nothing",
+       "Their email and a check-back date",
+       "A price",
+       "The owner's name"
       ],
       "answer": 1
      },
      {
-      "q": "When do you use Do not call?",
+      "q": "They asked for info by email. You:",
       "options": [
-       "When nobody answers twice",
-       "Only when they ask not to be called again",
-       "When they're busy",
-       "Never"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "Where does Jesús see your numbers?",
-      "options": [
-       "In a sheet you update",
-       "In the portal, automatically from your logged calls",
-       "In a text you send",
-       "He doesn't"
-      ],
-      "answer": 1
-     },
-     {
-      "q": "A front desk gives you the estimator's name and email. What do you do?",
-      "options": [
-       "Forget it",
-       "Put it in the call note so it gets saved on the firm",
        "Email them from your personal account",
-       "Call the owner instead"
+       "Write the follow-up from the card; Jesús sends it",
+       "Ignore it",
+       "Text them"
       ],
       "answer": 1
      }
-    ]
+    ],
+    "duration": "~5 min · listen 1:44",
+    "audio": "audio/academy/s6.mp3",
+    "listen": "1:44"
    }
   ]
  },
  "drill": {
-  "title": "Qualify drill",
-  "afterModule": 3,
-  "passMark": 80,
-  "blurb": "12 real-looking prospects. Decide: book it, follow up, or don't book.",
+  "title": "Win or not?",
+  "afterModule": 4,
+  "passMark": 75,
+  "blurb": "8 quick situations. Is it a win, a follow-up, or don't call?",
   "choices": [
-   "Book it",
-   "Not yet: follow up",
-   "Do not book / do not contact"
+   "It's a win: log it",
+   "Not yet: set a follow-up",
+   "Don't call / not ours"
   ],
   "cards": [
    {
-    "prospect": "Residential architect, Palo Alto. Project architect on the phone. Full site and landscape package for a new home going to bid in 4 months. Accepts Tuesday 10:00 invite.",
+    "prospect": "Architect says: 'Sure, I'll email you the plan set Monday.'",
     "answer": 0,
-    "why": "All five criteria met, and bid within 6 months → book and note HOT."
+    "why": "Plans coming = a win. Log 'They'll send the plans' with their email and a check-back date."
    },
    {
-    "prospect": "Homeowner in Los Gatos wants a new driveway and small patio. Can meet next week.",
-    "answer": 2,
-    "why": "Homeowners and small hardscape are out of scope for this program."
-   },
-   {
-    "prospect": "Landscape architect, Menlo Park, on your list. Principal says they have estate projects but none going to bid until next year.",
-    "answer": 1,
-    "why": "Good fit, no near-term bid. Ask when the next goes to bid and log a follow-up date."
-   },
-   {
-    "prospect": "A builder you found on Instagram, not on your portal list, building in Atherton.",
-    "answer": 2,
-    "why": "Do-not-call rule: never contact firms that aren't on your list. Tell Jesús."
-   },
-   {
-    "prospect": "Developer on your list, Los Altos. Estimator wants to hear about grading, drainage, walls and planting for a spec home. Agrees to Thursday 2:00 and accepts the invite.",
+    "prospect": "Architect: 'The GC is Ridge Builders, talk to Taylor in estimating, 650-555-0199.'",
     "answer": 0,
-    "why": "Decision influencer, residential, Peninsula, full package, accepted invite."
+    "why": "Referral to who's collecting prices, with a name and number. Log it; Ridge lands on your list."
    },
    {
-    "prospect": "Architect on your list says \"Just email me,\" won't pick a time.",
+    "prospect": "Front desk: 'Pat is out until the 20th.'",
     "answer": 1,
-    "why": "Get the email, send the first follow-up the same day, log a Call back date. Not booked until a specific time is accepted."
+    "why": "Call back on the 20th. Log Call back with the date."
    },
    {
-    "prospect": "Commercial office tenant improvement firm in San Francisco asking about lobby planters.",
-    "answer": 2,
-    "why": "Not residential, not Peninsula/South Bay, not our large-package scope."
-   },
-   {
-    "prospect": "Contact on your list says they already work with Blue Sierra.",
-    "answer": 2,
-    "why": "Thank them, stop, note it. Jesús owns that relationship."
-   },
-   {
-    "prospect": "Custom-home builder on your list, Saratoga. PM says the GC picks subs but agrees to meet Jesús Friday 9:00 and accepts the invite; project goes to bid in 3 months.",
+    "prospect": "Builder: 'You're on the list. Bids due Dec 4. I'll send plans when they're final.'",
     "answer": 0,
-    "why": "PM is an influencer, residential South Bay, accepted invite, bid within 6 months → book and note HOT. Log GC names."
+    "why": "On the bid list with a date. Log it with the due date and a check-back date for the plans."
    },
    {
-    "prospect": "Front-desk receptionist at a listed architecture firm says \"sure, book something\" but has no project role.",
-    "answer": 1,
-    "why": "Not a decision maker. Ask who handles residential projects and reach that person."
+    "prospect": "The card says 'Jesús handles them himself'.",
+    "answer": 2,
+    "why": "Don't call. Jesús owns that relationship."
    },
    {
-    "prospect": "Landscape architect on your list says the next job is a stand-alone small backyard paver patio for a homeowner.",
-    "answer": 1,
-    "why": "That job is out of scope. Don't book it; ask about upcoming full site packages and follow up."
+    "prospect": "The homeowner's name is on the permit with a phone number.",
+    "answer": 2,
+    "why": "Never contact property owners."
    },
    {
-    "prospect": "Developer on your list, San José. Says \"sounds good, maybe sometime\" but won't accept a date.",
+    "prospect": "Landscape architect: 'Too early, plans in about three weeks.'",
     "answer": 1,
-    "why": "No specific date/time accepted → not a meeting yet. Offer two times again or set a follow-up."
+    "why": "Set a check-back date in three weeks. Early means first in line."
+   },
+   {
+    "prospect": "Architect: 'Please don't call us again.'",
+    "answer": 2,
+    "why": "Mark Do not call. It's permanent."
    }
   ]
  },
  "simulator": {
   "title": "Call simulator",
   "afterModule": 5,
-  "passMark": 80,
+  "passMark": 75,
   "bestPoints": 2,
-  "blurb": "A 6-step call with Dana, a residential architect in Palo Alto.",
-  "setup": "Call simulator · Dana, residential architect, Palo Alto (fictional)",
+  "blurb": "A 6-step call with Dana, an architect on 10 Oak Lane in Woodside (fictional).",
+  "setup": "Call simulator · Dana, architect, 10 Oak Lane, Woodside (fictional)",
   "them": "Dana",
   "steps": [
    {
-    "prompt": "Hello, this is Dana.",
+    "prompt": "Front desk: 'Dana Architects, how can I help?'",
     "options": [
      {
-      "text": "Hi Dana, this is [Setter] calling for Jesús Toto at Blue Sierra Construction in San José. We build large residential site and landscape packages with architects… I saw your residential work in Palo Alto. We'd love to be on the bid list for your new projects, and to set 15 minutes with Jesús. Do you have a minute?",
+      "text": "Hi, this is [Setter] with Blue Sierra Construction. Is Dana in? It's about 10 Oak Lane.",
       "points": 2,
-      "feedback": "Good: approved opener, city named, clear ask."
+      "feedback": "Clear, specific, friendly."
      },
      {
-      "text": "Hi, we do driveways and patios, want a quote?",
-      "points": -2,
-      "feedback": "Off-scope pitch and quoting are not allowed."
-     },
-     {
-      "text": "Hi, we only take jobs over our minimum size — do you have any?",
+      "text": "Hi, can I speak to the owner of the house on Oak Lane?",
       "points": -3,
-      "feedback": "Never say the internal floor or any price."
-     }
-    ]
-   },
-   {
-    "prompt": "Just send me an email.",
-    "options": [
-     {
-      "text": "Happy to. What's the best address? While I have you, should we put a tentative 20 minutes on the calendar so it doesn't get buried? You can always move it.",
-      "points": 2,
-      "feedback": "Exactly the playbook response."
+      "feedback": "Never ask for property owners."
      },
      {
-      "text": "OK, bye.",
+      "text": "We do landscaping, are you interested?",
       "points": -1,
-      "feedback": "You lost the chance to ask again."
-     },
-     {
-      "text": "Emails don't work, you need to meet now.",
-      "points": -2,
-      "feedback": "Pushy; stay friendly and suggest a tentative time."
+      "feedback": "Too vague. Name the person and the property."
      }
     ]
    },
    {
-    "prompt": "Honestly, we already have a landscape contractor we use.",
+    "prompt": "Dana: 'This is Dana.'",
     "options": [
      {
-      "text": "Makes sense. Most firms we talk to do. A second trusted option helps when your go-to is booked or a bid needs another number. Is 20 minutes worth it to have that bench?",
+      "text": "Hi Dana, this is [Setter] with Blue Sierra Construction. I'm calling about 10 Oak Lane in Woodside, I saw it's in design review. We're licensed Class A and C-27, so we can take the whole site.",
       "points": 2,
-      "feedback": "Model answer."
+      "feedback": "Property, stage, and the one line about us."
      },
      {
-      "text": "We're better than them.",
-      "points": -2,
-      "feedback": "No comparisons to competitors."
-     },
-     {
-      "text": "Who is it? We'll beat their price.",
+      "text": "Hi Dana, we're the cheapest landscaper in the Bay.",
       "points": -3,
-      "feedback": "No price talk, no competitor comparisons."
-     }
-    ]
-   },
-   {
-    "prompt": "What do you charge, anyway?",
-    "options": [
-     {
-      "text": "Pricing depends on each project's scope, and Jesús handles that directly. That's a good reason for the call.",
-      "points": 2,
-      "feedback": "Correct."
+      "feedback": "No price talk, no comparisons."
      },
      {
-      "text": "Usually a few hundred thousand.",
-      "points": -3,
-      "feedback": "Never give prices or ranges."
-     },
-     {
-      "text": "I'm not sure, maybe cheap?",
-      "points": -2,
-      "feedback": "Don't guess. Use the Jesús line."
-     }
-    ]
-   },
-   {
-    "prompt": "We do have a hillside home in Los Altos Hills going to bid in about four months.",
-    "options": [
-     {
-      "text": "Great. What scope usually comes up — grading and drainage, walls and paving, planting, a full site package? And who else should be in the meeting?",
-      "points": 2,
-      "feedback": "Good discovery; you also learned it's HOT (bid within 6 months)."
-     },
-     {
-      "text": "Perfect, Jesús can start next month.",
-      "points": -3,
-      "feedback": "Never promise schedules."
-     },
-     {
-      "text": "How big is the budget?",
-      "points": -1,
-      "feedback": "Avoid budget talk; ask about scope instead."
-     }
-    ]
-   },
-   {
-    "prompt": "Full site package. Our PM should join.",
-    "options": [
-     {
-      "text": "Would Tuesday at 10:00 or Wednesday at 2:00 work for 15 minutes with Jesús? Zoom, phone, or coffee near your office. What's the best email for the invite?",
-      "points": 2,
-      "feedback": "Two specific times, confirm email. Then book it in the portal (📅 Book Jesús) with a note: HOT, full site package, PM joining."
-     },
-     {
-      "text": "I'll send you a link, pick anything.",
+      "text": "Hi, do you have any projects?",
       "points": 0,
-      "feedback": "Offer two of Jesús's free times from the portal instead."
+      "feedback": "Weak. Name the property you're calling about."
+     }
+    ]
+   },
+   {
+    "prompt": "Dana: 'OK. What do you need?'",
+    "options": [
+     {
+      "text": "Who's putting together the bid list for the site work and landscape? We'd love to be on it.",
+      "points": 2,
+      "feedback": "Ask 1: the bid list."
      },
      {
-      "text": "How about Saturday?",
+      "text": "Can Jesús meet you this week?",
+      "points": 0,
+      "feedback": "The meeting is a bonus. Go for the bid list and the plans first."
+     },
+     {
+      "text": "What's the budget for the landscape?",
+      "points": -1,
+      "feedback": "Avoid budget talk."
+     }
+    ]
+   },
+   {
+    "prompt": "Dana: 'The GC is collecting prices on that one.'",
+    "options": [
+     {
+      "text": "Perfect, thank you. Which GC is it, and who should I talk to there? Do you have their number or email?",
+      "points": 2,
+      "feedback": "That's a referral: a win. Log it with the details."
+     },
+     {
+      "text": "Oh, OK. Bye.",
+      "points": -1,
+      "feedback": "You walked away from a win. Ask who the GC is."
+     },
+     {
+      "text": "We'd rather work with you directly.",
       "points": -2,
-      "feedback": "No weekends; only Jesús's free times in the portal."
+      "feedback": "Don't argue. Follow the path to who's collecting prices."
+     }
+    ]
+   },
+   {
+    "prompt": "Dana: 'Ridge Builders, Taylor in estimating. But I can send you the plan set too.'",
+    "options": [
+     {
+      "text": "That would be great. What's the best email for it, and do you know when bids are due?",
+      "points": 2,
+      "feedback": "Ask 2: the plans, the email and the due date."
+     },
+     {
+      "text": "No need, I'll get them from the GC.",
+      "points": -1,
+      "feedback": "Never turn down plans."
+     },
+     {
+      "text": "Can you send them today or we can't bid?",
+      "points": -2,
+      "feedback": "Pushy. Stay friendly."
+     }
+    ]
+   },
+   {
+    "prompt": "Dana: 'Sending them Monday. Bids are due December 4.'",
+    "options": [
+     {
+      "text": "Thank you, Dana. I'll look for the plans Monday and I'll reach out to Taylor. Have a great day.",
+      "points": 2,
+      "feedback": "Repeat the next step and close. Then log: plans coming (check back Tuesday) and the referral to Taylor."
+     },
+     {
+      "text": "Great, and how much do you think it'll cost?",
+      "points": -2,
+      "feedback": "No price talk."
+     },
+     {
+      "text": "Cool.",
+      "points": 0,
+      "feedback": "Close by repeating what happens next."
      }
     ]
    }
@@ -801,8 +549,8 @@ window.BSA_CONTENT = {
   "goals": {
    "ms": "goals",
    "label": "First 60 days targets",
-   "fallback": "40 firms/week · 10 conversations/week · 4–6 meetings/month",
-   "hint": "Every call logged the same minute · 75%+ show rate."
+   "fallback": "Every call logged the same minute · plan sets and bid invitations every week",
+   "hint": "Jesús sets the weekly numbers with you. Plans and bid invitations matter most."
   },
   "portal": {
    "ms": "portal-url",
@@ -877,43 +625,32 @@ window.BSA_CONTENT = {
    "detail": "Use your Blue Sierra extension. Test a call to Jesús."
   },
   {
+   "id": "academy",
+   "day": "Day 1",
+   "title": "Finish this Academy: 6 lessons, the drill, the simulator and the final",
+   "detail": "About 40 minutes. Then send your certification to Jesús."
+  },
+  {
    "id": "portal",
    "day": "Day 1",
-   "title": "Log in to the portal and open Calls",
-   "detail": "bluesierracorp.com/portal → your work email → the code. Open three cards and read What to say."
-  },
-  {
-   "id": "slots",
-   "day": "Day 1",
-   "title": "Open 📅 Book Jesús on any card and look at his free times",
-   "detail": "Don't book anything yet. Just see how it works."
-  },
-  {
-   "id": "course2",
-   "day": "Day 2",
-   "title": "Finish the course, the drill and the call simulator"
-  },
-  {
-   "id": "cert",
-   "day": "Day 2",
-   "title": "Pass the final certification exam",
-   "detail": "Required before your first prospect call."
+   "title": "Open Calls and read three cards",
+   "detail": "Who to ask for, the property, What to say. Look at 'What Jesús reached'."
   },
   {
    "id": "calls1",
-   "day": "Day 3",
+   "day": "Day 2",
    "title": "Make your first 10 calls from the top of your list (8 am–4 pm PT)",
-   "detail": "Log each one right after the call, with a one-line note."
+   "detail": "Log each one right after the call."
   },
   {
    "id": "review",
-   "day": "Day 3",
+   "day": "Day 2",
    "title": "Ask Jesús to read your first day's notes"
   },
   {
    "id": "week1",
    "day": "Day 5",
-   "title": "Week one: 40 firms touched, every call logged",
+   "title": "Week one: every call logged, at least one plan set or bid invitation",
    "detail": "Tell Jesús which firms you think are missing from your list."
   }
  ]

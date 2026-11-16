@@ -47,7 +47,7 @@
 
 /* Forms */
 #bs-portal label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
-#bs-portal input[type=text],#bs-portal input:not([type]),#bs-portal input[type=email],#bs-portal input[type=number],#bs-portal input[type=date],#bs-portal input[type=url],#bs-portal select,#bs-portal textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-width:0}
+#bs-portal input[type=text],#bs-portal input:not([type]),#bs-portal input[type=email],#bs-portal input[type=number],#bs-portal input[type=date],#bs-portal input[type=url],#bs-portal input[type=password],#bs-portal input[type=search],#bs-portal input[type=time],#bs-portal input[type=tel],#bs-portal select,#bs-portal textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-width:0}
 #bs-portal textarea{resize:vertical;min-height:84px}
 #bs-portal input:focus,#bs-portal select:focus,#bs-portal textarea:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
 #bs-portal .form{display:flex;flex-direction:column;gap:14px}
@@ -2557,3 +2557,21 @@
 #bs-portal .cl-reach .ox-row-t{gap:4px}
 #bs-portal .cl-reach-i{color:#3b342c}
 #bs-portal .cl-reach-i span:first-child{white-space:nowrap;color:#77736c}
+#bs-portal .cl-win-h{margin-top:12px}
+#bs-portal .cl-wins .chip{border-color:#bfe0c8}
+#bs-portal .cl-wins .chip.on{background:var(--ok);border-color:var(--ok);color:#fff}
+#bs-portal .cl-clock{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+#bs-portal .cl-clock>div{display:flex;flex-direction:column;gap:2px}
+#bs-portal .cl-clock.on{border-color:#bfe0c8;background:var(--ok-soft)}
+#bs-portal .cl-more{display:block;margin:10px auto 0}
+#bs-portal .cl-called{margin-top:16px}
+#bs-portal .cl-called summary{cursor:pointer;list-style:revert}
+#bs-portal .cl-called-r{padding:5px 0;border-bottom:1px dashed #eee6da}
+#bs-portal .cl-ck{color:var(--ok);font-weight:700}
+#bs-portal .cl-hours{margin:10px 0}
+#bs-portal .cl-hours-p{margin-top:8px}
+#bs-portal .cl-hours-t{margin-top:6px;font-size:13px}
+#bs-portal .cl-rec{display:block;width:100%;margin-top:6px}
+#bs-portal .cl-play{margin-left:6px}
+#bs-portal .rc-steps{padding-left:18px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+#bs-portal .rc-steps code{font-size:11px;word-break:break-all}

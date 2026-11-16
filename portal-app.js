@@ -135,7 +135,7 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { oxCalls: 1, oxCallSlots: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  var VIEWABLE = { oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
     if (S.viewAs) {
@@ -697,7 +697,7 @@
     admin: ["admin", "Admin", "Everything, plus permissions, #money, deleting projects and starting them over."],
     pm: ["pm", "Crew · PM / supervisor", "Field crew who lead: the projects you add them to (plans, schedule, photos, #crew chat) and their clock. No money unless you share Contract & billing with #pm."],
     labor: ["labor", "Crew · labor", "Only the clock: jobsite, activity, check in and out, and their own hours. No projects, chat, plans or routes."],
-    setter: ["setter", "Appointment setter", "Only the call list: the architects and builders to call, their numbers, what to say, and your free times to book meetings. No projects, chat, emails or money."]
+    setter: ["setter", "Appointment setter", "Calls, What Jesús reached and the Academy: who to call, what to say, logging plans and bid invitations, follow-up drafts for you to send, and your free times. No projects, chat or money."]
   };
   var PV_ROLES = ["client", "architect", "pm", "labor", "setter"];                                      // the people outside the office, as they really see the portal
   function roleChip(role, money) { var r = ROLES[role] || ROLES.client; return '<span class="tg tg-' + r[0] + '" title="' + esc(r[1] + ": " + r[2]) + '">#' + r[0] + "</span>" + (money && role !== "admin" ? '<span class="tg tg-money" title="Sees #money: what each job costs and makes">#money</span>' : ""); }
@@ -2676,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115230138";
+  var BUILD = "20261116001316";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6392,7 +6392,7 @@
       '<div class="card ox-ai"><h3>✨ AI email writer</h3>' + (d.ai && d.ai.on
         ? '<p>Connected. “Write email” starts with a fresh draft and “🔄 Rewrite” has Claude write another one. It only uses the firm, the first name, the street and town and the type of project. Owners are never sent.</p>' + (d.can_send ? '<button class="link small" data-a="oxAiOff">Disconnect</button>' : "")
         : '<p class="muted small">Off, and you don’t need it: “🔄 Rewrite” already mixes hundreds of phrasings in your own words, free and with no key. Only if you want Claude to write each email from scratch, paste an Anthropic API key (console.anthropic.com → API keys). It’s stored on the server, never shown again and never sent to browsers. About 1–2 cents per draft.</p>' + (d.can_send ? '<form class="form" data-form="oxAiKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects the AI writer.</p>')) + "</div>" +
-      oxCityCard(d) + '<details class="card ox-rr"' + (rr.on ? " open" : "") + '><summary><h3>💳 RocketReach <span class="muted small">optional · paid</span></h3></summary><p class="muted small">You don’t need it: “Find emails (free)” uses your Gmail, the firms’ websites and their email format. Connect it only if you want a paid backup.</p>' + (rr.on ? '<p>Connected' + (rr.credits != null ? " · <b>" + esc(String(rr.credits)) + "</b> lookup credits left" : "") + (rr.err ? ' · <span class="bad-t">' + esc(rr.err) + "</span>" : "") + '</p><p class="muted small">One lookup per firm (the principal, project architect or estimator). Firms with a verified email are skipped, nobody is looked up twice, and you see the cost before anything runs.</p>' +
+      oxCityCard(d) + rcCard(d) + '<details class="card ox-rr"' + (rr.on ? " open" : "") + '><summary><h3>💳 RocketReach <span class="muted small">optional · paid</span></h3></summary><p class="muted small">You don’t need it: “Find emails (free)” uses your Gmail, the firms’ websites and their email format. Connect it only if you want a paid backup.</p>' + (rr.on ? '<p>Connected' + (rr.credits != null ? " · <b>" + esc(String(rr.credits)) + "</b> lookup credits left" : "") + (rr.err ? ' · <span class="bad-t">' + esc(rr.err) + "</span>" : "") + '</p><p class="muted small">One lookup per firm (the principal, project architect or estimator). Firms with a verified email are skipped, nobody is looked up twice, and you see the cost before anything runs.</p>' +
         (d.can_send ? '<div class="actions" style="justify-content:flex-start;flex-wrap:wrap">' + (function () { var ids = d.firms.filter(function (f) { return !f.flag.excluded && !/no lookup/.test(f.flags || "") && f.status !== "removed" && oxProjOf(f.id).length && !oxHasDm(f); }).map(function (f) { return f.id; }); return ids.length ? '<button class="btn sm" data-a="oxEnrichGo" data-g="dm" data-ids="' + esc(ids.join(",")) + '">🎯 Decision-maker emails · ' + ids.length + " firms with only info@ or staff</button>" : ""; })() + ["1", "2", "3"].map(function (w) { return '<button class="btn ghost sm" data-a="oxEnrichWave" data-w="' + w + '">Pick from wave ' + w + "</button>"; }).join("") + '<button class="btn ghost sm" data-a="oxEnrichCheck">Check pending lookups</button><button class="link small" data-a="oxRrOff">Disconnect</button></div>' : "")
         : (d.can_send ? '<p class="muted small">Paste your RocketReach API key (rocketreach.co → Account → API). It’s stored on the server, never shown again and never sent to browsers.</p><form class="form" data-form="oxRrKey"><label class="f">API key<input type="password" name="key" autocomplete="new-password" required></label><div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Connect</button></div></form>' : '<p class="muted small">Jesús connects RocketReach.</p>')) + "</details>" +
       '<div class="card"><h3>📤 Export</h3><div class="actions" style="justify-content:flex-start;flex-wrap:wrap">' + ["projects", "firms", "contacts", "roles", "touches", "opportunities", "emails", "lookups"].map(function (t) { return '<button class="btn ghost sm" data-a="oxExport" data-t="' + t + '">' + t + ".csv</button>"; }).join("") + "</div></div></div>";
@@ -6627,6 +6627,7 @@
         m0.results = all; S.modal = m0; keepScroll(render); S.oxBusy = 0; oxLoad(); S.cl = null; }); }
     if (a === "oxGsGo") { S.oxGsBusy = 0; keepScroll(render); return oxGmailSync(true, false); }
     if (a === "oxEnrichCheck") return run(b, function () { return call("oxEnrichCheck", {}).then(function (r) { toast(r.updated ? r.updated + " lookup" + (r.updated > 1 ? "s" : "") + " finished" : "Nothing new yet"); S.oxBusy = 0; oxLoad(); }); });
+    if (a === "oxRcOff") return sure("Disconnect RingCentral from the portal? Calls already saved stay.", function () { call("oxRcSave", { off: true }).then(function (r) { S.rcAdm = r.rc; S.cl = null; toast("RingCentral disconnected"); keepScroll(render); }).catch(function (er) { toast(er.message); }); }, "Disconnect");
     if (a === "oxRrOff") return sure("Disconnect RocketReach? Contacts already found stay.", function () { oxDo(call("oxRrSave", { off: true }), "RocketReach disconnected"); }, "Disconnect");
     if (a === "oxCopyPrompt") { try { navigator.clipboard.writeText(oxGrokPrompt()); toast("Prompt copied. Paste it in Grok 🤖"); } catch (er) { toast("Select the text and copy it"); } return; }
     if (a === "oxExport") return run(b, function () { return call("oxExport", { table: b.dataset.t }).then(function (r) { var bl = new Blob(["﻿" + r.csv], { type: "text/csv" }), u = URL.createObjectURL(bl), l = document.createElement("a"); l.href = u; l.download = r.file; document.body.appendChild(l); l.click(); l.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000); }); });
@@ -6672,6 +6673,7 @@
     if (f.dataset.form === "oxFirmEdit") return run(btn, function () { return call("oxSaveFirm", { firm: { id: m.id, name: g("name"), website: g("website"), phone: g("phone"), firm_type: g("firm_type"), segment: g("segment"), wave: g("wave"), priority: g("priority"), notes: g("notes") } }).then(function () { S.modal = { type: "lsxOxFirm", id: m.id }; toast("Saved"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxSig") return run(btn, function () { return call("oxSigSave", { sig: { name: g("name"), title: g("title"), company: g("company"), email: g("email"), phone: g("phone"), fax: g("fax"), cell: g("cell"), website: g("website") } }).then(function () { toast("✍️ Signature saved"); S.oxBusy = 0; oxLoad(); }); });
     if (f.dataset.form === "oxAiKey") return run(btn, function () { return call("oxAiSave", { key: g("key") }).then(function () { toast("✨ AI writer connected"); S.oxBusy = 0; oxLoad(); }); });
+    if (f.dataset.form === "oxRc") return run(btn, function () { return call("oxRcSave", { rc: { client_id: g("client_id"), jwt_client_id: g("jwt_client_id"), jwt_secret: g("jwt_secret"), jwt: g("jwt") } }).then(function (r) { S.rcAdm = r.rc; S.cl = null; toast("📞 RingCentral saved"); keepScroll(render); }); });
     if (f.dataset.form === "oxRrKey") return run(btn, function () { return call("oxRrSave", { key: g("key") }).then(function () { toast("🔎 RocketReach connected"); S.oxBusy = 0; oxLoad(); }); });
   }, true);
   /* ====================== Calls: the appointment setter's screen (and Outreach → Calls for Jesús) ======================
@@ -6684,8 +6686,8 @@
     return {
       member: { id: me.email, auth: { email: me.email }, customFields: { "first-name": nm[0] || "", "last-name": nm.slice(1).join(" "), role: me.role === "admin" ? "Admin (preview)" : "Appointment Setter", "work-email": me.email } },
       load: function () { return call("acLoad", {}).then(function (r) { return r.data || null; }); },
-      save: function (d) { if (me.role === "admin") return Promise.resolve(); return call("acSave", { data: d }); },
-      certify: function (results) { if (me.role === "admin") return Promise.reject(new Error("This is your preview: nothing is sent.")); return call("acCertify", { results: results }); },
+      save: function (d) { if (me.role === "admin" || S.viewAs) return Promise.resolve(); return call("acSave", { data: d }); },
+      certify: function (results) { if (me.role === "admin" || S.viewAs) return Promise.reject(new Error("This is your preview: nothing is sent.")); return call("acCertify", { results: results }); },
       embedded: true
     };
   }
@@ -6695,10 +6697,12 @@
     var add = function (src) { return new Promise(function (ok, bad) { var sc = document.createElement("script"); sc.src = BASE + src + v; sc.onload = ok; sc.onerror = function () { bad(new Error("The Academy didn't load. Check your connection.")); }; document.body.appendChild(sc); }); };
     (window.BSA_CONTENT ? Promise.resolve() : add("academy-content.js")).then(function () { return window.BSA_START ? null : add("academy-app.js"); }).then(function () {
       AC.el = document.createElement("div"); AC.el.id = "bs-academy"; AC.el.className = "bsa-in-portal";
-      window.BSA_START(AC.el, acHost()); AC.ready = true; AC.loading = false; keepScroll(render);
+      AC.who = acWho(); window.BSA_START(AC.el, acHost()); AC.ready = true; AC.loading = false; keepScroll(render);
     }).catch(function (e) { AC.err = e.message; AC.loading = false; keepScroll(render); });
   }
+  function acWho() { return (S.me && S.me.email || "") + "|" + (S.viewAs || ""); }
   function acView() {
+    if (AC.ready && AC.who !== acWho()) { AC.el = document.createElement("div"); AC.el.id = "bs-academy"; AC.el.className = "bsa-in-portal"; AC.who = acWho(); window.BSA_START(AC.el, acHost()); }
     if (!AC.ready) { acLoadFiles(); return AC.err ? '<div class="card ls-incomplete">' + esc(AC.err) + "</div>" : '<div class="loading">Opening the Academy…</div>'; }
     setTimeout(function () { var slot = root.querySelector("[data-ac-slot]"); if (slot && AC.el && AC.el.parentNode !== slot) { slot.innerHTML = ""; slot.appendChild(AC.el); } }, 0);
     return '<div class="ac-slot" data-ac-slot>' + (AC.el && AC.el.parentNode ? "" : '<div class="loading">Opening the Academy…</div>') + "</div>";
@@ -6715,9 +6719,98 @@
   function clIsSetter() { return !!(S.me && (S.me.setter || S.me.role === "setter")); }
   function clDay(d) { var x = new Date(String(d).slice(0, 10) + "T12:00:00"); return isNaN(x) ? String(d || "") : x.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); }
   function clTime(t) { var m = String(t || "").match(/^(\d\d):(\d\d)/); if (!m) return String(t || ""); var h = +m[1]; return (h % 12 || 12) + ":" + m[2] + (h < 12 ? " am" : " pm"); }
+  /* ---------- RingCentral: the web phone inside the portal ---------- */
+  var RC = { loaded: false, ready: false, call: null, last: null };
+  function rcOn() { return !!(S.cl && S.cl.rc && S.cl.rc.on && !S.viewAs && !window.BSP_MOCK); }
+  function rcEnsure() {
+    if (!rcOn() || RC.loaded) return; RC.loaded = true; var rc = S.cl.rc;
+    var sc = document.createElement("script"); sc.id = "rc-adapter-script";
+    sc.src = "https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/adapter.js?clientId=" + encodeURIComponent(rc.clientId) + "&appServer=" + encodeURIComponent(rc.server);
+    document.body.appendChild(sc);
+  }
+  function rcFrame() { return document.querySelector("#rc-widget-adapter-frame"); }
+  function rcDial(phone, firmId) {
+    var fr = rcFrame(); if (!fr || !fr.contentWindow) { toast("The phone is still loading. Try again in a few seconds."); return false; }
+    var num = "+" + String(phone || "").replace(/\D/g, "").replace(/^(\d{10})$/, "1$1");
+    RC.call = { firm_id: firmId, to: num, at: new Date().toISOString(), session: "", t0: Date.now() };
+    fr.contentWindow.postMessage({ type: "rc-adapter-new-call", phoneNumber: num, toCall: true }, "*");
+    return true;
+  }
+  function rcSessionOf(c) { c = c || {}; return String(c.telephonySessionId || c.telephonySession && c.telephonySession.id || c.sessionId || c.partyData && c.partyData.sessionId || c.id || ""); }
+  window.addEventListener("message", function (e) {
+    var d = e.data; if (!d || typeof d.type !== "string" || d.type.indexOf("rc-") !== 0) return;
+    if (d.type === "rc-dialer-status-notify") { RC.ready = !!d.ready; return; }
+    var c = d.call || d.telephonySession || null; if (!RC.call) return;
+    if (/rc-call-(init|start)-notify|rc-active-call-notify|rc-telephony-session-notify/.test(d.type) && c) { var sid = rcSessionOf(c); if (sid && !RC.call.session) RC.call.session = sid; if (c.startTime && !RC.call.started) RC.call.started = c.startTime; }
+    var ended = d.type === "rc-call-end-notify" || (d.type === "rc-active-call-notify" && c && /disconnect|gone|finish|ended/i.test(String(c.telephonyStatus || c.callStatus || c.status || "")));
+    if (!ended) return;
+    if (c && !RC.call.session) RC.call.session = rcSessionOf(c);
+    RC.call.secs = Math.round((Date.now() - RC.call.t0) / 1000); RC.last = RC.call; RC.call = null;
+    var x = clItem(RC.last.firm_id) || (S.modal && S.modal.x), m = S.modal;
+    if (m && m.type === "lsxClCall" && m.firm_id === RC.last.firm_id) { toast("📞 Call ended. How did it go?"); return keepScroll(render); }
+    if (x) { S.modal = { type: "lsxClCall", firm_id: RC.last.firm_id, x: x, f: {} }; toast("📞 Call ended. How did it go?"); keepScroll(render); }
+  });
+  function rcFor(firmId) { var l = RC.last; return l && l.firm_id === firmId && Date.now() - l.t0 < 3 * 3600000 ? { session: l.session || "", to: l.to, at: l.started || l.at, secs: l.secs || 0 } : null; }
+  root.addEventListener("click", function (e) {                                  // the "📞 Call" buttons dial with the portal's phone when RingCentral is on
+    var a = e.target.closest && e.target.closest('a.cl-dial, a[data-a="clDialed"]'); if (!a || !root.contains(a) || !rcOn()) return;
+    var m = S.modal || {}, fid = a.dataset.f || m.firm_id || ""; e.preventDefault(); if (!a.dataset.f) e.stopImmediatePropagation();   // the list's "📞 Call" still opens the card
+    if (rcDial(String(a.getAttribute("href") || "").replace(/^tel:/, ""), fid)) toast("📞 Calling from the portal…");
+  }, true);
+  /* For Jesús: listen to a call's recording right here. */
+  function rcPlay(btn, id) {
+    run(btn, function () { return call("oxRecording", { touch_id: id }).then(function (r) {
+      var row = btn.closest(".cl-called-r"); if (!row) return; var old = row.querySelector("audio"); if (old) old.remove();
+      if (!r.found) { toast(r.note || "No recording yet."); return; }
+      var au = document.createElement("audio"); au.controls = true; au.autoplay = true; au.src = "data:" + r.type + ";base64," + r.data; au.className = "cl-rec"; row.appendChild(au);
+    }); });
+  }
+  /* Your RingCentral setup (Import & tools). */
+  function rcCard(d) {
+    var st = S.rcAdm; if (!st && d.can_send && !S.rcAdmBusy) { S.rcAdmBusy = 1; call("oxRcStatus", {}).then(function (r) { S.rcAdm = r.rc; keepScroll(render); }).catch(function () { S.rcAdm = { phone: false, recordings: false }; }); }
+    st = st || { phone: false, recordings: false };
+    return '<details class="card ox-rc"' + (st.phone ? "" : " open") + '><summary><h3>📞 RingCentral <span class="muted small">calls and recordings inside the portal</span></h3></summary>' +
+      '<p class="small">Phone in the portal: ' + (st.phone ? '<b class="ok-t">on</b>' : '<b>off</b>') + " · Recordings for you: " + (st.recordings ? '<b class="ok-t">on</b>' : "<b>off</b>") + "</p>" +
+      (d.can_send ? '<form class="form" data-form="oxRc"><label class="f">Phone app · Client ID <span class="muted small">(the “Blue Sierra Portal Phone” app)</span><input name="client_id" value="' + esc(st.client_id || "") + '" placeholder="Client ID"></label>' +
+        '<div class="row2"><label class="f">Recordings app · Client ID<input name="jwt_client_id" autocomplete="off"></label><label class="f">Recordings app · Client secret<input type="password" name="jwt_secret" autocomplete="new-password"></label></div>' +
+        '<label class="f">JWT credential <span class="muted small">(stored on the server, never shown again)</span><input type="password" name="jwt" autocomplete="new-password"></label>' +
+        '<div class="actions" style="justify-content:flex-start"><button class="btn sm" type="submit">Save</button>' + (st.phone || st.recordings ? '<button type="button" class="link small" data-a="oxRcOff">Disconnect</button>' : "") + "</div></form>" +
+        '<details class="small"><summary>How to set it up (15 minutes)</summary><ol class="rc-steps">' +
+        "<li>RingCentral plan with <b>automatic call recording</b> (RingEX Advanced or higher). In the Admin Portal turn on <b>Automatic Call Recording</b> for the setter’s extension, with the announcement “This call may be recorded” (California needs everyone’s consent).</li>" +
+        "<li>Give the setter a RingCentral user (his own extension and the Blue Sierra caller ID).</li>" +
+        "<li>developers.ringcentral.com → Console → <b>Create App</b> “Blue Sierra Portal Phone”: REST API App, 3-legged OAuth (authorization code, client-side web app). Redirect URI: <code>https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/redirect.html</code>. Permissions: Call Control, Read Accounts, Read Call Log, Read Call Recording, Read Presence, RingOut, VoIP Calling, WebSocket Subscriptions. Copy its <b>Client ID</b> here.</li>" +
+        "<li>Create a second app “Blue Sierra Portal Recordings”: REST API App, <b>JWT auth flow</b>, permissions Read Call Log + Read Call Recording. Copy its Client ID and Client secret here.</li>" +
+        "<li>Your name (top right) → <b>Credentials</b> → create a JWT for that app (signed in as an admin, so it can read everyone’s calls). Paste it here and Save: the portal checks it right away.</li>" +
+        "<li>The setter opens Calls, signs in to RingCentral once in the phone at the bottom right, and the 📞 buttons call from the portal.</li></ol></details>" : "") + "</details>";
+  }
   function clTel(ph) { var d = String(ph || "").replace(/\D/g, ""); if (d.length === 10) d = "1" + d; return "tel:+" + d; }
   function clSeg(s) { return s === "warm" ? '<span class="ox-seg ox-warm">🤝 we know them</span>' : s === "known" ? '<span class="ox-seg ox-known">👋 they know us</span>' : ""; }
   function clItem(fid) { return ((S.cl && S.cl.queue) || []).filter(function (q) { return q.firm_id === fid; })[0] || null; }
+  /* The setter's clock: clock in when you start, out when you stop. */
+  function clClock(sh) {
+    var on = sh.open, mins = function (m) { m = Math.max(0, Math.round(m || 0)); return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") + " min"; };
+    var since = on ? new Date(on.since_ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" }) : "";
+    return '<div class="card cl-clock' + (on ? " on" : "") + '"><div><b>' + (on ? "🟢 Clocked in since " + esc(since) : "⏱ You’re clocked out") + '</b><span class="muted small" data-cl-clock="' + (on ? 1 : "") + '" data-base="' + (sh.today_min || 0) + '" data-week="' + (sh.week_min || 0) + '" data-t0="' + Date.now() + '">Today ' + mins(sh.today_min) + " · this week " + mins(sh.week_min) + "</span></div>" +
+      '<button class="btn ' + (on ? "ghost " : "") + 'sm" data-a="clShift" data-v="' + (on ? "out" : "in") + '">' + (on ? "Clock out" : "Clock in") + "</button></div>";
+  }
+  /* For Jesús: the setter's hours, calls and wins, day by day. */
+  function clHoursCard() {
+    var d = S.clHours; if (!d) { if (!S.clHoursBusy) { S.clHoursBusy = 1; call("oxShiftReport", {}).then(function (r) { S.clHours = r; S.clHoursBusy = 0; keepScroll(render); }).catch(function (e) { S.clHours = { err: e.message, setters: [] }; S.clHoursBusy = 0; }); } return ""; }
+    if (d.err || !d.setters.length) return "";
+    var hm = function (m) { m = Math.round(m || 0); return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0"); };
+    return '<div class="card cl-hours"><h3>⏱ Setter hours <span class="muted small">this week and last</span></h3>' + d.setters.map(function (x) {
+      return '<div class="cl-hours-p"><div class="small"><b>' + esc(x.name) + "</b> · " + (x.clocked_in ? '<span class="ok-t">🟢 clocked in since ' + esc(String(x.clocked_in).slice(11, 16)) + "</span>" : '<span class="muted">clocked out</span>') + " · today " + hm(x.today_min) + " · this week " + hm(x.week_min) + "</div>" +
+        (x.days.length ? '<table class="ox-tbl cl-hours-t"><thead><tr><th>Day</th><th>Hours</th><th>In – out</th><th>Calls</th><th>Talked</th><th>Wins</th></tr></thead><tbody>' + x.days.map(function (dd) {
+          return "<tr><td>" + esc(clDay(dd.day)) + "</td><td>" + hm(dd.minutes) + "</td><td class=\"small\">" + dd.shifts.map(function (sh) { return esc(sh.in) + "–" + (sh.open ? "now" : esc(sh.out)) + (sh.auto ? " ⚠️" : ""); }).join(", ") + "</td><td>" + dd.calls + "</td><td>" + dd.talked + "</td><td>" + (dd.wins ? '<b class="ok-t">' + dd.wins + "</b>" : "0") + "</td></tr>"; }).join("") + "</tbody></table>" +
+          (x.days.some(function (dd) { return dd.shifts.some(function (sh) { return sh.auto; }); }) ? '<p class="muted small">⚠️ forgot to clock out: closed 15 minutes after the last call.</p>' : "") : '<p class="muted small">No hours yet.</p>') + "</div>"; }).join("") + "</div>";
+  }
+  // keep the list fresh: every minute while the screen is open and nothing is being edited; the clock ticks every 30 s
+  setInterval(function () {
+    var el = root.querySelector("[data-cl-clock]");
+    if (el && el.dataset.clClock) { var add = (Date.now() - Number(el.dataset.t0)) / 60000, fm = function (m) { m = Math.max(0, Math.round(m)); return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") + " min"; };
+      el.textContent = "Today " + fm(Number(el.dataset.base) + add) + " · this week " + fm(Number(el.dataset.week) + add); }
+    if (document.hidden || !S.cl || S.modal || (S.clTab && S.clTab !== "calls" && clIsSetter())) return;
+    if (Date.now() - (S.clAt || 0) > 60000) { S.clAt = Date.now(); clLoad(); }
+  }, 30000);
   function clLoad() {
     if (S.clBusy) return; S.clBusy = 1;
     if (!S.cl && !S.viewAs) swrFill("cl", function (c) { S.cl = c; });
@@ -6746,6 +6839,7 @@
   }
   function clView() {
     var d = S.cl; if (!d) { clLoad(); return '<div class="loading">Getting your call list…</div>'; }
+    if (d.rc && d.rc.on) setTimeout(rcEnsure, 0);
     if (d.err) return '<div class="card ls-incomplete">' + esc(d.err) + ' <button class="link" data-a="clReload">Try again</button></div>';
     if (!S.clAt || Date.now() - S.clAt > 90000) { S.clAt = Date.now(); setTimeout(clLoad, 0); }
     var st = d.stats || { today: {}, week: {} }, t = st.today || {}, w = st.week || {}, n = d.queue.length;
@@ -6754,10 +6848,14 @@
       '<div class="cl-stats">' + [["Calls", t.calls], ["Talked", t.talked], ["Booked", t.booked]].map(function (x) { return '<div class="cl-stat"><b>' + (x[1] || 0) + "</b><span>" + x[0] + "</span></div>"; }).join("") + "</div>" +
       '<div class="cl-week small">This week · <b>' + (w.calls || 0) + "</b> calls · <b>" + (w.talked || 0) + "</b> conversations · <b>" + (w.booked || 0) + "</b> meetings</div></div>";
     var meets = d.meetings.length ? '<h3 class="ox-h">📅 Booked with Jesús</h3>' + d.meetings.map(clMeetRow).join("") : "";
-    var list = n ? '<h3 class="ox-h">Up next <span class="muted small">best first</span></h3>' + d.queue.map(clRow).join("") : "";
+    var lim = S.clLim || 25, shown = d.queue.slice(0, lim);
+    var list = n ? '<h3 class="ox-h">Up next <span class="muted small">best first · ' + n + " to call · updates by itself</span></h3>" + shown.map(clRow).join("") +
+      (n > lim ? '<button class="btn ghost sm cl-more" data-a="clMore">Show ' + Math.min(25, n - lim) + " more (" + (n - lim) + " left)</button>" : "") : "";
+    var ct = d.called_today || [], calledHtml = ct.length ? '<details class="card cl-called"' + (S.clCalledOpen ? " open" : "") + '><summary data-a="clCalledT"><b>✓ Called today · ' + ct.length + "</b>" + (ct.filter(function (c) { return c.win; }).length ? ' <span class="pill ok">' + ct.filter(function (c) { return c.win; }).length + " win" + (ct.filter(function (c) { return c.win; }).length === 1 ? "" : "s") + "</span>" : "") + ' <span class="muted small">they’re off your list</span></summary>' +
+      ct.map(function (c) { return '<div class="small cl-called-r"><span class="cl-ck">✓</span> <b>' + esc(c.firm) + "</b> · " + (c.win ? '<span class="ok-t">' + esc(c.outcome) + "</span>" : esc(c.outcome)) + (c.street ? ' <span class="muted">· ' + esc(c.street) + "</span>" : "") + ' <span class="muted">· ' + esc(String(c.at).slice(11, 16)) + (S.me && S.me.role === "admin" ? " · " + esc(first(c.by)) : "") + "</span>" + (c.rec ? ' <button class="link small cl-play" data-a="clRec" data-id="' + esc(c.id) + '">▶ Listen' + (c.secs ? " (" + Math.floor(c.secs / 60) + ":" + String(c.secs % 60).padStart(2, "0") + ")" : "") + "</button>" : "") + "</div>"; }).join("") + "</details>" : "";
     var foot = [d.later ? d.later + " waiting for their callback day or a second try" : "", d.done_today ? d.done_today + " already called today" : "", d.no_phone ? d.no_phone + " more firms still need a phone number" + (clIsSetter() ? " (Jesús is getting them)" : "") : ""].filter(Boolean);
     var acNote = d.academy && !d.academy.certified ? '<div class="card ac-nudge"><b>🎓 Finish the Academy before your first call.</b><span class="muted small">The course, the drill, the call simulator and the final exam. Then send your certification to Jesús.</span><button class="btn sm" data-a="clTab" data-v="academy">Open the Academy</button></div>' : "";
-    return acNote + hero + (S.me && S.me.role === "admin" ? acTeamCard() : "") + meets + list + (foot.length ? '<p class="muted small cl-foot">' + esc(foot.join(" · ")) + "</p>" : "");
+    return acNote + (d.shift ? clClock(d.shift) : "") + hero + (S.me && S.me.role === "admin" ? clHoursCard() + acTeamCard() : "") + meets + list + calledHtml + (foot.length ? '<p class="muted small cl-foot">' + esc(foot.join(" · ")) + "</p>" : "");
   }
   function clRow(x) {
     var who = x.contact || x.ask_for, ph = x.contact && x.contact.phone ? x.contact.phone : x.main_phone, p = x.projects[0] || {};
@@ -6804,18 +6902,31 @@
       (who && who.phones ? '<p class="muted small">Other numbers: ' + esc(who.phones) + "</p>" : "");
     var whoLine = who ? '<p class="cl-who"><b>' + esc(who.name) + "</b>" + (who.title ? " · " + esc(who.title) : "") + (who.dm ? ' <span class="pill ok">decision maker</span>' : "") +
       (who.email ? '<br><span class="muted small">' + esc(who.email) + "</span>" : "") + (who.linkedin ? ' <a class="link small" href="' + esc(who.linkedin) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : "") + "</p>" : "";
-    var steps = [["If the front desk answers", s.front], ["Hi", s.opener], ["Why you’re calling", s.why], ["Who we are", s.pitch], ["The ask", s.ask], ["Book Jesús", s.meet]];
+    var steps = [["If the front desk answers", s.front], ["Hi", s.opener], ["Why you’re calling", s.why], ["Who we are", s.pitch], ["The ask: the bid list", s.ask], ["Get the plans", s.plans || ""], ["Only if they want to talk", s.meet]].filter(function (x) { return x[1]; });
     var script = '<div class="cl-script"><div class="eyebrow">What to say</div>' + steps.map(function (st, i) { return '<div class="cl-say' + (i ? "" : " cl-front") + '"><span class="cl-n">' + (i || "☎") + "</span><div><small>" + st[0] + "</small><p>" + esc(st[1]) + "</p></div></div>"; }).join("") +
       '<details class="cl-vm"><summary class="small">🎙️ Voicemail</summary><p>' + esc(s.voicemail) + "</p></details></div>";
     var projs = '<div class="cl-projs">' + x.projects.map(function (p) { return '<span class="cl-proj"><b>' + esc(p.street) + "</b>, " + esc(p.town) + "<small>" + esc((p.type ? p.type + " · " : "") + p.stage.replace(/^is /, "")) + "</small></span>"; }).join("") + "</div>";
     var hist = x.history.length ? '<details class="cl-hist"><summary class="small">What’s happened so far (' + x.history.length + ")</summary>" + x.history.map(function (h) { return '<p class="small">' + esc(clDay(h.date)) + " · " + esc(h.by) + " · " + esc(h.summary || h.outcome || h.channel) + "</p>"; }).join("") + "</details>" : "";
     var OUTS = [["no_answer", "No answer"], ["voicemail", "Voicemail"], ["gatekeeper", "Front desk"], ["conversation", "Talked"], ["callback", "Call back…"], ["not_interested", "Not interested"], ["wrong_number", "Wrong number"], ["do_not_call", "Do not call"]];
-    var o = m.out || "", fv = function (k) { return esc(m.f[k] || ""); };
+    var o = m.out || "", fv = function (k, d) { return esc(m.f[k] != null ? m.f[k] : d || ""); }, win = CL_WINS.some(function (q) { return q[0] === o; });
+    var p0 = x.projects[0] || {}, scope0 = p0.scope ? String(p0.scope).replace(/^the /, "") : "site work and landscape", chk = clWorkdays(S.cl.today, 3);
+    var projSel = x.projects.length > 1 ? '<label class="f">Which property<select name="project">' + x.projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (m.f.project === p.id ? " selected" : "") + ">" + esc(p.street + ", " + p.town) + "</option>"; }).join("") + "</select></label>" : '<input type="hidden" name="project" value="' + esc(p0.id || "") + '">';
+    var winExtra = o === "send_plans" ? projSel + '<div class="row2"><label class="f">Their email for the plans<input type="email" name="w_email" value="' + fv("w_email", who && who.email) + '"></label><label class="f">Check back on<input type="date" name="w_date" min="' + esc(S.cl.today) + '" value="' + fv("w_date", chk) + '" required></label></div>' +
+        '<p class="muted small">If the plans aren’t in by then, this firm comes back to the top of your list.</p>'
+      : o === "invited" ? projSel + '<div class="row2"><label class="f">Bids due<input type="date" name="w_due" value="' + fv("w_due") + '"></label><label class="f">For which work<input name="w_scope" value="' + fv("w_scope", scope0) + '"></label></div>' +
+        '<label class="f">Plans link <span class="muted small">(if they sent one)</span><input name="w_plans" placeholder="https://…" value="' + fv("w_plans") + '"></label><label class="f">No plans yet? Check back on<input type="date" name="w_date" min="' + esc(S.cl.today) + '" value="' + fv("w_date", chk) + '"></label>'
+      : o === "referred" ? projSel + '<div class="jb-ref"><label class="f">Who’s collecting the prices (firm)<input name="rf_firm" required value="' + fv("rf_firm") + '" placeholder="e.g. Ridge Builders"></label>' +
+        '<div class="row2"><label class="f">Person<input name="rf_name" value="' + fv("rf_name") + '"></label><label class="f">Their title<input name="rf_role" value="' + fv("rf_role") + '" placeholder="Estimator"></label></div>' +
+        '<div class="row2"><label class="f">Phone<input name="rf_phone" inputmode="tel" value="' + fv("rf_phone") + '"></label><label class="f">Email<input type="email" name="rf_email" value="' + fv("rf_email") + '"></label></div>' +
+        '<div class="row2"><label class="f">For which work<input name="w_scope" value="' + fv("w_scope", scope0) + '"></label><label class="f">Call them on<input type="date" name="rf_date" min="' + esc(S.cl.today) + '" value="' + fv("rf_date", S.cl.today) + '"></label></div></div>'
+      : "";
     var extra = o === "callback" ? '<div class="row2"><label class="f">Call back on<input type="date" name="cb_date" min="' + esc(S.cl.today) + '" value="' + fv("cb_date") + '" required></label><label class="f">At (optional)<input type="time" name="cb_time" step="900" value="' + fv("cb_time") + '"></label></div>'
       : o === "gatekeeper" ? '<p class="muted small">Did they give you the right person? Save them here.</p><div class="row2"><label class="f">Name<input name="nc_name" value="' + fv("nc_name") + '"></label><label class="f">Title<input name="nc_role" value="' + fv("nc_role") + '"></label></div><div class="row2"><label class="f">Direct line<input name="nc_phone" inputmode="tel" value="' + fv("nc_phone") + '"></label><label class="f">Email<input name="nc_email" type="email" value="' + fv("nc_email") + '"></label></div>' : "";
     var wantEmail = ["conversation", "gatekeeper", "callback"].indexOf(o) > -1 ? '<label class="check-line"><input type="checkbox" name="want_email"' + (m.f.want_email ? " checked" : "") + "> They asked for info by email (Jesús writes it)</label>" : "";
-    var label = (OUTS.filter(function (q) { return q[0] === o; })[0] || ["", ""])[1].replace("…", "");
-    var form = '<form class="form cl-log" data-form="clLog"><div class="eyebrow">How did it go?</div><div class="cl-outs">' + OUTS.map(function (q) { return '<button type="button" class="chip' + (o === q[0] ? " on" : "") + (q[0] === "do_not_call" ? " cl-dnc" : "") + '" data-a="clOut" data-v="' + q[0] + '">' + q[1] + "</button>"; }).join("") + "</div>" + extra + wantEmail +
+    var label = (OUTS.concat(CL_WINS).filter(function (q) { return q[0] === o; })[0] || ["", ""])[1].replace("…", "").replace(/^\W+\s*/, "");
+    var form = '<form class="form cl-log" data-form="clLog"><div class="eyebrow">How did it go?</div><div class="cl-outs">' + OUTS.map(function (q) { return '<button type="button" class="chip' + (o === q[0] ? " on" : "") + (q[0] === "do_not_call" ? " cl-dnc" : "") + '" data-a="clOut" data-v="' + q[0] + '">' + q[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="eyebrow cl-win-h">A win? <span class="muted small">(what you’re calling for)</span></div><div class="cl-outs cl-wins">' + CL_WINS.map(function (q) { return '<button type="button" class="chip cl-win' + (o === q[0] ? " on" : "") + '" data-a="clOut" data-v="' + q[0] + '">' + q[1] + "</button>"; }).join("") + "</div>" +
+      (win ? winExtra : extra + wantEmail) +
       (o ? '<label class="f">Note <span class="muted small">(only the office sees it)</span><textarea name="note" rows="2" placeholder="What they said, who to ask for, best time to call…">' + fv("note") + '</textarea></label><div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button><button class="btn" type="submit">Save: ' + esc(label) + "</button></div>" : "") + "</form>";
     return "<h2>" + esc(x.firm) + '</h2><p class="muted small">' + esc([x.type, x.reason].filter(Boolean).join(" · ")) + (x.website ? ' · <a class="link" href="' + esc(x.website) + '" target="_blank" rel="noopener">website ↗</a>' : "") + "</p>" +
       whoLine + numbers + projs + script + '<button class="btn cl-book" data-a="clBook" data-f="' + esc(x.firm_id) + '">📅 They want to meet? Book Jesús</button>' +
@@ -6848,6 +6959,8 @@
   }
   var _lsModalCl = lsModal;
   lsModal = function (m) { if (m.type === "lsxClCall") return clCard(m); if (m.type === "lsxClBook") return clBookCard(m); if (m.type === "lsxClMail") return clMailCard(m); return _lsModalCl(m); };
+  var CL_WINS = [["send_plans", "📐 They’ll send the plans"], ["invited", "✅ We’re on the bid list"], ["referred", "↪️ Sent us to who’s collecting prices"]];
+  function clWorkdays(d, n) { var dt = new Date(String(d || "") + "T12:00:00"); if (isNaN(dt)) return ""; while (n > 0) { dt.setDate(dt.getDate() + 1); if (dt.getDay() % 6) n--; } return dt.toISOString().slice(0, 10); }
   function clMailCard(m) {
     var x = m.x, people = [x.contact, x.ask_for].concat(x.others || []).filter(function (p) { return p && p.email; }).filter(function (p, i, a) { return a.findIndex(function (q) { return q.id === p.id; }) === i; });
     var d = m.draft;
@@ -6880,6 +6993,7 @@
     var b = e.target.closest && e.target.closest("[data-a]"); if (!b || !root.contains(b)) return; var a = b.dataset.a; if (!/^cl[A-Z]/.test(a)) return;
     var m = S.modal || {};
     if (a === "clReload") { S.cl = null; return clLoad(); }
+    if ((a === "clOpen" || a === "clDialed") && clIsSetter() && S.cl && S.cl.shift && !S.cl.shift.open && !S.viewAs && !S.clNudged) { S.clNudged = 1; toast("⏱ Remember to clock in (top of the screen)."); }
     if (a === "clOpen" || a === "clDialed") { if (a === "clOpen") e.preventDefault(); S.modal = { type: "lsxClCall", firm_id: b.dataset.f, f: {} }; return keepScroll(render); }   // "Call" dials and opens the card
     if (a === "clOut") { e.preventDefault(); m.out = b.dataset.v; return keepScroll(render); }
     if (a === "clBook") { e.preventDefault(); var x = clItem(b.dataset.f) || m.x; if (!x) return; S.modal = { type: "lsxClBook", firm_id: x.firm_id, x: x, kind: "phone", minutes: 30, f: {} }; keepScroll(render); return clSlots(S.modal); }
@@ -6890,6 +7004,11 @@
     if (a === "clTabAc") { e.preventDefault(); S.clTab = "academy"; S.clAdminAc = true; return keepScroll(render); }
     if (a === "clAcClose") { e.preventDefault(); S.clAdminAc = false; return keepScroll(render); }
     if (a === "clMail") { e.preventDefault(); var xm = clItem(b.dataset.f) || m.x; if (!xm) return; var nm = { type: "lsxClMail", firm_id: xm.firm_id, x: xm, cid: (xm.contact && xm.contact.email ? xm.contact.id : ""), pid: (xm.projects[0] || {}).id || "" }; S.modal = nm; return clMailLoad(nm); }
+    if (a === "clRec") { e.preventDefault(); return rcPlay(b, b.dataset.id); }
+    if (a === "clMore") { e.preventDefault(); S.clLim = (S.clLim || 25) + 25; return keepScroll(render); }
+    if (a === "clCalledT") { S.clCalledOpen = !b.parentElement.open; return; }
+    if (a === "clShift") { e.preventDefault(); var go = function () { return run(b, function () { return call("oxShift", { act: b.dataset.v }).then(function (r) { if (S.cl) S.cl.shift = r.shift; toast(b.dataset.v === "in" ? "🟢 Clocked in. Have a good session!" : "⏱ Clocked out. Thanks!"); keepScroll(render); }); }); };
+      return b.dataset.v === "out" ? sure("Clock out now?", go, "Clock out") : go(); }
     if (a === "clMailSend") { e.preventDefault(); return clMailSend(b); }
     if (a === "clBack") { S.modal = { type: "lsxClCall", firm_id: m.firm_id, x: m.x, f: {} }; return keepScroll(render); }
     if (a === "clPhones") return oxEnrichOpen(String(b.dataset.ids || "").split(",").filter(Boolean), null, "calls");
@@ -6910,8 +7029,16 @@
     var f = e.target; if (!f.matches || !/^cl/.test(f.dataset.form || "") || f.dataset.form === "clMail") return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal || {}, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]"), x = m.x;
     var after = function (r, msg) { S.modal = null; toast(msg); if (S.cl && r && r.stats) S.cl.stats = r.stats; if (S.cl) S.cl.queue = S.cl.queue.filter(function (q) { return q.firm_id !== m.firm_id; }); S.clBusy = 0; clLoad(); if (S.ox) { S.oxBusy = 0; oxLoad(); } keepScroll(render); };
+    if (f.dataset.form === "clLog" && CL_WINS.some(function (q) { return q[0] === m.out; })) {
+      var whoW = x.contact || x.ask_for, o2 = m.out, pid = g("project") || (x.projects[0] || {}).id || "", wb = { rc: rcFor(m.firm_id), project_id: pid, firm_id: m.firm_id, channel: "call", outcome: o2, contact_id: whoW ? whoW.id : "", note: g("note"), scope: g("w_scope") };
+      if (o2 === "send_plans") { wb.next_step = "Call back: did the plans come in?"; wb.next_date = g("w_date"); if (g("w_email") && (!whoW || g("w_email").toLowerCase() !== String(whoW.email || "").toLowerCase())) wb.new_contact = { name: whoW && whoW.name ? whoW.name : "Plans contact", role: whoW ? whoW.title : "", email: g("w_email"), handles_bids: true }; else if (whoW) wb.bid_contact = true; }
+      if (o2 === "invited") { wb.bid_due = g("w_due"); wb.plans_url = g("w_plans"); if (!g("w_plans") && g("w_date")) { wb.next_step = "Call back: get the plan set"; wb.next_date = g("w_date"); } if (whoW) wb.bid_contact = true; }
+      if (o2 === "referred") wb.ref = { firm_id: "", firm_name: g("rf_firm"), person: { name: g("rf_name"), role: g("rf_role"), phone: g("rf_phone"), email: g("rf_email") }, scope: g("w_scope"), ask: "the current plans and the bid date", callback_date: g("rf_date"), assignee: "" };
+      var MSGW = { send_plans: "📐 Plans coming. It comes back " + clDay(g("w_date")) + " if they don’t.", invited: "✅ On the bid list. Nice!", referred: "↪️ Saved. " + g("rf_firm") + " is on your list now." };
+      return run(btn, function () { return call("oxProjLog", wb).then(function (r) { after(r, MSGW[o2]); }); });
+    }
     if (f.dataset.form === "clLog") {
-      var who = x.contact || x.ask_for, body = { firm_id: m.firm_id, contact_id: who ? who.id : "", project_id: (x.projects[0] || {}).id || "", outcome: m.out, note: g("note"), callback_date: g("cb_date"), callback_time: g("cb_time"), want_email: !!fd.get("want_email") };
+      var who = x.contact || x.ask_for, body = { rc: rcFor(m.firm_id), firm_id: m.firm_id, contact_id: who ? who.id : "", project_id: (x.projects[0] || {}).id || "", outcome: m.out, note: g("note"), callback_date: g("cb_date"), callback_time: g("cb_time"), want_email: !!fd.get("want_email") };
       if (g("nc_name")) body.new_contact = { name: g("nc_name"), role: g("nc_role"), phone: g("nc_phone"), email: g("nc_email") };
       var MSG = { no_answer: "📞 No answer. It comes back in two days.", voicemail: "🎙️ Voicemail logged. It comes back in two days.", gatekeeper: "Logged. Next one!", conversation: "💬 Nice! Logged.", callback: "📅 Back on your list " + clDay(g("cb_date")), not_interested: "Logged. Off the list.", wrong_number: "Number cleared.", do_not_call: "On the do-not-call list." };
       var go = function () { return run(btn, function () { return call("oxCallLog", body).then(function (r) { after(r, MSG[m.out] || "Logged"); }); }); };

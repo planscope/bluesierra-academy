@@ -21,7 +21,7 @@ TABLES.OxFirms = ["id", "name", "norm", "firm_type", "segment", "priority", "wav
   "status", "next_step", "next_date", "email_source", "created_at", "updated_at", "assignee"];
 TABLES.OxContacts = ["id", "firm_id", "name", "role", "email", "phone", "linkedin", "source", "verified", "rr_id", "created_at", "updated_at", "phones", "bid_contact", "referred_by"];
 TABLES.OxRoles = ["id", "project_id", "firm_id", "role", "raw", "source"];
-TABLES.OxTouches = ["id", "firm_id", "contact_id", "project_id", "date", "channel", "step", "summary", "outcome", "by", "at", "outbox_id", "thread_id"];
+TABLES.OxTouches = ["id", "firm_id", "contact_id", "project_id", "date", "channel", "step", "summary", "outcome", "by", "at", "outbox_id", "thread_id", "rc_session", "rc_to", "rc_at", "rc_secs", "rc_rec"];
 TABLES.OxOutbox = ["id", "key", "firm_id", "contact_id", "project_id", "step", "to", "subject", "body", "status", "msg_id", "thread_id", "error", "created_by", "created_at", "sent_at", "send_on"];
 TABLES.OxOpps = ["id", "firm_id", "project_id", "stage", "amount", "due", "notes", "created_by", "created_at", "updated_at", "scope", "contact_id", "plans_url", "next_step", "next_date", "assignee", "referred_by", "lost_note", "handoff_to", "handoff_at"];
 TABLES.OxEnrich = ["id", "firm_id", "person", "rr_id", "status", "result", "at", "by", "goal"];
@@ -1192,7 +1192,8 @@ function oxCallPool(today) {
   var block = oxBlocks(firms, roles, st, today), items = [], noPhone = [], later = 0, doneToday = 0;
   firms.forEach(function (f) {
     var fl = oxFlags(f), s = st[f.id], list = byFirm[f.id] || [];
-    if (fl.excluded || fl.noCall || fl.individual || oxJesusOwn(f) || s.replied || ["closed", "paused", "removed", "meeting"].indexOf(f.status) > -1) return;
+    var cbDue = /^call back/i.test(f.next_step || "") && f.next_date && f.next_date <= today;          // "they'll send plans: check back Thursday" brings them back
+    if (fl.excluded || fl.noCall || fl.individual || oxJesusOwn(f) || (s.replied && !cbDue) || ["closed", "paused", "removed", "meeting"].indexOf(f.status) > -1) return;
     if (meets.some(function (m) { return m.firm_id === f.id && m.status === "booked"; })) return;
     if (block[f.id] && block[f.id].all) return;
     var mine = roles.filter(function (x) { return x.firm_id === f.id && x.role !== "owner"; }).map(function (x) { return pById[x.project_id]; }).filter(function (p) { return p && p.stage !== "5"; });
@@ -1233,6 +1234,7 @@ var OX_SAY = {
   why: ["I'm calling about {A}. I saw it {stage}.", "I saw {A} {stage}, and I wanted to reach out.", "Quick call about {A}. Looks like it {stage}."],
   pitch: ["We do the site work, hardscape and landscape on a lot of the homes around here.", "Blue Sierra builds the site work, hardscape and landscape on custom homes around the Peninsula.", "We're the site work, hardscape and landscape contractor on a lot of homes like this one."],
   ask: ["Who's putting together the bid list for {scope}? We'd love to be on it.", "Is the bid list for {scope} together yet? We'd love a shot at it.", "Could we get on the bid list for {scope}?"],
+  plans: ["Could you send me the plan set so we can put a number together? What's the best email for it?", "Can you send over the current plans and the bid date? I'll make sure we get you a price on time.", "Would you email me the plans when they're ready, and let me know when bids are due?"],
   meet: ["Would you have 15 minutes this week to talk it through with Jesús, our owner?", "Could Jesús, our owner, grab 15 minutes with you to walk through it?", "Jesús, our owner, would love to meet you. Do you have 15 minutes this week or next?"]
 };
 function oxCallScript(it, me, n) {
@@ -1247,6 +1249,7 @@ function oxCallScript(it, me, n) {
     why: why + two,
     pitch: oxPick(OX_SAY.pitch, seed, "pitch") + (p.id ? " " + OX_LIC_CALL[oxLicKind(findBy("OxProjects", "id", p.id) || {})] : ""),
     ask: oxFill(oxPick(OX_SAY.ask, seed, "ask"), v),
+    plans: oxPick(OX_SAY.plans, seed, "plans"),
     meet: oxPick(OX_SAY.meet, seed, "meet"),
     voicemail: (first ? "Hi " + first + ", " : "Hi, ") + "this is " + mine + " with Blue Sierra Construction, about " + v.A + ". We'd love to bid " + v.scope + ". " + (sigPh ? "You can reach us at " + sigPh + ". " : "") + "Thank you."
   };
@@ -1281,9 +1284,10 @@ ACTIONS.oxCalls = function (me, b) {
   oxCallNeed(me); prefetch(OX_T.concat(["People"]));
   var today = oxToday(), pool = oxCallPool(today);
   return { today: today, me: { name: me.name, first: String(me.name || "").split(" ")[0] }, stats: oxCallStats(me.role === "setter" ? me.email : "", today),
-    queue: pool.items.slice(0, 40).map(function (it) { return oxCallOut(it, me, Number(b && b.n) || 0); }), total: pool.items.length, later: pool.later, done_today: pool.done_today, no_phone: pool.no_phone.length,
+    queue: pool.items.slice(0, 400).map(function (it) { return oxCallOut(it, me, Number(b && b.n) || 0); }), total: pool.items.length, later: pool.later, done_today: pool.done_today, no_phone: pool.no_phone.length,
     meetings: rows("OxMeetings").filter(function (m) { return m.status === "booked" && m.day >= today; }).sort(function (a, c) { return (a.day + a.time) < (c.day + c.time) ? -1 : 1; }).map(oxMeetOut),
     outcomes: OX_CALL_OUT, kinds: OX_MEET_KIND, hours: OX_HOURS,
+    called_today: oxCalledToday(me, today), rc: oxRcPublic(), shift: me.role === "setter" ? oxShiftState(me) : null,
     academy: me.role === "setter" ? (function () { var r = findBy("AcProgress", "email", normEmail(me.email)); return { certified: !!(r && r.certified_at) }; })() : null };
 };
 NO_LOCK.oxCalls = 1;
@@ -1314,7 +1318,7 @@ ACTIONS.oxCallLog = function (me, b) {
   if (ct && b.new_phone && oxPhoneOk(b.new_phone) && out !== "wrong_number") update("OxContacts", "id", ct.id, { phone: oxPhoneFmt(b.new_phone), updated_at: now() });
   var t = { id: newId("ot"), firm_id: f.id, contact_id: ct ? ct.id : newId_, project_id: clean(b.project_id, 40), date: today, channel: "call", step: st.due && st.due.step === "day7" ? "day7" : "",
     summary: (OX_CALL_OUT[out] + (ct && ct.name ? " · " + ct.name : "") + (note ? ": " + note : "")).slice(0, 500), outcome: out, by: me.email, at: now(), outbox_id: "", thread_id: "" };
-  insert("OxTouches", t); update("OxFirms", "id", f.id, patch);
+  oxRcStamp(t, b.rc); insert("OxTouches", t); update("OxFirms", "id", f.id, patch);
   if (b.want_email && ["conversation", "gatekeeper", "callback"].indexOf(out) > -1)                   // "send me the info": Jesús writes it, from his Gmail
     insert("OxAlerts", { id: newId("oa"), firm_id: f.id, project_id: clean(b.project_id, 40), kind: "setter_email", status: "open", created_at: now(), done_at: "" });
   return { touch: t, stats: oxCallStats(me.role === "setter" ? me.email : "", today) };
@@ -1654,9 +1658,19 @@ ACTIONS.oxBidStatus = function (me, b) {
 };
 /* After a call or email about a project: what happened, who on our side owns it, when to follow up, and anyone new they named. */
 var OX_PROJ_OUT = { talked: "Talked", voicemail: "Left a voicemail", no_answer: "No answer", send_plans: "They'll send plans / asked for info", referred: "Referred us to who's collecting prices", open: "Bid list is open", invited: "Invited us to bid", passed: "This firm lost the job / passed", not_bidding: "Not bidding it out / closed", wrong_person: "Wrong person", note: "Note" };
+/* The setter logs the calls that win something (plans coming, on the bid list, referred to who's collecting prices) the same
+   way Jesús does, for firms on their own list only. */
+var OX_SETTER_PROJ_OUT = ["send_plans", "invited", "referred", "open", "not_bidding", "passed"];
 ACTIONS.oxProjLog = function (me, b) {
-  oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
-  var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Pick the firm.");
+  var f0 = findBy("OxFirms", "id", String(b.firm_id || ""));
+  if (me && me.role === "setter") {
+    if (me.preview) throw new Error("This is a preview. Nothing is saved.");
+    if (OX_SETTER_PROJ_OUT.indexOf(String(b.outcome || "")) < 0 || b.channel !== "call") throw new Error("Log it from the call card.");
+    if (!f0) throw new Error("Pick the firm."); var fl0 = oxFlags(f0); if (fl0.excluded || fl0.individual || fl0.noCall || oxJesusOwn(f0)) throw new Error("Jesús handles " + f0.name + " himself.");
+    b.assignee = "";
+  } else oxNeed(me);
+  var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
+  var f = f0; if (!f) throw new Error("Pick the firm.");
   var fl = oxFlags(f); if (fl.excluded) throw new Error(f.name + " is excluded from outreach.");
   var out = String(b.outcome || ""); if (!OX_PROJ_OUT[out]) throw new Error("Pick what happened.");
   var ch = ["call", "email", "meeting", "linkedin", "note"].indexOf(b.channel) > -1 ? b.channel : "note";
@@ -1671,7 +1685,7 @@ ACTIONS.oxProjLog = function (me, b) {
   }
   if (b.contact_id && b.bid_contact) { var ct = findBy("OxContacts", "id", String(b.contact_id)); if (ct && ct.firm_id === f.id) update("OxContacts", "id", ct.id, { bid_contact: "yes", updated_at: t }); }
   var touch = { id: newId("ot"), firm_id: f.id, contact_id: newC || clean(b.contact_id, 40), project_id: p.id, date: today, channel: ch, step: "", summary: (OX_PROJ_OUT[out] + (b.note ? ": " + clean(b.note, 400) : "")).slice(0, 500), outcome: out, by: me.email, at: t, outbox_id: "", thread_id: "" };
-  insert("OxTouches", touch);
+  oxRcStamp(touch, b.rc); insert("OxTouches", touch);
   var fp = { updated_at: t }; if (who) fp.assignee = who.email; if (b.next_step != null) fp.next_step = clean(b.next_step, 200); if (b.next_date != null) fp.next_date = nd;
   if (["talked", "send_plans", "open", "invited"].indexOf(out) > -1 && f.status !== "meeting") fp.status = "replied";        // a conversation stops the automatic email cadence
   update("OxFirms", "id", f.id, fp);
@@ -2173,3 +2187,146 @@ ACTIONS.oxSetterReached = function (me, b) {
   return { since: since, firms: out };
 };
 NO_LOCK.oxSetterReached = 1; READ_ONLY.oxSetterReached = 1; PREFETCH.oxSetterReached = OX_T.concat(["People"]);
+
+
+/* ====================================== The setter's day: what was called, and the clock ======================================
+   "✓ Called today": every call logged today (the setter's own; Jesús sees everyone's), newest first, so nobody calls twice.
+   The clock: a simple clock in / clock out for remote work (no GPS, no jobsite). Hours per day and week, and the calls made in
+   each shift, for Jesús to review. A shift left open more than 12 hours closes itself 15 minutes after the last call of it. */
+TABLES.SetterShifts = ["id", "email", "in_at", "out_at", "minutes", "calls", "note", "closed_by"];
+OX_T.push("SetterShifts");
+function oxCalledToday(me, today) {
+  var firms = {}; rows("OxFirms").forEach(function (f) { firms[f.id] = f; });
+  var pById = {}; rows("OxProjects").forEach(function (p) { pById[p.id] = p; });
+  return rows("OxTouches").filter(function (t) { return t.channel === "call" && t.date === today && (me.role !== "setter" || normEmail(t.by) === normEmail(me.email)); })
+    .sort(function (a, b) { return String(a.at) < String(b.at) ? 1 : -1; }).slice(0, 200).map(function (t) {
+      var p = t.project_id ? pById[t.project_id] : null;
+      return { id: t.id, rec: me.role === "admin" && !!(t.rc_session || t.rc_to), secs: Number(t.rc_secs) || 0, firm_id: t.firm_id, firm: (firms[t.firm_id] || {}).name || "", at: String(t.at || ""), outcome: OX_CALL_OUT[t.outcome] || OX_PROJ_OUT[t.outcome] || String(t.outcome || "").replace(/_/g, " "),
+        win: ["send_plans", "invited", "referred", "booked", "open"].indexOf(t.outcome) > -1, by: personName(t.by), street: p ? oxStreetFull(p) : "" };
+    });
+}
+function oxMsOf(stamp) { var d = new Date(String(stamp || "").replace(" ", "T")); return isNaN(d) ? 0 : d.getTime(); }
+function oxShiftCalls(email, fromMs, toMs) {
+  return rows("OxTouches").filter(function (t) { var ms = oxMsOf(t.at); return t.channel === "call" && normEmail(t.by) === normEmail(email) && ms >= fromMs && ms <= toMs; });
+}
+function oxShiftAutoClose(sh) {                                                          // forgot to clock out
+  if (sh.out_at || oxNowMs() - oxMsOf(sh.in_at) < 12 * 3600000) return sh;
+  var inMs = oxMsOf(sh.in_at), calls = oxShiftCalls(sh.email, inMs, inMs + 12 * 3600000), last = calls.reduce(function (m, t) { return Math.max(m, oxMsOf(t.at)); }, inMs);
+  var outMs = last + 15 * 60000, out = Utilities.formatDate(new Date(outMs), CONFIG.TZ, "yyyy-MM-dd HH:mm");
+  var patch = { out_at: out, minutes: Math.round((outMs - inMs) / 60000), calls: calls.length, closed_by: "auto (forgot to clock out)" };
+  update("SetterShifts", "id", sh.id, patch); return Object.assign({}, sh, patch);
+}
+function oxShiftState(me) {
+  var mine = rows("SetterShifts").filter(function (x) { return normEmail(x.email) === normEmail(me.email); }).map(oxShiftAutoClose);
+  var open = mine.filter(function (x) { return !x.out_at; })[0] || null, today = oxToday(), wk = oxAdd(today, -((oxDow(today) + 6) % 7));
+  var sum = function (from) { return mine.filter(function (x) { return String(x.in_at).slice(0, 10) >= from; }).reduce(function (t, x) { return t + (x.out_at ? Number(x.minutes) || 0 : Math.round((oxNowMs() - oxMsOf(x.in_at)) / 60000)); }, 0); };
+  return { open: open ? { id: open.id, in_at: open.in_at, since_ms: oxMsOf(open.in_at) } : null, today_min: sum(today), week_min: sum(wk) };
+}
+ACTIONS.oxShift = function (me, b) {
+  if (!me || me.role !== "setter") throw new Error("The clock is for the setter.");
+  if (me.preview) throw new Error("This is a preview. Nothing is saved.");
+  var st = oxShiftState(me), t = Utilities.formatDate(new Date(oxNowMs()), CONFIG.TZ, "yyyy-MM-dd HH:mm");
+  if (b.act === "in") { if (st.open) throw new Error("You're already clocked in."); insert("SetterShifts", { id: newId("sh"), email: normEmail(me.email), in_at: t, out_at: "", minutes: "", calls: "", note: "", closed_by: "" }); }
+  else if (b.act === "out") {
+    if (!st.open) throw new Error("You're not clocked in.");
+    var inMs = st.open.since_ms, mins = Math.max(1, Math.round((oxNowMs() - inMs) / 60000));
+    update("SetterShifts", "id", st.open.id, { out_at: t, minutes: mins, calls: oxShiftCalls(me.email, inMs, oxNowMs()).length, note: clean(b.note, 300), closed_by: "setter" });
+  } else throw new Error("Clock in or out.");
+  return { shift: oxShiftState(me) };
+};
+PREFETCH.oxShift = OX_T.concat(["People"]);
+/* For Jesús: each setter's hours, calls and wins, day by day (this week and last). */
+ACTIONS.oxShiftReport = function (me, b) {
+  if (!me || me.role !== "admin") throw new Error("Only Jesús sees the hours.");
+  var today = oxToday(), from = oxAdd(today, -((oxDow(today) + 6) % 7) - 7), touches = rows("OxTouches"), shifts = rows("SetterShifts").map(oxShiftAutoClose);
+  return { from: from, setters: rows("People").filter(function (x) { return x.role === "setter" && isTrue(x.active); }).map(function (p) {
+    var em = normEmail(p.email), days = {};
+    shifts.filter(function (x) { return normEmail(x.email) === em && String(x.in_at).slice(0, 10) >= from; }).forEach(function (x) {
+      var d = String(x.in_at).slice(0, 10), o = days[d] = days[d] || { day: d, minutes: 0, shifts: [], calls: 0, talked: 0, wins: 0 };
+      var mins = x.out_at ? Number(x.minutes) || 0 : Math.round((oxNowMs() - oxMsOf(x.in_at)) / 60000); o.minutes += mins;
+      o.shifts.push({ in: String(x.in_at).slice(11, 16), out: x.out_at ? String(x.out_at).slice(11, 16) : "", open: !x.out_at, auto: /auto/.test(x.closed_by || ""), minutes: mins });
+    });
+    touches.filter(function (t) { return t.channel === "call" && normEmail(t.by) === em && t.date >= from; }).forEach(function (t) {
+      var o = days[t.date] = days[t.date] || { day: t.date, minutes: 0, shifts: [], calls: 0, talked: 0, wins: 0 }; o.calls++;
+      if (["conversation", "callback", "not_interested", "booked", "send_plans", "invited", "referred", "open", "not_bidding", "passed"].indexOf(t.outcome) > -1) o.talked++;
+      if (["send_plans", "invited", "referred", "booked"].indexOf(t.outcome) > -1) o.wins++;
+    });
+    var list = Object.keys(days).sort().reverse().map(function (k) { return days[k]; }), st = oxShiftState({ email: p.email });
+    return { name: p.name, email: p.email, clocked_in: st.open ? st.open.in_at : "", today_min: st.today_min, week_min: st.week_min, days: list };
+  }) };
+};
+NO_LOCK.oxShiftReport = 1; PREFETCH.oxShiftReport = OX_T.concat(["People"]);
+
+
+/* ====================================== RingCentral: calls from the portal, recordings for Jesús ======================================
+   The setter calls from RingCentral's own web phone, embedded in the portal (RingCentral Embeddable, with the Blue Sierra app's
+   client ID). When a call ends, the portal opens "how did it go?" and saves the call with its RingCentral session.
+   Recordings stay in RingCentral: when Jesús presses ▶, the server signs in with a JWT credential (read call log + recordings
+   only), finds that call's recording and plays it in the portal. Recording itself (and its announcement) is set in
+   RingCentral's admin: automatic recording with "this call may be recorded" for every call (California needs everyone's consent). */
+var RC_DEF_SERVER = "https://platform.ringcentral.com";
+function rcProp(k) { return PropertiesService.getScriptProperties().getProperty(k) || ""; }
+function oxRcPublic() { var id = rcProp("RC_CLIENT_ID"); return id ? { on: true, clientId: id, server: rcProp("RC_SERVER") || RC_DEF_SERVER } : { on: false }; }
+function oxRcStamp(t, rc) {                                                              // what the web phone told us about the call
+  if (!rc || typeof rc !== "object") return t;
+  t.rc_session = clean(rc.session, 120); t.rc_to = String(rc.to || "").replace(/[^\d+]/g, "").slice(-15);
+  t.rc_at = /^\d{4}-\d\d-\d\dT/.test(String(rc.at || "")) ? String(rc.at).slice(0, 30) : ""; t.rc_secs = Math.max(0, Math.min(36000, Math.round(Number(rc.secs) || 0))) || "";
+  return t;
+}
+ACTIONS.oxRcSave = function (me, b) {
+  if (!me || me.role !== "admin" || me.preview) throw new Error("Only Jesús connects RingCentral.");
+  var pr = PropertiesService.getScriptProperties(), x = b.rc || {};
+  if (b.off) { ["RC_CLIENT_ID", "RC_SERVER", "RC_JWT_CLIENT_ID", "RC_JWT_SECRET", "RC_JWT"].forEach(function (k) { pr.deleteProperty(k); }); CacheService.getScriptCache().remove("rc:tok"); return { rc: oxRcAdmin() }; }
+  var id = String(x.client_id || "").trim(); if (id) { if (!/^[A-Za-z0-9_-]{8,80}$/.test(id)) throw new Error("That client ID doesn't look right."); pr.setProperty("RC_CLIENT_ID", id); }
+  if (x.server) { var sv = String(x.server).trim().replace(/\/+$/, ""); if (!/^https:\/\/platform(\.devtest)?\.ringcentral\.com$/.test(sv)) throw new Error("Server: https://platform.ringcentral.com"); pr.setProperty("RC_SERVER", sv); }
+  var jid = String(x.jwt_client_id || "").trim(), jsec = String(x.jwt_secret || "").trim(), jwt = String(x.jwt || "").trim();
+  if (jid || jsec || jwt) {
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(jid) || jsec.length < 8 || !/^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(jwt)) throw new Error("Paste the recordings app's client ID, client secret and the JWT credential.");
+    rcToken({ id: jid, secret: jsec, jwt: jwt, server: rcProp("RC_SERVER") || RC_DEF_SERVER }, true);       // proves it works before saving
+    pr.setProperty("RC_JWT_CLIENT_ID", jid); pr.setProperty("RC_JWT_SECRET", jsec); pr.setProperty("RC_JWT", jwt); CacheService.getScriptCache().remove("rc:tok");
+  }
+  return { rc: oxRcAdmin() };
+};
+function oxRcAdmin() { return { phone: !!rcProp("RC_CLIENT_ID"), recordings: !!(rcProp("RC_JWT") && rcProp("RC_JWT_CLIENT_ID") && rcProp("RC_JWT_SECRET")), server: rcProp("RC_SERVER") || RC_DEF_SERVER, client_id: rcProp("RC_CLIENT_ID") }; }
+ACTIONS.oxRcStatus = function (me) { if (!me || me.role !== "admin") throw new Error("Only Jesús."); return { rc: oxRcAdmin() }; };
+NO_LOCK.oxRcStatus = 1;
+function rcToken(c, fresh) {
+  c = c || { id: rcProp("RC_JWT_CLIENT_ID"), secret: rcProp("RC_JWT_SECRET"), jwt: rcProp("RC_JWT"), server: rcProp("RC_SERVER") || RC_DEF_SERVER };
+  if (!c.id || !c.secret || !c.jwt) throw new Error("Connect RingCentral recordings first (Import & tools → RingCentral).");
+  var cache = CacheService.getScriptCache(); if (!fresh) { var hit = cache.get("rc:tok"); if (hit) return hit; }
+  var r = UrlFetchApp.fetch(c.server + "/restapi/oauth/token", { method: "post", muteHttpExceptions: true, contentType: "application/x-www-form-urlencoded",
+    headers: { Authorization: "Basic " + Utilities.base64Encode(c.id + ":" + c.secret) }, payload: { grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: c.jwt } });
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+  if (r.getResponseCode() >= 300 || !j.access_token) throw new Error("RingCentral didn't accept the credentials" + (j.error_description ? ": " + j.error_description : "") + ".");
+  cache.put("rc:tok", j.access_token, Math.max(60, Math.min(3000, (Number(j.expires_in) || 3600) - 300))); return j.access_token;
+}
+function rcGet(path, token) {
+  var r = UrlFetchApp.fetch((/^https:/.test(path) ? "" : (rcProp("RC_SERVER") || RC_DEF_SERVER)) + path, { muteHttpExceptions: true, headers: { Authorization: "Bearer " + token } });
+  if (r.getResponseCode() === 403) throw new Error("RingCentral says the recordings app is missing a permission (Read Call Log, Read Call Recording).");
+  if (r.getResponseCode() >= 300) throw new Error("RingCentral answered " + r.getResponseCode() + ".");
+  return r;
+}
+/* Find the recording of one call: by the web phone's session first, else the same number within 20 minutes of the call. */
+function rcFindRecording(t, token) {
+  var at = t.rc_at ? new Date(t.rc_at) : new Date(String(t.at || "").replace(" ", "T")); if (isNaN(at)) throw new Error("This call has no time to look up.");
+  var from = new Date(at.getTime() - 30 * 60000).toISOString(), to = new Date(at.getTime() + 90 * 60000).toISOString();
+  var j = JSON.parse(rcGet("/restapi/v1.0/account/~/call-log?recordingType=All&view=Detailed&perPage=250&dateFrom=" + encodeURIComponent(from) + "&dateTo=" + encodeURIComponent(to), token).getContentText());
+  var recs = (j.records || []).filter(function (x) { return x.recording && x.recording.contentUri; });
+  var digits = function (s) { return String(s || "").replace(/\D/g, "").slice(-10); };
+  var hit = t.rc_session ? recs.filter(function (x) { return String(x.telephonySessionId || "") === t.rc_session || String(x.sessionId || "") === t.rc_session || String(x.id || "") === t.rc_session; })[0] : null;
+  if (!hit && t.rc_to) hit = recs.filter(function (x) { return digits((x.to || {}).phoneNumber) === digits(t.rc_to) || digits((x.from || {}).phoneNumber) === digits(t.rc_to); })
+    .sort(function (a, b) { return Math.abs(new Date(a.startTime) - at) - Math.abs(new Date(b.startTime) - at); })[0];
+  if (hit && Math.abs(new Date(hit.startTime) - at) > 20 * 60000 && !(t.rc_session && hit.telephonySessionId === t.rc_session)) hit = null;
+  return hit ? { id: String(hit.recording.id), uri: hit.recording.contentUri, start: hit.startTime, secs: hit.duration } : null;
+}
+ACTIONS.oxRecording = function (me, b) {
+  if (!me || me.role !== "admin" || me.preview) throw new Error("Only Jesús listens to the recordings.");
+  var t = findBy("OxTouches", "id", String(b.touch_id || "")); if (!t || t.channel !== "call") throw new Error("Call not found.");
+  if (!t.rc_session && !t.rc_to) throw new Error("This call wasn't made from the portal's phone.");
+  var token = rcToken(), rec = null;
+  if (t.rc_rec) { try { rec = JSON.parse(t.rc_rec); } catch (e) { rec = null; } }
+  if (!rec) { rec = rcFindRecording(t, token); if (!rec) return { found: false, note: "No recording yet. RingCentral keeps only calls over 30 seconds, and it can take a few minutes after the call." }; update("OxTouches", "id", t.id, { rc_rec: JSON.stringify(rec) }); }
+  var r = rcGet(rec.uri, token), blob = r.getBlob(), bytes = blob.getBytes(); if (bytes.length > 25000000) throw new Error("That recording is too long to play here.");
+  return { found: true, type: blob.getContentType() || "audio/mpeg", data: Utilities.base64Encode(bytes), secs: rec.secs || Number(t.rc_secs) || 0, start: rec.start };
+};
+NO_LOCK.oxRecording = 1; PREFETCH.oxRecording = OX_T.concat(["People"]);

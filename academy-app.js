@@ -4,11 +4,15 @@
 (function () {
   "use strict";
   var C = window.BSA_CONTENT;
+  var BASE = ((document.currentScript && document.currentScript.src) || "").replace(/[^\/]*(\?.*)?$/, "");   // where academy-app.js (and the lesson audio) live
   var root = document.getElementById("bs-academy");
   var HOST = null;            // inside the Blue Sierra portal: { member, load(), save(data), certify(results) } instead of Memberstack
   if (!C) return;
   // In the portal the page has no #bs-academy: the portal starts it with BSA_START(element, host) when the setter opens it.
-  window.BSA_START = function (el, host) { if (root && HOST) return; root = el; HOST = host || null; startAcademy(); };
+  window.BSA_START = function (el, host) {               // the portal calls it again when the person changes (you, or "view as #setter")
+    root = el; HOST = host || null; member = null; S = null; loaded = false; hadRemote = false;
+    view = { tab: "home", module: null, quizAnswers: {}, quizDone: false, sim: null, drill: null }; startAcademy();
+  };
   // Site settings set in the Webflow page itself (so they never live in the public repo):
   // window.BSA_SETTINGS = { loginPhoto: "...", heroPhoto: "...", callsApi: "https://script.google.com/macros/s/.../exec" }
   var SET = window.BSA_SETTINGS || {};
@@ -266,7 +270,7 @@
 
   function renderCourse() {
     return '<div class="eyebrow">' + esc(C.course.title) + '</div><div class="section-title" style="margin-top:6px"><h2>Course</h2><span class="muted">' + passedCount() + " of " + MODS.length + " passed</span></div>" +
-      '<p class="muted" style="margin-bottom:18px;max-width:640px">Watch each video, then pass the short exam with ' + C.course.passMark + "% or more to unlock the next module. You can retry as many times as you need.</p>" +
+      '<p class="muted" style="margin-bottom:18px;max-width:640px">Listen to each lesson (or read it), then pass the short quiz with ' + C.course.passMark + "% or more to unlock the next module. You can retry as many times as you need.</p>" +
       '<div class="modules">' + MODS.map(modRow).join("") + "</div>" +
       '<div class="section-title"><h2>After the modules</h2></div><div class="grid g3">' +
       (C.drill ? practiceCard("drill", C.drill.title, C.drill.blurb, S.drill) : "") +
@@ -285,6 +289,13 @@
 
   /* ----- lesson + module quiz ----- */
   function videoBlock(m) {
+    if (m.audio) {                                       // Jesús's voice: listen, change the speed, or read it instead
+      var src = /^https?:/.test(m.audio) ? m.audio : BASE + m.audio, paras = String(m.script || "").split(/\n\s*\n/).filter(Boolean);
+      return '<div class="lesson-audio"><div class="la-h"><span class="la-face">JT</span><div><b>Listen to Jesús</b><small>' + esc(m.listen || "") + "</small></div></div>" +
+        '<audio controls preload="metadata" src="' + esc(src) + '"></audio>' +
+        '<div class="la-speed"><span>Speed</span>' + [1, 1.25, 1.5].map(function (v) { return '<button class="chip' + (v === (view.rate || 1) ? " on" : "") + '" data-act="aspeed" data-v="' + v + '">' + v + "×</button>"; }).join("") + "</div>" +
+        (paras.length ? '<details class="la-read"><summary>Read it instead</summary>' + paras.map(function (x) { return "<p>" + esc(x) + "</p>"; }).join("") + "</details>" : "") + "</div>";
+    }
     if (!m.video) return '<div class="video"><div class="empty">Video coming soon.</div></div>';
     var v = m.video, src = v;
     var drive = v.match(/drive\.google\.com\/file\/d\/([^/]+)/);
@@ -308,7 +319,7 @@
       '<div class="eyebrow">Module ' + (i + 1) + (m.duration ? " · " + esc(m.duration) : "") + '</div><h2 style="font-size:30px;margin:6px 0 10px">' + esc(m.title) + "</h2>" +
       (m.summary ? '<p class="muted">' + esc(m.summary) + "</p>" : "") +
       '<ul class="points">' + (m.points || []).map(function (p) { return "<li><span>" + esc(p) + "</span></li>"; }).join("") + "</ul>" +
-      (m.script ? '<div class="script">' + esc(m.script) + "</div>" : "") +
+      (m.script && !m.audio ? '<div class="script">' + esc(m.script) + "</div>" : "") +
       lessonPractice(i) +
       (qs.length ? '<div class="section-title"><h2>Module exam</h2><span class="muted">' + qs.length + " questions · pass " + C.course.passMark + "%</span></div>" +
         '<div class="quiz">' + quizHtml + "</div>" +
@@ -487,6 +498,8 @@
       case "leave-practice": view.tab = "practice"; view.sim = null; view.drill = null; return render();
       case "print": window.print(); return;
       case "reload-progress": boot(); return;
+      case "aspeed": view.rate = Number(b.dataset.v) || 1; var au = root.querySelector(".lesson-audio audio"); if (au) au.playbackRate = view.rate;
+        [].forEach.call(root.querySelectorAll('[data-act="aspeed"]'), function (x) { x.classList.toggle("on", x === b); }); return;
       case "certify":
         var ack = root.querySelector("#bsa-ack");
         if (!ack || !ack.checked) { toast("Check the box first"); return; }
