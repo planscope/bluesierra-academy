@@ -2676,7 +2676,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261115194813";
+  var BUILD = "20261115200547";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6248,9 +6248,24 @@
         '<div class="ox-pc-pills">' + oxStagePill(p) + oxBidPill(p.bid || "unknown", { label: p.bid_label, due: p.bid_due }) + (p.reached && /^(email|firm|reply)$/.test(p.reached.how) ? "" : oxDoneMark(p)) + "</div>" +
         (p.why ? '<p class="small ox-pc-why">💡 ' + esc(p.why) + "</p>" : "") +
         '<p class="small ox-pc-who">' + (w ? "<b>" + esc(w.name) + "</b>" + (w.title ? ", " + esc(w.title) : "") + (rel ? ' <span class="ox-rel r-' + esc(w.rel) + '">' + rel + "</span>" : "") + " · " : "") + esc(p.act.firm || "") + "</p>" +
-        (p.reached ? '<p class="small ox-reached">✓ ' + esc(oxReachedTxt(p.reached)) + "</p>" : "") +
+        (p.reached ? '<p class="small ox-reached">✓ ' + esc(oxReachedTxt(p.reached)) + "</p>" : "") + (showR || p.contacted ? oxRD(p, showR) : "") +
         '<div class="ox-pc-a">' + (showR ? "" : oxActBtn(p.act, p.id)) + '<button class="btn ghost sm" data-a="oxProj" data-p="' + esc(p.id) + '">Open brief</button>' +
         (!p.reached ? '<button class="btn ghost sm ox-donebtn" data-a="pbReached" data-p="' + esc(p.id) + '" data-on="1" title="Already reached out: take it off Start here and show the next one">✓ Done · next</button>' : p.reached.how === "marked" ? '<button class="link small" data-a="pbReached" data-p="' + esc(p.id) + '" data-on="0">↩︎ Put back in Start here</button>' : "") + "</div></div>"; }).join("") || (showR ? '<p class="muted small">Nothing marked as reached out yet.</p>' : '<p class="muted small">No project matches these filters.</p>');
+  }
+  /* the fold-out on a card: what we sent (the email itself), when, and the firm's other projects */
+  function oxRD(p, showR) {
+    var open = (S.oxRDopen || {})[p.id], d = (S.oxRD || {})[p.id];
+    var CH = { email: ["✉️", "Email sent"], call: ["📞", "Call"], reply: ["💬", "They wrote"], linkedin: ["💼", "LinkedIn"], note: ["📝", "Note"], site_walk: ["🚶", "Site walk"] };
+    var body = !open ? "" : !d ? '<p class="muted small">Loading…</p>' : d.err ? '<p class="bad-t small">' + esc(d.err) + "</p>" : d.firms.map(function (f) {
+      var left = f.others.filter(function (o) { return !o.reached && !o.closed; });
+      return '<div class="ox-rd-f"><div class="eyebrow">' + esc(f.name) + (f.replied ? ' · <span class="ok-t">💬 they’ve written back</span>' : "") + "</div>" +
+        (f.history.length ? f.history.map(function (h) { var L = CH[h.channel] || ["•", h.channel];
+          return '<div class="ox-rd-h"><div class="small"><b>' + L[0] + " " + esc(oxWhen(h.date)) + "</b> · " + esc(L[1]) + (h.channel === "call" && h.outcome ? " (" + esc(String(h.outcome).replace(/_/g, " ")) + ")" : "") + (h.who ? " · " + esc(h.who) : "") + " · " + (h.here ? "<b>this property</b>" : h.street ? '<span class="ox-rd-other">' + esc(h.street) + "</span>" : '<span class="muted">no property named</span>') + (h.by ? ' <span class="muted">· ' + esc(first(h.by)) + "</span>" : "") + "</div>" +
+            (h.email ? '<div class="ox-rd-mail"><div class="small"><b>To</b> ' + esc(h.email.to || "") + " · <b>Subject</b> " + esc(h.email.subject || "") + (h.email.from === "gmail" ? ' <span class="muted">(from your Gmail)</span>' : "") + '</div><div class="ox-rd-body">' + esc(h.email.body || "") + "</div></div>" : h.summary ? '<div class="small muted">' + esc(h.summary) + "</div>" : "") + "</div>"; }).join("") : '<p class="muted small">Nothing logged with them yet.</p>') +
+        (f.others.length ? '<div class="ox-rd-o"><div class="small"><b>Their other projects (' + f.others.length + ")</b>" + (left.length ? ' <span class="muted">· same people, so one email covers them</span>' : "") + "</div>" + f.others.map(function (o) {
+          return '<div class="ox-rd-p"><button class="link small" data-a="oxProj" data-p="' + esc(o.id) + '">' + esc(o.street) + '</button> <span class="muted small">' + esc(o.town) + "</span> " + (o.reached ? '<span class="ox-rd-ok small">✓ ' + esc(oxReachedTxt(o.reached)) + "</span>" : o.closed ? '<span class="muted small">closed</span>' : '<span class="small ox-rd-new">not reached yet</span>') + "</div>"; }).join("") +
+          (left.length ? '<button class="btn ghost sm" data-a="pbRDAll" data-p="' + esc(p.id) + '" data-ids="' + esc(left.map(function (o) { return o.id; }).join(",")) + '">✓ Mark ' + (left.length === 1 ? "it" : "these " + left.length) + " done too (don’t email " + esc(f.name) + " again)</button>" : "") + "</div>" : '<p class="muted small">No other projects with them.</p>') + "</div>"; }).join("");
+    return '<details class="ox-rd"' + (open ? " open" : "") + '><summary data-a="pbRD" data-p="' + esc(p.id) + '">' + (showR ? "When, what you sent, their other projects" : "Earlier outreach to this firm · their other projects") + "</summary>" + body + "</details>";
   }
   function oxReachedTxt(r) {
     var w = oxWhen(r.date);
@@ -6872,6 +6887,12 @@
         .then(function (r) { S.modal = null; toast("📝 Saved. It can go out " + oxWhen(r.send_on) + " (My follow-ups)"); S.oxBusy = 0; oxLoad(); keepScroll(render); }); }); }
     if (a === "pbOpenDraft") { var dx = ((S.ox && S.ox.drafts) || []).filter(function (x) { return x.key === b.dataset.k; })[0]; if (dx) oxOpenDraft(dx.firm_id, dx.contact_id, dx.step, dx.project_id, "", dx); return; }
     if (a === "pbDropDraft") { var kk = b.dataset.k; return sure("Discard this draft?", function () { call("oxDropDraft", { key: kk }).then(function () { toast("Draft discarded"); S.oxBusy = 0; oxLoad(); }).catch(function (er) { toast(er.message); }); }, "Discard"); }
+    if (a === "pbRD") { e.preventDefault(); var rid = b.dataset.p; S.oxRDopen = S.oxRDopen || {}; S.oxRD = S.oxRD || {}; S.oxRDopen[rid] = !S.oxRDopen[rid]; keepScroll(render);
+      if (S.oxRDopen[rid] && !S.oxRD[rid]) call("oxReachDetail", { project_id: rid }).then(function (r) { S.oxRD[rid] = r; keepScroll(render); }).catch(function (er) { S.oxRD[rid] = { err: er.message }; keepScroll(render); }); return; }
+    if (a === "pbRDAll") { var ids = String(b.dataset.ids || "").split(",").filter(Boolean), rp0 = b.dataset.p; if (!ids.length) return;
+      return run(b, function () { return call("oxProjReached", { project_ids: ids }).then(function (r) { var nd = new Date(), dd = nd.getFullYear() + "-" + ("0" + (nd.getMonth() + 1)).slice(-2) + "-" + ("0" + nd.getDate()).slice(-2);
+        ids.forEach(function (id) { var q = oxP(id); if (q) q.reached = { how: "marked", date: dd, by: "" }; });
+        toast("✓ " + r.count + " more project" + (r.count === 1 ? "" : "s") + " marked done: they won’t come up in Start here"); return call("oxReachDetail", { project_id: rp0 }).then(function (x) { S.oxRD[rp0] = x; keepScroll(render); }); }); }); }
     if (a === "pbMoreStart") { S.oxStartN = (S.oxStartN || 12) + 12; return keepScroll(render); }
     if (a === "pbShowReached") { S.oxPF = S.oxPF || {}; S.oxPF.out = b.dataset.v === "1" ? "reached" : ""; S.oxStartN = 12; return keepScroll(render); }
     if (a === "pbReached") { var rp = oxP(b.dataset.p), on = b.dataset.on === "1"; if (!rp) return; var was = rp.reached;

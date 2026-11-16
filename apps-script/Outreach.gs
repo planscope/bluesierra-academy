@@ -1436,10 +1436,44 @@ function oxReached(p, c, a) {
   return recent;
 }
 ACTIONS.oxProjReached = function (me, b) {
-  oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
-  update("OxProjects", "id", p.id, b.on === false ? { reached_at: "", reached_by: "" } : { reached_at: oxToday(), reached_by: me.email });
-  return { on: b.on !== false };
+  oxNeed(me); var ids = b.project_ids ? [].concat(b.project_ids).map(String).slice(0, 60) : [String(b.project_id || "")], n = 0;
+  ids.forEach(function (id) { var p = findBy("OxProjects", "id", id); if (!p) { if (ids.length === 1) throw new Error("Project not found."); return; }
+    update("OxProjects", "id", p.id, b.on === false ? { reached_at: "", reached_by: "" } : { reached_at: oxToday(), reached_by: me.email }); n++; });
+  return { on: b.on !== false, count: n };
 };
+/* "Already reached out" up close: for each firm on the project, what we did and when (the emails themselves: the portal's,
+   and for Jesús also the ones from his Gmail), and that firm's other projects, so the same people don't get the same email twice. */
+function oxGmailBody(tid, date) {
+  try { var th = GmailApp.getThreadById(tid); if (!th) return null; var ours = {}; rows("People").forEach(function (x) { if (isStaff(x)) ours[normEmail(x.email)] = 1; });
+    var ms = th.getMessages().filter(function (m) { var fr = (oxParseAddrs(m.getFrom())[0] || {}).email || ""; return ours[fr] || /@bluesierracorp\.com$/.test(fr); }); if (!ms.length) return null;
+    var m = ms.filter(function (x) { return Utilities.formatDate(x.getDate(), CONFIG.TZ, "yyyy-MM-dd") === date; })[0] || ms[0];
+    return { to: oxParseAddrs(m.getTo()).map(function (a) { return a.email; }).join(", "), subject: m.getSubject() || "", body: String(m.getPlainBody() || "").split(/\n\s*On .{10,120}wrote:\s*\n/)[0].trim().slice(0, 2500) };
+  } catch (e) { return null; }
+}
+ACTIONS.oxReachDetail = function (me, b) {
+  oxNeed(me); var p = findBy("OxProjects", "id", String(b.project_id || "")); if (!p) throw new Error("Project not found.");
+  var c = oxCtx(oxToday()), pById = {}; rows("OxProjects").forEach(function (x) { pById[x.id] = x; });
+  var people = {}; rows("People").forEach(function (x) { people[normEmail(x.email)] = x.name; }); var cts = {}; rows("OxContacts").forEach(function (k) { cts[k.id] = k; });
+  var fids = (c.roles[p.id] || []).filter(function (r) { return r.firm_id && r.role !== "owner" && c.firms[r.firm_id]; }).map(function (r) { return r.firm_id; }).filter(function (x, i, l) { return l.indexOf(x) === i; });
+  var gmailN = 0;
+  return { project_id: p.id, firms: fids.map(function (fid) {
+    var f = c.firms[fid], ts = (c.touches[fid] || []).slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 10);
+    var hist = ts.map(function (t) {
+      var q = t.project_id ? pById[t.project_id] : null, k = cts[t.contact_id], out = { date: t.date, channel: t.channel, outcome: t.outcome || "", summary: t.summary || "", by: people[normEmail(t.by)] || "", here: t.project_id === p.id, street: q ? oxStreetFull(q) : "", project_id: t.project_id || "", who: k ? k.name || k.email : "" };
+      if (t.channel === "email") {
+        var ob = t.outbox_id ? findBy("OxOutbox", "id", t.outbox_id) : null;
+        if (ob) out.email = { to: ob.to, subject: ob.subject, body: String(ob.body || "").slice(0, 2500), from: "portal" };
+        else if (t.thread_id && me.role === "admin" && gmailN < 6) { gmailN++; var gm = oxGmailBody(t.thread_id, t.date); if (gm) out.email = Object.assign(gm, { from: "gmail" }); }
+      }
+      return out;
+    });
+    var others = Object.keys(c.roles).filter(function (pid) { return pid !== p.id && pById[pid] && (c.roles[pid] || []).some(function (r) { return r.firm_id === fid && r.role !== "owner"; }); }).map(function (pid) {
+      var q = pById[pid], a = oxProjAct(q, c), r = oxReached(q, c, a); return { id: q.id, street: oxStreetFull(q), town: q.town, stage: q.stage || "", reached: r, closed: q.stage === "5" || oxBidOf(q, c.opps).status === "closed" };
+    }).sort(function (a, b) { return (a.reached ? 1 : 0) - (b.reached ? 1 : 0) || a.street.localeCompare(b.street); });
+    return { firm_id: fid, name: f.name, segment: f.segment || "", emailed: c.st[fid].emailed ? c.st[fid].day0 : "", replied: c.st[fid].replied, history: hist, others: others };
+  }) };
+};
+NO_LOCK.oxReachDetail = 1; PREFETCH.oxReachDetail = OX_T.concat(["People"]);
 PREFETCH.oxProjReached = OX_T.concat(["People"]);
 /* ✅ marks: the newest email we sent and the newest one they wrote, about THIS property first, else to any firm on it. */
 function oxContacted(p, c) {
