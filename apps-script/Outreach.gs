@@ -280,7 +280,7 @@ function oxCallsHome(today) {
   var pool = oxCallPool(today), since = oxAdd(today, -14);
   return { meetings: rows("OxMeetings").filter(function (m) { return (m.status === "booked" && m.day >= oxAdd(today, -3)) || (m.day >= since && m.status !== "canceled"); })
       .sort(function (a, c) { return (a.day + a.time) < (c.day + c.time) ? -1 : 1; }).map(oxMeetOut),
-    on_list: pool.items.length, no_phone: pool.no_phone.slice(0, 60), no_phone_total: pool.no_phone.length, stats: oxCallStats("", today),
+    on_list: pool.items.length, no_phone: pool.no_phone, no_phone_total: pool.no_phone.length, stats: oxCallStats("", today),
     setters: rows("People").filter(function (p) { return p.role === "setter" && isTrue(p.active); }).map(function (p) { return { name: p.name, email: p.email, stats: oxCallStats(p.email, today) }; }) };
 }
 /* Where a firm is in the cadence: day 0 email → day 3 LinkedIn → day 7 call → day 14 follow-up, unless they replied. */
@@ -683,10 +683,14 @@ ACTIONS.oxRrSave = function (me, b) {
 };
 /* Which firms a batch would look up, and what it costs: one lookup per firm (the best person there). */
 function oxEnrichList(ids, goal) {
-  var firms = rows("OxFirms").filter(function (f) { return ids.indexOf(f.id) > -1; }), contacts = rows("OxContacts"), log = rows("OxEnrich");
+  var firms = rows("OxFirms").filter(function (f) { return ids.indexOf(f.id) > -1; }), contacts = rows("OxContacts"), log = rows("OxEnrich"), roles = rows("OxRoles");
+  var pById = {}; rows("OxProjects").forEach(function (p) { pById[p.id] = p; });
   return firms.map(function (f) {
-    var fl = oxFlags(f), why = goal === "calls" ? oxCallSkip(f, fl, contacts, log) : fl.excluded ? "excluded" : isTrue(f.individual) && !isTrue(f.confirmed) ? "individual (confirm first)" : contacts.some(function (c) { return c.firm_id === f.id && c.email && c.verified === "yes"; }) ? "already has a verified email" : oxHasRealEmail(f.id) ? "already has a real email (free)" : log.some(function (x) { return x.firm_id === f.id && x.status === "done"; }) ? "already looked up" : "";
-    return { firm_id: f.id, name: f.name, skip: why, value: oxFirmValue(f) };
+    var mine = roles.filter(function (x) { return x.firm_id === f.id && x.role !== "owner"; }).map(function (x) { return pById[x.project_id]; }).filter(function (p, i, a) { return p && a.indexOf(p) === i; });
+    var top = mine.slice().sort(function (a, c) { return (Number(c.fit) || 0) - (Number(a.fit) || 0); })[0];
+    var info = { type: f.firm_type || "", segment: f.segment || "", projects: mine.length, top: top ? oxStreetFull(top) + ", " + top.town : "", no_lookup: oxNoLookup(f) };
+    var fl = oxFlags(f), why = info.no_lookup ? "not needed (you said so)" : goal === "calls" ? oxCallSkip(f, fl, contacts, log) : fl.excluded ? "excluded" : isTrue(f.individual) && !isTrue(f.confirmed) ? "individual (confirm first)" : contacts.some(function (c) { return c.firm_id === f.id && c.email && c.verified === "yes"; }) ? "already has a verified email" : oxHasRealEmail(f.id) ? "already has a real email (free)" : log.some(function (x) { return x.firm_id === f.id && x.status === "done"; }) ? "already looked up" : "";
+    return Object.assign({ firm_id: f.id, name: f.name, skip: why, value: oxFirmValue(f) }, info);
   }).sort(function (a, b) { return (a.skip ? 1 : 0) - (b.skip ? 1 : 0) || b.value - a.value; });
 }
 /* Which firms deserve a paid lookup first: warm/known, early-stage projects with a high fit, more projects. */
@@ -697,11 +701,22 @@ function oxFirmValue(f) {
   return best + Math.min(ps.length, 5) * 3 + ({ warm: 25, known: 15 }[f.segment] || 0);
 }
 function oxRrCredits() { CacheService.getScriptCache().remove("rr:acct"); var c = oxRrInfo().credits; return c === "inf" || c == null ? Infinity : Number(c); }
+/* "Not needed": Jesús decides a firm never gets a paid lookup (it stays in Outreach; nothing else changes). */
+function oxNoLookup(f) { return /\bno lookup\b/i.test(String(f.flags || "")); }
+ACTIONS.oxNoLookup = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús decides where RocketReach credits go.");
+  var f = findBy("OxFirms", "id", String(b.firm_id || "")); if (!f) throw new Error("Firm not found.");
+  var rest = String(f.flags || "").split(/\s*;\s*/).filter(function (x) { return x && !/^no lookup$/i.test(x); });
+  if (b.on) rest.push("no lookup");
+  update("OxFirms", "id", f.id, { flags: rest.join("; "), updated_at: now() });
+  return { no_lookup: !!b.on };
+};
+PREFETCH.oxNoLookup = OX_T.concat(["People"]);
 ACTIONS.oxEnrichPlan = function (me, b) {
   oxNeed(me); var ids = [].concat(b.firm_ids || []).map(String);
   if (b.wave) ids = rows("OxFirms").filter(function (f) { return String(f.wave) === String(b.wave); }).map(function (f) { return f.id; });
   var left = oxRrCredits(), info = oxRrInfo(), l = oxEnrichList(ids, b.goal), go = l.filter(function (x) { return !x.skip; });
-  go.forEach(function (x, i) { if (i >= left) x.skip = "not enough credits (best firms go first)"; });
+  if (!b.pick) go.forEach(function (x, i) { if (i >= left) x.skip = "not enough credits (best firms go first)"; });   // when Jesús picks by hand, he sees the credits and chooses
   go = l.filter(function (x) { return !x.skip; });
   return { list: l, lookups: go.length, rr: info };
 };

@@ -2425,3 +2425,13 @@
   #bs-portal .cl-stat{flex:1}
   #bs-portal .cl-dial{width:100%;justify-content:space-between}
 }
+
+/* RocketReach: pick firms by hand */
+#bs-portal .ox-pk-bar{display:flex;gap:12px;align-items:center;margin:8px 0}
+#bs-portal .ox-pk-bar input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+#bs-portal .ox-pk-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow:auto;margin:8px 0;padding-right:4px}
+#bs-portal .ox-pk{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer}
+#bs-portal .ox-pk.on{border-color:var(--ok);background:var(--ok-soft)}
+#bs-portal .ox-pk input{width:18px;height:18px;accent-color:var(--ok)}
+#bs-portal .ox-pk-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+#bs-portal .ox-pk-skip{margin:6px 0}
