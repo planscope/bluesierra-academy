@@ -136,6 +136,41 @@
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
   var VIEWABLE = { oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  /* Google sometimes never starts a request (Executions shows "Failed, 0 s") and the browser would wait for minutes.
+     So if there's no answer after a few seconds, the same request goes again with the same id, and the first answer wins.
+     The server never does a save twice: a copy of a save still running hears "still working" and waits for its answer. */
+  var SLOW_ACTS = { oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
+    oxAiDraft: 1, oxAiSave: 1, oxBrief: 1, oxEnrich: 1, oxRrScout: 1, oxEnrichCheck: 1, oxFindFree: 1, oxGmailSync: 1, oxCheckReplies: 1, oxImport: 1, oxExport: 1, qbImport: 1, qbFinance: 1, qbMoney: 1, qbSpend: 1, qbSendInvoice: 1, feedback: 1, wipeProject: 1 };
+  var MED_ACTS = { todayQueue: 1, getProject: 1, oxHome: 1, ttReview: 1, jcSummary: 1, jcProject: 1, lsHome: 1, oxCalls: 1, oxSetterFirms: 1, oxSetterReached: 1, chatFeed: 1, activity: 1, qbInvoices: 1, qbCustomers: 1 };
+  var BG_ACTS = { tick: 1, typing: 1, presence: 1, markRead: 1 };
+  function ridNew() { var a = new Uint8Array(12); try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 12; i++) a[i] = Math.floor(Math.random() * 256); } return "r" + Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+  function nap(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+  async function postOnce(payload, signal) { var r = await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload), signal: signal }); return await r.json(); }
+  function send(action, payload) {
+    if (BG_ACTS[action]) { var c0 = new AbortController(), t0 = setTimeout(function () { c0.abort(); }, 25000); return postOnce(payload, c0.signal).finally(function () { clearTimeout(t0); }); }   // background checks: never hang
+    var gap = SLOW_ACTS[action] ? 120000 : MED_ACTS[action] ? 25000 : 10000, cap = SLOW_ACTS[action] ? 600000 : 180000, started = Date.now();
+    payload = Object.assign({ rid: ridNew() }, payload);
+    return new Promise(function (resolve, reject) {
+      var ctls = [], timers = [], done = false, live = 0, launched = 0, lastErr = null;
+      function finish(ok, v) { if (done) return; done = true; timers.forEach(clearTimeout); ctls.forEach(function (c) { try { c.abort(); } catch (e) {} }); (ok ? resolve : reject)(v); }
+      async function attempt() {
+        launched++; live++; var ctl = new AbortController(); ctls.push(ctl);
+        try {
+          for (var busy = 0; !done; ) {
+            var res = await postOnce(payload, ctl.signal); if (done) return;
+            if (res && res.running) { if (Date.now() - started > cap) return finish(false, new Error("Still working on it. Check again in a minute.")); await nap(3000); continue; }   // another copy is doing it: wait for its answer
+            if (res && !res.ok && /busy/i.test(res.error || "") && busy < 2) { await nap(1200 + busy * 1800 + Math.random() * 600); busy++; continue; }   // the save never started: try again
+            return finish(true, res);
+          }
+        } catch (e) { lastErr = e; }
+        live--; if (!done && !live) { if (launched < 3) attempt(); else finish(false, lastErr && lastErr.name !== "AbortError" ? new Error("Can't reach the portal right now. Check your connection and try again.") : new Error("The portal didn't answer. Try again.")); }
+      }
+      attempt();
+      timers.push(setTimeout(function () { if (!done && launched < 2) attempt(); }, gap));
+      timers.push(setTimeout(function () { if (!done && launched < 3) attempt(); }, gap * 2.5));
+      timers.push(setTimeout(function () { finish(false, new Error("The portal didn't answer. Try again.")); }, cap));
+    });
+  }
   async function call(action, body) {
     var payload = Object.assign({ action: action, token: S.token }, body || {}), res;
     if (S.viewAs) {
@@ -143,15 +178,8 @@
       else if (action === "markRead") return { ok: true };
       else if (action !== "logout") throw new Error("You're previewing as #" + S.viewAs + ". Exit the preview to change things.");
     }
-    if (API) {
-      for (var tries = 0; ; tries++) {
-        var r = await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
-        res = await r.json();
-        // "Busy" means the save never started, so trying again is safe. Quietly retry twice before telling anyone.
-        if (res.ok || !/busy/i.test(res.error || "") || tries >= 2) break;
-        await new Promise(function (ok) { setTimeout(ok, 1200 + tries * 1800 + Math.random() * 600); });
-      }
-    } else if (window.BSP_MOCK) res = await window.BSP_MOCK(payload);
+    if (API) res = await send(action, payload);
+    else if (window.BSP_MOCK) res = await window.BSP_MOCK(payload);
     else throw new Error("The portal isn't connected yet.");
     if (!res.ok) {
       if (/log in again|doesn't have access/i.test(res.error || "") && action !== "verifyCode") { store("del"); resetState(); render(); }
@@ -2676,7 +2704,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261116005128";
+  var BUILD = "20261120120421";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");

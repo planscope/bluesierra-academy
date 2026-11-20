@@ -97,12 +97,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var res, notices = []; QB_MEMO = {}; _CFG = {};
+  var res, notices = [], rid = ""; QB_MEMO = {}; _CFG = {};
   OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
     var pub = PUBLIC[b.action], fn;
     MAIL_NOTICES = notices;
+    rid = ridOf(b);
+    if (rid) { var prev = ridGet(rid); if (prev === "run") return out({ ok: false, running: true, error: "Still working on it…" }); if (prev) return ContentService.createTextOutput(prev).setMimeType(ContentService.MimeType.JSON); ridPut(rid, "run"); }
     if (pub) res = PUBLIC_NO_LOCK[b.action] ? pub(b) : withLock(function () { return pub(b); });   // reading who you are never waits in line
     else {
       var me = FAST[b.action] ? authFast(b.token) : null;
@@ -131,8 +133,16 @@ function doPost(e) {
   flushMail();                                   // emails go out after the lock is released, so nobody waits behind them
   rtFlush();                                     // then the instant doorbell (Firebase)
   if (notices.length && res.ok) res.notice = notices[0];
+  if (rid) { if (!res.ok && /busy/i.test(res.error || "")) ridDrop(rid); else ridPut(rid, JSON.stringify(res)); }   // a copy of this request gets the same answer
   return out(res);
 }
+/* Google sometimes never starts a request (it shows "Failed, 0 s" in Executions) and the browser waits for minutes.
+   The portal then sends a copy with the same request id. A save is never done twice: a copy of a save that is still
+   running hears "still working", and once it's done every copy gets the same answer (kept 10 minutes). Reads just run again. */
+function ridOf(b) { var r = b && b.rid; return typeof r === "string" && /^[A-Za-z0-9_-]{12,40}$/.test(r) && !READ_ONLY[b.action] && !FAST[b.action] && b.action !== "presence" ? r : ""; }
+function ridGet(rid) { try { return CacheService.getScriptCache().get("rid:" + rid); } catch (e) { return null; } }
+function ridPut(rid, v) { try { if (v.length < 95000) CacheService.getScriptCache().put("rid:" + rid, v, 600); else CacheService.getScriptCache().put("rid:" + rid, JSON.stringify({ ok: false, error: "It was saved. Reload to see it." }), 600); } catch (e) {} }
+function ridDrop(rid) { try { CacheService.getScriptCache().remove("rid:" + rid); } catch (e) {} }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 /* One writer at a time. Locks are held only for sheet work (no email, no waiting on Google services that can be done after). */
 function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(25000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); } }
