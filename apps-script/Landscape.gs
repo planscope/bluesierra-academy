@@ -415,7 +415,7 @@ ACTIONS.lsReviewExpense = function (me, b) {
 };
 ACTIONS.lsSetRate = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús sets pay rates."); var e = normEmail(b.email);
-  if (b.default) { PropertiesService.getScriptProperties().setProperty("LS_DEFAULT_RATE", String(cents(b.rate))); return {}; }
+  if (b.default) { PropertiesService.getScriptProperties().setProperty("LS_DEFAULT_RATE", String(cents(b.rate))); _CFG = {}; return {}; }
   if (!findPerson(e)) throw new Error("Pick a person."); var r = findBy("LsRates", "email", e), patch = { rate: String(cents(b.rate)), updated_at: now() };
   if (r) update("LsRates", "email", e, patch); else insert("LsRates", Object.assign({ email: e }, patch)); lsLog(me, "rate", e, "set a labor rate"); return {};
 };
@@ -608,8 +608,9 @@ PREFETCH.lsImport = ["People", "Projects"].concat(LS_TABLES);
    for a typical week, so they never spend the Google quota.
    ====================================================================================================== */
 var LS_WORKDAYS = [1, 2, 3, 4, 5];
-function lsCfg() {
-  var pr = PropertiesService.getScriptProperties();
+function lsCfg() { return cfgMemo("ls", lsCfg0); }
+function lsCfg0() {
+  var pr = cfgProps();
   var g = function (k, d) { var v = pr.getProperty(k); return v == null || v === "" ? d : num(v); };
   return { yard: parseJson(pr.getProperty("LS_YARD"), null), target: num(pr.getProperty("LS_TARGET")) || 75, rate: num(pr.getProperty("LS_DEFAULT_RATE")) || 32,
     load_min: g("LS_LOAD", 15), break_min: g("LS_BREAK", 30), break_at: g("LS_BREAK_AT", 690) };            // loading at the yard, lunch, and when lunch starts (11:30)
@@ -743,7 +744,7 @@ ACTIONS.lsSettings = function (me, b) {
   if (b.load_min != null) pr.setProperty("LS_LOAD", String(Math.max(0, Math.min(120, Math.round(num(b.load_min))))));
   if (b.break_min != null) pr.setProperty("LS_BREAK", String(Math.max(0, Math.min(120, Math.round(num(b.break_min))))));
   if (b.break_at != null) { var ba = lsMinOf(lsHHMM(b.break_at)); if (ba == null) throw new Error("Write the break time like 11:30."); pr.setProperty("LS_BREAK_AT", String(ba)); }
-  return { cfg: lsCfg() };
+  _CFG = {}; return { cfg: lsCfg() };
 };
 /* A typical week: which properties each crew does on each workday (biweekly ones count half). */
 function lsWeek() {

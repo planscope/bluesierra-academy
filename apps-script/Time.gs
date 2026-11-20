@@ -38,7 +38,7 @@ TABLES.TtMeals = ["id", "emp", "shift_id", "day", "answer", "start", "minutes", 
 TABLES.TtDevices = ["key", "dev", "emp", "label", "first_seen", "last_seen", "uses", "status", "by", "at"];
 TABLES.TtAudit = ["id", "at", "by", "emp", "kind", "ref", "before", "after", "note"];
 var TT_T = ["TtEvents", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals", "TtPresence", "TtDevices"];
-var TT_READ = ["People", "LsCrews", "LsVisits", "LsProps", "Projects"].concat(TT_T);
+var TT_READ = ["People", "LsCrews", "LsVisits", "LsProps", "Projects", "Schedule"].concat(TT_T);   // Schedule: the jobsite's tasks on the clock screen
 var TT_NOW = 0;                                                                     // tests set a fixed clock; production uses the real one
 function ttNow() { return TT_NOW || Date.now(); }
 var TT_PERMS = ["time_review", "accounting", "pay_view", "pay_rates", "period_close", "time_export", "clock_others"];
@@ -51,8 +51,9 @@ var TT_ORDER = { "in": 0, meal_end: 1, rest_end: 1, "switch": 2, meal_start: 3, 
    in the workweek: first 8 h 1.5x, beyond 8 h 2x). The result is labeled an estimate until accounting validates it. */
 var TT_RULES = { v: "CA-2026.1", note: "Estimate. Accounting must validate these rules before any payroll export." };
 
-function ttCfg() {
-  var pr = PropertiesService.getScriptProperties(), n = function (k, d) { var v = Number(pr.getProperty(k)); return isFinite(v) && pr.getProperty(k) !== null ? v : d; };
+function ttCfg() { return cfgMemo("tt", ttCfg0); }
+function ttCfg0() {
+  var pr = cfgProps(), n = function (k, d) { var v = Number(pr.getProperty(k)); return isFinite(v) && pr.getProperty(k) !== null ? v : d; };
   return { week_start: n("TT_WEEK_START", 1), radius: n("TT_RADIUS_M", 150), acc_ok: n("TT_ACC_OK_M", 100), open_long_h: n("TT_OPEN_LONG_H", 12), retention: pr.getProperty("TT_RETENTION") || "4 years" };
 }
 /* ---- time helpers (UTC in storage, company time zone on screen) ---- */
@@ -86,7 +87,7 @@ function ttPerms(me) {
 function ttLang(me) { var p = ttRow(me); return p.lang === "en" || p.lang === "es" ? p.lang : p.role === "crew" ? "es" : "en"; }
 function ttErr(me, es, en) { return new Error(ttLang(me) === "es" ? es : en); }
 /* Rollout: nobody sees the clock until Jesús turns it on, per person (People.clock) or for everyone (TT_ALL). */
-function ttAll() { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }
+function ttAll() { return cfgMemo("ttAll", function () { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }); }
 function ttEnabled(p) { if (!p || !isTeam(p) || !isTrue(p.active) || p.clock === "no" || p.role === "admin") return false; /* the admin manages hours, he doesn't clock */ return p.role === "crew" || ttAll() || isTrue(p.clock); }   // crew: on unless turned off; team: when turned on
 function ttClocker(me) { if (!me || me.preview || !isTeam(me)) throw new Error("My hours is for the Blue Sierra team."); return me; }
 function ttCrewsOf(emp) { return rows("LsCrews").filter(function (c) { return splitIds(c.members).map(normEmail).indexOf(emp) > -1; }); }
@@ -479,6 +480,8 @@ ACTIONS.ttState = function (me, b) {
   return Object.assign(stt, { lang: ttLang(me), labor: ttIsLabor(row), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
     privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, office_pending: pm.time_review ? ttOfficePending(me) : 0, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
 };
+PRELOCK.ttPunch = function (me, b) { var l = b && b.loc, la = Number(l && l.lat), lo = Number(l && l.lon); if (l && l.status === "ok" && isFinite(la) && isFinite(lo)) ttAddr(Math.round(la * 1e6) / 1e6, Math.round(lo * 1e6) / 1e6); };
+PRELOCK.ttPresenceDecide = function (me, b) { var c = findBy("TtPresence", "id", String(b.id || "")); if (c) ttCaseOut(c, true); };   // the evidence addresses, cached
 ACTIONS.ttPunch = function (me, b) {
   ttClocker(me); var emp = normEmail(me.email), src = "employee";
   if (b.for_emp && normEmail(b.for_emp) !== emp) {                                     // a supervisor clocking for someone: needs its own permission, and it says so on the record
@@ -568,7 +571,7 @@ ACTIONS.ttPresenceExplain = function (me, b) {
 };
 /* The office decides: accept or reject the unverified time, always with a reason. Nothing is deleted either way:
    if the hours shouldn't count, that is a separate office correction with its own history. */
-ACTIONS.ttPresenceDecide = function (me, b) {
+ACTIONS.ttPresenceDecide = function (me, b, quiet) {
   var c = findBy("TtPresence", "id", String(b.id || "")); if (!c) throw new Error("Case not found.");
   if (!TT_OPEN_CASE[c.status]) throw new Error("This case was already decided.");
   if (normEmail(me.email) === c.emp) throw new Error("Nobody decides their own case. Another reviewer has to.");
@@ -578,7 +581,7 @@ ACTIONS.ttPresenceDecide = function (me, b) {
   if (note.length < 3) throw new Error("Write the reason for the decision.");
   update("TtPresence", "id", c.id, { status: dec === "accept" ? "accepted" : "rejected", decision: dec, decision_note: note, decided_by: normEmail(me.email), decided_at: ttIso(ttNow()), updated_at: ttIso(ttNow()) });
   ttAudit(me, c.emp, "presence_" + dec, c.id, { status: c.status }, { status: dec === "accept" ? "accepted" : "rejected" }, note);
-  return { case: ttCaseOut(findBy("TtPresence", "id", c.id), true) };
+  return quiet ? {} : { case: ttCaseOut(findBy("TtPresence", "id", c.id), true) };
 };
 /* Several check-ins of one or more people at once, with one reason (the dashboard's "Accept all"). Each is checked like a single decision. */
 ACTIONS.ttPresenceDecideMany = function (me, b) {
@@ -586,7 +589,7 @@ ACTIONS.ttPresenceDecideMany = function (me, b) {
   if (!ids.length) throw new Error("Pick at least one check-in.");
   if (clean(b.note, 600).length < 3) throw new Error("Write the reason for the decision.");
   var done = [], failed = [];
-  ids.forEach(function (id) { try { ACTIONS.ttPresenceDecide(me, { id: id, decision: b.decision, note: b.note }); done.push(id); } catch (e) { failed.push({ id: id, error: e.message }); } });
+  ids.forEach(function (id) { try { ACTIONS.ttPresenceDecide(me, { id: id, decision: b.decision, note: b.note }, true); done.push(id); } catch (e) { failed.push({ id: id, error: e.message }); } });
   if (!done.length && failed.length) throw new Error(failed[0].error);
   return { done: done, failed: failed };
 };
@@ -1004,7 +1007,7 @@ ACTIONS.ttSetPerson = function (me, b) {
 /* Jesús's settings screen: who has the clock, explicit permissions, supervisor and pay type, per person. */
 ACTIONS.ttSettings = function (me, b) {
   if (me.role !== "admin" || me.preview) throw new Error("Only Jesús changes time settings.");
-  if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
+  if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); _CFG = {}; ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
   return { all: ttAll(), week_start: ttCfg().week_start, perms: TT_PERMS, people: ttTeam().map(function (p) {
     return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: ttEnabled(p), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
       crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), crew_level: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "supervisor") : "", has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };

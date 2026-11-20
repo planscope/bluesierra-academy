@@ -2237,6 +2237,12 @@ function oxCityIngest(list, me, label) {
   var c = fresh.length ? ACTIONS.oxImport(me, { kind: "projects", rows: fresh, file: label }).counts : { new: 0 };
   return { added: c.new || 0, names: names };
 }
+/* The city reader spends minutes on the internet and the AI. It takes the portal's lock only for a moment, to save each result,
+   so logins, the clock and everyone's saves never wait behind it. Inside, it reads the tables fresh (someone may have saved meanwhile). */
+function oxCityWrite(fn) {
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(60000)) throw new Error("The portal is busy. Try again in a moment.");
+  try { var t = OX_T.concat(["OxCityLog", "People"]); t.forEach(function (x) { delete _ROWS[x]; }); prefetch(t); return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
+}
 function oxCityRun(me, b) {
   var start = Date.now(), today = oxToday(), log = rows("OxCityLog"), done = {}, out = { towns: [], added: 0, names: 0, cost: 0, more: false, ai: !!aiKey() };
   log.forEach(function (x) { if (x.status === "read" || x.status === "empty") done[x.town + "|" + x.ref] = 1; });
@@ -2249,26 +2255,26 @@ function oxCityRun(me, b) {
       if (OX_PERMIT_KINDS.test(src.kind)) {
         var last = log.filter(function (x) { return x.town === src.town && x.source === "open data" && x.status === "read"; }).map(function (x) { return String(x.at); }).sort().pop(), from = last && !b.days ? oxAdd(last.slice(0, 10), -3) : since;
         if (last && last.slice(0, 10) === today && !b.force) { res.note = "already read today"; }
-        else { var pa = oxPermitRows(src, from), ig = oxCityIngest(pa, me, src.town + " open data " + today); res.agendas = 1; res.read = 1; res.added = ig.added; res.names = ig.names; res.found = pa.length;
-          insert("OxCityLog", { id: newId("ol"), town: src.town, source: "open data", ref: src.kind + "-" + today, url: src.page || src.url, title: "Permits since " + from, meeting_date: today, at: now(), status: "read", found: pa.length, added: ig.added, note: "", cost: 0, by: me.email }); }
+        else { var pa = oxPermitRows(src, from), ig = oxCityWrite(function () { return oxCityIngest(pa, me, src.town + " open data " + today); }); res.agendas = 1; res.read = 1; res.added = ig.added; res.names = ig.names; res.found = pa.length;
+          oxCityLog( { id: newId("ol"), town: src.town, source: "open data", ref: src.kind + "-" + today, url: src.page || src.url, title: "Permits since " + from, meeting_date: today, at: now(), status: "read", found: pa.length, added: ig.added, note: "", cost: 0, by: me.email }); }
       } else {
         var ags = oxCityAgendas(src, since, until).filter(function (a) { return !done[src.town + "|" + a.ref]; }); res.agendas = ags.length;
         for (var k = 0; k < ags.length; k++) {
           var a = ags[k];
           if (!out.ai) { res.note = "needs the AI key to read agendas"; break; }
           if (reads >= OX_READ.perRun || Date.now() - start > 240000) { out.more = true; break; }
-          var txt; try { txt = oxAgendaText(a); } catch (e2) { if (!/too big|answered 404|answered 410/.test(e2.message || "")) throw e2; insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: String(e2.message).slice(0, 120), cost: 0, by: me.email }); res.note = "1 agenda skipped: " + String(e2.message).slice(0, 80); continue; } reads++;
+          var txt; try { txt = oxAgendaText(a); } catch (e2) { if (!/too big|answered 404|answered 410/.test(e2.message || "")) throw e2; oxCityLog({ id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: String(e2.message).slice(0, 120), cost: 0, by: me.email }); res.note = "1 agenda skipped: " + String(e2.message).slice(0, 80); continue; } reads++;
           if (txt === null || (!txt || typeof txt === "string" && txt.length < 200) && a.date >= today) continue;   // not posted yet: look again next time
-          if (!txt || (typeof txt === "string" && txt.length < 200)) { insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "no text", cost: 0, by: me.email }); continue; }
-          var ai; try { ai = oxAiReadAgenda(txt, src.town, a.title, a.date); } catch (e3) { if (!/answer \((400|413)\)/.test(e3.message || "")) throw e3; insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "too long for Claude to read (over 100 pages?)", cost: 0, by: me.email }); res.note = "1 agenda too long to read"; continue; }
+          if (!txt || (typeof txt === "string" && txt.length < 200)) { oxCityLog({ id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "no text", cost: 0, by: me.email }); continue; }
+          var ai; try { ai = oxAiReadAgenda(txt, src.town, a.title, a.date); } catch (e3) { if (!/answer \((400|413)\)/.test(e3.message || "")) throw e3; oxCityLog({ id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "empty", found: 0, added: 0, note: "too long for Claude to read (over 100 pages?)", cost: 0, by: me.email }); res.note = "1 agenda too long to read"; continue; }
           var items = (ai.items || []).filter(function (x) { return x.fit_tier !== "C"; });
           var rowsIn = items.map(function (x) { return { permit_no: x.case_numbers, address: x.address, city: src.town, description: x.description, status_raw: a.title + " " + a.date, project_type: x.project_type, all_types: x.project_type, fit_tier: x.fit_tier,
             stage_order: "1", date: a.date, architect: x.architect, landscape_architect: x.landscape_architect, applicant: x.applicant, contractor: x.contractor, engineer: x.engineer, owner_do_not_contact: x.owner, source_url: a.url, next_step: "On the " + a.title + " agenda " + a.date }; });
-          var ig2 = oxCityIngest(rowsIn, me, src.town + " · " + a.title + " " + a.date); res.read++; res.added += ig2.added; res.names += ig2.names; out.cost += ai.cost || 0;
-          insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "read", found: (ai.items || []).length, added: ig2.added, note: items.length + " fit", cost: ai.cost || 0, by: me.email });
+          var ig2 = oxCityWrite(function () { return oxCityIngest(rowsIn, me, src.town + " · " + a.title + " " + a.date); }); res.read++; res.added += ig2.added; res.names += ig2.names; out.cost += ai.cost || 0;
+          oxCityLog({ id: newId("ol"), town: src.town, source: src.kind, ref: a.ref, url: a.url, title: a.title, meeting_date: a.date, at: now(), status: "read", found: (ai.items || []).length, added: ig2.added, note: items.length + " fit", cost: ai.cost || 0, by: me.email });
         }
       }
-    } catch (e) { res.note = String(e.message || e).slice(0, 160); insert("OxCityLog", { id: newId("ol"), town: src.town, source: src.kind, ref: "err-" + today + "-" + i, url: "", title: "", meeting_date: today, at: now(), status: "error", found: 0, added: 0, note: res.note, cost: 0, by: me.email }); }
+    } catch (e) { res.note = String(e.message || e).slice(0, 160); oxCityLog({ id: newId("ol"), town: src.town, source: src.kind, ref: "err-" + today + "-" + i, url: "", title: "", meeting_date: today, at: now(), status: "error", found: 0, added: 0, note: res.note, cost: 0, by: me.email }); }
     out.added += res.added; out.names += res.names; out.towns.push(res);
     if (out.more) { out.next = i; break; }
   }
@@ -2276,6 +2282,7 @@ function oxCityRun(me, b) {
   out.cost = Math.round(out.cost * 1000) / 1000;
   return out;
 }
+function oxCityLog(row) { oxCityWrite(function () { insert("OxCityLog", row); }); }
 function oxCityEnsure() {
   try { var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "oxCityWeekly"; });
     if (!has) ScriptApp.newTrigger("oxCityWeekly").timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ).create(); return true; } catch (e) { console.warn("oxCityEnsure: " + e.message); return false; }
@@ -2303,7 +2310,7 @@ ACTIONS.oxCityRun = function (me, b) {
   PropertiesService.getScriptProperties().setProperty("OX_CITY_LAST", JSON.stringify({ at: now(), added: r.added, names: r.names, cost: r.cost, by: me.name || me.email }));
   return r;
 };
-PREFETCH.oxCityRun = OX_T.concat(["People"]);
+PREFETCH.oxCityRun = OX_T.concat(["People"]); NO_LOCK.oxCityRun = 1;   // it locks only to save each result (oxCityWrite)
 function oxCityHome() {
   var last = null; try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty("OX_CITY_LAST") || "null"); } catch (e) {}
   var log = rows("OxCityLog"), towns = OX_CITY.map(function (s) { var pm = OX_PERMIT_KINDS.test(s.kind), l = log.filter(function (x) { return x.town === s.town && (x.source === s.kind || pm && x.source === "open data"); }), ok = l.filter(function (x) { return x.status === "read"; }).pop(), err = l.filter(function (x) { return x.status === "error"; }).pop();

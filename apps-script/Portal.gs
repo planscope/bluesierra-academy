@@ -66,6 +66,7 @@ var PREFETCH = {
   listProjects: ["Projects", "People", "Invoices", "Messages", "Timeline", "ContractLines", "Reads", "Checklist", "Schedule", "LsCrews", "LsProps"],
   activity: ["Projects", "People", "Messages", "Reads"], qbMoney: ["Projects", "People", "Invoices", "ContractLines"], qbFinance: ["Projects", "People"], qbSpend: ["Projects", "People"], chatFeed: ["Projects", "People", "Messages", "Reads"], sendMessage: ["Projects", "People", "Messages", "Reads"], react: ["Projects", "People", "Messages"], feedback: ["Projects", "People", "Feedback"], listFeedback: ["People", "Projects", "Feedback"], presence: ["People", "Projects", "Messages", "Reads"], me: ["People", "LsCrews", "LsProps"], markRead: ["People", "Projects", "Reads"], callDecline: ["Projects", "People", "Messages", "Reads"], callInvite: ["Projects", "People", "Messages"]
 };
+PREFETCH.setPin = ["People"]; PREFETCH.saveProfile = ["People"];
 var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, callInvite: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
 var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
@@ -96,13 +97,13 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var res, notices = []; QB_MEMO = {};
+  var res, notices = []; QB_MEMO = {}; _CFG = {};
   OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
     var pub = PUBLIC[b.action], fn;
     MAIL_NOTICES = notices;
-    if (pub) res = withLock(function () { return pub(b); });
+    if (pub) res = PUBLIC_NO_LOCK[b.action] ? pub(b) : withLock(function () { return pub(b); });   // reading who you are never waits in line
     else {
       var me = FAST[b.action] ? authFast(b.token) : null;
       if (!me) { prefetch(["People"].concat(PREFETCH[b.action] || [])); me = auth(b.token); }
@@ -115,6 +116,7 @@ function doPost(e) {
       if (!fn) throw new Error("Unknown action.");
       if (READ_ONLY[b.action] || NO_LOCK[b.action]) res = fn(me, b);
       else {
+        if (PRELOCK[b.action]) try { PRELOCK[b.action](me, b); } catch (e) {}   // slow lookups (addresses) before getting in line, so others don't wait on them
         res = withLock(function () {
           // Inside the lock, read fresh: someone may have saved while we waited, and row positions must be exact.
           _ROWS = {}; prefetch(["People"].concat(PREFETCH[b.action] || WRITE_TABLES));
@@ -134,6 +136,10 @@ function doPost(e) {
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 /* One writer at a time. Locks are held only for sheet work (no email, no waiting on Google services that can be done after). */
 function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(25000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); } }
+/* Login steps that only read (or only touch the cache) don't queue behind other people's saves. */
+var PUBLIC_NO_LOCK = { checkEmail: 1, requestCode: 1, checkPhone: 1 };
+/* Work done before a save takes the lock: lookups whose answers are cached, so the save itself is quick. */
+var PRELOCK = {};
 var WRITE_TABLES = ["Projects", "Messages", "Timeline", "Photos", "Invoices", "Checklist", "Schedule", "ContractLines", "Plans", "Reads", "Sessions"];
 /* Every save bumps a version number; open portals see it in their next ping and reload only when something really changed. */
 function bumpVersion(pid) { var t = Date.now(); try { CacheService.getScriptCache().put("ver:" + (pid || "*"), String(t), 21600); } catch (e) {} try { if (pid) rtVersion(pid, t); } catch (e) {} return t; }
@@ -2523,6 +2529,11 @@ function ss() {
 }
 /* Every tab keeps its header row and stores everything as plain text, so Sheets never turns ids, amounts or dates into something else. */
 var _ROWS = {}, _SHEETS = {};
+/* Settings kept in Script Properties are read once per request (each read is a slow call to Google; the clock used to make hundreds). */
+var _CFG = {};
+function cfgMemo(k, fn) { return k in _CFG ? _CFG[k] : (_CFG[k] = fn()); }
+/* All the settings in one call, for the settings readers above. */
+function cfgProps() { var all = cfgMemo("_all", function () { return PropertiesService.getScriptProperties().getProperties() || {}; }); return { getProperty: function (k) { return k in all ? all[k] : null; } }; }
 function prefetch(tables) {
   var need = tables.filter(function (t, i) { return !_ROWS[t] && tables.indexOf(t) === i && TABLES[t]; }); if (!need.length) return;
   var id = PropertiesService.getScriptProperties().getProperty("PORTAL_SHEET_ID"); if (!id) return;
