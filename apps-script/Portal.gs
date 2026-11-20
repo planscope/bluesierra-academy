@@ -98,6 +98,8 @@ function doGet(e) {
 
 function doPost(e) {
   var res, notices = [], rid = ""; QB_MEMO = {}; _CFG = {};
+  var moved = cfgProps().getProperty("MOVED_TO"); if (moved) return moveForward(moved, e);           // this server moved: pass the request on
+  if (!cfgProps().getProperty("PORTAL_SHEET_ID") && !moveImport()) return out({ ok: false, error: "The portal is busy getting ready. Try again in a moment." });   // a new server waits for its settings, never makes a new sheet
   OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
@@ -2626,3 +2628,63 @@ function dateOrEmpty(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? S
 function money(n) { return Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function nl2br(s) { return String(s).replace(/\n/g, "<br>"); }
+
+
+/* ====================================== Moving the server to a fresh Apps Script project ======================================
+   Nov 2026: Google started dropping about a third of the requests to the old project (a new project with the same code drops none).
+   1) Jesús authorizes the new project once (permisos() in its editor).
+   2) moveNow (admin, on the OLD server): writes its settings to a private file in Jesús's Drive, asks the new server to load them
+      (it does so on its first request: settings + the same timers, then the file goes to the trash), and only if the new one answers
+      right, turns off its own timers and from then on passes every request to the new server. Nothing is ever saved by both. */
+var MOVE_FILE = "Blue Sierra portal · settings handoff (delete me).json";
+var MOVE_TRIGGERS = {
+  checkEmailReplies: function (t) { return t.everyMinutes(10); }, qbWarm: function (t) { return t.everyMinutes(15); }, lsWarm: function (t) { return t.everyHours(4); },
+  oxCityWeekly: function (t) { return t.onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ); }, oxCityMore: function (t) { return t.after(60000); }
+};
+function moveForward(url, e) {
+  try {
+    var r = UrlFetchApp.fetch(url, { method: "post", contentType: "text/plain;charset=utf-8", payload: (e && e.postData && e.postData.contents) || "{}", muteHttpExceptions: true, followRedirects: true });
+    var t = r.getContentText(); if (r.getResponseCode() === 200 && /^\s*\{/.test(t)) return ContentService.createTextOutput(t).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {}
+  return out({ ok: false, error: "The portal is busy. Try again in a moment." });
+}
+/* On the NEW server, its first request: load the settings left in Drive, start the timers, trash the file. */
+function moveImport() {
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(20000)) return false;
+  try {
+    var pr = PropertiesService.getScriptProperties(); if (pr.getProperty("PORTAL_SHEET_ID")) return true;
+    var it = DriveApp.getFilesByName(MOVE_FILE), files = []; while (it.hasNext()) files.push(it.next()); if (!files.length) return false;
+    files.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
+    var d = JSON.parse(files[0].getBlob().getDataAsString()), props = d.props || {}; delete props.MOVED_TO;
+    if (!props.PORTAL_SHEET_ID) return false;
+    pr.setProperties(props, false);
+    var have = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+    (d.triggers || []).forEach(function (h) { if (MOVE_TRIGGERS[h] && have.indexOf(h) < 0) { MOVE_TRIGGERS[h](ScriptApp.newTrigger(h).timeBased()).create(); have.push(h); } });
+    files.forEach(function (f) { try { f.setTrashed(true); } catch (e) {} });
+    _CFG = {};
+    return true;
+  } finally { lock.releaseLock(); }
+}
+ACTIONS.moveNow = function (me, b) {
+  if (!me || me.role !== "admin" || me.preview) throw new Error("Only Jesús moves the server.");
+  if (b.confirm !== "MOVE") throw new Error("Confirm the move.");
+  var to = String(b.to || ""); if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{30,120}\/exec$/.test(to)) throw new Error("That isn't a web app address.");
+  var pr = PropertiesService.getScriptProperties(), all = pr.getProperties(); delete all.MOVED_TO;
+  var trig = ScriptApp.getProjectTriggers(), names = [];
+  trig.forEach(function (t) { var h = t.getHandlerFunction(); if (MOVE_TRIGGERS[h] && names.indexOf(h) < 0) names.push(h); });
+  var f = DriveApp.createFile(MOVE_FILE, JSON.stringify({ v: 1, at: now(), props: all, triggers: names }), "application/json");
+  // The new server loads the settings on this first request. It must answer like a configured portal ("log in again"), nothing else.
+  var ans = "", ok = false;
+  try { var r = UrlFetchApp.fetch(to, { method: "post", contentType: "text/plain;charset=utf-8", payload: JSON.stringify({ action: "me", token: "x" }), muteHttpExceptions: true, followRedirects: true });
+    ans = r.getContentText().slice(0, 200); ok = r.getResponseCode() === 200 && /log in again/i.test(ans); } catch (e) { ans = String(e.message || e).slice(0, 200); }
+  if (!ok) { try { f.setTrashed(true); } catch (e) {} throw new Error("The new server isn't ready, nothing changed: " + ans.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 160)); }
+  trig.forEach(function (t) { if (names.indexOf(t.getHandlerFunction()) > -1) ScriptApp.deleteTrigger(t); });
+  pr.setProperty("MOVED_TO", to);
+  return { keys: Object.keys(all).length, triggers: names, to: to };
+};
+/* Run this once in the NEW project's editor: Google asks for the portal's permissions (mail, Drive, calendar, the sheet). Nothing else happens. */
+function permisos() {
+  ScriptApp.getProjectTriggers(); DriveApp.getRootFolder(); GmailApp.getAliases(); CalendarApp.getDefaultCalendar(); UrlFetchApp.fetch("https://www.google.com/generate_204", { muteHttpExceptions: true });
+  try { SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  Logger.log("Listo: el servidor nuevo tiene permiso. Regresa a Claude.");
+}
