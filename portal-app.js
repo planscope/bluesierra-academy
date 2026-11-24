@@ -253,7 +253,7 @@
     S.lb = null; S.modal = null; S.loadErr = "";                     // overlays never survive navigation
     try {
       if (!S.projects) {
-        var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); }      // show the last copy instantly
+        var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); setTimeout(locGate, 250); }      // show the last copy instantly
         var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping(); setTimeout(locGate, 600);
         if (S.qbReturn) { S.home = "team"; finishQb(); }
         if (S.qbReturnErr) { toast("QuickBooks wasn't connected (" + S.qbReturnErr + ")."); S.qbReturnErr = null; }
@@ -336,6 +336,7 @@
 
   /* ---------------- render ---------------- */
   function render() {
+    if (S.locLock && S.me && !S.viewAs && (!S.modal || S.modal.type !== "lsxLocGate")) S.modal = { type: "lsxLocGate", denied: S.locLock === 2 ? 1 : 0 };   // no location, no portal (phones of people who use the clock)
     if (S.me && S.me.pinTemp && !S.viewAs && S.token) { S.pendingMe = S.me; S.me = null; S.step = "setpin"; S.lastCode = null; }   // came in with the office's code: choose your own PIN first
     if (S.step === "setpin" && !S.me) return renderLogin();
     if (!S.token || !S.me) {
@@ -2705,7 +2706,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261123195909";
+  var BUILD = "20261123201726";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5482,7 +5483,7 @@
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (!m.denied) return "<h2>📍 " + (es ? "Tu ubicación al checar" : "Your location when you clock") + "</h2><p>" + (es ? "Para checar, el portal toma tu ubicación <b>una sola vez, en el momento en que marcas</b>. No te sigue durante el día. Solo la ven la oficina y accounting." : "To clock in, the portal takes your location <b>once, at the moment you tap</b>. It doesn't follow you during the day. Only the office and accounting see it.") + "</p><p>" + (es ? "Tu teléfono te va a preguntar: elige <b>«Permitir»</b>." : "Your phone will ask: choose <b>Allow</b>.") + '</p><div class="actions">' + cancel + '<button class="btn" data-a="ttsLocGo">' + (es ? "Entendido, checar" : "OK, clock in") + "</button></div>";
     return "<h2>📍 " + (es ? "Activa tu ubicación para checar" : "Turn on your location to clock in") + "</h2><p>" + (es ? "Tu teléfono la tiene apagada para el portal. Sigue estos pasos:" : "Your phone has it turned off for the portal. Follow these steps:") + "</p>" + locStepsHtml() +
-      (S.locVidUrl ? "<details><summary>" + (es ? "Ver el video" : "Watch the video") + "</summary>" + locVideoHtml() + "</details>" : "") +
+      "" +
       '<div class="actions" style="justify-content:flex-start">' + cancel + "</div>" +
       "<details><summary>" + (es ? "No puedo activarla" : "I can't turn it on") + '</summary><p class="muted small">' + (es ? "Puedes checar sin ubicación, pero queda anotado y la oficina lo revisa. Escribe por qué:" : "You can clock in without location, but it's noted and the office reviews it. Write why:") + '</p><textarea data-tts-noloc rows="2" maxlength="300"></textarea><button class="btn ghost" data-a="ttsLocNo">' + (es ? "Checar sin ubicación" : "Clock in without location") + "</button></details>";
   }
@@ -5538,7 +5539,7 @@
     ".la-f{position:absolute;inset:0;opacity:0}.la-n2 .la-f:nth-child(1){animation:la-a2 6s infinite}.la-n2 .la-f:nth-child(2){animation:la-b2 6s infinite}@keyframes la-a2{0%,47%{opacity:1}50%,100%{opacity:0}}@keyframes la-b2{0%,47%{opacity:0}50%,97%{opacity:1}100%{opacity:0}}" +
     ".la-n3 .la-f:nth-child(1){animation:la-a3 8.4s infinite}.la-n3 .la-f:nth-child(2){animation:la-b3 8.4s infinite}.la-n3 .la-f:nth-child(3){animation:la-c3 8.4s infinite}@keyframes la-a3{0%,31%{opacity:1}33%,100%{opacity:0}}@keyframes la-b3{0%,31%{opacity:0}33%,64%{opacity:1}66%,100%{opacity:0}}@keyframes la-c3{0%,64%{opacity:0}66%,98%{opacity:1}100%{opacity:0}}" +
     ".la-btn{background:#2B2833;color:#fff;border-radius:12px;text-align:center;padding:16px 4px;font:600 14px Barlow,system-ui;margin-top:8px}.la-gbtn{background:#4a7a3f;color:#fff;border-radius:12px;text-align:center;padding:12px 4px;font:600 12px Barlow,system-ui;margin-top:12px;position:relative}" +
-    ".la-cap{position:absolute;left:6px;right:6px;bottom:14px;background:#2B2833;color:#fff;border-radius:8px;padding:5px 6px;text-align:center;font:600 10px/1.2 Barlow,system-ui}" +
+    "@keyframes la-g5{0%,18%{opacity:1}20%,100%{opacity:0}}.la-cap{position:absolute;left:6px;right:6px;bottom:14px;background:#2B2833;color:#fff;border-radius:8px;padding:5px 6px;text-align:center;font:600 10px/1.2 Barlow,system-ui}" +
     "@media (prefers-reduced-motion:reduce){.la-ph *{animation-duration:6s!important}}";
   function laCss() { if (document.getElementById("la-css")) return; var st = document.createElement("style"); st.id = "la-css"; st.textContent = LA_CSS; document.head.appendChild(st); }
   function laPortal(extra) { return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:11px">BlueSierra</b><span style="font-size:8px;color:#888">bluesierracorp.com</span></div><div style="border:1px solid #e5e1da;border-radius:10px;padding:8px"><div style="font-size:8px;letter-spacing:.08em;color:#858A7B">MI RELOJ</div>' + (extra || '<div class="la-btn">CHECAR</div>') + "</div>"; }
@@ -5566,19 +5567,19 @@
       '<div class="la-f"><div class="la-sc"><div class="la-h">' + T("Permisos", "Permissions") + '</div><div class="la-row la-hi"><b>📍 ' + T("Ubicación", "Location") + '</b><span class="la-tg"></span></div><div style="font-size:8px;color:#888;margin:6px 2px">' + (es ? "Tiene que quedar prendida (Permitir)." : "It has to be on (Allow).") + "</div></div>" + tapAt(160, 56) + "</div>" + cap(es ? "Permisos › Ubicación › Permitir" : "Permissions › Location › Allow") + "</div>";
   }
   function locStepsHtml() {
-    var es = ttL() === "es", os = locOS(), L0 = locStepList(os), n = Math.min(Math.max(S.locStep || 1, 1), L0.length), st = L0[n - 1];
-    var img = S.mediaUrls && S.mediaUrls[LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-" + n + ".jpg"];
+    var es = ttL() === "es", os = locOS(), nm = os === "ios" ? "iphone" : "android", L0 = locStepList(os), mu = S.mediaUrls || {}, vid = mu[LOC_MEDIA + "ubicacion-" + nm + ".mp4"];
+    var imgs = [1, 2, 3, 4, 5].map(function (i) { return mu[LOC_MEDIA + "ubicacion-" + nm + "-" + i + ".jpg"]; }).filter(Boolean);
     var tab = function (o, l) { return '<button class="chip' + (os === o ? " on" : "") + '" data-a="ttsStepOS" data-v="' + o + '">' + l + "</button>"; };
-    return '<div class="loc-steps"><div class="chips" style="margin:0 0 8px">' + tab("ios", "iPhone") + tab("android", "Android") + "</div>" +
-      '<div style="font:600 13px/1.2 Barlow,system-ui;letter-spacing:.08em;text-transform:uppercase;color:#858A7B">' + (es ? "Paso " : "Step ") + n + (es ? " de " : " of ") + L0.length + "</div>" +
-      '<div style="display:flex;gap:6px;margin:6px 0 10px">' + L0.map(function (x, i) { return '<span style="flex:1;height:5px;border-radius:3px;background:' + (i < n ? "#2B2833" : "#d9d5cf") + '"></span>'; }).join("") + "</div>" +
-      (img && S.locView !== "anim" ? '<img src="' + img + '" alt="" style="display:block;width:100%;max-height:48vh;object-fit:contain;border-radius:14px;background:#F0EDE8;margin-bottom:6px">' : (laCss(), laPhone(os, n))) +
-      (img ? '<div style="text-align:center;margin:0 0 10px"><button class="link small" data-a="ttsLocView">' + (S.locView !== "anim" ? (es ? "▶ Verlo como animación" : "▶ Watch it as an animation") : (es ? "🖼 Ver la foto del paso" : "🖼 See the step picture")) + "</button></div>" : "") +
-      (img && S.locView !== "anim" ? "" : '<div style="font:600 22px/1.25 Barlow,system-ui;margin-bottom:6px">' + esc(st[1]) + '</div><p style="font-size:17px;line-height:1.4;margin:0 0 12px">' + esc(st[2]) + "</p>") +   // the picture already says it
-      '<div class="actions">' + (n > 1 ? '<button class="btn ghost" data-a="ttsStepGo" data-v="-1">◀ ' + (es ? "Atrás" : "Back") + "</button>" : "") +
-      (n < L0.length ? '<button class="btn" data-a="ttsStepGo" data-v="1">' + (es ? "Siguiente ▶" : "Next ▶") + "</button>" : '<button class="btn" data-a="ttsReload" style="background:#4a7a3f;border-color:#4a7a3f;font-size:18px;padding:14px 22px">🔄 ' + (es ? "Recargar el portal" : "Reload the portal") + "</button>") + "</div></div>";
+    laCss();
+    var loop = vid ? '<video src="' + vid + '" autoplay muted loop playsinline style="display:block;width:100%;max-height:50vh;object-fit:contain;border-radius:14px;background:#F0EDE8;margin-bottom:10px"></video>'
+      : imgs.length === 5 ? '<div style="position:relative;height:56vh;max-height:560px;margin-bottom:10px">' + imgs.map(function (u, i) { return '<img src="' + u + '" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:14px;opacity:0;animation:la-g5 15s infinite;animation-delay:' + (i * 3) + 's">'; }).join("") + "</div>"
+      : "";
+    return '<div class="loc-steps"><div class="chips" style="margin:0 0 8px">' + tab("ios", "iPhone") + tab("android", "Android") + "</div>" + loop +
+      '<ol style="font-size:16px;line-height:1.35;margin:0 0 12px 20px;padding:0">' + L0.map(function (x) { return '<li style="margin-bottom:6px"><b>' + esc(x[1]) + "</b>" + (loop ? "" : '<br><span class="muted small">' + esc(x[2]) + "</span>") + "</li>"; }).join("") + "</ol>" +
+      '<button class="btn" data-a="ttsReload" style="display:block;width:100%;position:sticky;bottom:8px;z-index:3;box-shadow:0 6px 18px rgba(0,0,0,.25);background:#4a7a3f;border-color:#4a7a3f;font-size:19px;padding:15px 10px">🔄 ' + (es ? "Recargar el portal" : "Reload the portal") + "</button>" +
+      '<p class="muted small" style="text-align:center;margin:6px 0 0">' + (es ? "Cuando ya la hayas activado, recarga y el portal te la vuelve a pedir." : "Once it's on, reload and the portal will ask for it again.") + "</p></div>";
   }
-  function locStepMedia() { var os = locOS(), base = LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-", all = []; for (var i = 1; i <= 5; i++) all.push(mediaUrl(base + i + ".jpg")); Promise.all(all).then(function (l) { if (l.some(Boolean) && S.modal && /^(lsxLocGate|lsxTtLoc)$/.test(S.modal.type)) keepScroll(render); }); }
+  function locStepMedia() { var os = locOS(), base = LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-", all = [mediaUrl(base.slice(0, -1) + ".mp4")]; for (var i = 1; i <= 5; i++) all.push(mediaUrl(base + i + ".jpg")); Promise.all(all).then(function (l) { if (l.some(Boolean) && S.modal && /^(lsxLocGate|lsxTtLoc)$/.test(S.modal.type)) keepScroll(render); }); }
   async function locVideo(fetchOnly) {
     var u = LOC_VID[phoneOS()]; if (!u || !window.caches) return "";
     try {
@@ -5589,7 +5590,7 @@
     } catch (e) { return ""; }
   }
   function locVideoShow() { locStepMedia(); if (S.locVidUrl) return; locVideo().then(function (u) { if (u && S.modal && /^(lsxLocGate|lsxTtLoc)$/.test(S.modal.type)) keepScroll(render); }); }
-  function locVideoHtml() { return S.locVidUrl ? '<video class="loc-vid" src="' + S.locVidUrl + '" autoplay muted loop playsinline controls style="width:100%;max-height:52vh;border-radius:12px;background:#000;margin:4px 0 10px"></video>' : ""; }
+  function locVideoHtml() { return S.locVidUrl ? '<video class="loc-vid" src="' + S.locVidUrl + '" autoplay muted loop playsinline style="width:100%;max-height:52vh;border-radius:12px;background:#000;margin:4px 0 10px"></video>' : ""; }
   function locSteps() {
     var es = ttL() === "es", os = phoneOS();
     var ios = "<li><b>iPhone:</b> " + (es ? "Ajustes › Privacidad y seguridad › Localización (prendida) › Safari o Chrome › «Al usar la app». Si sigue igual, cierra y vuelve a abrir el portal." : "Settings › Privacy & Security › Location Services (on) › Safari or Chrome › While Using the App. If nothing changes, close and reopen the portal.") + "</li>";
@@ -5598,18 +5599,20 @@
   }
   async function locGate() {
     if (S.locGateDone || !S.me || S.viewAs || !ttOn() || !window.isSecureContext || !navigator.geolocation) return; S.locGateDone = 1;
-    locVideo(true); (function () { var os = phoneOS() === "android" ? "android" : "ios"; for (var i = 1; i <= 5; i++) mediaUrl(LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-" + i + ".jpg", true); })();   // keep the video and pictures on the phone while there's signal
+    locVideo(true); (function () { var os = phoneOS() === "android" ? "android" : "ios"; mediaUrl(LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + ".mp4", true); for (var i = 1; i <= 5; i++) mediaUrl(LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-" + i + ".jpg", true); })();   // keep the video and pictures on the phone while there's signal
     var st = await ttPerm();
     if (st === "unknown") st = await new Promise(function (res) { try { navigator.geolocation.getCurrentPosition(function () { res("granted"); }, function (e) { res(e.code === 1 ? "denied" : "granted"); }, { timeout: 8000, maximumAge: 600000 }); } catch (e) { res("granted"); } });
     if (st === "granted" || S.modal) return;
-    S.modal = { type: "lsxLocGate", denied: st === "denied" ? 1 : 0 }; keepScroll(render); locVideoShow();
+    if (/^(ios|android)$/.test(phoneOS())) S.locLock = 1;
+    S.modal = { type: "lsxLocGate", denied: 0 }; keepScroll(render); locVideoShow();
   }
   function locGateModal(m) {
     var es = ttL() === "es";
-    return "<h2>📍 " + (es ? "Activa tu ubicación" : "Turn on your location") + "</h2><p>" + (es ? "Para checar, el portal toma tu ubicación <b>una sola vez, en el momento en que marcas</b>. No te sigue durante el día; solo la ven la oficina y accounting." : "To clock in, the portal takes your location <b>once, at the moment you tap</b>. It doesn't follow you during the day; only the office and accounting see it.") + "</p>" +
-      (m.denied ? "<p>" + (es ? "Tu teléfono la tiene apagada para el portal. Sigue estos pasos:" : "Your phone has it turned off for the portal. Follow these steps:") + "</p>" + locStepsHtml() + (S.locVidUrl ? "<details><summary>" + (es ? "Ver el video" : "Watch the video") + "</summary>" + locVideoHtml() + "</details>" : "") : locVideoHtml() + "<p>" + (es ? "Toca el botón y, cuando tu teléfono pregunte, elige <b>«Permitir»</b>." : "Tap the button and, when your phone asks, choose <b>Allow</b>.") + "</p>") +
-      '<div class="actions"><button class="btn ghost" data-a="ttsGateLater">' + (es ? "Ahora no" : "Not now") + "</button>" + (m.denied ? "" : '<button class="btn" data-a="ttsGateAsk">' + (es ? "Activar ubicación" : "Turn on location") + "</button>") + "</div>" +
-      '<p class="muted small">' + (es ? "Te lo vamos a preguntar cada vez que entres, hasta que esté activada." : "We'll ask every time you open the portal until it's on.") + "</p>";
+    if (m.denied) return "<h2>📍 " + (es ? "Activa tu ubicación" : "Turn on your location") + "</h2><p>" + (es ? "Tu teléfono la tiene apagada para el portal. Mira cómo se prende:" : "Your phone has it turned off for the portal. Here's how to turn it on:") + "</p>" + locStepsHtml() +
+      (S.locLock ? '<p class="muted small" style="text-align:center;margin-top:8px">' + (es ? "Sin ubicación no se puede usar el portal." : "The portal can't be used without location.") + "</p>" : '<div class="actions"><button class="btn ghost" data-a="ttsGateLater">' + (es ? "Ahora no" : "Not now") + "</button></div>");
+    // the quick question every time the portal opens: yes → the phone's own "Allow location?" pop-up; no → closes (asked again next time)
+    return '<div style="text-align:center"><div style="font-size:46px;line-height:1">📍</div><h2 style="margin:6px 0 4px">' + (es ? "¿Activas tu ubicación?" : "Turn on your location?") + '</h2><p class="muted" style="margin:0 0 14px">' + (es ? "Solo se toma cuando checas." : "It's only taken when you clock.") + "</p>" +
+      '<div style="display:flex;gap:10px"><button class="btn ghost" data-a="ttsGateLater" style="flex:1;font-size:18px;padding:14px">' + (es ? "No" : "No") + '</button><button class="btn" data-a="ttsGateAsk" style="flex:2;font-size:19px;padding:14px;background:#4a7a3f;border-color:#4a7a3f">' + (es ? "Sí, activar" : "Yes, turn on") + "</button></div></div>";
   }
   function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
   function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
@@ -6036,12 +6039,12 @@
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
     if (a === "ttsStaleSend") return ttStaleSend(b);
-    if (a === "ttsGateLater") { S.modal = null; return keepScroll(render); }
+    if (a === "ttsGateLater") { if (S.locLock) { S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; locVideoShow(); return keepScroll(render); } S.modal = null; return keepScroll(render); }
     if (a === "ttsLocView") { S.locView = S.locView === "anim" ? "" : "anim"; return keepScroll(render); }
     if (a === "ttsStepGo") { S.locStep = Math.max(1, (S.locStep || 1) + (+b.dataset.v || 0)); return keepScroll(render); }
     if (a === "ttsStepOS") { S.locOS = b.dataset.v; S.locStep = 1; locStepMedia(); return keepScroll(render); }
     if (a === "ttsReload") { try { location.reload(); } catch (e) {} return; }
-    if (a === "ttsGateAsk") { S.modal = null; keepScroll(render); try { navigator.geolocation.getCurrentPosition(function () { toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); ttLocIntroSeen(1); }, function (er) { if (er.code === 1) { S.modal = { type: "lsxLocGate", denied: 1 }; keepScroll(render); locVideoShow(); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); } catch (e) {} return; }
+    if (a === "ttsGateAsk") { S.modal = null; keepScroll(render); try { navigator.geolocation.getCurrentPosition(function () { S.locLock = 0; S.modal = null; keepScroll(render); toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); ttLocIntroSeen(1); }, function (er) { if (er.code === 1) { if (S.locLock) S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; keepScroll(render); locVideoShow(); } else { S.locLock = 0; S.modal = null; keepScroll(render); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); } catch (e) {} return; }
     if (a === "ttsGateCheck") return ttPerm().then(function (p) { if (p === "granted") { S.modal = null; toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); return keepScroll(render); } if (p === "prompt") { S.modal = { type: "lsxLocGate", denied: 0 }; return keepScroll(render); } toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); });
     if (a === "ttsStaleSkip") { S.ttStaleSkip = S.tt && S.tt.stale && S.tt.stale.shift_id; return keepScroll(render); }
     if (a === "ttsStaleBack") { S.ttStaleSkip = null; return keepScroll(render); }
