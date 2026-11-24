@@ -2706,7 +2706,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261123201726";
+  var BUILD = "20261123214543";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5277,7 +5277,7 @@
     var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 200) }, job || {});
     if (declared) ev.declare_at = declared;
     var needLoc = kind === "in" || (kind === "switch" && !!(job && job.ref_id)), locStop = function (denied) { S.ttWorking = 0; S.ttSync = prevSync; S.modal = { type: "lsxTtLoc", denied: denied ? 1 : 0, kind: kind, job: job, declared: declared }; keepScroll(render); if (denied) locVideoShow(); };
-    if (needLoc && !noLoc && !skipPre && !(S.tt && S.tt.preview)) { var perm = await ttPerm(); if (perm === "denied") return locStop(1); if (perm === "prompt" && !ttLocIntroSeen()) return locStop(0); }
+    if (needLoc && !noLoc && !skipPre && !(S.tt && S.tt.preview)) { var perm = await ttPerm(); if (perm === "prompt" && !ttLocIntroSeen()) return locStop(0); }
     if (S.tt && S.tt.preview) { await new Promise(function (r) { setTimeout(r, 600); }); ttPreviewPunch(kind, job || {}, ev); S.ttWorking = 0; keepScroll(render); return; }   // practice clock: nothing is sent
     var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0];
     if (needLoc && !noLoc && /^(denied|unsupported)$/.test(ev.loc.status || "")) return locStop(1);   // said "no" when the phone asked
@@ -5334,7 +5334,7 @@
       while (q.length) {
         var ev = q[0];
         try { var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); if (ev.declare_at && r.event && !r.dup) await ttDeclare(r.event.id, ev.declare_at, ev.kind); if (r.status === "conflict") S.ttSync = { st: "err", msg: ttL() === "es" ? "Un registro sin señal no cuadró; la oficina lo revisará." : "An offline record didn't fit; the office will review it." }; }
-        catch (e) { if (e instanceof TypeError) break; S.ttSync = { st: "err", msg: e.message }; }
+        catch (e) { if (e instanceof TypeError || /busy|ocupad|try again|intenta|took too long|tard|timeout|network|fetch|failed|log in again|inicia sesi/i.test(e.message || "")) break; S.ttSync = { st: "err", msg: e.message }; }   // a passing problem (Google busy, slow, session): keep it on the phone and try again later; never lose a tap
         q.shift(); ttQ(q);
       }
       if (!q.length && (!S.ttSync || S.ttSync.st === "pending")) S.ttSync = { st: "ok", at: new Date().toISOString() };
@@ -5477,6 +5477,8 @@
       S.modal = null; toast(es ? "Enviado. Tu supervisor o la oficina lo revisa." : "Sent. Your supervisor or the office reviews it."); keepScroll(render); S.tt = Object.assign(S.tt || {}, {}); ttLoad();
     });
   }
+  function locProbe(ms) { return new Promise(function (res) { if (!navigator.geolocation) return res("unavailable"); var done = 0, t = setTimeout(function () { if (!done) { done = 1; res("unavailable"); } }, (ms || 9000) + 1500);
+    try { navigator.geolocation.getCurrentPosition(function () { if (!done) { done = 1; clearTimeout(t); res("granted"); } }, function (e) { if (!done) { done = 1; clearTimeout(t); res(e.code === 1 ? "denied" : "unavailable"); } }, { timeout: ms || 9000, maximumAge: 600000 }); } catch (e) { done = 1; clearTimeout(t); res("unavailable"); } }); }   // "unavailable" = allowed but no fix right now (indoors, no GPS yet): not a permission problem
   function ttPerm() { try { if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve("unknown"); return navigator.permissions.query({ name: "geolocation" }).then(function (p) { return p.state; }, function () { return "unknown"; }); } catch (e) { return Promise.resolve("unknown"); } }
   function ttLocIntroSeen(set) { var k = "bsp_tt_locintro_" + (S.me && S.me.key); try { if (set) localStorage.setItem(k, "1"); return !!localStorage.getItem(k); } catch (e) { return !!S.ttLocIntro || (set ? (S.ttLocIntro = 1) : 0); } }
   function ttLocModal(m) {
@@ -5601,8 +5603,8 @@
     if (S.locGateDone || !S.me || S.viewAs || !ttOn() || !window.isSecureContext || !navigator.geolocation) return; S.locGateDone = 1;
     locVideo(true); (function () { var os = phoneOS() === "android" ? "android" : "ios"; mediaUrl(LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + ".mp4", true); for (var i = 1; i <= 5; i++) mediaUrl(LOC_MEDIA + "ubicacion-" + (os === "ios" ? "iphone" : "android") + "-" + i + ".jpg", true); })();   // keep the video and pictures on the phone while there's signal
     var st = await ttPerm();
-    if (st === "unknown") st = await new Promise(function (res) { try { navigator.geolocation.getCurrentPosition(function () { res("granted"); }, function (e) { res(e.code === 1 ? "denied" : "granted"); }, { timeout: 8000, maximumAge: 600000 }); } catch (e) { res("granted"); } });
-    if (st === "granted" || S.modal) return;
+    if (st !== "granted") st = await locProbe(9000);                                      // the real answer: try to get a position (shows the phone's pop-up if it can)
+    if (st !== "denied" || S.modal) return;
     if (/^(ios|android)$/.test(phoneOS())) S.locLock = 1;
     S.modal = { type: "lsxLocGate", denied: 0 }; keepScroll(render); locVideoShow();
   }
@@ -6044,14 +6046,14 @@
     if (a === "ttsStepGo") { S.locStep = Math.max(1, (S.locStep || 1) + (+b.dataset.v || 0)); return keepScroll(render); }
     if (a === "ttsStepOS") { S.locOS = b.dataset.v; S.locStep = 1; locStepMedia(); return keepScroll(render); }
     if (a === "ttsReload") { try { location.reload(); } catch (e) {} return; }
-    if (a === "ttsGateAsk") { S.modal = null; keepScroll(render); try { navigator.geolocation.getCurrentPosition(function () { S.locLock = 0; S.modal = null; keepScroll(render); toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); ttLocIntroSeen(1); }, function (er) { if (er.code === 1) { if (S.locLock) S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; keepScroll(render); locVideoShow(); } else { S.locLock = 0; S.modal = null; keepScroll(render); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); } catch (e) {} return; }
-    if (a === "ttsGateCheck") return ttPerm().then(function (p) { if (p === "granted") { S.modal = null; toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); return keepScroll(render); } if (p === "prompt") { S.modal = { type: "lsxLocGate", denied: 0 }; return keepScroll(render); } toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); });
+    if (a === "ttsGateAsk") { S.modal = null; keepScroll(render); try { navigator.geolocation.getCurrentPosition(function () { S.locLock = 0; S.modal = null; keepScroll(render); toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); ttLocIntroSeen(1); }, function (er) { if (er.code === 1) { S.locDiag = "denied"; if (S.locLock) S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; keepScroll(render); locVideoShow(); } else { S.locLock = 0; S.modal = null; keepScroll(render); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); } catch (e) {} return; }
+    if (a === "ttsGateCheck") return locProbe(9000).then(function (p) { if (p !== "denied") { S.locLock = 0; S.modal = null; toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); return keepScroll(render); } if (p === "prompt") { S.modal = { type: "lsxLocGate", denied: 0 }; return keepScroll(render); } toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); });
     if (a === "ttsStaleSkip") { S.ttStaleSkip = S.tt && S.tt.stale && S.tt.stale.shift_id; return keepScroll(render); }
     if (a === "ttsStaleBack") { S.ttStaleSkip = null; return keepScroll(render); }
     if (a === "ttsMiss") { if (S.tt && S.tt.stale && !S.tt.stale.asked) { S.ttStaleSkip = null; toast(ttL() === "es" ? "Primero dinos a qué hora saliste del turno que quedó abierto." : "First tell us when you left the shift that stayed open."); return keepScroll(render); } S.modal = { type: "lsxTtMiss" }; return keepScroll(render); }
     if (a === "ttsLocGo") { var lm = S.modal; if (!lm) return; ttLocIntroSeen(1);
       if (!lm.denied) { S.modal = null; return ttDo(lm.kind, lm.job, lm.declared, "", true); }
-      return ttPerm().then(function (p) { if (p === "denied") return toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); S.modal = null; ttDo(lm.kind, lm.job, lm.declared, "", true); }); }
+      return locProbe(9000).then(function (p) { if (p === "denied") return toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); S.modal = null; ttDo(lm.kind, lm.job, lm.declared, "", true); }); }
     if (a === "ttsLocNo") { var nr = ((root.querySelector("[data-tts-noloc]") || {}).value || "").trim(), lm2 = S.modal; if (nr.length < 5) return toast(ttL() === "es" ? "Escribe por qué (mínimo 5 letras)." : "Write why (5 letters or more)."); if (!lm2) return; S.modal = null; ttLocIntroSeen(1); return ttDo(lm2.kind, lm2.job, lm2.declared, nr, true); }
     if (a === "ttsGo") {
       var gk = b.dataset.k, dec = "", es1 = ttL() === "es";
