@@ -254,7 +254,7 @@
     try {
       if (!S.projects) {
         var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); }      // show the last copy instantly
-        var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping();
+        var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping(); setTimeout(locGate, 600);
         if (S.qbReturn) { S.home = "team"; finishQb(); }
         if (S.qbReturnErr) { toast("QuickBooks wasn't connected (" + S.qbReturnErr + ")."); S.qbReturnErr = null; }
         if (!S.viewAs) { try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects }); }
@@ -2705,7 +2705,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261123191613";
+  var BUILD = "20261123192709";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5275,7 +5275,7 @@
     if (S.ttWorking) return; var prevSync = S.ttSync; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
     var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 200) }, job || {});
     if (declared) ev.declare_at = declared;
-    var needLoc = kind === "in" || (kind === "switch" && !!(job && job.ref_id)), locStop = function (denied) { S.ttWorking = 0; S.ttSync = prevSync; S.modal = { type: "lsxTtLoc", denied: denied ? 1 : 0, kind: kind, job: job, declared: declared }; keepScroll(render); };
+    var needLoc = kind === "in" || (kind === "switch" && !!(job && job.ref_id)), locStop = function (denied) { S.ttWorking = 0; S.ttSync = prevSync; S.modal = { type: "lsxTtLoc", denied: denied ? 1 : 0, kind: kind, job: job, declared: declared }; keepScroll(render); if (denied) locVideoShow(); };
     if (needLoc && !noLoc && !skipPre && !(S.tt && S.tt.preview)) { var perm = await ttPerm(); if (perm === "denied") return locStop(1); if (perm === "prompt" && !ttLocIntroSeen()) return locStop(0); }
     if (S.tt && S.tt.preview) { await new Promise(function (r) { setTimeout(r, 600); }); ttPreviewPunch(kind, job || {}, ev); S.ttWorking = 0; keepScroll(render); return; }   // practice clock: nothing is sent
     var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0];
@@ -5481,11 +5481,48 @@
   function ttLocModal(m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (!m.denied) return "<h2>📍 " + (es ? "Tu ubicación al checar" : "Your location when you clock") + "</h2><p>" + (es ? "Para checar, el portal toma tu ubicación <b>una sola vez, en el momento en que marcas</b>. No te sigue durante el día. Solo la ven la oficina y accounting." : "To clock in, the portal takes your location <b>once, at the moment you tap</b>. It doesn't follow you during the day. Only the office and accounting see it.") + "</p><p>" + (es ? "Tu teléfono te va a preguntar: elige <b>«Permitir»</b>." : "Your phone will ask: choose <b>Allow</b>.") + '</p><div class="actions">' + cancel + '<button class="btn" data-a="ttsLocGo">' + (es ? "Entendido, checar" : "OK, clock in") + "</button></div>";
-    return "<h2>📍 " + (es ? "Activa tu ubicación para checar" : "Turn on your location to clock in") + "</h2><p>" + (es ? "Tu teléfono tiene la ubicación apagada para el portal. Actívala así y regresa:" : "Your phone has the location turned off for the portal. Turn it on and come back:") + "</p><ul>" +
+    return "<h2>📍 " + (es ? "Activa tu ubicación para checar" : "Turn on your location to clock in") + "</h2><p>" + (es ? "Tu teléfono tiene la ubicación apagada para el portal. Actívala así y regresa:" : "Your phone has the location turned off for the portal. Turn it on and come back:") + "</p>" + locVideoHtml() + "<ul>" +
       "<li><b>iPhone:</b> " + (es ? "Ajustes › Privacidad y seguridad › Localización (prendida) › Safari o Chrome › «Al usar la app». Si sigue igual, cierra y vuelve a abrir el portal." : "Settings › Privacy & Security › Location Services (on) › Safari or Chrome › While Using the App. If nothing changes, close and reopen the portal.") + "</li>" +
       "<li><b>Android:</b> " + (es ? "toca el candado 🔒 junto a la dirección › Permisos › Ubicación › Permitir. Revisa que la ubicación del teléfono esté prendida." : "tap the lock 🔒 next to the address › Permissions › Location › Allow. Check the phone's location is on.") + "</li></ul>" +
       '<div class="actions">' + cancel + '<button class="btn" data-a="ttsLocGo">' + (es ? "Ya la activé, intentar otra vez" : "Done, try again") + "</button></div>" +
       "<details><summary>" + (es ? "No puedo activarla" : "I can't turn it on") + '</summary><p class="muted small">' + (es ? "Puedes checar sin ubicación, pero queda anotado y la oficina lo revisa. Escribe por qué:" : "You can clock in without location, but it's noted and the office reviews it. Write why:") + '</p><textarea data-tts-noloc rows="2" maxlength="300"></textarea><button class="btn ghost" data-a="ttsLocNo">' + (es ? "Checar sin ubicación" : "Clock in without location") + "</button></details>";
+  }
+  /* ---- Nov 23 (Jesús): every time someone who uses the clock opens the portal and the location isn't allowed, ask for it,
+     with a short video for their phone (iPhone or Android). The video is kept on the phone the first time there's signal,
+     so it plays later without signal too. ---- */
+  function phoneOS() { var ua = navigator.userAgent || ""; if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "ios"; if (/Android/i.test(ua)) return "android"; return "other"; }
+  var LOC_VID = { ios: "https://planscope.github.io/bluesierra-academy/media/ubicacion-iphone.mp4", android: "https://planscope.github.io/bluesierra-academy/media/ubicacion-android.mp4" }, LOC_CACHE = "bsp-media-v1";
+  async function locVideo(fetchOnly) {
+    var u = LOC_VID[phoneOS()]; if (!u || !window.caches) return "";
+    try {
+      var c = await caches.open(LOC_CACHE), hit = await c.match(u);
+      if (!hit && navigator.onLine) { var res = await fetch(u, { mode: "cors" }); if (res.ok && /video/.test(res.headers.get("content-type") || "")) { await c.put(u, res.clone()); hit = res; } }
+      if (!hit || fetchOnly) return "";
+      if (!S.locVidUrl) S.locVidUrl = URL.createObjectURL(await hit.blob()); return S.locVidUrl;
+    } catch (e) { return ""; }
+  }
+  function locVideoShow() { if (S.locVidUrl) return; locVideo().then(function (u) { if (u && S.modal && /^(lsxLocGate|lsxTtLoc)$/.test(S.modal.type)) keepScroll(render); }); }
+  function locVideoHtml() { return S.locVidUrl ? '<video class="loc-vid" src="' + S.locVidUrl + '" autoplay muted loop playsinline controls style="width:100%;max-height:52vh;border-radius:12px;background:#000;margin:4px 0 10px"></video>' : ""; }
+  function locSteps() {
+    var es = ttL() === "es", os = phoneOS();
+    var ios = "<li><b>iPhone:</b> " + (es ? "Ajustes › Privacidad y seguridad › Localización (prendida) › Safari o Chrome › «Al usar la app». Si sigue igual, cierra y vuelve a abrir el portal." : "Settings › Privacy & Security › Location Services (on) › Safari or Chrome › While Using the App. If nothing changes, close and reopen the portal.") + "</li>";
+    var and = "<li><b>Android:</b> " + (es ? "toca el candado 🔒 junto a la dirección › Permisos › Ubicación › Permitir. Revisa que la ubicación del teléfono esté prendida." : "tap the lock 🔒 next to the address › Permissions › Location › Allow. Check the phone's location is on.") + "</li>";
+    return "<ul>" + (os === "ios" ? ios : os === "android" ? and : ios + and) + "</ul>";
+  }
+  async function locGate() {
+    if (S.locGateDone || !S.me || S.viewAs || !ttOn() || !window.isSecureContext || !navigator.geolocation) return; S.locGateDone = 1;
+    locVideo(true);                                                                       // keep the video on the phone while there's signal
+    var st = await ttPerm();
+    if (st === "unknown") st = await new Promise(function (res) { try { navigator.geolocation.getCurrentPosition(function () { res("granted"); }, function (e) { res(e.code === 1 ? "denied" : "granted"); }, { timeout: 8000, maximumAge: 600000 }); } catch (e) { res("granted"); } });
+    if (st === "granted" || S.modal) return;
+    S.modal = { type: "lsxLocGate", denied: st === "denied" ? 1 : 0 }; keepScroll(render); locVideoShow();
+  }
+  function locGateModal(m) {
+    var es = ttL() === "es";
+    return "<h2>📍 " + (es ? "Activa tu ubicación" : "Turn on your location") + "</h2><p>" + (es ? "Para checar, el portal toma tu ubicación <b>una sola vez, en el momento en que marcas</b>. No te sigue durante el día; solo la ven la oficina y accounting." : "To clock in, the portal takes your location <b>once, at the moment you tap</b>. It doesn't follow you during the day; only the office and accounting see it.") + "</p>" +
+      locVideoHtml() + (m.denied ? "<p>" + (es ? "Tu teléfono la tiene apagada para el portal. Actívala así:" : "Your phone has it turned off for the portal. Turn it on like this:") + "</p>" + locSteps() : "<p>" + (es ? "Toca el botón y, cuando tu teléfono pregunte, elige <b>«Permitir»</b>." : "Tap the button and, when your phone asks, choose <b>Allow</b>.") + "</p>") +
+      '<div class="actions"><button class="btn ghost" data-a="ttsGateLater">' + (es ? "Ahora no" : "Not now") + '</button><button class="btn" data-a="' + (m.denied ? "ttsGateCheck" : "ttsGateAsk") + '">' + (m.denied ? (es ? "Ya la activé" : "Done, check again") : (es ? "Activar ubicación" : "Turn on location")) + "</button></div>" +
+      '<p class="muted small">' + (es ? "Te lo vamos a preguntar cada vez que entres, hasta que esté activada." : "We'll ask every time you open the portal until it's on.") + "</p>";
   }
   function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
   function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
@@ -5912,6 +5949,9 @@
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
     if (a === "ttsStaleSend") return ttStaleSend(b);
+    if (a === "ttsGateLater") { S.modal = null; return keepScroll(render); }
+    if (a === "ttsGateAsk") { S.modal = null; keepScroll(render); try { navigator.geolocation.getCurrentPosition(function () { toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); ttLocIntroSeen(1); }, function (er) { if (er.code === 1) { S.modal = { type: "lsxLocGate", denied: 1 }; keepScroll(render); locVideoShow(); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); } catch (e) {} return; }
+    if (a === "ttsGateCheck") return ttPerm().then(function (p) { if (p === "granted") { S.modal = null; toast(ttL() === "es" ? "✓ Ubicación activada. Gracias." : "✓ Location on. Thanks."); return keepScroll(render); } if (p === "prompt") { S.modal = { type: "lsxLocGate", denied: 0 }; return keepScroll(render); } toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); });
     if (a === "ttsStaleSkip") { S.ttStaleSkip = S.tt && S.tt.stale && S.tt.stale.shift_id; return keepScroll(render); }
     if (a === "ttsStaleBack") { S.ttStaleSkip = null; return keepScroll(render); }
     if (a === "ttsMiss") { if (S.tt && S.tt.stale && !S.tt.stale.asked) { S.ttStaleSkip = null; toast(ttL() === "es" ? "Primero dinos a qué hora saliste del turno que quedó abierto." : "First tell us when you left the shift that stayed open."); return keepScroll(render); } S.modal = { type: "lsxTtMiss" }; return keepScroll(render); }
@@ -6076,6 +6116,7 @@
         '<div class="actions">' + cancel + '<button class="btn" type="submit">' + (m.phone ? "Make a new PIN" : "Create the PIN") + "</button></div></form>";
     }
     if (m.type === "lsxTtLoc") return ttLocModal(m);
+    if (m.type === "lsxLocGate") return locGateModal(m);
     if (m.type === "lsxTtMiss") return ttMissForm(m);
     if (m.type === "lsxTtExplain") return "<h2>" + tx("explain_btn") + '</h2><p class="muted small">' + (es ? "La oficina la verá junto a tu entrada. Explicar no aprueba la entrada." : "The office sees it next to your check-in. Explaining doesn't approve it.") + '</p><form class="form" data-form="ttExplain"><label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + '<textarea name="text" rows="3" required maxlength="600" placeholder="' + (es ? "Ej. el GPS no funcionaba dentro del edificio" : "e.g. GPS didn't work inside the building") + '"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>";
     if (m.type === "lsxTtCor") return ttCorForm(m);
