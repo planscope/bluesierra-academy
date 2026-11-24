@@ -140,7 +140,7 @@
   /* Google sometimes never starts a request (Executions shows "Failed, 0 s") and the browser would wait for minutes.
      So if there's no answer after a few seconds, the same request goes again with the same id, and the first answer wins.
      The server never does a save twice: a copy of a save still running hears "still working" and waits for its answer. */
-  var SLOW_ACTS = { oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
+  var SLOW_ACTS = { contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
     oxAiDraft: 1, oxAiSave: 1, oxBrief: 1, oxEnrich: 1, oxRrScout: 1, oxEnrichCheck: 1, oxFindFree: 1, oxGmailSync: 1, oxCheckReplies: 1, oxImport: 1, oxExport: 1, qbImport: 1, qbFinance: 1, qbMoney: 1, qbSpend: 1, qbSendInvoice: 1, feedback: 1, wipeProject: 1 };
   var MED_ACTS = { todayQueue: 1, getProject: 1, oxHome: 1, ttReview: 1, jcSummary: 1, jcProject: 1, lsHome: 1, oxCalls: 1, oxSetterFirms: 1, oxSetterReached: 1, chatFeed: 1, activity: 1, qbInvoices: 1, qbCustomers: 1 };
   var BG_ACTS = { tick: 1, typing: 1, presence: 1, markRead: 1 };
@@ -254,7 +254,7 @@
     try {
       if (!S.projects) {
         var cl = cacheGet("list"); if (cl && cl.me) { S.me = cl.me; S.projects = cl.projects; if (!h.p) render(); setTimeout(locGate, 250); }      // show the last copy instantly
-        var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping(); setTimeout(locGate, 600);
+        var r = await call("listProjects"); if (seq !== S.seq) return; S.me = r.me; S.projects = r.projects; S.pins = r.pins || []; S.notif = null; loadNotif(); ping(); setTimeout(locGate, 600); setTimeout(newsCheck, 1800);
         if (S.qbReturn) { S.home = "team"; finishQb(); }
         if (S.qbReturnErr) { toast("QuickBooks wasn't connected (" + S.qbReturnErr + ")."); S.qbReturnErr = null; }
         if (!S.viewAs) { try { localStorage.setItem("bsp-last-email", r.me.email); } catch (e) {} cacheSet("list", { me: r.me, projects: r.projects }); }
@@ -480,8 +480,8 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0], ["ox", "Outreach", (S.ox && S.ox.queue && !S.viewAs ? S.ox.queue.due.length + Math.min(S.ox.queue.ready.length, S.ox.queue.room) : 0)]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() || (S.me && S.me.labor) ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", ox: "Outreach", finance: "Finances", team: "Team" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0], ["ox", "Outreach", (S.ox && S.ox.queue && !S.viewAs ? S.ox.queue.due.length + Math.min(S.ox.queue.ready.length, S.ox.queue.room) : 0)]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]], S.viewAs ? [] : [["ask", "Pregúntale", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() || (S.me && S.me.labor) ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", ox: "Outreach", finance: "Finances", team: "Team", ask: "Pregúntale" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + (ttc ? [["tt", ttL() === "es" ? "Horas" : "Hours"]] : []).concat(S.me.labor ? [] : [["projects", "Projects"]], lsRoleMe && !S.me.labor ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
@@ -492,6 +492,7 @@
     if (view === "ox" && staff() && !S.viewAs) return head + '<div class="ox-wrap">' + oxView() + "</div>";
     if (view === "activity") return head + homeActivity();
     if (view === "team") return head + homeTeam();
+    if (view === "ask" && staff() && !S.viewAs) return head + askView();
     if (view === "finance" && S.me.money) return head + homeFinance();
     var portfolio = "";
     if (staff() && active.length) {
@@ -608,7 +609,7 @@
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="today"', "Today", home && (S.home || "today") === "today") + item('data-a="homeView" data-v="projects"', "Projects", home && S.home === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + item('data-a="homeView" data-v="ox"', "Outreach", home && S.home === "ox") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team")
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="today"', "Today", home && (S.home || "today") === "today") + item('data-a="homeView" data-v="projects"', "Projects", home && S.home === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + item('data-a="homeView" data-v="ox"', "Outreach", home && S.home === "ox") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team") + (S.viewAs ? "" : item('data-a="homeView" data-v="ask"', "Pregúntale", home && S.home === "ask"))
         : item('data-a="home"', "All projects", home && S.home !== "ls") + (S.me && S.me.ls ? item('data-a="homeView" data-v="ls"', S.me.ls === "crew" ? "My route" : "My property", home && S.home === "ls") : "")) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
@@ -626,7 +627,8 @@
     var idx = PHASES.indexOf(p.phase);
     var tabs = [["overview", "Overview", 0], ["schedule", "Schedule", 0], ["updates", "Updates", 0], ["photos", "Photos", 0], ["messages", "Chat", (function () { var n = 0; myChannels().forEach(function (c) { n += unreadIn(c); }); return n || oq; })()], ["invoices", S.data && S.data.contract && S.data.contract.lines && S.data.contract.lines.length ? "Contract & billing" : "Invoices", 0], ["checklist", "Checklist", staff() ? 0 : todo]];
     if (team() || (d.plans || []).length) tabs.splice(2, 0, ["plans", "Plans", (d.plans || []).filter(function (x) { return x.status === "ready"; }).length ? 0 : 0]);
-    if ((crew() && !d.billing) || d.billing === false) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
+    if (((crew() && !d.billing) || d.billing === false) && !d.contract_view) tabs = tabs.filter(function (t) { return t[0] !== "invoices"; });
+    else if (!d.billing) tabs = tabs.map(function (t) { return t[0] === "invoices" ? ["invoices", "Contract", 0] : t; });
     if (S.me.money && !S.viewAs) tabs.splice(tabs.findIndex(function (t) { return t[0] === "checklist"; }), 0, ["money", "#money", 0]);
     if (staff() || (crew() && !S.me.labor)) tabs.splice(Math.max(0, tabs.findIndex(function (t) { return t[0] === "checklist"; })), 0, ["costs", "Costs", 0]);
     if (staff()) tabs.push(["people", "People", 0]);
@@ -1589,7 +1591,15 @@
       '<td class="num">' + (l.amount < 0 ? "−" + money(-l.amount) : money(l.amount)) + '</td><td class="num">' + money(billed) + '</td><td class="pc"><div class="mini"><i style="width:' + Math.min(100, Math.max(0, p)) + '%"></i></div><span>' + p + '%</span></td><td class="num">' + money(l.amount - billed) + "</td>" +
       (staff() ? '<td><button class="icon-btn" data-a="modal" data-m="cline" data-id="' + esc(l.id) + '" aria-label="Edit">✎</button></td>' : "") + "</tr>";
   }
+  function contractOnlyView() {
+    var c = S.data.contract || { lines: [] }, lines = (c.lines || []).filter(function (l) { return l.status !== "rejected"; });
+    var counts = function (l) { return l.kind === "base" || l.status === "approved"; }, total = lines.filter(counts).reduce(function (a, l) { return a + l.amount; }, 0);
+    var rows = lines.map(function (l) { return "<tr" + (counts(l) ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + (l.number ? esc(l.number) + " · " : "") + esc(l.title) + "</b>" + (l.kind === "change" ? ' <span class="pill ' + (l.status === "approved" ? "ok" : "gold") + '">' + (l.status === "approved" ? "Approved change" : "Proposed, not in total") + "</span>" : "") + '</td><td class="num">' + (l.amount < 0 ? "−" + money(-l.amount) : money(l.amount)) + "</td></tr>"; }).join("");
+    return contractDocCard() + (lines.length ? '<div class="section-title"><div><h2>The contract</h2><span class="muted small">What was agreed, line by line. Invoices and payments stay with the office.</span></div></div>' +
+      '<div class="card tbl" data-lenis-prevent><table class="t sov"><thead><tr><th>Contract line</th><th class="num">Value</th></tr></thead><tbody>' + rows + '<tr><td><b>Contract total</b></td><td class="num"><b>' + money(total) + "</b></td></tr></tbody></table></div>" : (S.data.contract && S.data.contract.doc ? "" : '<div class="empty">The contract is not in the portal yet.</div>'));
+  }
   function tabInvoices() {
+    if (!S.data.billing && S.data.contract_view) return contractOnlyView();
     var m = contractMath(), list = visibleInvoices().slice().sort(function (a, b) { return (b.issued || "9") < (a.issued || "9") ? -1 : (b.issued || "9") > (a.issued || "9") ? 1 : 0; });
     var showRet = m.pct > 0 || m.inv.some(function (i) { return i.retainage; });
     var pill = function (s) { return '<span class="pill ' + ({ paid: "ok", overdue: "bad", sent: "gold" }[s] || "") + '">' + esc({ sent: "Due", paid: "Paid", overdue: "Overdue", draft: "Draft", void: "Void" }[s] || s) + "</span>"; };
@@ -1616,13 +1626,49 @@
       : '<div class="empty">No invoices yet.</div>';
     var pj = (S.data && S.data.project) || {}, aud = pj.billing_aud || [];
     // Who sees this tab, as # tags. Jesús and the people tagged #money always do.
-    var BT = [["team", "Blue Sierra team", aud.indexOf("noteam") < 0], ["client", "the client", aud.indexOf("client") > -1], ["architect", "the architect", aud.indexOf("architect") > -1], ["pm", "crew #pm / supervisors", aud.indexOf("pm") > -1]];
+    var BT = [["team", "Blue Sierra team", aud.indexOf("noteam") < 0], ["client", "the client", aud.indexOf("client") > -1], ["architect", "the architect", aud.indexOf("architect") > -1], ["pm", "crew #pm / supervisors (contract only, never invoices)", aud.indexOf("pm") > -1]];
     var who = BT.filter(function (t) { return t[2]; }).map(function (t) { return t[1]; }), adm = !!(S.me && S.me.admin);
     var vis = staff() ? '<div class="card bill-vis bill-tags">' + ICON.eye + '<div class="bt-main"><b>Who sees Contract & billing</b><div class="tag-pick bt-pick">' +
       BT.map(function (t) { return '<label class="tg-opt o-' + t[0] + '"><input type="checkbox" data-bill-tag="' + t[0] + '"' + (t[2] ? " checked" : "") + (adm ? "" : " disabled") + "><span>#" + t[0] + "</span></label>"; }).join("") + "</div>" +
       '<span class="muted small">' + (who.length ? "Seen by Jesús, #money" + (who.length ? ", " + esc(who.join(", ")) : "") + "." : "Only Jesús and #money.") + (aud.indexOf("client") > -1 || aud.indexOf("architect") > -1 ? " Outside people see the contract, change orders and invoices marked Paid, Due or Overdue; drafts, void invoices and team notes stay hidden." : "") + (adm ? "" : " Only Jesús changes this.") + "</span></div></div>" : "";
-    return vis + head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
+    return vis + contractDocCard() + head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
   }
+
+  /* The signed contract: one private PDF per project, opened only by the people who see Contract & billing. */
+  function ctrAdmin() { return !!(S.me && S.me.admin && !S.viewAs); }
+  function contractDocCard() {
+    var d = ((S.data && S.data.contract) || {}).doc, adm = ctrAdmin();
+    if (!d && !adm) return "";
+    return '<div class="card ctr-doc" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:200px"><b>Signed contract</b><div class="muted small">' +
+      (d ? esc(d.name) + (d.at ? " · uploaded " + esc(String(d.at).slice(0, 10)) + (d.by ? " by " + esc(d.by) : "") : "") : "Not uploaded yet. Only the people who see Contract & billing can open it (never the crew).") + "</div></div>" +
+      (d ? '<button class="btn sm" data-a="ctrOpen">View PDF</button>' : "") +
+      (adm ? '<label class="btn ghost sm" style="cursor:pointer">' + (d ? "Replace" : "Upload the PDF") + '<input type="file" accept="application/pdf" data-ctr-up hidden></label>' + (d ? '<button class="btn ghost sm" data-a="ctrDel">Remove</button>' : "") : "") + "</div>";
+  }
+  function ctrOpen(b) {
+    var w = null; try { w = window.open("", "_blank"); } catch (e) {}
+    return run(b, async function () {
+      try {
+        var r = await call("contractDoc", { projectId: S.pid }), bin = atob(String(r.data).split(",")[1] || ""), u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        var url = URL.createObjectURL(new Blob([u8], { type: "application/pdf" }));
+        if (w && !w.closed) w.location.href = url;
+        else { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; a.download = r.name || "Contract.pdf"; document.body.appendChild(a); a.click(); a.remove(); }
+        b.disabled = false; b.innerHTML = "View PDF";
+      } catch (e) { if (w && !w.closed) w.close(); throw e; }
+    });
+  }
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches || !t.matches("input[data-ctr-up]") || !ctrAdmin()) return;
+    var file = t.files && t.files[0]; if (!file) return;
+    var lab = t.closest("label");
+    run(lab, async function () {
+      if (file.type !== "application/pdf") throw new Error("Pick a PDF.");
+      if (file.size > 15 * 1024 * 1024) throw new Error("That PDF is over 15 MB.");
+      var data = await new Promise(function (ok, bad) { var fr = new FileReader(); fr.onload = function () { ok(fr.result); }; fr.onerror = function () { bad(new Error("Couldn't read the PDF.")); }; fr.readAsDataURL(file); });
+      await call("contractUpload", { projectId: S.pid, name: file.name, file: { mime: "application/pdf", data: data } });
+      await refresh(true); toast("Signed contract saved ✓");
+    });
+  });
 
   /* ---------------- #money: what this job costs and makes, from QuickBooks (admin + people tagged #money) ---------------- */
   async function loadMoney(refresh) {
@@ -2107,7 +2153,7 @@
         (m.id && S.me.admin ? '<div class="f"><span>Who sees Contract & billing</span><input type="hidden" name="billing_set" value="1"><div class="tag-pick">' +
           '<label class="tg-opt o-team"><input type="checkbox" name="billing_team" value="1"' + ((p.billing_aud || []).indexOf("noteam") < 0 ? " checked" : "") + "><span>#team</span></label>" +
           ["client", "architect", "pm"].map(function (a) { return '<label class="tg-opt o-' + a + '"><input type="checkbox" name="billing_aud" value="' + a + '"' + ((p.billing_aud || []).indexOf(a) > -1 ? " checked" : "") + "><span>#" + a + "</span></label>"; }).join("") +
-          '<span class="tg off">#labor never</span></div><span class="muted small">You and #money (accounting) always see it. #pm = crew supervisors on this project. #labor never sees money.</span></div>' : "") +
+          '<span class="tg off">#labor never</span></div><span class="muted small">You and #money (accounting) always see it. #pm = crew supervisors on this project: they see the contract (lines and the signed PDF), never the invoices or the amounts billed and paid. #labor never.</span></div>' : "") +
         (m.id ? '<label class="f">Status<select name="status"><option value="active"' + (p.status !== "archived" ? " selected" : "") + '>Active</option><option value="archived"' + (p.status === "archived" ? " selected" : "") + ">Archived (hidden from the client)</option></select></label>" : "") +
         (m.id && S.me.admin ? '<details class="danger"><summary>Start this project over</summary><p class="muted small">Clears the chat, updates, photos list, invoices, contract, checklist, schedule, plans and the people added to it, so you can start from zero. Nothing is lost: you can restore it right here. Files stay in Google Drive.</p>' +
           (d && d.wipe ? '<div class="restore-box"><b>Saved copy from ' + day(String(d.wipe.at).slice(0, 10)) + "</b> · " + d.wipe.items + ' items<button type="button" class="btn sm" data-a="restoreWipe">Restore it</button></div>' : "") +
@@ -2306,6 +2352,8 @@
       case "moneyRefresh": loadMoney(true); keepScroll(render); return;
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
+      case "ctrOpen": ctrOpen(b); return;
+      case "ctrDel": if (!window.confirm("Remove the signed contract from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("contractRemove", { projectId: S.pid }); await refresh(true); toast("Contract removed"); }); return;
       case "billAud": run(b, async function () { var pj = S.data.project, l = (pj.billing_aud || []).filter(function (x) { return x !== "client"; }); if (b.dataset.v === "on") l.push("client");
         await call("saveProject", { project: { id: pj.id, name: pj.name, billing_aud: l } }); await refresh(true); toast(b.dataset.v === "on" ? "The client now sees Contract & billing" : "Hidden from the client"); }); return;
       case "qbCreateCust": run(b, async function () { var qc = await call("qbCreateCustomer", { projectId: S.pid }); S.qbp = null; S.qbCust = null; if (S.money) S.money[S.pid] = null; S.fin = null; await refresh(); toast(qc.existed ? "Already in QuickBooks" : "Created in QuickBooks as “" + qc.name + "”"); }); return;
@@ -2706,7 +2754,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261123214543";
+  var BUILD = "20261124120835";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2800,6 +2848,7 @@
   function onVer(pid, v) {
     if (!v) return; var was = S.vers[pid]; S.vers[pid] = v; if (!was || v <= was) return;
     if (pid === S.pid && S.data && S.tab !== "messages") { S.verPid = pid; if (v !== S.ver) { S.ver = v; if (S.busy || S.modal) S.verLater = true; else liveReload(); } return; }
+    if (pid !== S.pid && !(S.projects || []).some(function (p) { return p.id === pid; })) return;   // not one of my projects (e.g. the crew): nothing to load
     loadFeed(pid);
   }
   /* Just the chat (much lighter than the whole project), merged in without a jump. */
@@ -5239,6 +5288,7 @@
   function ttSaveState() { if (S.tt && !S.viewAs) cacheSet(ttCacheName(), S.tt); }   // after each tap, so the next opening starts from the right button
   function ttLoad() {
     if (S.ttBusy || !S.token) return; S.ttBusy = 1;
+    if (!S.viewAs) ttPerm().then(function (st) { if (st === "granted") ttWarm(120000); });
     if (!S.tt && !S.viewAs) { var ct = cacheGet(ttCacheName()); if (ct && (ct.reviewer != null || ct.enabled != null)) { S.tt = ct; S.ttStale = 1; setTimeout(function () { keepScroll(render); }, 0); } }   // the last copy right away (the crew too), fresh a moment later
     if (S.tt && S.tt.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad();                 // the dashboard starts loading at the same time, not after
     call("ttState", {}).then(function (r) { S.tt = r; S.ttStale = 0; S.ttErr = ""; S.ttTries = 0; if (!S.viewAs) cacheSet(ttCacheName(), r); if (r.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad(); }).catch(function (e) {
@@ -5248,15 +5298,29 @@
   /* The phone's location at the moment of the tap. Phones often give a rough first fix (cell towers, ±100 m+) and then a
      precise one (GPS) a few seconds later, so we listen for up to 12 s and keep the most precise reading, stopping early
      at ±25 m or better. Each reading keeps its own capture time; the server rejects old or imprecise ones. */
+  var TT_WARM = { best: null, id: null, until: 0 };
+  function ttWarmStop() { try { if (TT_WARM.id != null) navigator.geolocation.clearWatch(TT_WARM.id); } catch (e) {} TT_WARM.id = null; }
+  function ttWarm(ms) {
+    if (!window.isSecureContext || !navigator.geolocation) return;
+    TT_WARM.until = Math.max(TT_WARM.until, Date.now() + (ms || 90000));
+    setTimeout(function () { if (Date.now() >= TT_WARM.until) ttWarmStop(); }, (ms || 90000) + 500);
+    if (TT_WARM.id != null) return;
+    try { TT_WARM.id = navigator.geolocation.watchPosition(function (p) { var b = TT_WARM.best; if (!b || p.coords.accuracy <= b.coords.accuracy || Date.now() - (b.timestamp || 0) > 30000) TT_WARM.best = p; if (Date.now() >= TT_WARM.until) ttWarmStop(); },
+      function (er) { if (er.code === 1) ttWarmStop(); }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }); } catch (e) {}
+  }
   function ttLoc() {
     return new Promise(function (res) {
       if (!window.isSecureContext || !navigator.geolocation) return res({ status: "unsupported" });
-      var best = null, n = 0, done = 0, id = null, lastErr = 0;
+      var best = null, n = 0, done = 0, id = null, lastErr = 0, t2 = null;
       var pack = function (p) { return { status: "ok", lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: new Date(p.timestamp || Date.now()).toISOString(), samples: n }; };
-      var finish = function (r) { if (done) return; done = 1; clearTimeout(t1); try { if (id != null) navigator.geolocation.clearWatch(id); } catch (e) {} res(r); };
+      var finish = function (r) { if (done) return; done = 1; clearTimeout(t1); clearTimeout(t2); try { if (id != null) navigator.geolocation.clearWatch(id); } catch (e) {} res(r); };
+      var w = TT_WARM.best, wAge = w ? Date.now() - (w.timestamp || 0) : 1e9;
+      if (w && wAge < 45000 && w.coords.accuracy <= 50) { n = 1; return finish(pack(w)); }                 // a good reading from the last 45 s: no wait
+      if (w && wAge < 45000 && w.coords.accuracy <= 100) best = w;
       var t1 = setTimeout(function () { finish(best ? pack(best) : { status: lastErr === 2 ? "unavailable" : "timeout" }); }, 12000);
+      t2 = setTimeout(function () { if (best && best.coords.accuracy <= 100) finish(pack(best)); }, 4000);   // ±100 m is what the server accepts: don't wait longer for better
       try {
-        id = navigator.geolocation.watchPosition(function (p) { n++; if (!best || p.coords.accuracy < best.coords.accuracy) best = p; if (best.coords.accuracy <= 25) finish(pack(best)); },
+        id = navigator.geolocation.watchPosition(function (p) { n++; if (!best || p.coords.accuracy < best.coords.accuracy) best = p; TT_WARM.best = best; if (best.coords.accuracy <= 25) finish(pack(best)); },
           function (er) { lastErr = er.code; if (er.code === 1) finish({ status: "denied" }); }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
       } catch (e) { finish({ status: "unavailable" }); }
     });
@@ -5341,6 +5405,8 @@
     } finally { S.ttFlushing = 0; keepScroll(render); }
   }
   window.addEventListener("online", function () { if (S.token) ttFlush(); });
+  root.addEventListener("input", function (e) { var t = e.target; if (t && t.matches && t.matches("[data-ask-input]")) S.askDraft = t.value; });
+  root.addEventListener("keydown", function (e) { var t = e.target; if (t && t.matches && t.matches("[data-ask-input]") && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); askSend(t.value); } });
   setInterval(function () {
     if (!S.token || !ttOn()) return; if (ttQ().length) ttFlush();
     document.querySelectorAll("[data-tt-since]").forEach(function (el) { el.textContent = ttDur((Date.now() - new Date(el.dataset.ttSince)) / 6e4); });
@@ -5415,6 +5481,7 @@
   function ttNowLocal() { return ttLocalInput(new Date().toISOString()).replace("T", " "); }
   function ttStaleWhen(st) { return ttDayName(st.day) + " " + ttHm(st.start); }
   function ttStaleHtml(st) {
+    if (S.tt && S.tt.strict) { var es0 = ttL() === "es", w0 = esc(ttStaleWhen(st)); return '<div class="tts-pres pend tts-stale"><b>⚠ ' + (es0 ? "Tu entrada del " + w0 + " quedó sin salida" : "Your check-in from " + w0 + " has no check-out") + "</b><p>" + (es0 ? "Se cierra sola a la hora de tu horario, y tu supervisor o la oficina la revisan. Tú no tienes que poner la hora. Cuenta como salida olvidada." : "It closes by itself at your scheduled time, and your supervisor or the office reviews it. You don't enter the time. It counts as a forgotten check-out.") + '</p><div class="tts-pres-b"><button class="btn" data-a="ttsStaleSkip">' + (es0 ? "Entendido, checar hoy" : "OK, clock in today") + "</button></div></div>"; }
     var es = ttL() === "es", when = ttStaleWhen(st), op = function (v, l) { return '<option value="' + v + '"' + ((S.ttStaleR || "forgot") === v ? " selected" : "") + ">" + l + "</option>"; };
     return '<div class="tts-pres pend tts-stale"><b>⚠ ' + (es ? "Tu entrada del " + esc(when) + " sigue abierta" : "Your check-in from " + esc(when) + " is still open") + "</b><small>" + esc(st.place || "") + (st.place ? " · " : "") + (es ? "hace " + st.hours + " h" : st.hours + " h ago") + "</small>" +
       "<p>" + (es ? "Antes de checar hoy, dinos a qué hora saliste ese día. La oficina lo revisa; esas horas no cuentan hasta que lo aprueben." : "Before clocking today, tell us what time you left that day. The office reviews it; those hours don't count until approved.") + "</p>" +
@@ -5426,7 +5493,7 @@
   function ttStaleNote(st) {
     var es = ttL() === "es", when = esc(ttStaleWhen(st));
     return '<p class="tts-locoff">' + (st.asked ? "⏳ " + (es ? "La hora de salida que mandaste para el turno del " + esc(ttDayName(st.day)) + " está pendiente de que la oficina la apruebe." : "The check-out time you sent for the " + esc(ttDayName(st.day)) + " shift is waiting for the office.")
-      : "⚠ " + (es ? "Tu entrada del " + when + " sigue abierta. " : "Your check-in from " + when + " is still open. ") + '<button class="link small" data-a="ttsStaleBack">' + (es ? "Decir a qué hora salí" : "Tell the time I left") + "</button>") + "</p>";
+      : "⚠ " + (es ? "Tu entrada del " + when + " sigue abierta. " : "Your check-in from " + when + " is still open. ") + (S.tt && S.tt.strict ? (es ? "Se cierra sola a la hora de tu horario." : "It closes by itself at your scheduled time.") : '<button class="link small" data-a="ttsStaleBack">' + (es ? "Decir a qué hora salí" : "Tell the time I left") + "</button>")) + "</p>";
   }
   async function ttStaleSend(b) {
     var st = S.tt.stale, es = ttL() === "es", box = b.closest(".tts-stale") || document, val = function (sel, kept) { var el = box.querySelector(sel); return (el && el.value) || kept || ""; };
@@ -5437,6 +5504,26 @@
     return run(b, async function () {
       await call("ttRequestCorrection", { reason: why === "no_signal" ? "no_signal" : "forgot_out", explain: lab + (note ? ": " + note : ""), shift_id: st.shift_id, changes: [{ op: "add", kind: "out", shift_id: st.shift_id, at: at }] });
       st.asked = 1; S.ttStaleT = S.ttStaleN = ""; S.ttStaleR = ""; ttSaveState(); toast(es ? "Enviado. Ya puedes checar hoy." : "Sent. You can clock in today."); keepScroll(render); S.tt.stale = st; ttLoad();
+    });
+  }
+  function ttForgotHtml() { var n = S.tt && S.tt.forgot_month, es = ttL() === "es"; if (!n || (S.tt && S.tt.preview)) return "";
+    return '<p class="tts-locoff">⚠ ' + (es ? "Este mes llevas " + n + " salida" + (n === 1 ? "" : "s") + " sin checar. Cuando no checas, se cierra sola a la hora de tu horario y la revisa la oficina." : "This month you have " + n + " forgotten check-out" + (n === 1 ? "" : "s") + ". When you don't check out, it closes at your scheduled time and the office reviews it.") + "</p>"; }
+  /* "Close my crew's day" (supervisors with clock_others): check out everyone still in, with the supervisor's location, recorded as done by them. */
+  function ttCloseCrewLink() { return S.tt && S.tt.perms && S.tt.perms.clock_others && !S.tt.preview && !S.viewAs ? '<div class="tts-links2"><button class="link small" data-a="ttsCloseCrew">' + (ttL() === "es" ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + "</button></div>" : ""; }
+  function closeCrewModal(m) {
+    var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
+    if (m.loading) return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + '</h2><p class="muted">' + (es ? "Buscando quién sigue adentro…" : "Looking for who's still in…") + "</p>";
+    if (!m.open.length) return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + "</h2><p>" + (es ? "Nadie de tu equipo sigue con entrada abierta." : "Nobody on your team is still checked in.") + '</p><div class="actions">' + cancel + "</div>";
+    return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + '</h2><p class="muted small">' + (es ? "Se les marca la salida ahora, con tu ubicación, y queda registrado que lo hiciste tú." : "They're checked out now, with your location, recorded as done by you.") + "</p>" +
+      m.open.map(function (x, i) { return '<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-close-i="' + i + '" checked> <span><b>' + esc(x.name) + '</b> <span class="muted small">' + (es ? "desde " : "since ") + ttHm(x.since) + (x.place ? " · " + esc(x.place) : "") + "</span></span></label>"; }).join("") +
+      '<div class="actions">' + cancel + '<button class="btn" data-a="ttsCloseCrewGo">' + (es ? "Marcar salida ahora" : "Check them out now") + "</button></div>";
+  }
+  async function closeCrewGo(b) {
+    var m = S.modal, es = ttL() === "es", pick = m.open.filter(function (x, i) { var c = document.querySelector('[data-close-i="' + i + '"]'); return !c || c.checked; }); if (!pick.length) return toast(es ? "Elige al menos una persona." : "Pick at least one person.");
+    return run(b, async function () {
+      var loc = await ttLoc(), done = 0, fails = [];
+      for (var i = 0; i < pick.length; i++) { try { await call("ttPunch", { kind: "out", for_emp: pick[i].email, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), loc: loc, device_id: devId() }); done++; } catch (e) { fails.push(pick[i].name + ": " + e.message); } }
+      S.modal = null; toast((es ? "Salida marcada a " + done : "Checked out " + done) + (fails.length ? " · " + fails.join(" · ") : "")); ttReviewLoad && S.tt && S.tt.reviewer && ttReviewLoad(true); keepScroll(render);
     });
   }
   function ttMissLink() { return S.tt && S.tt.preview ? "" : '<div class="tts-links2"><button class="link small" data-a="ttsMiss">' + (ttL() === "es" ? "¿No pudiste checar? Pide tus horas" : "Couldn't clock? Request your hours") + "</button></div>"; }
@@ -5616,6 +5703,94 @@
     return '<div style="text-align:center"><div style="font-size:46px;line-height:1">📍</div><h2 style="margin:6px 0 4px">' + (es ? "¿Activas tu ubicación?" : "Turn on your location?") + '</h2><p class="muted" style="margin:0 0 14px">' + (es ? "Solo se toma cuando checas." : "It's only taken when you clock.") + "</p>" +
       '<div style="display:flex;gap:10px"><button class="btn ghost" data-a="ttsGateLater" style="flex:1;font-size:18px;padding:14px">' + (es ? "No" : "No") + '</button><button class="btn" data-a="ttsGateAsk" style="flex:2;font-size:19px;padding:14px;background:#4a7a3f;border-color:#4a7a3f">' + (es ? "Sí, activar" : "Yes, turn on") + "</button></div></div>";
   }
+  /* ---- «Pregúntale» (Jesús, 24-nov): the office asks in plain words; Jesús's private AI answers with the portal's data,
+     through this portal's server (the browser never talks to the AI). Phase 1: staff only. ---- */
+  var ASK_NA = "El asistente no está disponible ahorita.";
+  function askCss() { if (document.getElementById("ask-css")) return; var st = document.createElement("style"); st.id = "ask-css";
+    st.textContent = ".ask-card{max-width:860px}.ask-msgs{display:flex;flex-direction:column;gap:10px;margin:6px 0 14px}.ask-me{align-self:flex-end;max-width:85%;background:#2B2833;color:#fff;border-radius:16px 16px 4px 16px;padding:10px 14px;white-space:pre-wrap}" +
+      ".ask-bot{align-self:flex-start;max-width:92%;background:#F0EDE8;border:1px solid #e2ddd5;border-radius:16px 16px 16px 4px;padding:10px 14px;line-height:1.45}.ask-bot.na{background:#fff6e5;border-color:#f0d9a8}.ask-src{margin-top:8px;font-size:12px;color:#6b665e;border-top:1px solid #e2ddd5;padding-top:6px}" +
+      ".ask-typing{align-self:flex-start;color:#858A7B;font-size:14px}.ask-in{display:flex;gap:8px;align-items:flex-end}.ask-in textarea{flex:1;min-height:52px;max-height:160px;border-radius:12px;border:1px solid #d9d5cf;padding:10px 12px;font:inherit;resize:vertical}" +
+      ".ask-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}";
+    document.head.appendChild(st); }
+  function askMd(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>"); }
+  function askView() {
+    askCss(); var A = S.ask || (S.ask = { conv: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), msgs: [] });
+    var sug = ["¿Cuántas horas trabajó cada persona esta semana?", "¿Cuánto falta por cobrar en cada obra?", "¿Quién checó sin ubicación esta semana?", "¿Cuál es el contrato de Derynck y cuánto se ha pagado?"];
+    var msgs = A.msgs.map(function (m) {
+      if (m.from === "me") return '<div class="ask-me">' + esc(m.text) + "</div>";
+      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Fuentes:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
+    }).join("");
+    return '<div class="card ask-card"><p class="muted small" style="margin-top:0">Pregunta o pide en tus palabras, escribiendo o con el 🎤: horas, checadas, obras, facturas… o «agrégale una nota a Tom sobre…», «pasa la demolición de Derynck al 30». Los cambios no se hacen hasta que tocas «Aplicar». Contesta la IA privada de Blue Sierra con los datos del portal. Puede equivocarse: revisa lo importante antes de usarlo.</p>' +
+      '<div class="ask-msgs">' + (msgs || '<div class="muted">Todavía no hay preguntas en esta conversación.</div>') + (A.busy ? '<div class="ask-typing">Pensando… (si pides cambios puede tardar hasta un minuto)</div>' : "") + "</div>" +
+      '<div class="ask-in"><textarea data-ask-input rows="2" maxlength="1500" placeholder="Ej.: ¿Cuántas horas trabajó José esta semana?"' + (A.busy ? " disabled" : "") + ">" + esc(S.askDraft || "") + '</textarea>' + (askMicOk() ? '<button class="btn ghost" data-a="ttsAskMic" title="Hablar" aria-label="Hablar"' + (A.busy ? " disabled" : "") + ' style="min-width:52px' + (S.askListening ? ";background:#b3261e;color:#fff;border-color:#b3261e" : "") + '">' + (S.askListening ? "■" : "🎤") + "</button>" : "") + '<button class="btn" data-a="ttsAskSend"' + (A.busy ? " disabled" : "") + ">Preguntar</button></div>" + (S.askListening ? '<p class="muted small" style="margin:6px 0 0">Escuchando… habla y suelta; se manda solo.</p>' : "") +
+      (A.msgs.length ? "" : '<div class="ask-sug">' + sug.map(function (x, i) { return '<button class="chip" data-a="ttsAskSug" data-i="' + i + '">' + esc(x) + "</button>"; }).join("") + "</div>") +
+      (A.msgs.length ? '<div style="margin-top:10px"><button class="link small" data-a="ttsAskNew">Nueva conversación</button></div>' : "") + "</div>";
+  }
+  function askPropHtml(m) {
+    var pr = m.propuesta; if (!pr) return "";
+    var lines = (pr.lineas || []).map(function (l) { return "<li" + (l.error ? ' style="color:#b3261e"' : "") + ">" + esc(l.error ? "No se puede: " + l.error : l.resumen) + "</li>"; }).join("");
+    var res = (pr.resultado || []).map(function (r) { return "<li>" + (r.error ? "⚠ " : "✓ ") + esc(r.resumen) + (r.error ? ' <span style="color:#b3261e">(' + esc(r.error) + ")</span>" : "") + "</li>"; }).join("");
+    var st = pr.estado || (pr.id ? "propuesto" : "");
+    var btns = st === "propuesto" && pr.aplicables ? '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-a="ttsBotApply" data-id="' + esc(pr.id) + '" style="background:#4a7a3f;border-color:#4a7a3f">✅ Aplicar ' + (pr.aplicables > 1 ? pr.aplicables + " cambios" : "el cambio") + '</button><button class="btn ghost" data-a="ttsBotDrop" data-id="' + esc(pr.id) + '">Descartar</button></div>'
+      : st === "aplicado" ? '<div style="margin-top:6px"><b>Aplicado.</b>' + (pr.deshacer ? ' <button class="link small" data-a="ttsBotUndo" data-id="' + esc(pr.id) + '">Deshacer</button>' : "") + "</div>"
+      : st === "deshecho" ? '<div style="margin-top:6px"><b>Deshecho.</b> <span class="muted small">Los mensajes y avances ya enviados no se borran.</span></div>'
+      : st === "descartado" ? '<div style="margin-top:6px" class="muted">Descartado: no se cambió nada.</div>' : "";
+    return '<div style="margin-top:10px;border-top:1px dashed #d9d5cf;padding-top:8px"><b>Propuesta de cambios</b>' + (st === "propuesto" ? ' <span class="muted small">(nada cambia hasta que toques «Aplicar»)</span>' : "") + '<ul style="margin:6px 0 0 18px;padding:0">' + (res || lines) + "</ul>" + btns + "</div>";
+  }
+  function askFindProp(id) { var hit = null; ((S.ask && S.ask.msgs) || []).forEach(function (m) { if (m.propuesta && m.propuesta.id === id) hit = m.propuesta; }); return hit; }
+  function askPropAct(b, action, estado) {
+    var pr = askFindProp(b.dataset.id); if (!pr) return;
+    return run(b, async function () { var r = await call(action, { id: pr.id }); pr.estado = estado; if (r && r.resultado) pr.resultado = r.resultado; if (action === "botAplicar") pr.deshacer = !!(r && r.deshacer); toast(estado === "aplicado" ? "Cambios aplicados ✓" : estado === "deshecho" ? "Cambios deshechos" : "Descartado"); keepScroll(render); });
+  }
+  /* 🎤 Talk to it (Jesús, 24-nov): the phone's own speech-to-text (Chrome / Safari), Spanish; what you say is sent when you stop.
+     If you asked by voice, the answer is read aloud too. */
+  function askMicOk() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+  function askMic() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return toast("Tu navegador no deja dictar aquí. Usa el micrófono del teclado del teléfono.");
+    if (S.askRec) { try { S.askRec.stop(); } catch (e) {} return; }
+    var rec = new SR(), said = ""; rec.lang = "es-MX"; rec.interimResults = true; rec.continuous = false; S.askRec = rec; S.askListening = 1; keepScroll(render);
+    rec.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; said = t; S.askDraft = t; var ta = document.querySelector("[data-ask-input]"); if (ta) ta.value = t; };
+    rec.onerror = function (e) { if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Permite el micrófono para dictar."); };
+    rec.onend = function () { S.askRec = null; S.askListening = 0; keepScroll(render); if (said.trim().length > 1) { S.askVoice = 1; askSend(said); } };
+    try { rec.start(); } catch (e) { S.askRec = null; S.askListening = 0; keepScroll(render); }
+  }
+  function askSpeak(text) { try { if (!window.speechSynthesis) return; var u = new SpeechSynthesisUtterance(String(text || "").replace(/\*\*/g, "").slice(0, 600)); u.lang = "es-MX"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} }
+  var ASK_SUG = ["¿Cuántas horas trabajó cada persona esta semana?", "¿Cuánto falta por cobrar en cada obra?", "¿Quién checó sin ubicación esta semana?", "¿Cuál es el contrato de Derynck y cuánto se ha pagado?"];
+  async function askSend(text) {
+    var A = S.ask; text = String(text || "").trim(); if (!A || !text || A.busy) return;
+    A.msgs.push({ from: "me", text: text }); A.busy = 1; S.askDraft = ""; keepScroll(render);
+    var res;
+    try { res = await Promise.race([call("preguntar", { pregunta: text, conversacion_id: A.conv }), new Promise(function (_, rej) { setTimeout(function () { rej(new Error("ask-timeout")); }, 65000); })]); }
+    catch (e) { res = { disponible: false, respuesta: /ask-timeout|fetch|network/i.test(e.message || "") ? ASK_NA : e.message }; }
+    A.busy = 0; A.msgs.push({ from: "bot", text: res.respuesta || ASK_NA, fuentes: res.fuentes || [], na: !res.disponible, propuesta: res.propuesta || null }); if (res.conversacion_id) A.conv = res.conversacion_id;
+    if (S.askVoice) { S.askVoice = 0; askSpeak(res.respuesta || ASK_NA); }
+    render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
+  }
+  var WHATS_NEW = [
+    { id: "2026-11-24a", fecha: "24 de noviembre", puntos: [
+      "<b>Reloj de la crew:</b> un solo botón «Mantenimiento» (la propiedad la toma el GPS) y «Park McKee HOA» aparte, con sus propias horas. «Yard» ya no le sale a la crew; la oficina lo sigue viendo.",
+      "<b>Salidas olvidadas:</b> si alguien no checa salida, el turno se cierra solo a la hora de salida de su horario (3:30 pm), o en su último toque si fue más tarde. En Today sale como «Closed automatically… (no check-out)».",
+      "<b>El trabajador ya no pone su hora de salida.</b> Si de verdad salió más tarde, la oficina o el supervisor la corrige con pruebas (corrección de oficina).",
+      "<b>Faltas del mes:</b> Today avisa cuando alguien lleva 2 salidas olvidadas; a la 3.ª sugiere llamada de atención por escrito. Nunca se descuenta pago.",
+      "<b>Supervisores:</b> botón «Cerrar el día de mi cuadrilla» en el reloj: marca salida a todos los que siguen adentro.",
+      "<b>Pregúntale:</b> pestaña nueva para la oficina. Pregunta o pide cambios escribiendo o con el 🎤 (horas, obras, facturas; «agrégale una nota a Tom…», «pasa la demolición al 30»). Los cambios solo se hacen cuando tocas «Aplicar», y las fechas se pueden deshacer. Se activa cuando Jesús conecte el asistente.",
+      "<b>Contrato firmado:</b> dentro de Contract & billing hay un lugar para el PDF del contrato (privado, sin link público). Lo ven admin, el cliente y el arquitecto si están marcados. <b>#pm</b> (supervisores) ve el contrato y sus líneas, pero nunca las facturas ni lo cobrado o pagado.",
+      "<b>Checar es más rápido:</b> el GPS empieza a buscar desde que abres el reloj; al tocar Entrada/Salida ya no espera hasta 12 segundos (normalmente 1 a 4).",
+      "Arreglo: el teléfono de la crew ya no da el error de chat «Project not found»."] }
+  ];
+  function newsKey() { return "bsp_news_seen_" + (S.me && S.me.key); }
+  function newsSeen() { try { localStorage.setItem(newsKey(), WHATS_NEW[0].id); } catch (e) {} }
+  function newsCheck(tries) {
+    if (!S.me || !staff() || S.viewAs || !WHATS_NEW.length) return;
+    if (S.modal) { if ((tries || 0) < 10) setTimeout(function () { newsCheck((tries || 0) + 1); }, 3000); return; }   // after the location question, not on top of it
+    var seen = ""; try { seen = localStorage.getItem(newsKey()) || ""; } catch (e) { return; }
+    var items = WHATS_NEW.filter(function (n) { return n.id > seen; }); if (!items.length) return;
+    S.modal = { type: "lsxNews", items: seen ? items.slice(0, 3) : items.slice(0, 1) }; keepScroll(render);
+  }
+  function newsModal(m) {
+    return "<h2>🆕 Novedades del portal</h2>" + m.items.map(function (n) { return '<div style="margin:6px 0 12px"><div class="eyebrow">' + esc(n.fecha) + '</div><ul style="margin:6px 0 0 18px;padding:0;line-height:1.45">' + n.puntos.map(function (x) { return '<li style="margin-bottom:6px">' + x + "</li>"; }).join("") + "</ul></div>"; }).join("") +
+      '<div class="actions"><button class="btn" data-a="ttsNewsOk">Entendido</button></div>';
+  }
   function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
   function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
   function ttSimpleCard() {
@@ -5626,7 +5801,7 @@
     if (t.stale && !t.stale.asked && S.ttStaleSkip !== t.stale.shift_id && !preview) return '<div class="card tts tt-pend"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + ttStaleHtml(t.stale) + '<div class="tt-foot">' + ttSyncLine() + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
     var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el trabajador. Puedes practicar la entrada y la salida; no se guarda nada." : "Preview: this is what the worker sees. Try checking in and out; nothing is saved.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
-      (crewUI ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
+      (crewUI || (t.strict && kind === "out") ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
     var body;
     if (working) {
       var curK = sh && sh.job ? sh.job.ref_type + "|" + sh.job.ref_id : "", actN = ttActName(sh && sh.job);
@@ -5641,7 +5816,7 @@
         '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>";
     }
     if (t.stale && !preview) body = ttStaleNote(t.stale) + body;
-    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock + ttMissLink() +
+    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock + ttForgotHtml() + ttMissLink() + ttCloseCrewLink() +
       '<div class="tt-foot">' + ttSyncLine() + (crewUI ? "" : '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span>") + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
   }
   /* The crew's own records: day, jobsite, in → out, hours. */
@@ -5900,7 +6075,7 @@
     if (!list.length) return '<div class="empty">' + (ttL() === "es" ? "El reloj todavía no está activado para ti." : "The clock isn't turned on for you yet.") + "</div>";
     var tab = list.some(function (o) { return o[0] === S.ttTab; }) ? S.ttTab : list[0][0];
     var tabs = list.length > 1 ? '<div class="chips tt-tabs">' + list.map(function (o) { return '<button class="chip' + (tab === o[0] ? " on" : "") + '" data-a="ttTab" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" : "";
-    return (S.tt && S.tt.admin ? "" : ttCard()) + tabs + (tab === "gps" ? ttGpsView() : tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
+    return (S.tt && S.tt.admin ? "" : ttCard()) + tabs + ttCloseCrewLink() + (tab === "gps" ? ttGpsView() : tab === "set" ? ttSetView() : tab === "team" ? (S.ttWeekQ && S.ttWeekQ.emp ? '<button class="link small" data-a="ttBackTeam">← Team review</button>' + ttWeekView() : ttReviewView()) : ttWeekView());
   }
   /* Test GPS: on a real phone, at a jobsite, run the same server check as a check-in. Nothing is saved. */
   function ttGpsView() {
@@ -6041,6 +6216,16 @@
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
     if (a === "ttsStaleSend") return ttStaleSend(b);
+    if (a === "ttsCloseCrew") { S.modal = { type: "lsxCloseCrew", loading: 1, open: [] }; keepScroll(render); call("ttCrewOpen", {}).then(function (r) { if (S.modal && S.modal.type === "lsxCloseCrew") { S.modal = { type: "lsxCloseCrew", open: r.open || [] }; keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); }); return; }
+    if (a === "ttsCloseCrewGo") return closeCrewGo(b);
+    if (a === "ttsNewsOk") { newsSeen(); S.modal = null; return keepScroll(render); }
+    if (a === "ttsAskSend") { var ai = root.querySelector("[data-ask-input]"); return askSend(ai ? ai.value : S.askDraft); }
+    if (a === "ttsAskSug") return askSend(ASK_SUG[+b.dataset.i] || "");
+    if (a === "ttsAskMic") return askMic();
+    if (a === "ttsBotApply") return askPropAct(b, "botAplicar", "aplicado");
+    if (a === "ttsBotDrop") return askPropAct(b, "botDescartar", "descartado");
+    if (a === "ttsBotUndo") return askPropAct(b, "botDeshacer", "deshecho");
+    if (a === "ttsAskNew") { S.ask = null; S.askDraft = ""; return keepScroll(render); }
     if (a === "ttsGateLater") { if (S.locLock) { S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; locVideoShow(); return keepScroll(render); } S.modal = null; return keepScroll(render); }
     if (a === "ttsLocView") { S.locView = S.locView === "anim" ? "" : "anim"; return keepScroll(render); }
     if (a === "ttsStepGo") { S.locStep = Math.max(1, (S.locStep || 1) + (+b.dataset.v || 0)); return keepScroll(render); }
@@ -6107,6 +6292,7 @@
     }
     if (t.matches("[data-tts-time]")) { S.ttsOtherV = t.value; return; }
     if (t.matches("[data-tts-stalet]")) { S.ttStaleT = t.value; return; }
+    if (t.matches("[data-ask-input]")) { S.askDraft = t.value; return; }
     if (t.matches("[data-tts-stalen]")) { S.ttStaleN = t.value; return; }
     if (t.matches("[data-tts-staler]")) { S.ttStaleR = t.value; return keepScroll(render); }
     if (t.matches("[data-tts-actnote]")) { S.ttsActNote = t.value; return; }
@@ -6213,6 +6399,8 @@
     }
     if (m.type === "lsxTtLoc") return ttLocModal(m);
     if (m.type === "lsxLocGate") return locGateModal(m);
+    if (m.type === "lsxCloseCrew") return closeCrewModal(m);
+    if (m.type === "lsxNews") return newsModal(m);
     if (m.type === "lsxTtMiss") return ttMissForm(m);
     if (m.type === "lsxTtExplain") return "<h2>" + tx("explain_btn") + '</h2><p class="muted small">' + (es ? "La oficina la verá junto a tu entrada. Explicar no aprueba la entrada." : "The office sees it next to your check-in. Explaining doesn't approve it.") + '</p><form class="form" data-form="ttExplain"><label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + '<textarea name="text" rows="3" required maxlength="600" placeholder="' + (es ? "Ej. el GPS no funcionaba dentro del edificio" : "e.g. GPS didn't work inside the building") + '"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>";
     if (m.type === "lsxTtCor") return ttCorForm(m);
