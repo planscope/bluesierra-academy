@@ -140,7 +140,7 @@
   /* Google sometimes never starts a request (Executions shows "Failed, 0 s") and the browser would wait for minutes.
      So if there's no answer after a few seconds, the same request goes again with the same id, and the first answer wins.
      The server never does a save twice: a copy of a save still running hears "still working" and waits for its answer. */
-  var SLOW_ACTS = { ttLunchSet: 1, schedShift: 1, botDeshacer: 1, contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
+  var SLOW_ACTS = { ttFixPlace: 1, ttLunchSet: 1, schedShift: 1, botDeshacer: 1, contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
     oxAiDraft: 1, oxAiSave: 1, oxBrief: 1, oxEnrich: 1, oxRrScout: 1, oxEnrichCheck: 1, oxFindFree: 1, oxGmailSync: 1, oxCheckReplies: 1, oxImport: 1, oxExport: 1, qbImport: 1, qbFinance: 1, qbMoney: 1, qbSpend: 1, qbSendInvoice: 1, feedback: 1, wipeProject: 1 };
   var MED_ACTS = { todayQueue: 1, getProject: 1, oxHome: 1, ttReview: 1, jcSummary: 1, jcProject: 1, lsHome: 1, oxCalls: 1, oxSetterFirms: 1, oxSetterReached: 1, chatFeed: 1, activity: 1, qbInvoices: 1, qbCustomers: 1 };
   var BG_ACTS = { tick: 1, typing: 1, presence: 1, markRead: 1 };
@@ -2755,7 +2755,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261124124513";
+  var BUILD = "20261124155639";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5199,6 +5199,7 @@
       '<b class="td-t">' + esc(x.title) + '</b><small class="td-sub">' + esc(x.sub || "") + '</small><p class="td-why">' + esc(x.why || "") + "</p>" +
       '<p class="td-next"><span class="eyebrow">Next</span> ' + esc(x.next || "") + "</p>" + (x.note ? '<p class="td-note">📝 ' + esc(x.note) + (x.state_by ? " · " + esc(x.state_by) : "") + "</p>" : "") +
       '<div class="td-acts"><button class="btn sm" data-a="tdOpen" data-i="' + i + '">Open</button>' +
+      (S.me && S.me.admin && !S.viewAs && x.link && x.link.case_id ? '<button class="btn ghost sm" data-a="ttVPlace" data-case="' + esc(x.link.case_id) + '" data-emp="' + esc(x.link.emp || "") + '" data-name="' + esc((x.title || "").split(" · ").pop()) + '" data-place="">📍 Cambiar lugar</button>' : "") +
       '<label class="td-own"><span class="sr">Owner</span><select data-td-owner="' + i + '"><option value="">' + (x.owner ? "Unassign" : "No owner yet") + "</option>" + st.map(function (p) { return '<option value="' + esc(p.email) + '"' + (p.email === x.owner ? " selected" : "") + ">" + esc(p.email === S.td.me ? "Me (" + first(p.name) + ")" : p.name) + "</option>"; }).join("") + "</select></label>" +
       (x.snooze_until ? '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="">Snoozed to ' + esc(x.snooze_until) + " · undo</button>" : '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="1">Tomorrow</button><button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="7">Next week</button>') +
       '<button class="link small" data-a="tdNote" data-i="' + i + '">' + (x.note ? "Edit note" : "Note") + "</button></div></div>";
@@ -5597,6 +5598,17 @@
       list + '<div class="actions">' + cancel + '<button class="btn ghost" data-a="ttsShiftPreview">Ver qué cambia</button>' + (m.prev && m.prev.partidas.length ? '<button class="btn" data-a="ttsShiftApply">Aplicar</button>' : "") + "</div>";
   }
   function shiftRead() { var f = S.modal.f; root.querySelectorAll("[data-sh]").forEach(function (el) { f[el.dataset.sh] = el.type === "checkbox" ? el.checked : el.value; }); return { projectId: S.pid, desde: f.desde, dias: Number(f.dias), motivo: f.motivo, reserva: !!f.reserva }; }
+  function placeFixModal(m) {
+    var head = "<h2>📍 Cambiar lugar · " + esc(m.name || "") + "</h2>";
+    if (!m.opts) return head + '<p class="muted">Cargando sus lugares…</p>';
+    var quick = ["Confirmado con el foreman", "Su obra asignada es esa", "Checó en el lugar equivocado"];
+    return head + '<p class="muted small" style="margin-top:0">' + (m.place ? "Checó en <b>" + esc(m.place) + "</b>. " : "") + "Elige el lugar correcto. Las horas no cambian; la checada queda validada y con historial.</p>" +
+      '<label class="f">Lugar correcto<select data-fix-place>' + m.opts.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === (m.pick || m.opts.assigned) ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Razón<input type="text" data-fix-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="Ej. Confirmado con el foreman"></label>' +
+      '<div class="chips" style="margin:-4px 0 8px">' + quick.map(function (q) { return '<button type="button" class="chip" data-a="ttVPlaceWhy" data-t="' + esc(q) + '">' + esc(q) + "</button>"; }).join("") + "</div>" +
+      (m.opts.crew ? '<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-fix-assign checked> Dejarlo también como su lugar asignado (su reloj se lo ofrece ya escogido)</label>' : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttVPlaceSave">Guardar y validar</button></div>';
+  }
   function closeCrewModal(m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.loading) return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + '</h2><p class="muted">' + (es ? "Buscando quién sigue adentro…" : "Looking for who's still in…") + "</p>";
@@ -6143,6 +6155,7 @@
         (ex ? '<q class="tt-vc-ex">' + esc(ex.text) + "</q>" : "") + "</div>" +
         (sh && sh.hist ? ttHistHtml(sh.hist) : "") +
         '<div class="tt-vc-a"><button class="link small" data-a="ttVWhere" data-id="' + esc(c.id) + '">' + (wOpen ? "Hide" : "Where? ▸") + "</button>" +
+        (adminR ? '<button class="link small" data-a="ttVPlace" data-case="' + esc(c.id) + '" data-emp="' + esc(c.emp) + '" data-name="' + esc(c.name) + '" data-place="' + esc(c.place || "") + '">📍 Cambiar lugar</button>' : "") +
         (adminR && sh ? '<button class="link small" data-a="ttVEdit" data-id="' + esc(c.id) + '">Edit</button><button class="link small bad-t" data-a="ttVDel" data-id="' + esc(c.id) + '">Delete</button>' : "") +
         (c.can_decide ? '<button class="btn ghost sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="reject">Reject</button><button class="btn sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="accept">Accept</button>' : '<small class="muted">Another reviewer decides</small>') + "</div>" +
         (wOpen ? (c.evidence ? caseCard(c, i, true) : '<div class="tt-case-d muted small">Loading where they checked in…</div>') : "") + "</div>"; };
@@ -6323,6 +6336,12 @@
       var edt = new Date(esh.start), eday = isNaN(edt) ? String(esh.start || "").slice(0, 10) : edt.getFullYear() + "-" + String(edt.getMonth() + 1).padStart(2, "0") + "-" + String(edt.getDate()).padStart(2, "0");
       S.modal = { type: "lsxTtEdit", emp: ec.emp, name: ec.name, sh: esh, del: a === "ttVDel", day: eday }; return keepScroll(render); }
     if (a === "ttVDec") { var vids = b.dataset.ids.split(","), vcs = (S.ttCases || []).filter(function (c) { return vids.indexOf(c.id) > -1; }); S.modal = { type: "lsxTtVDec", ids: vids, cases: vcs, decision: b.dataset.d }; return keepScroll(render); }
+    if (a === "ttVPlace") { S.modal = { type: "lsxTtPlace", case_id: b.dataset.case, emp: b.dataset.emp, name: b.dataset.name, place: b.dataset.place }; keepScroll(render);
+      call("ttPlaceOptions", { emp: b.dataset.emp }).then(function (r) { if (S.modal && S.modal.type === "lsxTtPlace") { S.modal.opts = r; keepScroll(render); } }).catch(function (er) { toast(er.message); }); return; }
+    if (a === "ttVPlaceWhy") { var fr = root.querySelector("[data-fix-reason]"); if (fr) { fr.value = b.dataset.t; S.modal.reason = b.dataset.t; } return; }
+    if (a === "ttVPlaceSave") { var fm = S.modal, fpl = (root.querySelector("[data-fix-place]") || {}).value || "", frs = (root.querySelector("[data-fix-reason]") || {}).value || "", fas = !!(root.querySelector("[data-fix-assign]") || {}).checked;
+      fm.pick = fpl; fm.reason = frs;
+      return run(b, async function () { var r = await call("ttFixPlace", { case_id: fm.case_id, place: fpl, reason: frs, assign: fas }); S.modal = null; S.td = null; ttReviewLoad(true); toast("Lugar corregido: " + r.from + " → " + r.to + " · validada ✓" + (r.assigned ? " · ahora es su lugar asignado" : "")); keepScroll(render); }); }
     if (a === "ttVWhy") { var inp = root.querySelector("form[data-form=ttVDec] input[name=why]"); if (inp) { inp.value = b.dataset.t; inp.focus(); } return; }
     if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
@@ -6529,6 +6548,7 @@
     if (m.type === "lsxTtLoc") return ttLocModal(m);
     if (m.type === "lsxLocGate") return locGateModal(m);
     if (m.type === "lsxCloseCrew") return closeCrewModal(m);
+    if (m.type === "lsxTtPlace") return placeFixModal(m);
     if (m.type === "lsxLunch") return lunchModal(m);
     if (m.type === "lsxAssign") return assignModal(m);
     if (m.type === "lsxShift") return shiftModal(m);
