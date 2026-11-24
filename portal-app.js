@@ -2705,7 +2705,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261123175639";
+  var BUILD = "20261123191613";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5181,7 +5181,7 @@
       corr: "Correcciones", c_pending: "En revisión", c_needs_info: "Te pidieron detalles", c_approved: "Aprobada", c_rejected: "Rechazada", c_withdrawn: "Retirada", approved_c: "Corrección aprobada", answer: "Responder", withdraw: "Retirar", question: "Cuestionar decisión",
       l_inside: "en el lugar", l_outside: "lejos del lugar", l_unknown: "ubicación no concluyente", l_none: "", l_nozone: "", loc_off: "sin ubicación", offline: "sin señal (hora del teléfono)", declared: "ubicación declarada",
       sumT: "Salida guardada", sumQ: "¿Falta registrar algo del día?", allgood: "Todo bien", items: "Pendientes de revisar", noitems: "Nada pendiente.", est: "Estimado, no es pago neto",
-      r_missed_in: "Olvidé marcar entrada", r_missed_out: "Olvidé marcar salida", r_wrong_job: "Trabajo equivocado", r_meal: "Comida no registrada", r_tech: "Problema técnico", r_other: "Otro", r_declared: "Hora indicada al marcar", explain: "¿Qué pasó?", place: "¿Dónde estabas? (opcional, queda como ubicación declarada)", send: "Enviar solicitud",
+      r_missed_in: "Olvidé marcar entrada", r_no_signal: "No pude checar (sin señal)", r_no_location: "No pude checar (sin ubicación)", r_forgot_out: "Salida de un turno que quedó abierto", r_missed_out: "Olvidé marcar salida", r_wrong_job: "Trabajo equivocado", r_meal: "Comida no registrada", r_tech: "Problema técnico", r_other: "Otro", r_declared: "Hora indicada al marcar", explain: "¿Qué pasó?", place: "¿Dónde estabas? (opcional, queda como ubicación declarada)", send: "Enviar solicitud",
       day: "Día", tin: "Hora de entrada", tout: "Hora de salida", whichShift: "Jornada", which: "Registro", newTime: "Hora correcta", newJob: "Trabajo correcto", mstart: "Inicio de comida", mend: "Fin de comida", lang: "English",
       prevWeek: "Semana anterior", nextWeek: "Semana siguiente", nothing: "Sin registros esta semana.", reg: "Regular", ot: "Overtime", dt: "Doble", why: "Así funciona",
       x_missing_out: "Falta la hora de salida", x_open_long: "Jornada abierta mucho tiempo", x_unassigned: "Tiempo sin trabajo asignado", x_meal: "Comida por revisar", x_no_location: "Sin ubicación al marcar (tu hora cuenta igual)",
@@ -5204,7 +5204,7 @@
       corr: "Corrections", c_pending: "In review", c_needs_info: "Details requested", c_approved: "Approved", c_rejected: "Rejected", c_withdrawn: "Withdrawn", approved_c: "Approved correction", answer: "Answer", withdraw: "Withdraw", question: "Question the decision",
       l_inside: "at the place", l_outside: "away from the place", l_unknown: "location inconclusive", l_none: "", l_nozone: "", loc_off: "no location", offline: "no signal (phone's clock)", declared: "declared location",
       sumT: "Check-out saved", sumQ: "Anything missing from today?", allgood: "All good", items: "To review", noitems: "Nothing to review.", est: "Estimate, not net pay",
-      r_missed_in: "Forgot to check in", r_missed_out: "Forgot to check out", r_wrong_job: "Wrong job", r_meal: "Meal not recorded", r_tech: "Technical problem", r_other: "Other", r_declared: "Time given when clocking", explain: "What happened?", place: "Where were you? (optional, saved as a declared location)", send: "Send request",
+      r_missed_in: "Forgot to check in", r_no_signal: "Couldn't clock (no signal)", r_no_location: "Couldn't clock (no location)", r_forgot_out: "Check-out of a shift left open", r_missed_out: "Forgot to check out", r_wrong_job: "Wrong job", r_meal: "Meal not recorded", r_tech: "Technical problem", r_other: "Other", r_declared: "Time given when clocking", explain: "What happened?", place: "Where were you? (optional, saved as a declared location)", send: "Send request",
       day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "Español",
       prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works",
       a_general: "", a_maint: "Maintenance", a_prune: "Pruning", a_irrig: "Irrigation / drainage", a_pavers: "Pavers / stone", a_concrete: "Concrete", a_walls: "Walls", a_other: "Other",
@@ -5271,12 +5271,17 @@
     catch (e) { var es0 = ttL() === "es"; S.ttSync = { st: "warn", msg: (es0 ? "Tu " + (kind === "in" ? "entrada" : "salida") + " sí quedó guardada (hora real). La hora " + ttHm12(declared) + " no se pudo pedir: " : "Your " + (kind === "in" ? "check-in" : "check-out") + " is saved (real time). The time " + ttHm12(declared) + " couldn't be requested: ") + e.message + (es0 ? " Avísale a la oficina." : " Tell the office.") }; }
   }
   function ttHm12(local) { var h = +local.slice(11, 13), m = local.slice(14, 16); return ((h % 12) || 12) + ":" + m + (h < 12 ? " am" : " pm"); }
-  async function ttDo(kind, job, declared) {
-    if (S.ttWorking) return; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
+  async function ttDo(kind, job, declared, noLoc, skipPre) {
+    if (S.ttWorking) return; var prevSync = S.ttSync; S.ttWorking = 1; S.ttSync = { st: "locating" }; S.modal = null; keepScroll(render);
     var ev = Object.assign({ kind: kind, client_key: ttKey(), device_at: new Date().toISOString(), seq: Date.now(), device: (navigator.userAgent || "").slice(0, 200) }, job || {});
     if (declared) ev.declare_at = declared;
+    var needLoc = kind === "in" || (kind === "switch" && !!(job && job.ref_id)), locStop = function (denied) { S.ttWorking = 0; S.ttSync = prevSync; S.modal = { type: "lsxTtLoc", denied: denied ? 1 : 0, kind: kind, job: job, declared: declared }; keepScroll(render); };
+    if (needLoc && !noLoc && !skipPre && !(S.tt && S.tt.preview)) { var perm = await ttPerm(); if (perm === "denied") return locStop(1); if (perm === "prompt" && !ttLocIntroSeen()) return locStop(0); }
     if (S.tt && S.tt.preview) { await new Promise(function (r) { setTimeout(r, 600); }); ttPreviewPunch(kind, job || {}, ev); S.ttWorking = 0; keepScroll(render); return; }   // practice clock: nothing is sent
-    var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0]; if (both[1]) ev.ip = both[1]; ev.device_id = devId(); S.ttSync = { st: "saving" }; keepScroll(render);
+    var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0];
+    if (needLoc && !noLoc && /^(denied|unsupported)$/.test(ev.loc.status || "")) return locStop(1);   // said "no" when the phone asked
+    if (noLoc) ev.no_loc_reason = noLoc;
+    if (both[1]) ev.ip = both[1]; ev.device_id = devId(); S.ttSync = { st: "saving" }; keepScroll(render);
     try {
       if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
       var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); ttSaveState(); S.ttSync = { st: "ok", at: r.event.recv_at }; S.ttPres = r.presence || null; S.ttExplained = 0;
@@ -5402,11 +5407,94 @@
     return '<div class="tts-pres pend">' + head + '<div class="tts-pres-b">' + (later ? "" : '<button class="btn" data-a="ttsRetry"' + (S.ttWorking ? " disabled" : "") + ">" + tx("retry_loc") + "</button>") + '<button class="btn ghost" data-a="ttsExplain">' + tx("explain_btn") + "</button>" + (later ? "" : '<button class="btn ghost" data-a="ttsChange">' + tx("change_site") + "</button>") + "</div>" +
       "<small>" + (S.ttExplained ? tx("explained") + " " : p.explained ? tx("explained") + " " : "") + tx("sent_office") + "</small></div>";
   }
+  /* ---- Nov 23 (Jesús): a shift left open is never closed by the next tap; the crew can ask for hours they couldn't clock;
+     the location is asked for before checking in, and someone who turned it off must say why (the office reviews it). ---- */
+  function ttDayPlus(d, n) { var x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+  function ttPlusMin(local, mins) { var d = new Date(local.replace(" ", "T") + ":00Z"); return new Date(d.getTime() + mins * 6e4).toISOString().slice(0, 16).replace("T", " "); }
+  function ttNowLocal() { return ttLocalInput(new Date().toISOString()).replace("T", " "); }
+  function ttStaleWhen(st) { return ttDayName(st.day) + " " + ttHm(st.start); }
+  function ttStaleHtml(st) {
+    var es = ttL() === "es", when = ttStaleWhen(st), op = function (v, l) { return '<option value="' + v + '"' + ((S.ttStaleR || "forgot") === v ? " selected" : "") + ">" + l + "</option>"; };
+    return '<div class="tts-pres pend tts-stale"><b>⚠ ' + (es ? "Tu entrada del " + esc(when) + " sigue abierta" : "Your check-in from " + esc(when) + " is still open") + "</b><small>" + esc(st.place || "") + (st.place ? " · " : "") + (es ? "hace " + st.hours + " h" : st.hours + " h ago") + "</small>" +
+      "<p>" + (es ? "Antes de checar hoy, dinos a qué hora saliste ese día. La oficina lo revisa; esas horas no cuentan hasta que lo aprueben." : "Before clocking today, tell us what time you left that day. The office reviews it; those hours don't count until approved.") + "</p>" +
+      '<label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + "<select data-tts-staler>" + op("forgot", es ? "Se me olvidó checar salida" : "I forgot to check out") + op("no_signal", es ? "No tenía señal" : "No signal") + op("still", es ? "Sigo trabajando o acabo de salir" : "Still working / just left") + "</select></label>" +
+      ((S.ttStaleR || "forgot") === "still" ? "" : '<label class="f">' + (es ? "¿A qué hora saliste el " + esc(ttDayName(st.day)) + "?" : "What time did you leave on " + esc(ttDayName(st.day)) + "?") + '<input type="time" data-tts-stalet value="' + esc(S.ttStaleT || "") + '"></label>') +
+      '<label class="f">' + (es ? "Nota (opcional)" : "Note (optional)") + '<input data-tts-stalen maxlength="200" value="' + esc(S.ttStaleN || "") + '"></label>' +
+      '<div class="tts-pres-b"><button class="btn" data-a="ttsStaleSend">' + (es ? "Enviar a la oficina" : "Send to the office") + '</button><button class="link small" data-a="ttsStaleSkip">' + (es ? "Ahorita no puedo: checar de todos modos" : "Not now: clock in anyway") + "</button></div></div>";
+  }
+  function ttStaleNote(st) {
+    var es = ttL() === "es", when = esc(ttStaleWhen(st));
+    return '<p class="tts-locoff">' + (st.asked ? "⏳ " + (es ? "La hora de salida que mandaste para el turno del " + esc(ttDayName(st.day)) + " está pendiente de que la oficina la apruebe." : "The check-out time you sent for the " + esc(ttDayName(st.day)) + " shift is waiting for the office.")
+      : "⚠ " + (es ? "Tu entrada del " + when + " sigue abierta. " : "Your check-in from " + when + " is still open. ") + '<button class="link small" data-a="ttsStaleBack">' + (es ? "Decir a qué hora salí" : "Tell the time I left") + "</button>") + "</p>";
+  }
+  async function ttStaleSend(b) {
+    var st = S.tt.stale, es = ttL() === "es", box = b.closest(".tts-stale") || document, val = function (sel, kept) { var el = box.querySelector(sel); return (el && el.value) || kept || ""; };
+    var why = val("[data-tts-staler]", S.ttStaleR) || "forgot", tv = val("[data-tts-stalet]", S.ttStaleT), note = val("[data-tts-stalen]", S.ttStaleN).trim(), at;   // read the fields themselves: a phone may not fire "change" before the tap
+    if (why === "still") at = ttNowLocal();
+    else { if (!/^\d\d:\d\d$/.test(tv)) return toast(es ? "Pon la hora a la que saliste." : "Set the time you left."); at = (tv <= ttHm24(st.start) ? ttDayPlus(st.day, 1) : st.day) + " " + tv; if (at > ttNowLocal()) return toast(es ? "Esa hora todavía no pasa." : "That time hasn't happened yet."); }
+    var lab = { forgot: es ? "Se me olvidó checar salida" : "Forgot to check out", no_signal: es ? "No tenía señal al salir" : "No signal when leaving", still: es ? "Sigo trabajando / acabo de salir" : "Still working / just left" }[why];
+    return run(b, async function () {
+      await call("ttRequestCorrection", { reason: why === "no_signal" ? "no_signal" : "forgot_out", explain: lab + (note ? ": " + note : ""), shift_id: st.shift_id, changes: [{ op: "add", kind: "out", shift_id: st.shift_id, at: at }] });
+      st.asked = 1; S.ttStaleT = S.ttStaleN = ""; S.ttStaleR = ""; ttSaveState(); toast(es ? "Enviado. Ya puedes checar hoy." : "Sent. You can clock in today."); keepScroll(render); S.tt.stale = st; ttLoad();
+    });
+  }
+  function ttMissLink() { return S.tt && S.tt.preview ? "" : '<div class="tts-links2"><button class="link small" data-a="ttsMiss">' + (ttL() === "es" ? "¿No pudiste checar? Pide tus horas" : "Couldn't clock? Request your hours") + "</button></div>"; }
+  function ttMissForm(m) {
+    var es = ttL() === "es", today = (S.tt && S.tt.today) || ttNowLocal().slice(0, 10), days = [], places = ttPlaces();
+    for (var i = 0; i < 7; i++) days.push(ttDayPlus(today, -i));
+    var reasons = [["no_signal", es ? "No tenía señal o el portal no abría" : "No signal / the portal wouldn't open"], ["no_location", es ? "No pude dar mi ubicación" : "Couldn't share my location"], ["missed_in", es ? "Se me olvidó checar" : "I forgot to clock"], ["tech", es ? "Mi teléfono no servía o se apagó" : "My phone didn't work or died"], ["other", es ? "Otro" : "Other"]];
+    return "<h2>" + (es ? "Pedir mis horas" : "Request my hours") + '</h2><p class="muted small">' + (es ? "Para un día que trabajaste y no pudiste checar. Tu supervisor o la oficina lo revisa; las horas cuentan cuando lo aprueben." : "For a day you worked and couldn't clock. Your supervisor or the office reviews it; the hours count once approved.") + "</p>" +
+      '<form class="form" data-form="ttMiss"><label class="f">' + (es ? "Día" : "Day") + '<select name="day">' + days.map(function (d) { return '<option value="' + d + '">' + esc(ttDayName(d)) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">' + (es ? "¿Dónde trabajaste?" : "Where did you work?") + '<select name="place" required><option value="">' + (es ? "Elige" : "Pick") + "</option>" + places.map(function (o) { return '<option value="' + esc(o.ref_type + "|" + o.ref_id) + '">' + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
+      '<div class="grid g2"><label class="f">' + (es ? "Entrada" : "Start") + '<input type="time" name="tin" required></label><label class="f">' + (es ? "Salida" : "End") + '<input type="time" name="tout" required></label></div>' +
+      '<div class="grid g2"><label class="f">' + (es ? "Comida" : "Meal") + '<select name="meal" required><option value="">' + (es ? "Elige" : "Pick") + '</option><option value="0">' + (es ? "No tomé comida" : "No meal") + '</option><option value="30">30 min</option><option value="60">' + (es ? "1 hora" : "1 hour") + "</option></select></label>" +
+      '<label class="f">' + (es ? "¿A qué hora empezaste a comer?" : "Meal started at") + '<input type="time" name="tmeal" value="12:00"></label></div>' +
+      '<label class="f">' + (es ? "¿Por qué no checaste?" : "Why couldn't you clock?") + '<select name="reason">' + reasons.map(function (r) { return '<option value="' + r[0] + '">' + r[1] + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">' + (es ? "Explica qué pasó (obligatorio)" : "Explain what happened (required)") + '<textarea name="explain" rows="3" required maxlength="1000"></textarea></label>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + '</button><button class="btn" type="submit">' + (es ? "Enviar a revisión" : "Send for review") + "</button></div></form>";
+  }
+  function ttMissSend(f, btn) {
+    var es = ttL() === "es", g = function (n) { return String((f.elements[n] && f.elements[n].value) || "").trim(); };
+    var day = g("day"), pk = g("place"), tin = g("tin"), tout = g("tout"), meal = g("meal"), tm = g("tmeal"), ex = g("explain"), reason = g("reason") || "other";
+    if (!pk) return toast(es ? "Elige dónde trabajaste." : "Pick where you worked.");
+    if (!/^\d\d:\d\d$/.test(tin) || !/^\d\d:\d\d$/.test(tout)) return toast(es ? "Pon la hora de entrada y de salida." : "Set the start and end time.");
+    if (meal === "") return toast(es ? "Dinos si tomaste comida." : "Tell us about your meal.");
+    if (ex.length < 5) return toast(es ? "Explica qué pasó (mínimo 5 letras)." : "Explain what happened (5 letters or more).");
+    var inAt = day + " " + tin, outAt = (tout <= tin ? ttDayPlus(day, 1) : day) + " " + tout, mins = (new Date(outAt.replace(" ", "T") + ":00Z") - new Date(inAt.replace(" ", "T") + ":00Z")) / 6e4;
+    if (outAt > ttNowLocal()) return toast(es ? "La salida no puede ser después de ahora." : "The end can't be later than now.");
+    if (mins > 16 * 60) return toast(es ? "Son más de 16 horas. Revisa la entrada y la salida." : "That's over 16 hours. Check the start and end.");
+    var pl = ttPlaceObj(pk) || {}, kk = pk.split("|"), ch = [{ op: "add", kind: "in", at: inAt, ref_type: kk[0], ref_id: kk[1], act: "general" }];
+    if (+meal) {
+      if (!/^\d\d:\d\d$/.test(tm)) return toast(es ? "Pon la hora de la comida." : "Set the meal time.");
+      var ms0 = (tm < tin ? ttDayPlus(day, 1) : day) + " " + tm, me0 = ttPlusMin(ms0, +meal);
+      if (ms0 <= inAt || me0 >= outAt) return toast(es ? "La comida tiene que quedar entre la entrada y la salida." : "The meal has to be between the start and the end.");
+      ch.push({ op: "add", kind: "meal_start", at: ms0 }, { op: "add", kind: "meal_end", at: me0 });
+    }
+    ch.push({ op: "add", kind: "out", at: outAt });
+    run(btn, async function () {
+      await call("ttRequestCorrection", { reason: reason, explain: ex + (+meal ? "" : es ? " (sin comida)" : " (no meal)"), declared_place: pl.name || "", changes: ch, shift_id: "" });
+      S.modal = null; toast(es ? "Enviado. Tu supervisor o la oficina lo revisa." : "Sent. Your supervisor or the office reviews it."); keepScroll(render); S.tt = Object.assign(S.tt || {}, {}); ttLoad();
+    });
+  }
+  function ttPerm() { try { if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve("unknown"); return navigator.permissions.query({ name: "geolocation" }).then(function (p) { return p.state; }, function () { return "unknown"; }); } catch (e) { return Promise.resolve("unknown"); } }
+  function ttLocIntroSeen(set) { var k = "bsp_tt_locintro_" + (S.me && S.me.key); try { if (set) localStorage.setItem(k, "1"); return !!localStorage.getItem(k); } catch (e) { return !!S.ttLocIntro || (set ? (S.ttLocIntro = 1) : 0); } }
+  function ttLocModal(m) {
+    var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
+    if (!m.denied) return "<h2>📍 " + (es ? "Tu ubicación al checar" : "Your location when you clock") + "</h2><p>" + (es ? "Para checar, el portal toma tu ubicación <b>una sola vez, en el momento en que marcas</b>. No te sigue durante el día. Solo la ven la oficina y accounting." : "To clock in, the portal takes your location <b>once, at the moment you tap</b>. It doesn't follow you during the day. Only the office and accounting see it.") + "</p><p>" + (es ? "Tu teléfono te va a preguntar: elige <b>«Permitir»</b>." : "Your phone will ask: choose <b>Allow</b>.") + '</p><div class="actions">' + cancel + '<button class="btn" data-a="ttsLocGo">' + (es ? "Entendido, checar" : "OK, clock in") + "</button></div>";
+    return "<h2>📍 " + (es ? "Activa tu ubicación para checar" : "Turn on your location to clock in") + "</h2><p>" + (es ? "Tu teléfono tiene la ubicación apagada para el portal. Actívala así y regresa:" : "Your phone has the location turned off for the portal. Turn it on and come back:") + "</p><ul>" +
+      "<li><b>iPhone:</b> " + (es ? "Ajustes › Privacidad y seguridad › Localización (prendida) › Safari o Chrome › «Al usar la app». Si sigue igual, cierra y vuelve a abrir el portal." : "Settings › Privacy & Security › Location Services (on) › Safari or Chrome › While Using the App. If nothing changes, close and reopen the portal.") + "</li>" +
+      "<li><b>Android:</b> " + (es ? "toca el candado 🔒 junto a la dirección › Permisos › Ubicación › Permitir. Revisa que la ubicación del teléfono esté prendida." : "tap the lock 🔒 next to the address › Permissions › Location › Allow. Check the phone's location is on.") + "</li></ul>" +
+      '<div class="actions">' + cancel + '<button class="btn" data-a="ttsLocGo">' + (es ? "Ya la activé, intentar otra vez" : "Done, try again") + "</button></div>" +
+      "<details><summary>" + (es ? "No puedo activarla" : "I can't turn it on") + '</summary><p class="muted small">' + (es ? "Puedes checar sin ubicación, pero queda anotado y la oficina lo revisa. Escribe por qué:" : "You can clock in without location, but it's noted and the office reviews it. Write why:") + '</p><textarea data-tts-noloc rows="2" maxlength="300"></textarea><button class="btn ghost" data-a="ttsLocNo">' + (es ? "Checar sin ubicación" : "Clock in without location") + "</button></details>";
+  }
+  function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
+  function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
   function ttSimpleCard() {
     var t = S.tt, m = t.mode || "off", sh = t.shift, es = ttL() === "es", busy = S.ttWorking, places = ttPlaces(), working = m !== "off";
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
     var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified" && !ttCrewUI();
     var crewUI = ttCrewUI(), preview = !!t.preview;
+    if (t.stale && !t.stale.asked && S.ttStaleSkip !== t.stale.shift_id && !preview) return '<div class="card tts tt-pend"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + ttStaleHtml(t.stale) + '<div class="tt-foot">' + ttSyncLine() + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
     var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el trabajador. Puedes practicar la entrada y la salida; no se guarda nada." : "Preview: this is what the worker sees. Try checking in and out; nothing is saved.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
       (crewUI ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
@@ -5423,7 +5511,8 @@
         '<div class="tts-q"><span class="tts-n">2</span>' + tx("q_act") + ' <small class="muted">' + tx("opt") + "</small></div>" + ttActChips("ttsAct", S.ttsAct || "", false, S.ttsPick) +
         '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>";
     }
-    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock +
+    if (t.stale && !preview) body = ttStaleNote(t.stale) + body;
+    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock + ttMissLink() +
       '<div class="tt-foot">' + ttSyncLine() + (crewUI ? "" : '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span>") + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
   }
   /* The crew's own records: day, jobsite, in → out, hours. */
@@ -5503,7 +5592,7 @@
     var head = '<div class="tt-wk-nav"><button class="btn ghost sm" data-a="ttWeekGo" data-d="-7" aria-label="' + tx("prevWeek") + '">‹</button><b>' + (rev ? esc(w.name) + " · " : "") + ttDayName(w.week.start) + " – " + ttDayName(w.week.end) + "</b>" +
       '<button class="btn ghost sm" data-a="ttWeekGo" data-d="7" aria-label="' + tx("nextWeek") + '">›</button>' + (w.week.status === "closed" ? '<span class="pill">Closed v' + w.week.version + "</span>" : "") + "</div>";
     var tot = '<div class="grid g4 tt-tot">' + stat(tx("total"), ttDur(w.totals.paid_min), tx("mealt") + ": " + ttDur(w.totals.meal_min)) + stat(tx("reg"), ttDur(c.reg), c.exempt ? (es ? "Exento: sin cálculo de overtime" : "Exempt: overtime not computed") : tx("est")) + stat(tx("ot"), ttDur(c.ot), "1.5×") + stat(tx("dt"), ttDur(c.dt), "2× · " + esc(c.rules.v)) + "</div>";
-    var days = w.days.filter(function (d) { return d.shifts.length; }).map(function (d) { return '<div class="card tt-day"><div class="tt-day-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + d.shifts.map(function (s) { return ttShiftHtml(s, rev); }).join("") + "</div>"; }).join("") || '<div class="empty">' + tx("nothing") + "</div>";
+    var days = w.days.filter(function (d) { return d.shifts.length || (d.carry || []).length; }).map(function (d) { return '<div class="card tt-day"><div class="tt-day-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + ttCarryHtml(d) + d.shifts.map(function (s) { return (s.too_long ? ttLongHtml(s) : "") + ttShiftHtml(s, rev); }).join("") + "</div>"; }).join("") || '<div class="empty">' + tx("nothing") + "</div>";
     var rep = (w.replaced || []).length ? '<details class="tt-rep"><summary>' + (es ? "Registros reemplazados por correcciones (" : "Records replaced by corrections (") + w.replaced.length + ")</summary>" + w.replaced.map(function (e) { return "<div>" + tx(e.kind) + " " + ttDayName(e.at.slice(0, 10)) + " " + ttHm(e.at) + " " + ttEvBadge(e) + "</div>"; }).join("") + "</details>" : "";
     var xs = w.exceptions.filter(function (x) { return rev || ["correction", "dispute"].concat(ttSimple() ? ["outside", "no_location"] : []).indexOf(x.kind) < 0; });
     var exc = '<div class="card"><div class="eyebrow">' + tx("items") + "</div>" + (xs.length ? xs.map(function (x) { var es2 = !rev && ttL() === "es" && TTX.es["x_" + x.kind]; return '<div class="tt-exc p' + x.priority + '"><b>' + esc(es2 || x.title) + "</b><small>" + ttDayName(x.day) + (es2 ? "" : " · " + esc(x.why)) + "</small>" + (rev ? "<small>Next: " + esc(x.next) + "</small>" : "") + "</div>"; }).join("") : '<p class="muted small">' + tx("noitems") + "</p>") + "</div>";
@@ -5583,12 +5672,12 @@
     var DAYS7 = [0, 1, 2, 3, 4, 5, 6].map(function (i) { var d = new Date(w.start + "T12:00:00"); d.setDate(d.getDate() + i); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); });
     S.ttKpis = "";
     var tbl = r.people.length ? ttSheetTop(r.people, DAYS7) + r.people.map(function (p, pi) {
-      var open = !!(S.ttOpenEmp || {})[p.emp], days = p.days.filter(function (d) { return d.shifts.length; });
+      var open = !!(S.ttOpenEmp || {})[p.emp], days = p.days.filter(function (d) { return d.shifts.length || (d.carry || []).length; });
       var flags = (p.presence_open ? '<span class="pill bad">' + p.presence_open + " to validate</span>" : "") + (p.open_shifts ? '<span class="pill bad">open shift</span>' : "") + (p.pending ? '<span class="pill gold">' + p.pending + " request</span>" : "");
       var appr = !p.paid_min ? "" : p.approval ? (p.approval.valid ? '<span class="ok-t">✓ approved</span>' : '<span class="bad-t">changed after approval</span>') : p.self ? "" : '<button class="link small" data-a="ttApprove" data-emp="' + esc(p.emp) + '">Approve week</button>';
       var body = !open ? "" : '<div class="tt-emp-b">' + (days.length ? days.map(function (d) {
-        return '<div class="tt-emp-day"><div class="tt-ed-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + d.shifts.map(function (sh, si) {
-          return '<div class="tt-emp-sh' + (sh.voided ? " void" : "") + '"><div class="tt-es-t"><b>' + ttHm(sh.start) + " → " + (sh.end ? ttHm(sh.end) : '<span class="bad-t">no check-out</span>') + "</b> · " + ttDur(sh.paid_min) + "<small>" + esc(sh.places.join(", ")) + (sh.acts.length ? " · " + esc(sh.acts.join(", ")) : "") + "</small></div>" +
+        return '<div class="tt-emp-day"><div class="tt-ed-h"><b>' + ttDayName(d.date) + "</b><span>" + ttDur(d.paid_min) + "</span></div>" + ttCarryHtml(d) + d.shifts.map(function (sh, si) {
+          return '<div class="tt-emp-sh' + (sh.voided ? " void" : "") + '"><div class="tt-es-t"><b>' + ttHm(sh.start) + " → " + (sh.end ? ttHm(sh.end) : '<span class="bad-t">no check-out</span>') + "</b> · " + (sh.too_long ? '<span class="bad-t">not counted: ' + ttDur(sh.paid_min) + " shift, looks like a forgotten check-out</span>" : ttDur(sh.paid_min)) + "<small>" + esc(sh.places.join(", ")) + (sh.acts.length ? " · " + esc(sh.acts.join(", ")) : "") + "</small></div>" +
             '<div class="tt-es-c">' + gpsTxt(sh.gps) + phTxt(sh.phone) + (sh.gps.addr ? '<small class="muted">Near ' + esc(sh.gps.addr) + "</small>" : "") + (sh.corrected ? '<span class="pill gold">edited</span>' : "") + (sh.case === "pending" || sh.case === "verified_later" ? '<span class="pill bad">to validate</span>' : sh.case ? '<span class="pill">' + esc(sh.case) + "</span>" : "") + "</div>" +
             (sh.hist ? ttHistHtml(sh.hist) : "") +
             (adminR ? '<div class="tt-es-x">' + (sh.voided ? '<span class="pill">Deleted</span><button class="link small" data-a="ttRestore" data-pi="' + pi + '" data-d="' + esc(d.date) + '" data-si="' + si + '">Restore</button>'
@@ -5822,6 +5911,14 @@
     if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
     if (a === "ttsExplain") { S.modal = { type: "lsxTtExplain" }; return keepScroll(render); }
+    if (a === "ttsStaleSend") return ttStaleSend(b);
+    if (a === "ttsStaleSkip") { S.ttStaleSkip = S.tt && S.tt.stale && S.tt.stale.shift_id; return keepScroll(render); }
+    if (a === "ttsStaleBack") { S.ttStaleSkip = null; return keepScroll(render); }
+    if (a === "ttsMiss") { if (S.tt && S.tt.stale && !S.tt.stale.asked) { S.ttStaleSkip = null; toast(ttL() === "es" ? "Primero dinos a qué hora saliste del turno que quedó abierto." : "First tell us when you left the shift that stayed open."); return keepScroll(render); } S.modal = { type: "lsxTtMiss" }; return keepScroll(render); }
+    if (a === "ttsLocGo") { var lm = S.modal; if (!lm) return; ttLocIntroSeen(1);
+      if (!lm.denied) { S.modal = null; return ttDo(lm.kind, lm.job, lm.declared, "", true); }
+      return ttPerm().then(function (p) { if (p === "denied") return toast(ttL() === "es" ? "Sigue apagada. Si ya la activaste, cierra y vuelve a abrir el portal." : "It's still off. If you turned it on, close and reopen the portal."); S.modal = null; ttDo(lm.kind, lm.job, lm.declared, "", true); }); }
+    if (a === "ttsLocNo") { var nr = ((root.querySelector("[data-tts-noloc]") || {}).value || "").trim(), lm2 = S.modal; if (nr.length < 5) return toast(ttL() === "es" ? "Escribe por qué (mínimo 5 letras)." : "Write why (5 letters or more)."); if (!lm2) return; S.modal = null; ttLocIntroSeen(1); return ttDo(lm2.kind, lm2.job, lm2.declared, nr, true); }
     if (a === "ttsGo") {
       var gk = b.dataset.k, dec = "", es1 = ttL() === "es";
       if (S.ttsOther) {
@@ -5873,6 +5970,9 @@
       return;
     }
     if (t.matches("[data-tts-time]")) { S.ttsOtherV = t.value; return; }
+    if (t.matches("[data-tts-stalet]")) { S.ttStaleT = t.value; return; }
+    if (t.matches("[data-tts-stalen]")) { S.ttStaleN = t.value; return; }
+    if (t.matches("[data-tts-staler]")) { S.ttStaleR = t.value; return keepScroll(render); }
     if (t.matches("[data-tts-actnote]")) { S.ttsActNote = t.value; return; }
     if (t.matches("[data-tt-gps]")) { S.ttGpsK = t.value; return; }
     if (t.matches("[data-tts-meal]")) { S.ttMealAt = t.value; return; }
@@ -5880,7 +5980,7 @@
     if (t.matches("form[data-form=ttCor] select[name=op]")) { e.stopImmediatePropagation(); S.modal.op = t.value; return keepScroll(render); }
   }, true);
   root.addEventListener("submit", function (e) {
-    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess|ttEdit|ttVDec)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
+    var f = e.target; if (!f.matches || !/^(ttCor|ttReply|ttAbs|ttExplain|ttAccess|ttEdit|ttVDec|ttMiss)$/.test(f.dataset.form || "")) return; e.preventDefault(); e.stopImmediatePropagation();
     var m = S.modal, fd = new FormData(f), g = function (k) { return String(fd.get(k) || "").trim(); }, btn = f.querySelector("[type=submit]");
     if (f.dataset.form === "ttEdit") return run(btn, async function () {
       var sh1 = m.sh || {}, ch2 = [], tin = ttLocalVal(g("tin")), tout = ttLocalVal(g("tout"));
@@ -5914,6 +6014,7 @@
       return;
     }
     if (f.dataset.form === "ttAccess") return run(btn, async function () { var ra = await call("ttCrewAccess", { email: m.email || "", name: g("name") || m.name, phone: g("phone"), level: g("level") || "" }); S.modal = { type: "lsxTtAccess", pin: ra.pin, phone: ra.phone, name: ra.name }; ttSetLoad(); keepScroll(render); });
+    if (f.dataset.form === "ttMiss") return ttMissSend(f, btn);
     if (f.dataset.form === "ttExplain") return run(btn, async function () { await call("ttPresenceExplain", { text: g("text") }); S.modal = null; S.ttExplained = 1; toast(tx("explained")); keepScroll(render); });
     if (f.dataset.form === "ttAbs") return run(btn, async function () { await call("ttSetAbsence", { emp: S.ttW.emp, from: g("from"), to: g("to") || g("from"), kind: g("kind"), note: g("note") }); S.modal = null; S.ttW = null; toast("Absence recorded"); keepScroll(render); });
     if (f.dataset.form === "ttReply") return run(btn, async function () {
@@ -5974,6 +6075,8 @@
         '<label class="f">Phone number<input name="phone" type="tel" inputmode="tel" required value="' + esc(m.phone ? phoneFmt(m.phone) : "") + '" placeholder="(408) 555-0199"></label><p class="muted small">' + (m.phone ? "A new PIN replaces the old one." : "We'll create a 6-digit PIN for them.") + "</p>" +
         '<div class="actions">' + cancel + '<button class="btn" type="submit">' + (m.phone ? "Make a new PIN" : "Create the PIN") + "</button></div></form>";
     }
+    if (m.type === "lsxTtLoc") return ttLocModal(m);
+    if (m.type === "lsxTtMiss") return ttMissForm(m);
     if (m.type === "lsxTtExplain") return "<h2>" + tx("explain_btn") + '</h2><p class="muted small">' + (es ? "La oficina la verá junto a tu entrada. Explicar no aprueba la entrada." : "The office sees it next to your check-in. Explaining doesn't approve it.") + '</p><form class="form" data-form="ttExplain"><label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + '<textarea name="text" rows="3" required maxlength="600" placeholder="' + (es ? "Ej. el GPS no funcionaba dentro del edificio" : "e.g. GPS didn't work inside the building") + '"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>";
     if (m.type === "lsxTtCor") return ttCorForm(m);
     if (m.type === "lsxTtSum") { var s = m.s; return "<h2>✓ " + tx("sumT") + "</h2><p><b>" + ttHm(s.start) + " → " + ttHm(s.end) + "</b> · " + tx("total") + " " + ttDur(s.paid_min) + (s.meal_min ? " · " + tx("mealt") + " " + ttDur(s.meal_min) : "") + "</p>" + ttSegs(s) +
