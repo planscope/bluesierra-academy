@@ -136,11 +136,11 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  var VIEWABLE = { contractDoc: 1, oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   /* Google sometimes never starts a request (Executions shows "Failed, 0 s") and the browser would wait for minutes.
      So if there's no answer after a few seconds, the same request goes again with the same id, and the first answer wins.
      The server never does a save twice: a copy of a save still running hears "still working" and waits for its answer. */
-  var SLOW_ACTS = { contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
+  var SLOW_ACTS = { ttLunchSet: 1, schedShift: 1, botDeshacer: 1, contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
     oxAiDraft: 1, oxAiSave: 1, oxBrief: 1, oxEnrich: 1, oxRrScout: 1, oxEnrichCheck: 1, oxFindFree: 1, oxGmailSync: 1, oxCheckReplies: 1, oxImport: 1, oxExport: 1, qbImport: 1, qbFinance: 1, qbMoney: 1, qbSpend: 1, qbSendInvoice: 1, feedback: 1, wipeProject: 1 };
   var MED_ACTS = { todayQueue: 1, getProject: 1, oxHome: 1, ttReview: 1, jcSummary: 1, jcProject: 1, lsHome: 1, oxCalls: 1, oxSetterFirms: 1, oxSetterReached: 1, chatFeed: 1, activity: 1, qbInvoices: 1, qbCustomers: 1 };
   var BG_ACTS = { tick: 1, typing: 1, presence: 1, markRead: 1 };
@@ -1640,7 +1640,7 @@
     var d = ((S.data && S.data.contract) || {}).doc, adm = ctrAdmin();
     if (!d && !adm) return "";
     return '<div class="card ctr-doc" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:200px"><b>Signed contract</b><div class="muted small">' +
-      (d ? esc(d.name) + (d.at ? " · uploaded " + esc(String(d.at).slice(0, 10)) + (d.by ? " by " + esc(d.by) : "") : "") : "Not uploaded yet. Only the people who see Contract & billing can open it (never the crew).") + "</div></div>" +
+      (d ? esc(d.name) + (d.at ? " · uploaded " + esc(String(d.at).slice(0, 10)) + (d.by ? " by " + esc(d.by) : "") : "") : "Not uploaded yet. Only the people who see Contract & billing (and #pm, if it's on) can open it.") + "</div></div>" +
       (d ? '<button class="btn sm" data-a="ctrOpen">View PDF</button>' : "") +
       (adm ? '<label class="btn ghost sm" style="cursor:pointer">' + (d ? "Replace" : "Upload the PDF") + '<input type="file" accept="application/pdf" data-ctr-up hidden></label>' + (d ? '<button class="btn ghost sm" data-a="ctrDel">Remove</button>' : "") : "") + "</div>";
   }
@@ -2015,6 +2015,7 @@
     var head = '<div class="section-title" style="margin-top:0"><div class="chips">' + [["gantt", "Timeline"], ["calendar", "Calendar"], ["list", "List"]].map(function (o) { return '<button class="chip' + (v === o[0] ? " on" : "") + '" data-a="schedMode" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="actions">' + (items.length ? '<button class="btn ghost sm" data-a="ics">Add to my calendar</button>' : "") +
       (staff() && !tasks.length ? '<button class="btn ghost sm" data-a="stdPhases">Add the standard phases</button>' : "") +
+      (S.me && S.me.admin && !S.viewAs && tasks.length ? '<button class="btn ghost sm" data-a="ttsShiftOpen" title="Mueve todo lo que sigue (lluvia, retrasos), como el Gantt">⇥ Recorrer</button>' : "") +
       (staff() ? '<button class="btn sm" data-a="modal" data-m="sched">Add a date</button>' : "") + "</div></div>" +
       '<div class="sch-legend">' + KINDS.map(function (k) { return '<span><i class="sch-dot k-' + k[0] + '"></i>' + k[1] + "</span>"; }).join("") + "</div>";
     if (!items.length) return head + '<div class="empty">' + (staff() ? "No dates yet. Add the standard phases or a first date (inspection, payment, decision…)." : "Blue Sierra hasn't added dates yet.") + "</div>";
@@ -2754,7 +2755,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261124120835";
+  var BUILD = "20261124124513";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2786,7 +2787,7 @@
         aside.forEach(function (n) { root.removeChild(n); });
         try {
           MORPH(root, next, { childrenOnly: true,
-            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast") || n.classList.contains("call-win")))); },
+            onBeforeNodeDiscarded: function (n) { return !(n.id === "bsp-dock" || n.id === "bsp-ask" || n.id === "bsp-help" || n.id === "bsp-pop" || (n.classList && (n.classList.contains("inc-call") || n.classList.contains("toast") || n.classList.contains("call-win")))); },
             onBeforeElUpdated: function (from, to) {
               if (from.isEqualNode(to)) return false;
               if (from.hasAttribute && from.hasAttribute("data-keep")) return false;
@@ -2909,7 +2910,7 @@
       ((m.files || []).length ? '<div class="dk-files">📎 ' + m.files.length + " file" + (m.files.length > 1 ? "s" : "") + "</div>" : "") + "<small>" + day(m.at) + (m.mine ? " " + rcptTick((S.dockData || {})[S.dock.pid] || (S.data && S.pid === S.dock.pid ? S.data : null), m) : "") + "</small></div></div>";
   }
   function mountFloat() {
-    if (!S.token || !S.me || S.viewAs || !root.querySelector(".topbar")) { if (DOCK) DOCK.remove(); if (HELP) HELP.remove(); return; }
+    if (!S.token || !S.me || S.viewAs || !root.querySelector(".topbar")) { if (DOCK) DOCK.remove(); if (HELP) HELP.remove(); if (ASKF) ASKF.remove(); return; }
     if (!DOCK) {
       DOCK = document.createElement("div"); DOCK.id = "bsp-dock";
       DOCK.innerHTML = '<button class="dk-bubble" data-a="dkOpen" aria-label="Open chat">' + ICON.chat + '<span class="dk-count"></span></button>' +
@@ -2926,7 +2927,42 @@
     }
     if (DOCK.parentNode !== root) root.appendChild(DOCK);
     if (HELP.parentNode !== root) root.appendChild(HELP);
-    dockPaint();
+    dockPaint(); askFloat();
+  }
+  /* The floating «Pregúntale» (office only): a ✨ button above the chat bubble; the panel keeps the same conversation as the Pregúntale page. */
+  var ASKF = null;
+  S.askOpen = (function () { try { return window.innerWidth > 700 && localStorage.getItem("bsp-ask-open") === "1"; } catch (e) { return false; } })();
+  function askOpenSet(v) { S.askOpen = !!v; try { localStorage.setItem("bsp-ask-open", v ? "1" : "0"); } catch (e) {} askFloat(); if (v) setTimeout(function () { var t = ASKF && ASKF.querySelector("textarea"); if (t && window.innerWidth > 700) t.focus(); var bd = ASKF && ASKF.querySelector(".ak-body"); if (bd) bd.scrollTop = bd.scrollHeight; }, 30); }
+  function askFloat() {
+    if (!staff() || S.viewAs) { if (ASKF) ASKF.remove(); return; }
+    askCss();
+    if (!ASKF) {
+      ASKF = document.createElement("div"); ASKF.id = "bsp-ask";
+      ASKF.innerHTML = '<button class="ak-bubble" data-a="ttsAskOpen" aria-label="Pregúntale" title="Pregúntale: pregunta o pide cambios (escribiendo o hablando)">✨</button>' +
+        '<section class="ak-panel" aria-label="Pregúntale"><header class="ak-head"><b>✨ Pregúntale</b><span class="ak-sp"></span><button class="link small" data-a="ttsAskNew" title="Nueva conversación">Nueva</button><button class="ak-x" data-a="ttsAskClose" aria-label="Cerrar">×</button></header>' +
+        '<div class="ak-body" data-lenis-prevent></div>' +
+        '<form class="ak-form"><textarea data-ask-input rows="1" maxlength="1500" placeholder="Pregunta o pide un cambio…" aria-label="Pregunta"></textarea>' + (askMicOk() ? '<button type="button" class="ak-mic" data-a="ttsAskMic" title="Hablar" aria-label="Hablar">🎤</button>' : "") + '<button class="btn sm" type="submit">Enviar</button></form></section>';
+      var f = ASKF.querySelector(".ak-form"), ta = f.querySelector("textarea");
+      f.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); var v = ta.value; ta.value = ""; ta.style.height = "auto"; askEnsure(); askSend(v); });
+      ta.addEventListener("input", function () { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; });
+    }
+    if (ASKF.parentNode !== root) root.appendChild(ASKF);
+    var onPage = S.home === "ask" && !S.pid;                                     // the full Pregúntale page is on screen: no floating copy
+    ASKF.className = (S.askOpen && !onPage ? "open" : "") + (onPage ? " gone" : "");
+    if (!S.askOpen || onPage) return;
+    var A = askEnsure(), bd = ASKF.querySelector(".ak-body"), atEnd = bd.scrollHeight - bd.scrollTop - bd.clientHeight < 40;
+    var html = askMsgsHtml(A) || ('<div class="muted small" style="padding:4px 2px 10px">Pregunta o pide en tus palabras: horas, checadas, obras, facturas… o «agrégale una nota a Tom», «recorre Derynck 2 días por la lluvia». Nada cambia hasta que tocas «Aplicar».</div><div class="ask-sug">' + ASK_SUG.map(function (x, i) { return '<button class="chip" data-a="ttsAskSug" data-i="' + i + '">' + esc(x) + "</button>"; }).join("") + "</div>");
+    html += A.busy ? '<div class="ask-typing">Pensando…</div>' : "";
+    if (bd.__h !== html) { bd.innerHTML = html; bd.__h = html; if (atEnd || A.busy) bd.scrollTop = bd.scrollHeight; }
+    var ta2 = ASKF.querySelector("textarea"); ta2.disabled = !!A.busy;
+    var mic = ASKF.querySelector(".ak-mic"); if (mic) mic.classList.toggle("on", !!S.askListening);
+  }
+  function askEnsure() { return S.ask || (S.ask = { conv: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), msgs: [] }); }
+  function askMsgsHtml(A) {
+    return A.msgs.map(function (m) {
+      if (m.from === "me") return '<div class="ask-me">' + esc(m.text) + "</div>";
+      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Fuentes:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
+    }).join("");
   }
   function dockPaint(fromFeed) {
     if (!DOCK) return;
@@ -5167,13 +5203,53 @@
       (x.snooze_until ? '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="">Snoozed to ' + esc(x.snooze_until) + " · undo</button>" : '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="1">Tomorrow</button><button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="7">Next week</button>') +
       '<button class="link small" data-a="tdNote" data-i="' + i + '">' + (x.note ? "Edit note" : "Note") + "</button></div></div>";
   }
+  function lunchCanSee() { return !!(S.me && !S.viewAs && (S.me.admin || (S.tt && S.tt.perms && S.tt.perms.time_review))); }
+  function lunchLoad(week, force) {
+    if (!lunchCanSee() || (S.lunchBusy && !force)) return; S.lunchBusy = 1;
+    call("ttLunchList", { week: week || "" }).then(function (r) { S.lunch = r; }).catch(function (e) { S.lunch = { err: e.message, days: [] }; }).then(function () { S.lunchBusy = 0; S.lunchAt = Date.now(); keepScroll(render); });
+  }
+  function lunchCard() {
+    if (!lunchCanSee()) return "";
+    if (!S.lunch || Date.now() - (S.lunchAt || 0) > 300000) { if (!S.lunchBusy) setTimeout(function () { lunchLoad(S.lunch && S.lunch.week); }, 0); if (!S.lunch) return ""; }
+    var L0 = S.lunch, d = L0.days || [], auto = d.filter(function (x) { return !x.manual && x.min > 0; }).length, ch = d.filter(function (x) { return x.manual; }).length, ppl = {}; d.forEach(function (x) { ppl[x.emp] = 1; });
+    if (L0.err) return "";
+    return '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px"><span style="font-size:20px">🍽</span><div style="flex:1;min-width:200px"><b>Lunch esta semana</b><div class="muted small">' +
+      (L0.on ? auto + " día" + (auto === 1 ? "" : "s") + " con 30 min automáticos · " + Object.keys(ppl).length + " persona" + (Object.keys(ppl).length === 1 ? "" : "s") : "Descuento automático apagado") + (ch ? " · " + ch + " cambiado" + (ch === 1 ? "" : "s") + " a mano" : "") +
+      '</div></div><button class="btn sm" data-a="ttsLunchOpen">Revisar / cambiar</button></div>';
+  }
+  function lunchModal(m) {
+    var L0 = S.lunch || { days: [] }, rows = L0.days || [], sel = m.sel || {};
+    var wk = L0.week || "", prev = wk ? ttAddDaysC(wk, -7) : "", next = wk ? ttAddDaysC(wk, 7) : "";
+    var dayN = function (d) { var x = new Date(d + "T12:00:00"); return ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][x.getDay()] + " " + x.getDate(); };
+    var body = rows.length ? '<div class="card tbl" style="max-height:52vh;overflow:auto;margin:8px 0" data-lenis-prevent><table class="t"><thead><tr><th></th><th>Persona</th><th>Día</th><th class="num">Lunch</th></tr></thead><tbody>' + rows.map(function (x, i) {
+      var h = x.history.length ? x.history[x.history.length - 1] : null;
+      return '<tr><td><input type="checkbox" data-lunch-i="' + i + '"' + (sel[i] ? " checked" : "") + '></td><td><b>' + esc(x.name) + "</b></td><td>" + esc(dayN(x.date)) + '</td><td class="num"><b>' + x.min + " min</b> <span class=\"muted small\">" + (x.manual ? "a mano" : "auto") + "</span>" +
+        (h ? '<div class="muted small" style="white-space:normal">' + h.before + " → " + h.after + " · " + esc(h.by) + " · " + esc(ttWhenC(h.at)) + " · «" + esc(h.reason) + "»</div>" : "") + "</td></tr>";
+    }).join("") + "</tbody></table></div>" : '<p class="muted">Nadie tiene lunch descontado esta semana.</p>';
+    return '<h2>🍽 Lunch</h2><p class="muted small" style="margin-top:0">Se descuentan 30 min solos cuando el turno va de antes de las 12:00 a después de la 1:00 pm y no checaron comida. Marca los días que cambian, escribe la razón una vez y guarda. Regular y overtime se recalculan solos.</p>' +
+      '<div class="chips" style="margin:4px 0">' + (prev ? '<button class="chip" data-a="ttsLunchWk" data-w="' + prev + '">← Semana anterior</button>' : "") + '<span class="chip on">Semana del ' + esc(wk.slice(5)) + "</span>" + (next && next <= today() ? '<button class="chip" data-a="ttsLunchWk" data-w="' + next + '">Siguiente →</button>' : "") + "</div>" + body +
+      (rows.length ? '<label class="f">Razón (obligatoria)<input type="text" data-lunch-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="Ej. El supervisor confirmó que no tomó lunch"></label>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cerrar</button><button class="btn ghost" data-a="ttsLunchSet" data-m="30">Con lunch (30 min)</button><button class="btn" data-a="ttsLunchSet" data-m="0">Sin lunch (0)</button></div>' : '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cerrar</button></div>');
+  }
+  function ttWhenC(iso) { var x = new Date(iso); if (isNaN(x)) return String(iso || ""); return (x.getMonth() + 1) + "/" + x.getDate() + " " + x.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+  function ttAddDaysC(d, n) { var x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+  /* Admins: the place assigned to a crew member (pre-selected on their clock), with why and the history. */
+  function assignModal(m) {
+    if (!m.info) return "<h2>📍 Lugar asignado · " + esc(m.name) + '</h2><p class="muted">Cargando…</p>';
+    var I = m.info;
+    return "<h2>📍 Lugar asignado · " + esc(m.name) + '</h2><p class="muted small" style="margin-top:0">Le sale ya escogido en su reloj; si va a otro lado toca «Cambiar lugar». Solo un admin lo cambia y queda el historial.</p>' +
+      '<label class="f">Lugar<select data-assign-place><option value="">Sin lugar asignado (usa el último donde checó)</option>' + I.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === I.current ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Por qué (obligatorio)<input type="text" data-assign-reason maxlength="300" placeholder="Ej. Esta semana va a Paseo Robles"></label>' +
+      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>Historial</b>' + I.history.slice(0, 8).map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + " → " + esc(h.after) + " · «" + esc(h.reason) + "»</div>"; }).join("") + "</div>" : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttsAssignSave">Guardar</button></div>';
+  }
   function todayView() {
     if (!S.td) { tdLoad(); return '<div class="loading" style="min-height:30vh">Working out what needs attention…</div>'; }
     var r = S.td; if (r.err) return '<div class="card ls-incomplete"><b>Today couldn\'t load.</b> ' + esc(r.err) + ' <button class="link" data-a="tdReload">Try again</button><p class="small">Nothing here means "nothing pending" until it loads.</p></div>';
     var all = r.items, n = function (f) { var k = S.tdF; S.tdF = f; var c = tdList().length; S.tdF = k; return c; }, f = S.tdF || "all", list = tdList();
     S.tdShown = list;
     var fl = [["all", "All"], ["mine", "Mine"], ["none", "No owner"]].concat(r.admin ? [["jesus", "For Jesús"]] : []);
-    return tdReadyCard() + '<div class="td-bar"><div class="chips">' + fl.map(function (o) { return '<button class="chip' + (f === o[0] ? " on" : "") + '" data-a="tdF" data-v="' + o[0] + '">' + o[1] + ' <span class="count td-c">' + n(o[0]) + "</span></button>"; }).join("") + "</div>" +
+    return tdReadyCard() + lunchCard() + '<div class="td-bar"><div class="chips">' + fl.map(function (o) { return '<button class="chip' + (f === o[0] ? " on" : "") + '" data-a="tdF" data-v="' + o[0] + '">' + o[1] + ' <span class="count td-c">' + n(o[0]) + "</span></button>"; }).join("") + "</div>" +
       '<span class="muted small">Worked out ' + esc(String(r.computed_at).slice(11)) + ' · <button class="link small" data-a="tdReload">Refresh</button>' + (r.snoozed || S.tdShowSn ? ' · <button class="link small" data-a="tdSn">' + (S.tdShowSn ? "Hide snoozed" : "Show " + r.snoozed + " snoozed") + "</button>" : "") + "</span></div>" +
       (list.length ? '<div class="td-list">' + list.map(tdCard).join("") + "</div>" : '<div class="empty">' + (all.length ? "Nothing in this filter." : "Nothing waiting right now. Checked " + esc(String(r.computed_at).slice(11)) + ".") + "</div>") +
       '<p class="muted small td-foot">Each item comes from the record itself (a message, visit, request, estimate, proposal or expense); fix it there and it leaves this list. Not covered yet: billing-ready work, shared inbox email.</p>';
@@ -5237,7 +5313,7 @@
       x_missing_out: "Falta la hora de salida", x_open_long: "Jornada abierta mucho tiempo", x_unassigned: "Tiempo sin trabajo asignado", x_meal: "Comida por revisar", x_no_location: "Sin ubicación al marcar (tu hora cuenta igual)",
       x_outside: "Marcado lejos del lugar del trabajo", x_offline: "Registrado sin señal: revisa la hora", x_conflict: "Un registro no cuadró: la oficina lo revisa", x_overlap: "Jornadas encimadas", x_overtime: "Posible overtime (se paga aunque no estuviera aprobado)", x_no_checkin: "Día programado sin entrada", x_presence: "Entrada pendiente de validación", presence: "Reintento de ubicación",
       a_general: "", a_maint: "Mantenimiento", a_prune: "Poda", a_irrig: "Riego / drenaje", a_pavers: "Pavers / piedra", a_concrete: "Concreto", a_walls: "Muros", a_other: "Otra",
-      a_load: "Carga en el yard", a_travel: "Traslado", a_materials: "Compra de materiales", a_disposal: "Basura / disposición", a_office: "Oficina", a_work: "", a_unassigned: "",
+      a_load: "Carga en el yard", a_travel: "Traslado", a_materials: "Compra de materiales", a_disposal: "Basura / disposición", a_logistics: "Transporte y logística", a_office: "Oficina", a_work: "", a_unassigned: "",
       q_site: "¿En qué jobsite estás?", q_act: "¿Qué vas a hacer?", opt: "(opcional)", write_act: "Escribir otra actividad", act_ph: "Ej. instalar sod", q_clock: "Toca el reloj: pediremos tu ubicación",
       nogeo: "sin punto en el mapa: quedará pendiente", more_sites: "Ver más lugares", fewer: "Ver menos", noplaces: "No tienes jobsites asignados todavía. Avísale a la oficina.",
       ok_in: "Entrada confirmada", ok_loc: "Tu ubicación coincide con el jobsite", pend_t: "Entrada pendiente de validación",
@@ -5258,7 +5334,7 @@
       day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "Español",
       prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works",
       a_general: "", a_maint: "Maintenance", a_prune: "Pruning", a_irrig: "Irrigation / drainage", a_pavers: "Pavers / stone", a_concrete: "Concrete", a_walls: "Walls", a_other: "Other",
-      a_load: "Loading at the yard", a_travel: "Travel", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_office: "Office", a_work: "", a_unassigned: "",
+      a_load: "Loading at the yard", a_travel: "Travel", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_logistics: "Transport & logistics", a_office: "Office", a_work: "", a_unassigned: "",
       q_site: "Which jobsite are you at?", q_act: "What are you doing?", opt: "(optional)", write_act: "Write another activity", act_ph: "e.g. lay sod", q_clock: "Tap the clock: we'll ask for your location",
       nogeo: "no map point: it will be pending", more_sites: "More places", fewer: "Show fewer", noplaces: "No jobsites assigned yet. Tell the office.",
       ok_in: "Check-in confirmed", ok_loc: "Your location matches the jobsite", pend_t: "Check-in pending validation",
@@ -5431,7 +5507,7 @@
   }
   function ttPickDefault(list) {
     var last = ""; try { last = localStorage.getItem("bsp_tt_last_" + S.me.key) || ""; } catch (e) {}
-    var hit = list.filter(function (o) { return o.ref_type + "|" + o.ref_id === last; })[0] || list.filter(function (o) { return o.route; })[0];
+    var hit = list.filter(function (o) { return o.assigned; })[0] || list.filter(function (o) { return o.ref_type + "|" + o.ref_id === last; })[0] || list.filter(function (o) { return o.route; })[0];
     return hit ? hit.ref_type + "|" + hit.ref_id : "";
   }
   function ttSiteName(k) { var o = ttPlaces().filter(function (x) { return x.ref_type + "|" + x.ref_id === k; })[0]; return o ? o.name : ""; }
@@ -5510,6 +5586,17 @@
     return '<p class="tts-locoff">⚠ ' + (es ? "Este mes llevas " + n + " salida" + (n === 1 ? "" : "s") + " sin checar. Cuando no checas, se cierra sola a la hora de tu horario y la revisa la oficina." : "This month you have " + n + " forgotten check-out" + (n === 1 ? "" : "s") + ". When you don't check out, it closes at your scheduled time and the office reviews it.") + "</p>"; }
   /* "Close my crew's day" (supervisors with clock_others): check out everyone still in, with the supervisor's location, recorded as done by them. */
   function ttCloseCrewLink() { return S.tt && S.tt.perms && S.tt.perms.clock_others && !S.tt.preview && !S.viewAs ? '<div class="tts-links2"><button class="link small" data-a="ttsCloseCrew">' + (ttL() === "es" ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + "</button></div>" : ""; }
+  function shiftModal(m) {
+    var f = m.f, cancel = '<button type="button" class="btn ghost" data-a="close">Cerrar</button>';
+    if (m.done) return '<h2>Calendario recorrido ✓</h2><p>' + esc(m.done.resumen) + '</p><div class="actions">' + (m.undone ? '<span class="muted">Deshecho: todo quedó como antes.</span>' : '<button class="btn ghost" data-a="ttsShiftUndo">Deshacer</button>') + cancel + "</div>";
+    var list = m.prev ? '<div class="card" style="margin:10px 0;max-height:260px;overflow:auto" data-lenis-prevent><p style="margin:0 0 8px"><b>' + esc(m.prev.resumen) + "</b></p>" +
+      (m.prev.partidas.length ? '<table class="t"><tbody>' + m.prev.partidas.map(function (x) { return "<tr><td>" + esc(x.titulo) + '</td><td class="muted small" style="white-space:nowrap">' + esc(x.antes) + " → <b>" + esc(x.despues) + "</b></td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">No hay nada que recorrer desde esa fecha.</p>') + "</div>" : "";
+    return "<h2>Recorrer el calendario</h2><p class=\"muted small\" style=\"margin-top:0\">Todo lo que no esté hecho y empiece desde esa fecha se mueve en días hábiles, como el Gantt: cada partida sigue a la que va antes (el fraguado cuenta fines de semana). Lo que ya va corriendo ese día solo termina después. Los pagos y los días «No production» no se mueven. Con lluvia, primero se usa la reserva de clima.</p>" +
+      '<div class="row2"><label class="f">Desde<input type="date" data-sh="desde" value="' + esc(f.desde) + '"></label><label class="f">Días hábiles (negativo = adelantar)<input type="number" data-sh="dias" min="-60" max="60" step="1" value="' + esc(f.dias) + '"></label></div>' +
+      '<div class="row2"><label class="f">Motivo<input type="text" data-sh="motivo" maxlength="120" value="' + esc(f.motivo) + '" placeholder="lluvia, inspección, material…"></label><label class="f" style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" data-sh="reserva"' + (f.reserva ? " checked" : "") + "> Usar la reserva de clima (la fecha final no se mueve mientras alcance)</label></div>" +
+      list + '<div class="actions">' + cancel + '<button class="btn ghost" data-a="ttsShiftPreview">Ver qué cambia</button>' + (m.prev && m.prev.partidas.length ? '<button class="btn" data-a="ttsShiftApply">Aplicar</button>' : "") + "</div>";
+  }
+  function shiftRead() { var f = S.modal.f; root.querySelectorAll("[data-sh]").forEach(function (el) { f[el.dataset.sh] = el.type === "checkbox" ? el.checked : el.value; }); return { projectId: S.pid, desde: f.desde, dias: Number(f.dias), motivo: f.motivo, reserva: !!f.reserva }; }
   function closeCrewModal(m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.loading) return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + '</h2><p class="muted">' + (es ? "Buscando quién sigue adentro…" : "Looking for who's still in…") + "</p>";
@@ -5707,7 +5794,12 @@
      through this portal's server (the browser never talks to the AI). Phase 1: staff only. ---- */
   var ASK_NA = "El asistente no está disponible ahorita.";
   function askCss() { if (document.getElementById("ask-css")) return; var st = document.createElement("style"); st.id = "ask-css";
-    st.textContent = ".ask-card{max-width:860px}.ask-msgs{display:flex;flex-direction:column;gap:10px;margin:6px 0 14px}.ask-me{align-self:flex-end;max-width:85%;background:#2B2833;color:#fff;border-radius:16px 16px 4px 16px;padding:10px 14px;white-space:pre-wrap}" +
+    st.textContent = "#bsp-ask{position:fixed;right:20px;bottom:88px;z-index:49;font-size:14px}#bsp-ask.gone{display:none}.ak-bubble{width:52px;height:52px;border-radius:50%;border:0;background:#4a7a3f;color:#fff;font-size:22px;display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.22);cursor:pointer;transition:transform .15s}.ak-bubble:hover{transform:scale(1.06)}" +
+      ".ak-panel{display:none;position:fixed;right:20px;bottom:20px;width:400px;max-width:calc(100vw - 24px);height:min(600px,calc(100vh - 40px));background:#fff;border:1px solid #e2ddd5;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.22);flex-direction:column;overflow:hidden}#bsp-ask.open .ak-panel{display:flex}#bsp-ask.open .ak-bubble{display:none}" +
+      ".ak-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #eee9e1}.ak-sp{flex:1}.ak-x{border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#6b6670}.ak-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}" +
+      ".ak-form{display:flex;gap:8px;align-items:flex-end;padding:10px;border-top:1px solid #eee9e1}.ak-form textarea{flex:1;resize:none;border:1px solid #d9d5cf;border-radius:12px;padding:8px 10px;font:inherit;min-height:38px;max-height:120px}.ak-mic{border:1px solid #d9d5cf;background:#fff;border-radius:12px;width:40px;height:38px;cursor:pointer}.ak-mic.on{background:#b3261e;color:#fff;border-color:#b3261e}" +
+      "@media (max-width:700px){#bsp-ask{right:12px;bottom:78px}#bsp-ask.open{inset:0}#bsp-ask.open .ak-panel{inset:0;width:auto;height:auto;max-width:none;border-radius:0;border:0}}" +
+      ".ask-card{max-width:860px}.ask-msgs{display:flex;flex-direction:column;gap:10px;margin:6px 0 14px}.ask-me{align-self:flex-end;max-width:85%;background:#2B2833;color:#fff;border-radius:16px 16px 4px 16px;padding:10px 14px;white-space:pre-wrap}" +
       ".ask-bot{align-self:flex-start;max-width:92%;background:#F0EDE8;border:1px solid #e2ddd5;border-radius:16px 16px 16px 4px;padding:10px 14px;line-height:1.45}.ask-bot.na{background:#fff6e5;border-color:#f0d9a8}.ask-src{margin-top:8px;font-size:12px;color:#6b665e;border-top:1px solid #e2ddd5;padding-top:6px}" +
       ".ask-typing{align-self:flex-start;color:#858A7B;font-size:14px}.ask-in{display:flex;gap:8px;align-items:flex-end}.ask-in textarea{flex:1;min-height:52px;max-height:160px;border-radius:12px;border:1px solid #d9d5cf;padding:10px 12px;font:inherit;resize:vertical}" +
       ".ask-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}";
@@ -5749,7 +5841,7 @@
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return toast("Tu navegador no deja dictar aquí. Usa el micrófono del teclado del teléfono.");
     if (S.askRec) { try { S.askRec.stop(); } catch (e) {} return; }
     var rec = new SR(), said = ""; rec.lang = "es-MX"; rec.interimResults = true; rec.continuous = false; S.askRec = rec; S.askListening = 1; keepScroll(render);
-    rec.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; said = t; S.askDraft = t; var ta = document.querySelector("[data-ask-input]"); if (ta) ta.value = t; };
+    rec.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; said = t; S.askDraft = t; document.querySelectorAll("[data-ask-input]").forEach(function (ta) { ta.value = t; }); };
     rec.onerror = function (e) { if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Permite el micrófono para dictar."); };
     rec.onend = function () { S.askRec = null; S.askListening = 0; keepScroll(render); if (said.trim().length > 1) { S.askVoice = 1; askSend(said); } };
     try { rec.start(); } catch (e) { S.askRec = null; S.askListening = 0; keepScroll(render); }
@@ -5767,6 +5859,12 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-24b", fecha: "24 de noviembre (tarde)", puntos: [
+      "<b>Lunch automático:</b> se descuentan 30 min cuando el turno va de antes de las 12:00 a después de la 1:00 pm sin comida checada. En <b>Today</b> → «🍽 Lunch esta semana» marcas varios días, escribes la razón una vez y lo pones en 0 o 30. Regular y overtime se recalculan solos y queda el historial.",
+      "<b>Lugar asignado:</b> en Horas → Settings, «📍 Lugar asignado» en cada persona de la crew (solo admin, con razón e historial). Les sale ya escogido en su reloj.",
+      "<b>Reloj de la crew más simple:</b> su lugar ya escogido y un botón grande; los otros lugares en «Cambiar lugar». Nuevo lugar: «Transporte y logística».",
+      "<b>Pregúntale flotante:</b> el botón ✨ verde arriba del chat, en todas las páginas.",
+      "<b>Recorrer el calendario:</b> en Schedule, «⇥ Recorrer» (o por voz: «llovió hoy en Derynck»). Mueve todo lo que sigue como el Gantt, usa primero la reserva de clima y no mueve los pagos. Se puede deshacer."] },
     { id: "2026-11-24a", fecha: "24 de noviembre", puntos: [
       "<b>Reloj de la crew:</b> un solo botón «Mantenimiento» (la propiedad la toma el GPS) y «Park McKee HOA» aparte, con sus propias horas. «Yard» ya no le sale a la crew; la oficina lo sigue viendo.",
       "<b>Salidas olvidadas:</b> si alguien no checa salida, el turno se cierra solo a la hora de salida de su horario (3:30 pm), o en su último toque si fue más tarde. En Today sale como «Closed automatically… (no check-out)».",
@@ -5793,6 +5891,18 @@
   }
   function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
   function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
+  /* Crew (Jesús, 24-nov: «los pasos más eficientes posibles»): their place already chosen and the big button. Nothing else to decide. */
+  function ttCrewPlace(places) {
+    var es = ttL() === "es", cur = places.filter(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })[0];
+    ttCrewCss();
+    if (cur && !S.ttsPlaceOpen) return '<div class="tts-here"><span class="tts-pin">📍</span><div class="tts-here-t"><b>' + esc(cur.name) + "</b>" + (cur.sub ? "<small>" + esc(cur.sub) + "</small>" : "") + '</div><button class="link" data-a="ttsPlaceOpen">' + (es ? "Cambiar lugar" : "Change place") + "</button></div>";
+    return '<div class="tts-q">' + (es ? "¿Dónde vas a trabajar?" : "Where are you working?") + "</div>" + ttTiles(places, "ttsPlace", S.ttsPick);
+  }
+  function ttCrewCss() {
+    if (document.getElementById("tts-crew-css")) return; var st = document.createElement("style"); st.id = "tts-crew-css";
+    st.textContent = ".tts-here{display:flex;align-items:center;gap:12px;background:#f4f1ec;border:1px solid #e2ddd5;border-radius:14px;padding:12px 14px;margin:4px 0 14px}.tts-pin{font-size:22px}.tts-here-t{flex:1;min-width:0}.tts-here-t b{display:block;font-size:17px;line-height:1.25}.tts-here-t small{display:block;color:#6b6670;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tts-here .link{white-space:nowrap}";
+    document.head.appendChild(st);
+  }
   function ttSimpleCard() {
     var t = S.tt, m = t.mode || "off", sh = t.shift, es = ttL() === "es", busy = S.ttWorking, places = ttPlaces(), working = m !== "off";
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
@@ -5806,14 +5916,15 @@
     if (working) {
       var curK = sh && sh.job ? sh.job.ref_type + "|" + sh.job.ref_id : "", actN = ttActName(sh && sh.job);
       body = ttPresBox() + '<div class="tts-now"><span class="tt-dot"></span><div><b>' + tx("working_at") + esc((sh && sh.job && sh.job.ref_name) || "—") + "</b><small>" + (actN ? esc(actN) + " · " : "") + (es ? "Entraste " : "Started ") + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small></div></div>" +
-        '<div class="tts-links2"><button class="link small" data-a="ttsActTog">' + tx("change_act") + '</button> · <button class="link small" data-a="ttsChange">' + (S.ttsChange ? (es ? "Cerrar" : "Close") : tx("moved_q")) + "</button></div>" +
+        '<div class="tts-links2">' + (crewUI ? "" : '<button class="link small" data-a="ttsActTog">' + tx("change_act") + "</button> · ") + '<button class="link small" data-a="ttsChange">' + (S.ttsChange ? (es ? "Cerrar" : "Close") : crewUI ? (es ? "Cambiar lugar" : "Change place") : tx("moved_q")) + "</button></div>" +
         (S.ttsActOpen ? ttActChips("ttsActNow", "", true, curK) + (S.ttsActNow === "other" ? '<button class="btn sm" data-a="ttsActSave">' + (es ? "Guardar actividad" : "Save activity") + "</button>" : "") : "") +
         (S.ttsChange ? '<div class="tts-q">' + tx("tap_new") + "</div>" + ttTiles(places, "ttsSwitch", curK) : "");
     } else {
       body = (S.ttLast ? '<div class="tts-done">✓ ' + (es ? "Salida guardada " : "Check-out saved ") + ttHm(S.ttLast.at) + " · " + (es ? "hoy trabajaste " : "today: ") + ttDur(S.ttLast.min) + "</div>" + ttMealBox() : "") +
+        (crewUI ? ttCrewPlace(places) :
         '<div class="tts-q"><span class="tts-n">1</span>' + tx("q_site") + "</div>" + ttTiles(places, "ttsPlace", S.ttsPick) +
         '<div class="tts-q"><span class="tts-n">2</span>' + tx("q_act") + ' <small class="muted">' + tx("opt") + "</small></div>" + ttActChips("ttsAct", S.ttsAct || "", false, S.ttsPick) +
-        '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>";
+        '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>");
     }
     if (t.stale && !preview) body = ttStaleNote(t.stale) + body;
     return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock + ttForgotHtml() + ttMissLink() + ttCloseCrewLink() +
@@ -6103,7 +6214,7 @@
           (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
         var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" +
           '<select class="tt-lvl tt-work" data-tt-set="work" data-email="' + esc(p.email) + '" title="What they can clock into">' + [["build", "🏗️ Active jobs only"], ["maint", "🌿 Maintenance only"], ["both", "🏗️+🌿 Active jobs and maintenance"]].map(function (o) { return '<option value="' + o[0] + '"' + ((p.work || "build") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" : "";
-        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button></div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
+        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button>" + (p.role === "crew" ? ' · <button class="link small" data-a="ttsAssignOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">📍 Lugar asignado</button>' : "") + "</div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
         return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
           Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
@@ -6177,7 +6288,8 @@
     if (a === "ttFlush") return ttFlush();
     if (a === "ttsMeal") { var mv = b.dataset.v; if (mv === "yes") { S.ttMealYes = 1; return keepScroll(render); } if (mv === "back") { S.ttMealYes = 0; return keepScroll(render); } return ttMealSend(b, { answer: mv }); }
     if (a === "ttsMealGo") { var mt = (root.querySelector("[data-tts-meal]") || {}).value || ""; if (!/^\d\d:\d\d$/.test(mt)) return toast(ttL() === "es" ? "Pon la hora." : "Set the time."); return ttMealSend(b, { answer: "took", start: mt, minutes: +b.dataset.m }); }
-    if (a === "ttsPlace") { if (S.ttsPick !== b.dataset.k) { S.ttsAct = ""; S.ttsActNote = ""; } S.ttsPick = b.dataset.k; return keepScroll(render); }
+    if (a === "ttsPlace") { if (S.ttsPick !== b.dataset.k) { S.ttsAct = ""; S.ttsActNote = ""; } S.ttsPick = b.dataset.k; S.ttsPlaceOpen = 0; return keepScroll(render); }
+    if (a === "ttsPlaceOpen") { S.ttsPlaceOpen = 1; return keepScroll(render); }
     if (a === "ttsMore") { S.ttsMore = !S.ttsMore; return keepScroll(render); }
     if (a === "ttsChange") { S.ttsChange = !S.ttsChange; return keepScroll(render); }
     if (a === "ttsOther") { S.ttsOther = !S.ttsOther; S.ttsOtherV = ""; return keepScroll(render); }
@@ -6218,6 +6330,21 @@
     if (a === "ttsStaleSend") return ttStaleSend(b);
     if (a === "ttsCloseCrew") { S.modal = { type: "lsxCloseCrew", loading: 1, open: [] }; keepScroll(render); call("ttCrewOpen", {}).then(function (r) { if (S.modal && S.modal.type === "lsxCloseCrew") { S.modal = { type: "lsxCloseCrew", open: r.open || [] }; keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); }); return; }
     if (a === "ttsCloseCrewGo") return closeCrewGo(b);
+    if (a === "ttsLunchOpen") { S.modal = { type: "lsxLunch", sel: {} }; lunchLoad(S.lunch && S.lunch.week, true); return keepScroll(render); }
+    if (a === "ttsLunchWk") { S.modal.sel = {}; lunchLoad(b.dataset.w, true); return keepScroll(render); }
+    if (a === "ttsLunchSet") {
+      var mm = S.modal, rsn = (root.querySelector("[data-lunch-reason]") || {}).value || "", pick = [];
+      root.querySelectorAll("[data-lunch-i]").forEach(function (c) { if (c.checked) { var x = S.lunch.days[+c.dataset.lunchI]; pick.push({ emp: x.emp, date: x.date, minutes: +b.dataset.m }); } });
+      mm.reason = rsn; if (!pick.length) { toast("Marca primero los días que cambian."); return; }
+      return run(b, async function () { var r = await call("ttLunchSet", { reason: rsn, changes: pick }); toast(r.changed ? "Guardado: " + r.changed + " día" + (r.changed === 1 ? "" : "s") + " ✓" : "Ya estaba así."); mm.sel = {}; mm.reason = ""; S.ttR = null; S.td = null; lunchLoad(S.lunch.week, true); });
+    }
+    if (a === "ttsAssignOpen") { var em = b.dataset.emp, nm0 = b.dataset.name; S.modal = { type: "lsxAssign", email: em, name: nm0 }; keepScroll(render); call("ttAssignInfo", { email: em }).then(function (r) { if (S.modal && S.modal.type === "lsxAssign") { S.modal.info = r; keepScroll(render); } }).catch(function (e) { toast(e.message); }); return; }
+    if (a === "ttsAssignSave") { var md = S.modal, pl = (root.querySelector("[data-assign-place]") || {}).value || "", rs = (root.querySelector("[data-assign-reason]") || {}).value || "";
+      return run(b, async function () { await call("ttAssignSet", { email: md.email, place: pl, reason: rs }); S.modal = null; toast("Lugar asignado guardado ✓"); ttSetLoad && ttSetLoad(); keepScroll(render); }); }
+    if (a === "ttsShiftOpen") { S.modal = { type: "lsxShift", f: { desde: today(), dias: 1, motivo: "lluvia", reserva: true } }; return keepScroll(render); }
+    if (a === "ttsShiftPreview") { var q = shiftRead(); return run(b, async function () { var r = await call("schedShift", q); S.modal.prev = r; keepScroll(render); }); }
+    if (a === "ttsShiftApply") { var q2 = shiftRead(); q2.aplicar = true; return run(b, async function () { var r = await call("schedShift", q2); S.modal = { type: "lsxShift", f: S.modal.f, done: r }; await refresh(true); toast("Calendario recorrido ✓"); }); }
+    if (a === "ttsShiftUndo") return run(b, async function () { await call("botDeshacer", { id: S.modal.done.id }); S.modal.undone = 1; await refresh(true); toast("Deshecho: todo quedó como antes"); });
     if (a === "ttsNewsOk") { newsSeen(); S.modal = null; return keepScroll(render); }
     if (a === "ttsAskSend") { var ai = root.querySelector("[data-ask-input]"); return askSend(ai ? ai.value : S.askDraft); }
     if (a === "ttsAskSug") return askSend(ASK_SUG[+b.dataset.i] || "");
@@ -6226,6 +6353,8 @@
     if (a === "ttsBotDrop") return askPropAct(b, "botDescartar", "descartado");
     if (a === "ttsBotUndo") return askPropAct(b, "botDeshacer", "deshecho");
     if (a === "ttsAskNew") { S.ask = null; S.askDraft = ""; return keepScroll(render); }
+    if (a === "ttsAskOpen") return askOpenSet(true);
+    if (a === "ttsAskClose") return askOpenSet(false);
     if (a === "ttsGateLater") { if (S.locLock) { S.locLock = 2; S.modal = { type: "lsxLocGate", denied: 1 }; locVideoShow(); return keepScroll(render); } S.modal = null; return keepScroll(render); }
     if (a === "ttsLocView") { S.locView = S.locView === "anim" ? "" : "anim"; return keepScroll(render); }
     if (a === "ttsStepGo") { S.locStep = Math.max(1, (S.locStep || 1) + (+b.dataset.v || 0)); return keepScroll(render); }
@@ -6400,6 +6529,9 @@
     if (m.type === "lsxTtLoc") return ttLocModal(m);
     if (m.type === "lsxLocGate") return locGateModal(m);
     if (m.type === "lsxCloseCrew") return closeCrewModal(m);
+    if (m.type === "lsxLunch") return lunchModal(m);
+    if (m.type === "lsxAssign") return assignModal(m);
+    if (m.type === "lsxShift") return shiftModal(m);
     if (m.type === "lsxNews") return newsModal(m);
     if (m.type === "lsxTtMiss") return ttMissForm(m);
     if (m.type === "lsxTtExplain") return "<h2>" + tx("explain_btn") + '</h2><p class="muted small">' + (es ? "La oficina la verá junto a tu entrada. Explicar no aprueba la entrada." : "The office sees it next to your check-in. Explaining doesn't approve it.") + '</p><form class="form" data-form="ttExplain"><label class="f">' + (es ? "¿Qué pasó?" : "What happened?") + '<textarea name="text" rows="3" required maxlength="600" placeholder="' + (es ? "Ej. el GPS no funcionaba dentro del edificio" : "e.g. GPS didn't work inside the building") + '"></textarea></label><div class="actions">' + cancel + '<button class="btn" type="submit">' + (es ? "Enviar" : "Send") + "</button></div></form>";
