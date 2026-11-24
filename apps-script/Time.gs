@@ -346,6 +346,10 @@ function ttPlaceAddr(t, id) {
 function ttAuthorized(emp, t, id) {
   var who = findPerson(emp) || {}, staff = isStaff(who), crews = ttCrewsOf(emp).map(function (c) { return c.id; });
   var crewAny = who.role === "crew";                                                     // crew may be sent anywhere; the phone and GPS checks say whether they're really there
+  if (crewAny) { var w = ttWorkOf(who);                                                  // …but only to their kind of work
+    if (w === "build" && (t === "visit" || t === "property" || t === "maint")) return { ok: false, name: "" };
+    if (w === "maint" && t === "project") return { ok: false, name: "" }; }
+  if (t === "maint") return staff || crewAny ? { ok: true, name: ttMaintTile(who).name } : null;
   if (t === "visit") { var v = findBy("LsVisits", "id", id), p = v && findBy("LsProps", "id", v.property_id); return p && p.status !== "deleted" ? { ok: staff || crewAny || crews.indexOf(v.crew_id) > -1 || crews.indexOf(p.crew_id) > -1, name: p.name } : null; }
   if (t === "property") { var pp = findBy("LsProps", "id", id); return pp && pp.status !== "deleted" && !isTrue(pp.sample) ? { ok: staff || crewAny || crews.indexOf(pp.crew_id) > -1, name: pp.name } : null; }
   if (t === "project") { var pj = findBy("Projects", "id", id); return pj && pj.status !== "deleted" && pj.status !== "archived" ? { ok: staff || crewAny || splitIds(who.project_ids).indexOf(id) > -1, name: pj.name } : null; }
@@ -367,6 +371,10 @@ function ttJob(me, emp, b) {
     var a = ttAuthorized(emp, t, id); if (!a) throw ttErr(me, "No encontré ese jobsite.", "Jobsite not found.");
     if (!a.ok) throw ttErr(me, "Ese jobsite no está asignado a ti. Elige uno de tu lista o avisa a la oficina.", "That jobsite isn't assigned to you. Pick one from your list or tell the office.");
     name = a.name;
+    if (t === "maint") {                                                                 // "Maintenance": the property is the nearest one to the phone; none near = the office places it
+      var near = ttNearestProp(b.loc);
+      if (near) { t = "property"; id = near.p.id; name = near.p.name; } else id = "";
+    }
   }
   return { act: act, act_note: note, scope_id: scopeId, ref_type: t, ref_id: id, ref_name: name };
 }
@@ -427,6 +435,17 @@ function ttStateOf(emp) {
   }
   return { mode: open ? open.mode : "off", shift: open ? ttShiftOut(open, true) : null, presence: pres, today_min: ttMin(todayMs), server_now: ttIso(ttNow()), today: today, recent: ttRecent(emp) };
 }
+/* Crew see only their kind of work on the clock: active construction jobs, maintenance (one "Maintenance" choice, the property
+   comes from the GPS), or both. Not marked yet = active jobs only, unless they're on a maintenance crew (then both). Jesús, Nov 23. The office always sees every place. */
+function ttWorkOf(p) { var w = String((p && p.work) || ""); if (w === "maint" || w === "both" || w === "build") return w; return p && p.email && ttCrewsOf(normEmail(p.email)).length ? "both" : "build"; }   // not marked: on a maintenance crew = both, otherwise active jobs only
+var TT_MAINT_NEAR_M = 800;                                                                  // a maintenance check-in takes the nearest property within this distance
+function ttNearestProp(loc) {
+  loc = loc || {}; var lat = Number(loc.lat), lon = Number(loc.lon); if (loc.status !== "ok" || !isFinite(lat) || !isFinite(lon)) return null;
+  var best = null; rows("LsProps").forEach(function (p) { if (p.status === "deleted" || isTrue(p.sample) || p.lat === "" || p.lon === "" || !isFinite(num(p.lat)) || !(num(p.lat) || num(p.lon))) return;
+    var d = ttKm({ lat: lat, lon: lon }, { lat: num(p.lat), lon: num(p.lon) }); if (!best || d < best.d) best = { p: p, d: d }; });
+  return best && best.d <= TT_MAINT_NEAR_M + Math.min(500, Number(loc.acc) || 0) ? best : null;
+}
+function ttMaintTile(who) { var es = ttLang({ email: who.email }) === "es"; return { ref_type: "maint", ref_id: "all", name: es ? "Mantenimiento" : "Maintenance", sub: es ? "La propiedad se toma de tu ubicación" : "The property comes from your location", geo: true, scope: [], mine: true }; }
 function ttSuggest(emp, who0, crews0) {
   var today = ttDayOf(ttNow()), crews = crews0 || ttCrewsOf(emp).map(function (c) { return c.id; }), who = who0 || findPerson(emp) || {}, staff = isStaff(who);
   var addr = function (p) { return [p.address, p.city].filter(Boolean).join(", "); }, geo = function (o) { var t = ttTarget(o); return !!(t && t.lat != null); };
@@ -439,6 +458,9 @@ function ttSuggest(emp, who0, crews0) {
   var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (crewAll || mineP.indexOf(p.id) > -1); })
     .sort(function (a, b) { return (mineP.indexOf(b.id) > -1) - (mineP.indexOf(a.id) > -1); }).map(function (p) { return withScope({ ref_type: "project", ref_id: p.id, name: p.name, sub: addr(p), mine: mineP.indexOf(p.id) > -1 }); });
   var zones = ttZones().map(function (z) { return { ref_type: "zone", ref_id: z.id, name: z.name, sub: z.kind === "yard" ? "Yard" : "Office", geo: true, scope: [] }; });
+  if (who.role === "crew") { var w = ttWorkOf(who);
+    if (w === "build") { visits = []; props = []; } else props = [ttMaintTile(who)];
+    if (w === "maint") projs = []; }
   return { visits: visits, properties: props, projects: projs, zones: zones };
 }
 /* What crew see about their own taps: that it was recorded, never whether the location or phone matched (that goes to the office). */
@@ -1000,7 +1022,8 @@ ACTIONS.ttSetPerson = function (me, b) {
   if (b.pay_type != null) { if (["hourly", "exempt", ""].indexOf(b.pay_type) < 0) throw new Error("Pay type: hourly or exempt."); patch.pay_type = b.pay_type; }
   if (b.clock != null) patch.clock = b.clock ? "yes" : "no";
   if (b.crew_level != null) { if (p.role !== "crew") throw new Error("Only #crew have a level."); patch.crew_level = b.crew_level === "labor" ? "labor" : "supervisor"; }
-  ttAudit(me, e, "person_settings", e, { perms: p.perms, supervisor: p.supervisor, pay_type: p.pay_type, clock: p.clock }, patch, ""); update("People", "email", e, patch);
+  if (b.work != null) { if (p.role !== "crew") throw new Error("Only #crew have a kind of work."); if (["build", "maint", "both"].indexOf(b.work) < 0) throw new Error("Pick active jobs, maintenance or both."); patch.work = b.work; }
+  ttAudit(me, e, "person_settings", e, { perms: p.perms, supervisor: p.supervisor, pay_type: p.pay_type, clock: p.clock, work: p.work }, patch, ""); update("People", "email", e, patch);
   try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
   return { ok: true };
 };
@@ -1010,7 +1033,7 @@ ACTIONS.ttSettings = function (me, b) {
   if (b.all != null) { PropertiesService.getScriptProperties().setProperty("TT_ALL", b.all ? "yes" : "no"); _CFG = {}; ttAudit(me, "", "clock_for_everyone", "", null, { all: !!b.all }, ""); }
   return { all: ttAll(), week_start: ttCfg().week_start, perms: TT_PERMS, people: ttTeam().map(function (p) {
     return { email: normEmail(p.email), name: p.name, role: p.role, admin: p.role === "admin", clock: ttEnabled(p), perms: splitIds(p.perms), supervisor: normEmail(p.supervisor), pay_type: p.pay_type || "",
-      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), crew_level: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "supervisor") : "", has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };
+      crews: ttCrewsOf(normEmail(p.email)).map(function (c) { return c.name; }), phone: ttPhone(p.phone), crew_level: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "supervisor") : "", work: p.role === "crew" ? ttWorkOf(p) : "", has_pin: !!p.pin_hash, devices: ttDevicesOf(normEmail(p.email)) };
   }) };
 };
 ACTIONS.ttSetAbsence = function (me, b) {
@@ -1048,7 +1071,7 @@ NO_LOCK.ttCaseDetail = 1; PREFETCH.ttReview = ["People"];   // the dashboard rea
    for #money / "pay_view".
    ====================================================================================================== */
 TABLES.JobCosts = ["id", "project_id", "line_id", "kind", "vendor", "amount", "date", "paid_with", "notes", "status", "by", "at", "reviewed_by", "reviewed_at", "review_note", "qb_type", "qb_id", "qb_log"];
-TABLES.People = TABLES.People.concat(["pay_rate", "pin_temp"]);   // pin_temp: until when the office's welcome code works (then they pick their own PIN)
+TABLES.People = TABLES.People.concat(["pay_rate", "pin_temp", "work"]);   // work: what a crew member clocks into — "build" (active jobs), "maint" (maintenance) or "both"   // pin_temp: until when the office's welcome code works (then they pick their own PIN)
 var JC_KINDS = { materials: "Materials", subs: "Subcontractor", equipment: "Equipment / rental", disposal: "Dump / disposal", permits: "Permits / fees", other: "Other" };
 var JC_PAID = { card: "Company card", bank: "Bank / ACH", check: "Check", cash: "Cash (reimburse)", bill: "Vendor bill (to pay)" };
 function jcReviewer(me) { return !!me && !me.preview && (canMoney(me) || !!ttPerms(me).accounting); }
@@ -1207,3 +1230,42 @@ if (typeof tdItems === "function") { var jcTd0 = tdItems; tdItems = function (me
 if (PREFETCH.todayQueue && PREFETCH.todayQueue.indexOf("JobCosts") < 0) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(["JobCosts", "ContractLines"]);
 ["jcProject", "jcAdd", "jcDelete", "jcReview", "jcMatches", "jcSummary", "jcSetRate", "jcRates"].forEach(function (a) { PREFETCH[a] = TT_READ.concat(["JobCosts", "ContractLines"]); });
 NO_LOCK.jcProject = 1; NO_LOCK.jcSummary = 1; NO_LOCK.jcRates = 1; NO_LOCK.jcMatches = 1; READ_ONLY.jcProject = 1;
+
+
+/* A job's map point when OpenStreetMap doesn't know the street (e.g. 2940 Paseo Robles, San Martin): Google's geocoder, the one
+   maintenance already uses. Without a point every check-in there waits for the office. Team only; saved on the project. */
+ACTIONS.pjGeocode = function (me, b) {
+  if (!me || !isStaff(me) || me.preview) throw new Error("Only the team can do that.");
+  var p = findBy("Projects", "id", String(b.projectId || "")); if (!p) throw new Error("Project not found.");
+  if (p.lat !== "" && p.lon !== "" && num(p.lat)) return { lat: num(p.lat), lon: num(p.lon), had: true };
+  var q = String(p.address || "").indexOf(String(p.city || "")) > -1 ? p.address : [p.address, p.city].filter(Boolean).join(", ");
+  var g = typeof lsGeocode === "function" ? lsGeocode(q) : null; if (!g) return { found: false };
+  update("Projects", "id", p.id, { lat: String(g.lat), lon: String(g.lon) });
+  return { found: true, lat: g.lat, lon: g.lon, address: g.address, sure: !!g.sure };
+};
+PREFETCH.pjGeocode = ["People", "Projects"];
+
+
+/* ====================================== Speed: Today and the clock from a short cache ======================================
+   Each screen used to read ~30 whole tabs of the sheet on every request (Today 10–17 s, the clock ~6 s). Now the answer is kept
+   for a moment and reused until someone saves anything (dataVer) or the hours change (ttVer). When it must be built, only the
+   tabs it uses are read (not the audit log, closed weeks or the plan sets). Tests run with a fixed clock: no cache there. */
+var TD_READ = (PREFETCH.todayQueue || []).filter(function (t) { return ["Plans", "TtAudit", "TtWeeks", "TtPeriods"].indexOf(t) < 0; });
+var TT_STATE_READ = TT_READ.filter(function (t) { return ["TtAudit", "TtWeeks", "TtPeriods"].indexOf(t) < 0; });
+PREFETCH.todayQueue = ["People"]; PREFETCH.ttState = ["People"];
+function spdKey(pfx, parts) { return pfx + sha(parts.join("|") + "|" + (typeof dataVer === "function" ? dataVer() : "0") + "|" + ttVer()).slice(0, 32); }
+var tdQueue0 = ACTIONS.todayQueue;
+ACTIONS.todayQueue = function (me, b) {
+  var k = spdKey("tdq:", [normEmail(me.email), b && b.show_snoozed ? 1 : 0, me.preview || ""]);
+  if (!TT_NOW) { var hit = bigCacheGet(k); if (hit) { hit.cached = true; return hit; } }
+  if (typeof prefetch === "function") prefetch(TD_READ);
+  var out = tdQueue0(me, b); if (!TT_NOW) bigCachePut(k, out, 120); return out;
+};
+var ttState1 = ACTIONS.ttState;
+ACTIONS.ttState = function (me, b) {
+  if (me && me.preview) { if (typeof prefetch === "function") prefetch(TT_READ); return ttState1(me, b); }
+  var k = spdKey("tts:", [normEmail(me.email)]);
+  if (!TT_NOW) { var hit = bigCacheGet(k); if (hit) { hit.server_now = ttIso(ttNow()); hit.cached = true; return hit; } }
+  if (typeof prefetch === "function") prefetch(TT_STATE_READ);
+  var out = ttState1(me, b); if (!TT_NOW) bigCachePut(k, out, 60); return out;
+};

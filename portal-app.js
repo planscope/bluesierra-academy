@@ -1079,7 +1079,7 @@
     try {
       var q = [p.address, p.city, "CA"].filter(Boolean).join(", ");
       var r = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(q))).json();
-      if (!r || !r[0]) return;
+      if (!r || !r[0]) { var g = await call("pjGeocode", { projectId: p.id }); if (g && g.found && S.data && S.data.project.id === p.id) { S.data.project.lat = g.lat; S.data.project.lon = g.lon; keepScroll(render); } return; }   // OpenStreetMap doesn't know every street: Google does
       var lat = +(+r[0].lat).toFixed(6), lon = +(+r[0].lon).toFixed(6);
       await call("saveProject", { project: { id: p.id, name: p.name, lat: lat, lon: lon } });
       if (S.data && S.data.project.id === p.id) { S.data.project.lat = lat; S.data.project.lon = lon; keepScroll(render); }
@@ -2705,7 +2705,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261120130311";
+  var BUILD = "20261123175639";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5234,11 +5234,13 @@
   function ttKey() { return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
   function ttQKey() { return "bsp_ttq_" + (S.me && S.me.key); }
   function ttQ(v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(ttQKey()) || "[]"); localStorage.setItem(ttQKey(), JSON.stringify(v)); } catch (e) { return v === undefined ? (S.ttMemQ || []) : (S.ttMemQ = v); } }
+  function ttCacheName() { return ttCrewUI() ? "ttc" : "tt"; }
+  function ttSaveState() { if (S.tt && !S.viewAs) cacheSet(ttCacheName(), S.tt); }   // after each tap, so the next opening starts from the right button
   function ttLoad() {
     if (S.ttBusy || !S.token) return; S.ttBusy = 1;
-    if (!S.tt && !ttCrewUI() && !S.viewAs) { var ct = cacheGet("tt"); if (ct && ct.reviewer != null) { S.tt = ct; setTimeout(function () { keepScroll(render); }, 0); } }
+    if (!S.tt && !S.viewAs) { var ct = cacheGet(ttCacheName()); if (ct && (ct.reviewer != null || ct.enabled != null)) { S.tt = ct; S.ttStale = 1; setTimeout(function () { keepScroll(render); }, 0); } }   // the last copy right away (the crew too), fresh a moment later
     if (S.tt && S.tt.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad();                 // the dashboard starts loading at the same time, not after
-    call("ttState", {}).then(function (r) { S.tt = r; S.ttErr = ""; S.ttTries = 0; if (!ttCrewUI() && !S.viewAs) cacheSet("tt", r); if (r.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad(); }).catch(function (e) {
+    call("ttState", {}).then(function (r) { S.tt = r; S.ttStale = 0; S.ttErr = ""; S.ttTries = 0; if (!S.viewAs) cacheSet(ttCacheName(), r); if (r.reviewer && !S.ttR && !ttCrewUI()) ttReviewLoad(); }).catch(function (e) {
       S.ttErr = e.message; if ((S.ttTries = (S.ttTries || 0) + 1) < 3) setTimeout(function () { if (!S.tt) { S.ttErr = ""; keepScroll(render); } }, 2500 * S.ttTries);   // quietly try again (e.g. right after logging in)
     }).then(function () { S.ttBusy = 0; ttFlush(); keepScroll(render); });
   }
@@ -5277,7 +5279,7 @@
     var both = await Promise.all([ttLoc(), ttIp()]); ev.loc = both[0]; if (both[1]) ev.ip = both[1]; ev.device_id = devId(); S.ttSync = { st: "saving" }; keepScroll(render);
     try {
       if (!navigator.onLine || ttQ().length) throw new TypeError("offline");                 // keep the order: queued taps go first
-      var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); S.ttSync = { st: "ok", at: r.event.recv_at }; S.ttPres = r.presence || null; S.ttExplained = 0;
+      var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); ttSaveState(); S.ttSync = { st: "ok", at: r.event.recv_at }; S.ttPres = r.presence || null; S.ttExplained = 0;
       if (r.presence && r.presence.retry) ttQuietRetry(r.state && r.state.shift && r.state.shift.id);
       if (r.summary) { if (ttSimple()) S.ttLast = { at: r.event.at, min: r.state.today_min, shift: r.summary.id, ask: !!r.summary.ask_meal }; else S.modal = { type: "lsxTtSum", s: r.summary }; }
       if (declared) await ttDeclare(r.event.id, declared, kind);
@@ -5288,6 +5290,7 @@
         var keepJob = (S.tt && S.tt.shift && S.tt.shift.job) || {};
         S.tt = Object.assign(S.tt || {}, { mode: kind === "presence" ? (S.tt && S.tt.mode) || "work" : TT_NEXT[kind], shift: kind === "out" ? null : Object.assign({}, (S.tt && S.tt.shift) || { start: ev.device_at }, kind === "in" || kind === "switch" ? { job: Object.assign({}, kind === "switch" && !job.ref_id ? keepJob : {}, job, kind === "switch" && !job.ref_id ? { ref_type: keepJob.ref_type, ref_id: keepJob.ref_id, ref_name: keepJob.ref_name } : {}) } : {}) });
         if (kind === "in" || kind === "presence" || (kind === "switch" && job && job.ref_id)) S.tt.presence = { status: "queued" };
+        ttSaveState();                                                                     // saved without signal: the next opening shows it too
       } else { S.ttSync = { st: "err", msg: e.message }; }
     }
     S.ttWorking = 0; keepScroll(render);
@@ -5700,12 +5703,13 @@
     var on = r.people.filter(function (p) { return p.clock; }).length, people = r.people.slice().sort(function (a, b) { return (a.role === "crew") - (b.role === "crew") || a.name.localeCompare(b.name); });
     var sup = function (p) { return '<select data-tt-set="supervisor" data-email="' + esc(p.email) + '"><option value="">—</option>' + r.people.filter(function (x) { return x.email !== p.email && x.role !== "crew"; }).map(function (x) { return '<option value="' + esc(x.email) + '"' + (p.supervisor === x.email ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + "</select>"; };
     return '<div class="tt-add-crew"><button class="btn" data-a="ttAccess">＋ Add a crew member by phone</button><span class="muted small">They log in with their phone number and a 6-digit PIN you give them. No email needed.</span></div>' +
-      '<p class="muted small">Crew always have the clock (uncheck to turn it off for someone). Team members get it when you check Clock. Workweek starts ' + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][r.week_start] + ".</p>" +
+      '<p class="muted small">Crew always have the clock (uncheck to turn it off for someone). Team members get it when you check Clock. Each crew member sees only their kind of work: 🏗️ active jobs, 🌿 one "Maintenance" choice (the property comes from their phone\'s location), or both. Not set yet = active jobs only (both if they\'re on a maintenance crew). Workweek starts ' + ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][r.week_start] + ".</p>" +
       '<div class="card tt-tbl"><table><thead><tr><th>Person</th><th>Clock</th>' + Object.keys(TT_PERM_TXT).map(function (k) { return '<th title="' + esc(TT_PERM_TXT[k][1]) + '">' + TT_PERM_TXT[k][0] + "</th>"; }).join("") + "<th>Supervisor</th><th>Pay</th></tr></thead><tbody>" +
       people.map(function (p) {
         var devs = (p.devices || []).map(function (d) { return '<span class="tt-dev ' + d.status + '">' + esc(d.label) + " · " + esc(d.status === "trusted" ? "approved" : d.status) + (d.shared_with.length ? " · also used by " + esc(d.shared_with.join(", ")) : "") +
           (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
-        var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" : "";
+        var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" +
+          '<select class="tt-lvl tt-work" data-tt-set="work" data-email="' + esc(p.email) + '" title="What they can clock into">' + [["build", "🏗️ Active jobs only"], ["maint", "🌿 Maintenance only"], ["both", "🏗️+🌿 Active jobs and maintenance"]].map(function (o) { return '<option value="' + o[0] + '"' + ((p.work || "build") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" : "";
         var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button></div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
         return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
@@ -5863,7 +5867,7 @@
     var t = e.target; if (!t.matches) return;
     if (t.matches("[data-tt-set]")) {
       e.stopImmediatePropagation(); var k = t.dataset.ttSet, em = t.dataset.email, p = S.ttSet.people.filter(function (x) { return x.email === em; })[0], body = { email: em };
-      if (k === "clock") body.clock = t.checked; else if (k === "crew_level") body.crew_level = t.value; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
+      if (k === "clock") body.clock = t.checked; else if (k === "crew_level") body.crew_level = t.value; else if (k === "work") body.work = t.value; else if (k === "supervisor") body.supervisor = t.value; else if (k === "pay_type") body.pay_type = t.value;
       else { var l = p.perms.filter(function (x) { return x !== k; }); if (t.checked) l.push(k); if (k === "period_close" && t.checked && l.indexOf("accounting") < 0) l.push("accounting"); body.perms = l; }
       call("ttSetPerson", body).then(function () { toast("Saved: " + p.name); if (em === S.me.email || k === "clock") ttLoad(); ttSetLoad(); }).catch(function (er) { toast(er.message); ttSetLoad(); });
       return;

@@ -130,6 +130,8 @@ function doPost(e) {
       }
     }
     res = res || {}; res.ok = true;
+    if ((!READ_ONLY[b.action] && !NO_LOCK[b.action] || BUMP_TOO[b.action]) && !NO_BUMP[b.action]) dataBump();   // anything saved: cached screens rebuild (reads never do)
+    if (me && me.role === "admin" && !b.viewAs && b.action !== "moveNow") warmEnsure();
     if (typeof ttBump === "function" && !READ_ONLY[b.action] && (/^(tt|jc)/.test(b.action) || /^(addPerson|removePerson|setRole|saveProfile)$/.test(b.action)) && !/^(ttMyWeek|ttReview|ttCaseDetail|ttGeoTest|ttSettings|ttSeen|jcProject|jcSummary|jcMatches|jcRates)$/.test(b.action)) ttBump();   // hours changed: the dashboard's cached copy is stale
   } catch (err) { res = { ok: false, error: String(err.message || err) }; }
   flushMail();                                   // emails go out after the lock is released, so nobody waits behind them
@@ -145,6 +147,30 @@ function ridOf(b) { var r = b && b.rid; return typeof r === "string" && /^[A-Za-
 function ridGet(rid) { try { return CacheService.getScriptCache().get("rid:" + rid); } catch (e) { return null; } }
 function ridPut(rid, v) { try { if (v.length < 95000) CacheService.getScriptCache().put("rid:" + rid, v, 600); else CacheService.getScriptCache().put("rid:" + rid, JSON.stringify({ ok: false, error: "It was saved. Reload to see it." }), 600); } catch (e) {} }
 function ridDrop(rid) { try { CacheService.getScriptCache().remove("rid:" + rid); } catch (e) {} }
+/* A number that changes on every save. Cached screens (Today, the clock) are only valid for the version they were built from. */
+function dataVer() { try { return CacheService.getScriptCache().get("dver") || "0"; } catch (e) { return "0"; } }
+function dataBump() { try { CacheService.getScriptCache().put("dver", String(Date.now()), 21600); } catch (e) {} }
+var BUMP_TOO = { oxCityRun: 1, ttPunch: 1, startCall: 1, callInvite: 1, qbSendInvoice: 1, setFeedback: 1 };   // saves that skip the lock
+var NO_BUMP = { presence: 1, tick: 1, typing: 1, markRead: 1, feedback: 1, feedbackFeed: 1, checkEmail: 1, checkPhone: 1 };
+/* Which projects have plan sets: just that column (the Plans tab is big — every sheet's boxes live in it). */
+function planProjectIds() {
+  if (_ROWS.Plans) return _ROWS.Plans;
+  try { var id = PropertiesService.getScriptProperties().getProperty("PORTAL_SHEET_ID"), c = TABLES.Plans.indexOf("project_id"), L = String.fromCharCode(65 + c);
+    var v = Sheets.Spreadsheets.Values.get(id, "'Plans'!" + L + "2:" + L).values || []; return v.map(function (r) { return { project_id: String(r[0] || "") }; }); } catch (e) { return rows("Plans"); }
+}
+/* The first request of the morning used to wait 5–8 s for Google to start the server. A timer touches it every 5 minutes in work hours. */
+function keepWarm() {
+  var now0 = new Date(), h = Number(Utilities.formatDate(now0, CONFIG.TZ, "H")), dow = Utilities.formatDate(now0, CONFIG.TZ, "u");
+  if (h < 6 || h >= 19 || dow === "7") return "off";
+  var url = ""; try { url = ScriptApp.getService().getUrl(); } catch (e) {} if (!url) return "no url";
+  try { UrlFetchApp.fetch(url, { method: "post", contentType: "text/plain;charset=utf-8", payload: JSON.stringify({ action: "me", token: "warm" }), muteHttpExceptions: true, followRedirects: true }); } catch (e) {}
+  return "warm";
+}
+function warmEnsure() {
+  if (cfgProps().getProperty("WARM_ON") === "1" || cfgProps().getProperty("MOVED_TO")) return;   // a server that moved never warms itself
+  try { if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "keepWarm"; })) ScriptApp.newTrigger("keepWarm").timeBased().everyMinutes(5).create();
+    PropertiesService.getScriptProperties().setProperty("WARM_ON", "1"); } catch (e) {}
+}
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 /* One writer at a time. Locks are held only for sheet work (no email, no waiting on Google services that can be done after). */
 function withLock(fn) { var lock = LockService.getScriptLock(); if (!lock.tryLock(25000)) throw new Error("The portal is busy. Try again in a moment."); try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); } }
@@ -1945,6 +1971,28 @@ ACTIONS.listFeedback = function (me) {
   return { items: rows("Feedback").slice(-60).reverse().map(function (f) { return { id: f.id, at: f.at, name: f.name, role: f.role, project: names[f.project_id] || "", tab: f.tab, text: f.text, status: f.status,
     shot: f.file_id ? img(f.file_id, 700) : "", link: f.file_id ? "https://drive.google.com/file/d/" + f.file_id + "/view" : "" }; }) };
 };
+/* Every new request from the portal reaches Jesús's Mac by itself: the Mac's hourly turn asks for what's new with a key only the Mac
+   has (the server keeps just its SHA-256, set once by Jesús). It reads; it never builds anything — Jesús approves each request first. */
+ACTIONS.feedKeySet = function (me, b) {
+  if (!me || me.role !== "admin" || me.preview) throw new Error("Only Jesús can do that.");
+  var h = String(b.hash || "").toLowerCase(); if (!/^[0-9a-f]{64}$/.test(h)) throw new Error("That isn't a key fingerprint.");
+  PropertiesService.getScriptProperties().setProperty("FEED_KEY_HASH", h); return { set: true };
+};
+PUBLIC.feedbackFeed = function (b) {
+  var h = PropertiesService.getScriptProperties().getProperty("FEED_KEY_HASH"), k = String(b.key || "");
+  if (!h || k.length < 40 || sha(k) !== h) throw new Error("No access.");
+  var all = rows("Feedback"), since = String(b.since || ""), from = 0;
+  if (since) { for (var i = all.length - 1; i >= 0; i--) if (all[i].id === since) { from = i + 1; break; } }
+  var names = {}; rows("Projects").forEach(function (p) { names[p.id] = p.name; });
+  var items = all.slice(from, from + 20).map(function (f) {
+    var meta = parseJson(f.meta, {}), o = { id: f.id, at: f.at, name: f.name, role: f.role, project: names[f.project_id] || "", tab: f.tab, text: f.text, status: f.status,
+      where: [meta.tab, meta.view].filter(Boolean).join(" · "), screen: String(meta.screen || ""), device: String(meta.ua || "").slice(0, 160), errors: (meta.errors || []).slice(-3), link: f.file_id ? "https://drive.google.com/file/d/" + f.file_id + "/view" : "" };
+    if (b.shots && f.file_id) { try { var bl = DriveApp.getFileById(f.file_id).getBlob(), by = bl.getBytes(); if (by.length < 3 * 1024 * 1024) { o.shot = Utilities.base64Encode(by); o.shot_type = bl.getContentType(); } } catch (e) {} }
+    return o;
+  });
+  return { items: items, more: all.length > from + 20, last: items.length ? items[items.length - 1].id : since };
+};
+PUBLIC_NO_LOCK.feedbackFeed = 1;
 ACTIONS.setFeedback = function (me, b) {
   if (me.role !== "admin") throw new Error("Only Jesús can do that."); var f = findBy("Feedback", "id", b.id); if (!f) throw new Error("Not found.");
   update("Feedback", "id", f.id, { status: b.status === "done" ? "done" : "open" }); return {};
@@ -2639,7 +2687,7 @@ function nl2br(s) { return String(s).replace(/\n/g, "<br>"); }
 var MOVE_FILE = "Blue Sierra portal · settings handoff (delete me).json";
 var MOVE_TRIGGERS = {
   checkEmailReplies: function (t) { return t.everyMinutes(10); }, qbWarm: function (t) { return t.everyMinutes(15); }, lsWarm: function (t) { return t.everyHours(4); },
-  oxCityWeekly: function (t) { return t.onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ); }, oxCityMore: function (t) { return t.after(60000); }
+  oxCityWeekly: function (t) { return t.onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).inTimezone(CONFIG.TZ); }, oxCityMore: function (t) { return t.after(60000); }, keepWarm: function (t) { return t.everyMinutes(5); }
 };
 function moveForward(url, e) {
   try {

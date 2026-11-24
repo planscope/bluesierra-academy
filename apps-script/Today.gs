@@ -103,7 +103,7 @@ function tdReady(me) {
   var crews = rows("LsCrews").filter(function (c) { return !isTrue(c.sample); }), today = lsDay(new Date()), in21 = lsAdd(today, 21), live = {}; props.forEach(function (p) { live[p.id] = p; });
   var noCrew = rows("LsVisits").filter(function (v) { return live[v.property_id] && !isTrue(v.sample) && TD_OPEN_VISIT(v) && !v.crew_id && v.date >= today && v.date <= in21; });
   var names = function (l) { return l.map(function (p) { return { id: p.id, name: p.name }; }); };
-  var projs = rows("Projects").filter(function (p) { return p.status === "active" || !p.status; }), people = rows("People").filter(function (x) { return isTrue(x.active) && isOutside(x); }), plans = rows("Plans");
+  var projs = rows("Projects").filter(function (p) { return p.status === "active" || !p.status; }), people = rows("People").filter(function (x) { return isTrue(x.active) && isOutside(x); }), plans = typeof planProjectIds === "function" ? planProjectIds() : rows("Plans");
   var noOutside = projs.filter(function (p) { return !people.some(function (x) { return splitIds(x.project_ids).indexOf(p.id) > -1; }); }), noPlans = projs.filter(function (p) { return !plans.some(function (x) { return x.project_id === p.id; }); });
   var rates = parseJson(PropertiesService.getScriptProperties().getProperty("GR_RATES"), null), creds = grCredsValid(), kinds = {}; creds.forEach(function (c) { kinds[c.kind] = 1; });
   var crewBad = crews.filter(function (c) { return !splitIds(c.members).length || !c.vehicle || !lsCrewHours(c).set; });
