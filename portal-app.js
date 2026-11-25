@@ -2755,7 +2755,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261124155639";
+  var BUILD = "20261124161049";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5609,6 +5609,15 @@
       (m.opts.crew ? '<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-fix-assign checked> Dejarlo también como su lugar asignado (su reloj se lo ofrece ya escogido)</label>' : "") +
       '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttVPlaceSave">Guardar y validar</button></div>';
   }
+  function renameModal(m) {
+    var head = "<h2>✏️ Nombre · " + esc(m.name || "") + "</h2>";
+    if (!m.info) return head + '<p class="muted">Cargando…</p>';
+    var I = m.info;
+    return head + '<p class="muted small" style="margin-top:0">Es la misma persona: sus horas, checadas y mensajes siguen siendo suyos y salen con el nombre nuevo. Su forma de entrar no cambia.</p>' +
+      '<div class="row2"><label class="f">Nombre<input type="text" data-rn-first maxlength="60" value="' + esc(I.first) + '"></label><label class="f">Apellido<input type="text" data-rn-last maxlength="60" value="' + esc(I.last) + '" placeholder="Ej. Ramírez López"></label></div>' +
+      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>Historial</b>' + I.history.map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + ": «" + esc(h.before) + "» → «" + esc(h.after) + "»</div>"; }).join("") + "</div>" : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttsRenameSave">Guardar</button></div>';
+  }
   function closeCrewModal(m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
     if (m.loading) return "<h2>" + (es ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + '</h2><p class="muted">' + (es ? "Buscando quién sigue adentro…" : "Looking for who's still in…") + "</p>";
@@ -6227,7 +6236,7 @@
           (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
         var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" +
           '<select class="tt-lvl tt-work" data-tt-set="work" data-email="' + esc(p.email) + '" title="What they can clock into">' + [["build", "🏗️ Active jobs only"], ["maint", "🌿 Maintenance only"], ["both", "🏗️+🌿 Active jobs and maintenance"]].map(function (o) { return '<option value="' + o[0] + '"' + ((p.work || "build") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" : "";
-        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button>" + (p.role === "crew" ? ' · <button class="link small" data-a="ttsAssignOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">📍 Lugar asignado</button>' : "") + "</div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
+        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button>" + (p.role === "crew" ? ' · <button class="link small" data-a="ttsAssignOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">📍 Lugar asignado</button>' : "") + ' · <button class="link small" data-a="ttsRenameOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">✏️ Nombre</button>' + "</div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
         return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
           Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
@@ -6349,6 +6358,9 @@
     if (a === "ttsStaleSend") return ttStaleSend(b);
     if (a === "ttsCloseCrew") { S.modal = { type: "lsxCloseCrew", loading: 1, open: [] }; keepScroll(render); call("ttCrewOpen", {}).then(function (r) { if (S.modal && S.modal.type === "lsxCloseCrew") { S.modal = { type: "lsxCloseCrew", open: r.open || [] }; keepScroll(render); } }).catch(function (e) { S.modal = null; toast(e.message); keepScroll(render); }); return; }
     if (a === "ttsCloseCrewGo") return closeCrewGo(b);
+    if (a === "ttsRenameOpen") { var rem = b.dataset.emp; S.modal = { type: "lsxRename", email: rem, name: b.dataset.name }; keepScroll(render); call("ttRenameInfo", { email: rem }).then(function (r) { if (S.modal && S.modal.type === "lsxRename") { S.modal.info = r; keepScroll(render); } }).catch(function (er) { toast(er.message); }); return; }
+    if (a === "ttsRenameSave") { var rm = S.modal, f1 = (root.querySelector("[data-rn-first]") || {}).value || "", l1 = (root.querySelector("[data-rn-last]") || {}).value || "";
+      return run(b, async function () { var r = await call("ttRename", { email: rm.email, first: f1, last: l1 }); S.modal = null; toast(r.same ? "Ya se llamaba así." : "Nombre guardado: " + r.name + " ✓"); ttSetLoad && ttSetLoad(); S.ttR = null; keepScroll(render); }); }
     if (a === "ttsLunchOpen") { S.modal = { type: "lsxLunch", sel: {} }; lunchLoad(S.lunch && S.lunch.week, true); return keepScroll(render); }
     if (a === "ttsLunchWk") { S.modal.sel = {}; lunchLoad(b.dataset.w, true); return keepScroll(render); }
     if (a === "ttsLunchSet") {
@@ -6548,6 +6560,7 @@
     if (m.type === "lsxTtLoc") return ttLocModal(m);
     if (m.type === "lsxLocGate") return locGateModal(m);
     if (m.type === "lsxCloseCrew") return closeCrewModal(m);
+    if (m.type === "lsxRename") return renameModal(m);
     if (m.type === "lsxTtPlace") return placeFixModal(m);
     if (m.type === "lsxLunch") return lunchModal(m);
     if (m.type === "lsxAssign") return assignModal(m);
