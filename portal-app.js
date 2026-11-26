@@ -429,29 +429,29 @@
   function forget() { try { localStorage.removeItem("bsp-remember"); } catch (e) {} S.who = ""; }
   async function savePin(pin) {
     await call("setPin", { pin: pin }); S.lastCode = null; S.resetPin = false;
-    S.me = S.pendingMe; S.me.hasPin = true; S.me.pinTemp = false; S.pendingMe = null; S.projects = null; toast(S.phone ? "PIN guardado 🔐 La próxima vez, solo tu número y tu PIN." : "PIN saved 🔐 Next time, just your email and PIN."); return route();
+    S.me = S.pendingMe; S.me.hasPin = true; S.me.pinTemp = false; S.pendingMe = null; S.projects = null; toast(S.phone ? "PIN saved 🔐 Next time, just your phone number and PIN." : "PIN saved 🔐 Next time, just your email and PIN."); return route();
   }
   (function () { try { var r = JSON.parse(localStorage.getItem("bsp-remember") || "null"); if (r && (r.email || r.phone)) { S.email = r.email || ""; S.phone = r.phone || ""; S.who = r.name; S.step = "pin"; } } catch (e) {} })();
   function renderLogin() {
     var demo = !API && window.BSP_MOCK, lp = loginPhoto();
     root.innerHTML = '<section class="login"><div class="login-photo" style="' + bg(lp[0]) + '">' + (lp[1] ? '<div class="lp-cap">' + esc(lp[1]) + "</div>" : "") + '<div class="lp-tag">Crafting sites, one space at a time.</div></div>' +
       '<div class="login-side">' + LOGO + '<div class="eyebrow">Client portal · Beta v1.1</div>' +
-      (S.step === "setpin" && S.phone ? "<h1>Elige tu PIN.</h1><p class=\"muted\">6 números que tú escojas. Con tu teléfono y este PIN entras de ahora en adelante; el código de la oficina ya no sirve. / Choose your own 6-digit PIN.</p>" +
-          '<form class="form" data-form="setpin"><label class="f">Tu PIN nuevo / New PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Guardar mi PIN / Save</button></form>'
+      (S.step === "setpin" && S.phone ? "<h1>Choose your PIN.</h1><p class=\"muted\">6 digits you pick. From now on you log in with your phone and this PIN; the office code won't work anymore.</p>" +
+          '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>'
         : S.step === "setpin" ? '<h1>Choose your PIN.</h1><p class="muted">6 digits you\'ll use to log in from now on' + (S.lastCode ? ", or keep the code we just sent you" : "") + ". No more codes by email.</p>" +
           '<form class="form" data-form="setpin"><label class="f">Your new PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="new-password" maxlength="6" pattern="\\d{6}" required></label><button class="btn" type="submit">Save my PIN</button></form>' +
           (S.lastCode ? '<button class="link" data-a="keepCode">Keep ' + esc(S.lastCode) + " as my PIN</button>" : "")
-        : S.step === "pin" && S.phone ? "<h1>Hola" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">' + (S.welcome ? "Escribe el código de 6 números que te mandó la oficina para <b>" + esc(phoneFmt(S.phone)) + "</b>. Después eliges tu propio PIN. / Type the code the office texted you; then you choose your own PIN." : "Escribe tu PIN de 6 números para <b>" + esc(phoneFmt(S.phone)) + "</b>. / Type your 6-digit PIN.") + "</p>" +
-          '<form class="form" data-form="pin"><input type="text" name="username" autocomplete="username" value="' + esc(S.phone) + '" hidden><label class="f">' + (S.welcome ? "Código / Code" : "PIN") + '<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Entrar / Log in</button></form>' +
-          '<div class="login-links"><span class="muted small">¿Olvidaste tu PIN? Pídele uno nuevo a la oficina.</span><button class="link" data-a="restart">No soy ' + esc(S.who || "yo") + " / Not me</button></div>"
+        : S.step === "pin" && S.phone ? "<h1>Hi" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">' + (S.welcome ? "Type the 6-digit code the office texted to <b>" + esc(phoneFmt(S.phone)) + "</b>. Then you'll choose your own PIN." : "Type your 6-digit PIN for <b>" + esc(phoneFmt(S.phone)) + "</b>.") + "</p>" +
+          '<form class="form" data-form="pin"><input type="text" name="username" autocomplete="username" value="' + esc(S.phone) + '" hidden><label class="f">' + (S.welcome ? "Code" : "PIN") + '<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Log in</button></form>' +
+          '<div class="login-links"><span class="muted small">Forgot your PIN? Ask the office for a new one.</span><button class="link" data-a="restart">Not ' + esc(S.who || "me") + "?</button></div>"
         : S.step === "pin" ? "<h1>Welcome back" + (S.who ? ", " + esc(S.who) : "") + '.</h1><p class="muted">Type your 6-digit PIN for <b>' + esc(S.email) + "</b>.</p>" +
           '<form class="form" data-form="pin"><input type="email" name="username" autocomplete="username" value="' + esc(S.email) + '" hidden><label class="f">PIN<input class="code-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label><button class="btn" type="submit">Open the portal</button></form>' +
           '<div class="login-links"><button class="link" data-a="forgotPin">Forgot my PIN</button><button class="link" data-a="restart">Not ' + esc(S.who || "you") + "? Use another email</button></div>"
         : S.step === "code" ? "<h1>" + (S.resetPin ? "Reset your PIN." : "Check your email.") + '</h1><p class="muted">We sent a 6-digit code to <b>' + esc(S.email) + "</b>. It works for 15 minutes." + (S.resetPin ? " Then you'll choose a new PIN." : " It's only for this first time: next you'll choose your own PIN.") + "</p>" +
           '<form class="form" data-form="code"><label class="f">Code<input class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn" type="submit">Continue</button></form>' +
           '<button class="link" data-a="restart">Use a different email</button>'
-        : '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, chat, the schedule and invoices for your Blue Sierra project. Type your email to log in. Crew: tu número de teléfono.</p>' +
-          '<form class="form" data-form="email"><label class="f">Email o teléfono / Email or phone<input type="text" name="email" autocomplete="username email" autocapitalize="off" required value="' + esc(S.email || (S.phone ? phoneFmt(S.phone) : "")) + '"></label><button class="btn" type="submit">Continue</button></form>') +
+        : '<h1>Your project, in one place.</h1><p class="muted">Photos, updates, chat, the schedule and invoices for your Blue Sierra project. Type your email to log in. Crew: your phone number.</p>' +
+          '<form class="form" data-form="email"><label class="f">Email or phone<input type="text" name="email" autocomplete="username email" autocapitalize="off" required value="' + esc(S.email || (S.phone ? phoneFmt(S.phone) : "")) + '"></label><button class="btn" type="submit">Continue</button></form>') +
       (S.err ? '<p class="error">' + esc(S.err) + "</p>" : "") +
       (demo ? '<div class="demo-box"><b>Preview with sample data.</b> Log in as <b>jesus@example.com</b> (team), <b>client@example.com</b> (client), <b>architect@example.com</b> or <b>crew@example.com</b>. The first time the code is <b>123456</b>. Nothing here is real or sent.</div>' : "") +
       (!API && !window.BSP_MOCK ? '<p class="error">The portal isn\'t connected yet.</p>' : "") +
@@ -480,8 +480,8 @@
         '<div class="meta">' + (p.openQuestions ? '<span class="pill gold">' + p.openQuestions + " open question" + (p.openQuestions > 1 ? "s" : "") + "</span>" : "") +
         (p.balance ? '<span class="pill' + (mo.overdue ? " bad" : "") + '">' + money(p.balance) + (mo.overdue ? " due · " + money(mo.overdue) + " overdue" : " due") + "</span>" : "") + (p.lastUpdate ? '<span class="pill">Updated ' + day(p.lastUpdate.slice(0, 10)) + "</span>" : "") + "</div></div></button>";
     };
-    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0], ["ox", "Outreach", (S.ox && S.ox.queue && !S.viewAs ? S.ox.queue.due.length + Math.min(S.ox.queue.ready.length, S.ox.queue.room) : 0)]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]], S.viewAs ? [] : [["ask", "Pregúntale", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
-    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() || (S.me && S.me.labor) ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", ox: "Outreach", finance: "Finances", team: "Team", ask: "Pregúntale" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
+    var chips = staff() ? '<div class="chips home-chips">' + (S.viewAs ? [] : [["today", "Today", 0]].concat(!S.tt || S.tt.enabled || S.tt.reviewer || S.tt.admin ? [["tt", "Hours", (S.tt && S.tt.office_pending) || 0]] : [])).concat([["projects", "Projects", 0]]).concat([ ["activity", "Activity", unreadAll], ["ls", "Maintenance", 0], ["gr", "Growth", 0], ["ox", "Outreach", (S.ox && S.ox.queue && !S.viewAs ? S.ox.queue.due.length + Math.min(S.ox.queue.ready.length, S.ox.queue.room) : 0)]]).concat(S.me.money ? [["finance", "Finances", 0]] : [], [["team", "Team", 0]], S.viewAs ? [] : [["ask", "Ask AI ✨", 0]]).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + (o[2] ? ' <span class="count">' + o[2] + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
+    var head = '<div class="section-title" style="margin-top:6px"><div><div class="eyebrow">' + (staff() || (S.me && S.me.labor) ? "Blue Sierra" : "Your projects") + '</div><h2 style="font-size:32px;margin-top:4px">' + (staff() ? ({ today: "Today", tt: "Hours", projects: "Projects", activity: "Activity", ls: "Maintenance", gr: "Growth", ox: "Outreach", finance: "Finances", team: "Team", ask: "Ask AI ✨" }[view] || "Home") : "Welcome, " + esc(first(S.me.name))) + "</h2></div>" +
       (staff() && view === "projects" ? '<button class="btn" data-a="modal" data-m="project">＋ New project</button>' : "") + "</div>" + chips;
     if (!staff() && (lsRoleMe || ttc)) head = head + '<div class="chips home-chips">' + (ttc ? [["tt", ttL() === "es" ? "Horas" : "Hours"]] : []).concat(S.me.labor ? [] : [["projects", "Projects"]], lsRoleMe && !S.me.labor ? [["ls", lsRoleMe === "crew" ? "My route" : "My property"]] : []).map(function (o) { return '<button class="chip' + (view === o[0] ? " on" : "") + '" data-a="homeView" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>";
     if (staff() && S.fromToday && view !== "today") head += '<button class="link small td-back" data-a="tdBack">← Back to Today</button>';
@@ -609,7 +609,7 @@
     var list = (S.projects || []).filter(function (p) { return p.status !== "archived" && p.status !== "deleted"; }), unreadAll = list.reduce(function (a, p) { return a + (p.unread || 0); }, 0);
     var item = function (a, label, on, n, extra) { return '<button class="s-item' + (on ? " on" : "") + '" ' + a + ">" + label + (n ? '<span class="count">' + n + "</span>" : "") + "</button>" + (extra || ""); };
     var home = !S.pid;
-    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="today"', "Today", home && (S.home || "today") === "today") + item('data-a="homeView" data-v="projects"', "Projects", home && S.home === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + item('data-a="homeView" data-v="ox"', "Outreach", home && S.home === "ox") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team") + (S.viewAs ? "" : item('data-a="homeView" data-v="ask"', "Pregúntale", home && S.home === "ask"))
+    return '<aside class="side" data-lenis-prevent><div class="s-top"><b>Menu</b><button class="icon-btn" data-a="sideTog" aria-label="Hide the sidebar">⟨</button></div>' + (staff() ? item('data-a="homeView" data-v="today"', "Today", home && (S.home || "today") === "today") + item('data-a="homeView" data-v="projects"', "Projects", home && S.home === "projects") + item('data-a="homeView" data-v="activity"', "Activity", home && S.home === "activity", unreadAll) + item('data-a="homeView" data-v="ls"', "Maintenance", home && S.home === "ls") + item('data-a="homeView" data-v="gr"', "Growth", home && S.home === "gr") + item('data-a="homeView" data-v="ox"', "Outreach", home && S.home === "ox") + (S.me.money ? item('data-a="homeView" data-v="finance"', "Finances", home && S.home === "finance") : "") + item('data-a="homeView" data-v="team"', "Team", home && S.home === "team") + (S.viewAs ? "" : item('data-a="homeView" data-v="ask"', "Ask AI ✨", home && S.home === "ask"))
         : item('data-a="home"', "All projects", home && S.home !== "ls") + (S.me && S.me.ls ? item('data-a="homeView" data-v="ls"', S.me.ls === "crew" ? "My route" : "My property", home && S.home === "ls") : "")) +
       '<div class="s-head">Projects</div>' + list.map(function (p) {
         var on = S.pid === p.id, chans = on && S.data ? '<div class="s-chans">' + myChannels().concat(myDms()).map(function (c) { var n = c === S.chan && S.tab === "messages" ? 0 : unreadIn(c); return '<button class="s-chan' + (S.tab === "messages" && S.chan === c ? " on" : "") + '" data-a="sideChan" data-c="' + esc(c) + '">' + esc(chanLabel(c)) + (n ? '<span class="count">' + n + "</span>" : "") + "</button>"; }).join("") + "</div>" : "";
@@ -643,7 +643,7 @@
       body();
   }
 
-  var CT_GROUPS = [["client", "Client"], ["design", "Design team: architects & engineers"], ["gov", "Permits & inspections"], ["trades", "Contractors & suppliers"], ["team", "Blue Sierra"]];
+  var CT_GROUPS = [["architect", "Architect"], ["civil", "Civil engineer"], ["structural", "Structural engineer"], ["geotech", "Geotechnical engineer"], ["design", "Other designers & engineers"], ["gov", "Inspectors & permits"], ["utility", "Utilities"], ["owner", "Owner & general contractor"], ["client", "Client"], ["trades", "Owner's other contractors"], ["team", "Blue Sierra"]];
   function tabContacts() {
     pvCss();
     var list = (S.data && S.data.contacts) || [], q = String(S.ctQ || "").toLowerCase(), st = staff();
@@ -2124,7 +2124,7 @@
     return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2>' + (S.me.admin ? '<button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview as…</button>" : "") + '</div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
       ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + idLine(x.email, x.phone) + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + "</span>" + (x.email !== S.me.email && (S.me.admin || ["client", "architect", "crew"].indexOf(x.role) > -1) ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="project">Change</button>' : "") +
-        (S.me.admin && (x.role === "client" || x.role === "architect") ? '<button class="btn ghost sm" data-a="accessTog" data-email="' + esc(x.email) + '" data-v="' + (x.access === "view" ? "" : "view") + '" title="' + (x.access === "view" ? "Only sees the project. Tap to let them write in the chat, checklist and requests." : "Can write. Tap to make it view-only.") + '">' + (x.access === "view" ? "👁 Solo ver" : "✍ Puede escribir") + "</button>" : "") +
+        (S.me.admin && (x.role === "client" || x.role === "architect") ? '<button class="btn ghost sm" data-a="accessTog" data-email="' + esc(x.email) + '" data-v="' + (x.access === "view" ? "" : "view") + '" title="' + (x.access === "view" ? "Only sees the project. Tap to let them write in the chat, checklist and requests." : "Can write. Tap to make it view-only.") + '">' + (x.access === "view" ? "👁 View only" : "✍ Can write") + "</button>" : "") +
         (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
       (S.me.admin ? addHow(S.addHow) : "") + (S.me.admin && S.addHow === "phone" ? crewPhoneForm(S.pid) : '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
       '<div class="f"><span>Role</span>' + rolePicker("client", ["client", "architect", "crew"].concat(S.me.admin ? ["staff"] : [])) + "</div>" +
@@ -2170,7 +2170,7 @@
     var head = '<div class="section-title" style="margin-top:0"><div class="chips">' + [["gantt", "Timeline"], ["calendar", "Calendar"], ["list", "List"]].map(function (o) { return '<button class="chip' + (v === o[0] ? " on" : "") + '" data-a="schedMode" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="actions">' + (items.length ? '<button class="btn ghost sm" data-a="ics">Add to my calendar</button>' : "") +
       (staff() && !tasks.length ? '<button class="btn ghost sm" data-a="stdPhases">Add the standard phases</button>' : "") +
-      (S.me && S.me.admin && !S.viewAs && tasks.length ? '<button class="btn ghost sm" data-a="ttsShiftOpen" title="Mueve todo lo que sigue (lluvia, retrasos), como el Gantt">⇥ Recorrer</button>' : "") +
+      (S.me && S.me.admin && !S.viewAs && tasks.length ? '<button class="btn ghost sm" data-a="ttsShiftOpen" title="Moves everything after it (rain, delays), like the Gantt">⇥ Shift</button>' : "") +
       (staff() ? '<button class="btn sm" data-a="modal" data-m="sched">Add a date</button>' : "") + "</div></div>" +
       '<div class="sch-legend">' + KINDS.map(function (k) { return '<span><i class="sch-dot k-' + k[0] + '"></i>' + k[1] + "</span>"; }).join("") + "</div>";
     if (!items.length) return head + '<div class="empty">' + (staff() ? "No dates yet. Add the standard phases or a first date (inspection, payment, decision…)." : "Blue Sierra hasn't added dates yet.") + "</div>";
@@ -2791,8 +2791,8 @@
     async function submitForm() {
       if (kind === "email") {
         var ph = phoneOf(v("email"));
-        if (ph) { var cph = await call("checkPhone", { phone: ph }); S.phone = ph; S.email = ""; S.who = cph.name; if (!cph.hasPin) throw new Error("Todavía no tienes acceso. Pídele tu código a la oficina. / Ask the office for your welcome code."); S.welcome = !!cph.welcome; S.step = "pin"; return render(); }
-        S.phone = ""; S.email = v("email").toLowerCase(); if (S.email.indexOf("@") < 1) throw new Error("Escribe tu email o tu número de 10 dígitos. / Type your email or 10-digit phone.");
+        if (ph) { var cph = await call("checkPhone", { phone: ph }); S.phone = ph; S.email = ""; S.who = cph.name; if (!cph.hasPin) throw new Error("You don't have access yet. Ask the office for your welcome code."); S.welcome = !!cph.welcome; S.step = "pin"; return render(); }
+        S.phone = ""; S.email = v("email").toLowerCase(); if (S.email.indexOf("@") < 1) throw new Error("Type your email or your 10-digit phone number.");
         var ce = await call("checkEmail", { email: S.email }); S.who = ce.name;
         if (ce.hasPin) { S.step = "pin"; return render(); }
         await call("requestCode", { email: S.email }); S.step = "code"; S.resetPin = false; return render();
@@ -2931,7 +2931,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261126004638";
+  var BUILD = "20261126015054";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3114,10 +3114,10 @@
     askCss();
     if (!ASKF) {
       ASKF = document.createElement("div"); ASKF.id = "bsp-ask";
-      ASKF.innerHTML = '<button class="ak-bubble" data-a="ttsAskOpen" aria-label="Pregúntale" title="Pregúntale: pregunta o pide cambios (escribiendo o hablando)">✨</button>' +
-        '<section class="ak-panel" aria-label="Pregúntale"><header class="ak-head"><span class="ak-av" aria-hidden="true">✨</span><div class="ak-tt"><b>Pregúntale</b><span class="ak-ctx"></span></div><span class="ak-sp"></span><button class="ak-ic" data-a="ttsAskNew" title="Nueva conversación" aria-label="Nueva conversación">' + AK_ICON.fresh + '</button><button class="ak-ic" data-a="ttsAskClose" title="Cerrar" aria-label="Cerrar">' + AK_ICON.x + '</button></header>' +
+      ASKF.innerHTML = '<button class="ak-bubble" data-a="ttsAskOpen" aria-label="Ask AI" title="Ask AI: ask a question or request a change (type or talk)">✨</button>' +
+        '<section class="ak-panel" aria-label="Ask AI"><header class="ak-head"><span class="ak-av" aria-hidden="true">✨</span><div class="ak-tt"><b>Ask AI ✨</b><span class="ak-ctx"></span></div><span class="ak-sp"></span><button class="ak-ic" data-a="ttsAskNew" title="New conversation" aria-label="New conversation">' + AK_ICON.fresh + '</button><button class="ak-ic" data-a="ttsAskClose" title="Close" aria-label="Close">' + AK_ICON.x + '</button></header>' +
         '<div class="ak-body" data-lenis-prevent></div>' +
-        '<form class="ak-form"><div class="ak-pill"><textarea data-ask-input rows="1" maxlength="1500" placeholder="Pregunta o pide un cambio…" aria-label="Pregunta"></textarea>' + (askMicOk() ? '<button type="button" class="ak-mic" data-a="ttsAskMic" title="Hablar" aria-label="Hablar">' + AK_ICON.mic + '</button>' : "") + '<button class="ak-send" type="submit" title="Enviar" aria-label="Enviar" disabled>' + AK_ICON.send + '</button></div><div class="ak-foot">Nada cambia hasta que tocas «Aplicar».</div></form></section>';
+        '<form class="ak-form"><div class="ak-pill"><textarea data-ask-input rows="1" maxlength="1500" placeholder="Ask, or request a change…" aria-label="Question"></textarea>' + (askMicOk() ? '<button type="button" class="ak-mic" data-a="ttsAskMic" title="Talk" aria-label="Talk">' + AK_ICON.mic + '</button>' : "") + '<button class="ak-send" type="submit" title="Send" aria-label="Send" disabled>' + AK_ICON.send + '</button></div><div class="ak-foot">Nothing changes until you tap «Apply».</div></form></section>';
       var f = ASKF.querySelector(".ak-form"), ta = f.querySelector("textarea"), sendB = f.querySelector(".ak-send");
       var sendOk = function () { sendB.disabled = !ta.value.trim() || ta.disabled; };
       f.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); var v = ta.value; if (!v.trim()) return; ta.value = ""; ta.style.height = "auto"; sendOk(); askEnsure(); askSend(v); });
@@ -3129,12 +3129,12 @@
     ASKF.className = (S.askOpen && !onPage ? "open" : "") + (onPage ? " gone" : "");
     if (!S.askOpen || onPage) return;
     var A = askEnsure(), bd = ASKF.querySelector(".ak-body"), atEnd = bd.scrollHeight - bd.scrollTop - bd.clientHeight < 40;
-    var cx = askCtx(), ctxEl = ASKF.querySelector(".ak-ctx"), ctxTxt = cx ? cx.name + (cx.phase ? " · " + cx.phase : "") : "Todas las obras";
+    var cx = askCtx(), ctxEl = ASKF.querySelector(".ak-ctx"), ctxTxt = cx ? cx.name + (cx.phase ? " · " + cx.phase : "") : "All projects";
     if (ctxEl && ctxEl.textContent !== ctxTxt) ctxEl.textContent = ctxTxt;
     var first = String((S.me && S.me.name) || "").split(" ")[0];
-    var html = askMsgsHtml(A) || ('<div class="ak-hi"><div class="ak-hi-av" aria-hidden="true">✨</div><b>Hola' + (first ? ", " + esc(first) : "") + '</b><span>' + (cx ? "Pregúntame lo que sea de <b>" + esc(cx.name) + "</b> o pídeme un cambio." : "Pregúntame de horas, obras o facturas, o pídeme un cambio.") + '</span></div><div class="ak-sugs">' +
+    var html = askMsgsHtml(A) || ('<div class="ak-hi"><div class="ak-hi-av" aria-hidden="true">✨</div><b>Hi' + (first ? ", " + esc(first) : "") + '</b><span>' + (cx ? "Ask me anything about <b>" + esc(cx.name) + "</b>, or ask me for a change." : "Ask me about hours, projects or invoices, or ask me for a change.") + '</span></div><div class="ak-sugs">' +
       askSugList().map(function (x, i) { return '<button class="ak-sug" data-a="ttsAskSug" data-i="' + i + '"><span class="ak-sug-i" aria-hidden="true">' + x[0] + "</span>" + esc(x[1]) + "</button>"; }).join("") + "</div>");
-    html += A.busy ? '<div class="ak-dots" aria-label="Pensando"><i></i><i></i><i></i></div>' : "";
+    html += A.busy ? '<div class="ak-dots" aria-label="Thinking"><i></i><i></i><i></i></div>' : "";
     if (bd.__h !== html) { bd.innerHTML = html; bd.__h = html; if (!A.msgs.length) bd.scrollTop = 0; else if (atEnd || A.busy) bd.scrollTop = bd.scrollHeight; }
     var ta2 = ASKF.querySelector("textarea"); ta2.disabled = !!A.busy; var sb2 = ASKF.querySelector(".ak-send"); if (sb2) sb2.disabled = !!A.busy || !ta2.value.trim();
     var mic = ASKF.querySelector(".ak-mic"); if (mic) mic.classList.toggle("on", !!S.askListening);
@@ -3143,7 +3143,7 @@
   function askMsgsHtml(A) {
     return A.msgs.map(function (m) {
       if (m.from === "me") return '<div class="ask-me">' + esc(m.text) + "</div>";
-      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Fuentes:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
+      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Sources:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
     }).join("");
   }
   function dockPaint(fromFeed) {
@@ -5381,7 +5381,7 @@
       '<b class="td-t">' + esc(x.title) + '</b><small class="td-sub">' + esc(x.sub || "") + '</small><p class="td-why">' + esc(x.why || "") + "</p>" +
       '<p class="td-next"><span class="eyebrow">Next</span> ' + esc(x.next || "") + "</p>" + (x.note ? '<p class="td-note">📝 ' + esc(x.note) + (x.state_by ? " · " + esc(x.state_by) : "") + "</p>" : "") +
       '<div class="td-acts"><button class="btn sm" data-a="tdOpen" data-i="' + i + '">Open</button>' +
-      (S.me && S.me.admin && !S.viewAs && x.link && x.link.case_id ? '<button class="btn ghost sm" data-a="ttVPlace" data-case="' + esc(x.link.case_id) + '" data-emp="' + esc(x.link.emp || "") + '" data-name="' + esc((x.title || "").split(" · ").pop()) + '" data-place="">📍 Cambiar lugar</button>' : "") +
+      (S.me && S.me.admin && !S.viewAs && x.link && x.link.case_id ? '<button class="btn ghost sm" data-a="ttVPlace" data-case="' + esc(x.link.case_id) + '" data-emp="' + esc(x.link.emp || "") + '" data-name="' + esc((x.title || "").split(" · ").pop()) + '" data-place="">📍 Change place</button>' : "") +
       '<label class="td-own"><span class="sr">Owner</span><select data-td-owner="' + i + '"><option value="">' + (x.owner ? "Unassign" : "No owner yet") + "</option>" + st.map(function (p) { return '<option value="' + esc(p.email) + '"' + (p.email === x.owner ? " selected" : "") + ">" + esc(p.email === S.td.me ? "Me (" + first(p.name) + ")" : p.name) + "</option>"; }).join("") + "</select></label>" +
       (x.snooze_until ? '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="">Snoozed to ' + esc(x.snooze_until) + " · undo</button>" : '<button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="1">Tomorrow</button><button class="btn ghost sm" data-a="tdSnooze" data-i="' + i + '" data-d="7">Next week</button>') +
       '<button class="link small" data-a="tdNote" data-i="' + i + '">' + (x.note ? "Edit note" : "Note") + "</button></div></div>";
@@ -5396,35 +5396,35 @@
     if (!S.lunch || Date.now() - (S.lunchAt || 0) > 300000) { if (!S.lunchBusy) setTimeout(function () { lunchLoad(S.lunch && S.lunch.week); }, 0); if (!S.lunch) return ""; }
     var L0 = S.lunch, d = L0.days || [], auto = d.filter(function (x) { return !x.manual && x.min > 0; }).length, ch = d.filter(function (x) { return x.manual; }).length, ppl = {}; d.forEach(function (x) { ppl[x.emp] = 1; });
     if (L0.err) return "";
-    return '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px"><span style="font-size:20px">🍽</span><div style="flex:1;min-width:200px"><b>Lunch esta semana</b><div class="muted small">' +
-      (L0.on ? auto + " día" + (auto === 1 ? "" : "s") + " con 30 min automáticos · " + Object.keys(ppl).length + " persona" + (Object.keys(ppl).length === 1 ? "" : "s") : "Descuento automático apagado") + (ch ? " · " + ch + " cambiado" + (ch === 1 ? "" : "s") + " a mano" : "") +
-      '</div></div><button class="btn sm" data-a="ttsLunchOpen">Revisar / cambiar</button></div>';
+    return '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px"><span style="font-size:20px">🍽</span><div style="flex:1;min-width:200px"><b>Lunch this week</b><div class="muted small">' +
+      (L0.on ? auto + " day" + (auto === 1 ? "" : "s") + " with automatic 30 min · " + Object.keys(ppl).length + (Object.keys(ppl).length === 1 ? " person" : " people") : "Automatic deduction off") + (ch ? " · " + ch + " changed by hand" : "") +
+      '</div></div><button class="btn sm" data-a="ttsLunchOpen">Review / change</button></div>';
   }
   function lunchModal(m) {
     var L0 = S.lunch || { days: [] }, rows = L0.days || [], sel = m.sel || {};
     var wk = L0.week || "", prev = wk ? ttAddDaysC(wk, -7) : "", next = wk ? ttAddDaysC(wk, 7) : "";
-    var dayN = function (d) { var x = new Date(d + "T12:00:00"); return ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][x.getDay()] + " " + x.getDate(); };
-    var body = rows.length ? '<div class="card tbl" style="max-height:52vh;overflow:auto;margin:8px 0" data-lenis-prevent><table class="t"><thead><tr><th></th><th>Persona</th><th>Día</th><th class="num">Lunch</th></tr></thead><tbody>' + rows.map(function (x, i) {
+    var dayN = function (d) { var x = new Date(d + "T12:00:00"); return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][x.getDay()] + " " + x.getDate(); };
+    var body = rows.length ? '<div class="card tbl" style="max-height:52vh;overflow:auto;margin:8px 0" data-lenis-prevent><table class="t"><thead><tr><th></th><th>Person</th><th>Day</th><th class="num">Lunch</th></tr></thead><tbody>' + rows.map(function (x, i) {
       var h = x.history.length ? x.history[x.history.length - 1] : null;
-      return '<tr><td><input type="checkbox" data-lunch-i="' + i + '"' + (sel[i] ? " checked" : "") + '></td><td><b>' + esc(x.name) + "</b></td><td>" + esc(dayN(x.date)) + '</td><td class="num"><b>' + x.min + " min</b> <span class=\"muted small\">" + (x.manual ? "a mano" : "auto") + "</span>" +
+      return '<tr><td><input type="checkbox" data-lunch-i="' + i + '"' + (sel[i] ? " checked" : "") + '></td><td><b>' + esc(x.name) + "</b></td><td>" + esc(dayN(x.date)) + '</td><td class="num"><b>' + x.min + " min</b> <span class=\"muted small\">" + (x.manual ? "by hand" : "auto") + "</span>" +
         (h ? '<div class="muted small" style="white-space:normal">' + h.before + " → " + h.after + " · " + esc(h.by) + " · " + esc(ttWhenC(h.at)) + " · «" + esc(h.reason) + "»</div>" : "") + "</td></tr>";
-    }).join("") + "</tbody></table></div>" : '<p class="muted">Nadie tiene lunch descontado esta semana.</p>';
-    return '<h2>🍽 Lunch</h2><p class="muted small" style="margin-top:0">Se descuentan 30 min solos cuando el turno va de antes de las 12:00 a después de la 1:00 pm y no checaron comida. Marca los días que cambian, escribe la razón una vez y guarda. Regular y overtime se recalculan solos.</p>' +
-      '<div class="chips" style="margin:4px 0">' + (prev ? '<button class="chip" data-a="ttsLunchWk" data-w="' + prev + '">← Semana anterior</button>' : "") + '<span class="chip on">Semana del ' + esc(wk.slice(5)) + "</span>" + (next && next <= today() ? '<button class="chip" data-a="ttsLunchWk" data-w="' + next + '">Siguiente →</button>' : "") + "</div>" + body +
-      (rows.length ? '<label class="f">Razón (obligatoria)<input type="text" data-lunch-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="Ej. El supervisor confirmó que no tomó lunch"></label>' +
-      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cerrar</button><button class="btn ghost" data-a="ttsLunchSet" data-m="30">Con lunch (30 min)</button><button class="btn" data-a="ttsLunchSet" data-m="0">Sin lunch (0)</button></div>' : '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cerrar</button></div>');
+    }).join("") + "</tbody></table></div>" : '<p class="muted">No one has lunch deducted this week.</p>';
+    return '<h2>🍽 Lunch</h2><p class="muted small" style="margin-top:0">30 min are deducted automatically when a shift runs from before 12:00 to after 1:00 pm and no meal was clocked. Check the days that change, write the reason once and save. Regular and overtime recalculate by themselves.</p>' +
+      '<div class="chips" style="margin:4px 0">' + (prev ? '<button class="chip" data-a="ttsLunchWk" data-w="' + prev + '">← Previous week</button>' : "") + '<span class="chip on">Week of ' + esc(wk.slice(5)) + "</span>" + (next && next <= today() ? '<button class="chip" data-a="ttsLunchWk" data-w="' + next + '">Next →</button>' : "") + "</div>" + body +
+      (rows.length ? '<label class="f">Reason (required)<input type="text" data-lunch-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="e.g. The supervisor confirmed they didn’t take lunch"></label>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button><button class="btn ghost" data-a="ttsLunchSet" data-m="30">With lunch (30 min)</button><button class="btn" data-a="ttsLunchSet" data-m="0">No lunch (0)</button></div>' : '<div class="actions"><button type="button" class="btn ghost" data-a="close">Close</button></div>');
   }
   function ttWhenC(iso) { var x = new Date(iso); if (isNaN(x)) return String(iso || ""); return (x.getMonth() + 1) + "/" + x.getDate() + " " + x.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
   function ttAddDaysC(d, n) { var x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
   /* Admins: the place assigned to a crew member (pre-selected on their clock), with why and the history. */
   function assignModal(m) {
-    if (!m.info) return "<h2>📍 Lugar asignado · " + esc(m.name) + '</h2><p class="muted">Cargando…</p>';
+    if (!m.info) return "<h2>📍 Assigned place · " + esc(m.name) + '</h2><p class="muted">Loading…</p>';
     var I = m.info;
-    return "<h2>📍 Lugar asignado · " + esc(m.name) + '</h2><p class="muted small" style="margin-top:0">Le sale ya escogido en su reloj; si va a otro lado toca «Cambiar lugar». Solo un admin lo cambia y queda el historial.</p>' +
-      '<label class="f">Lugar<select data-assign-place><option value="">Sin lugar asignado (usa el último donde checó)</option>' + I.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === I.current ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
-      '<label class="f">Por qué (obligatorio)<input type="text" data-assign-reason maxlength="300" placeholder="Ej. Esta semana va a Paseo Robles"></label>' +
-      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>Historial</b>' + I.history.slice(0, 8).map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + " → " + esc(h.after) + " · «" + esc(h.reason) + "»</div>"; }).join("") + "</div>" : "") +
-      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttsAssignSave">Guardar</button></div>';
+    return "<h2>📍 Assigned place · " + esc(m.name) + '</h2><p class="muted small" style="margin-top:0">It shows up already picked on their clock; if they go somewhere else they tap «Change place». Only an admin changes it, and the history is kept.</p>' +
+      '<label class="f">Place<select data-assign-place><option value="">No assigned place (uses the last place they clocked in)</option>' + I.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === I.current ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Why (required)<input type="text" data-assign-reason maxlength="300" placeholder="e.g. This week they’re at Paseo Robles"></label>' +
+      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>History</b>' + I.history.slice(0, 8).map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + " → " + esc(h.after) + " · «" + esc(h.reason) + "»</div>"; }).join("") + "</div>" : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" data-a="ttsAssignSave">Save</button></div>';
   }
   function todayView() {
     if (!S.td) { tdLoad(); return '<div class="loading" style="min-height:30vh">Working out what needs attention…</div>'; }
@@ -5514,7 +5514,7 @@
       l_inside: "at the place", l_outside: "away from the place", l_unknown: "location inconclusive", l_none: "", l_nozone: "", loc_off: "no location", offline: "no signal (phone's clock)", declared: "declared location",
       sumT: "Check-out saved", sumQ: "Anything missing from today?", allgood: "All good", items: "To review", noitems: "Nothing to review.", est: "Estimate, not net pay",
       r_missed_in: "Forgot to check in", r_no_signal: "Couldn't clock (no signal)", r_no_location: "Couldn't clock (no location)", r_forgot_out: "Check-out of a shift left open", r_missed_out: "Forgot to check out", r_wrong_job: "Wrong job", r_meal: "Meal not recorded", r_tech: "Technical problem", r_other: "Other", r_declared: "Time given when clocking", explain: "What happened?", place: "Where were you? (optional, saved as a declared location)", send: "Send request",
-      day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "Español",
+      day: "Day", tin: "Check-in time", tout: "Check-out time", whichShift: "Shift", which: "Record", newTime: "Correct time", newJob: "Correct job", mstart: "Meal start", mend: "Meal end", lang: "English",
       prevWeek: "Previous week", nextWeek: "Next week", nothing: "No records this week.", reg: "Regular", ot: "Overtime", dt: "Double", why: "How it works",
       a_general: "", a_maint: "Maintenance", a_prune: "Pruning", a_irrig: "Irrigation / drainage", a_pavers: "Pavers / stone", a_concrete: "Concrete", a_walls: "Walls", a_other: "Other",
       a_load: "Loading at the yard", a_travel: "Travel", a_materials: "Buying materials", a_disposal: "Dump / disposal", a_logistics: "Transport & logistics", a_office: "Office", a_work: "", a_unassigned: "",
@@ -5530,7 +5530,7 @@
   };
   var TT_RSHORT = { es: { denied: "ubicación apagada", timeout: "el teléfono no respondió", unavailable: "sin ubicación", unsupported: "sin ubicación", none: "sin ubicación", stale: "lectura vieja", imprecise: "imprecisa", uncertain: "en el límite", no_geocode: "jobsite sin mapa", no_place: "sin jobsite", other_device: "teléfono de otra persona", new_device: "teléfono nuevo", no_device: "teléfono sin identificar", blocked_device: "teléfono bloqueado" },
     en: { denied: "location off", timeout: "phone didn't answer", unavailable: "no location", unsupported: "no location", none: "no location", stale: "old reading", imprecise: "imprecise", uncertain: "at the edge", no_geocode: "jobsite has no map point", no_place: "no jobsite", other_device: "another person's phone", new_device: "new phone", no_device: "unknown phone", blocked_device: "blocked phone" } };
-  function ttL() { return (S.tt && S.tt.lang) || (S.me && S.me.crew ? "es" : "en"); }
+  function ttL() { return "en"; }
   function tx(k) { var d = TTX[ttL()]; return d[k] != null ? d[k] : TTX.en[k] != null ? TTX.en[k] : k; }
   function ttOn() { return !!(S.me && (S.me.crew || staff()) && (!S.viewAs || /^(crew|pm|labor)$/.test(S.viewAs))); }
   function ttCrewUI() { return !!(S.me && S.me.crew && !staff()); }                      // crew: only the 3 steps and their own records
@@ -5590,7 +5590,7 @@
   /* A time the person types (instead of "now") never replaces the clock: the tap is saved at the real time and the
      typed time goes to the office as a request ("time given when clocking"). */
   async function ttDeclare(evId, declared, kind) {
-    try { await call("ttRequestCorrection", { reason: "declared", explain: (ttL() === "es" ? "Hora indicada al marcar " : "Time given when clocking ") + (kind === "in" ? "entrada" : "salida") + ": " + declared.slice(11), changes: [{ op: "move", target: evId, at: declared }] });
+    try { await call("ttRequestCorrection", { reason: "declared", explain: (ttL() === "es" ? "Hora indicada al marcar " : "Time given when clocking ") + (kind === "in" ? "check-in" : "check-out") + ": " + declared.slice(11), changes: [{ op: "move", target: evId, at: declared }] });
       S.ttSync = { st: "ok", at: new Date().toISOString(), note: ttL() === "es" ? "La hora " + ttHm12(declared) + " quedó pendiente de aprobar" : "The time " + ttHm12(declared) + " is waiting for approval" }; }
     catch (e) { var es0 = ttL() === "es"; S.ttSync = { st: "warn", msg: (es0 ? "Tu " + (kind === "in" ? "entrada" : "salida") + " sí quedó guardada (hora real). La hora " + ttHm12(declared) + " no se pudo pedir: " : "Your " + (kind === "in" ? "check-in" : "check-out") + " is saved (real time). The time " + ttHm12(declared) + " couldn't be requested: ") + e.message + (es0 ? " Avísale a la oficina." : " Tell the office.") }; }
   }
@@ -5770,35 +5770,35 @@
   /* "Close my crew's day" (supervisors with clock_others): check out everyone still in, with the supervisor's location, recorded as done by them. */
   function ttCloseCrewLink() { return S.tt && S.tt.perms && S.tt.perms.clock_others && !S.tt.preview && !S.viewAs ? '<div class="tts-links2"><button class="link small" data-a="ttsCloseCrew">' + (ttL() === "es" ? "Cerrar el día de mi cuadrilla" : "Close my crew's day") + "</button></div>" : ""; }
   function shiftModal(m) {
-    var f = m.f, cancel = '<button type="button" class="btn ghost" data-a="close">Cerrar</button>';
-    if (m.done) return '<h2>Calendario recorrido ✓</h2><p>' + esc(m.done.resumen) + '</p><div class="actions">' + (m.undone ? '<span class="muted">Deshecho: todo quedó como antes.</span>' : '<button class="btn ghost" data-a="ttsShiftUndo">Deshacer</button>') + cancel + "</div>";
+    var f = m.f, cancel = '<button type="button" class="btn ghost" data-a="close">Close</button>';
+    if (m.done) return '<h2>Schedule shifted ✓</h2><p>' + esc(m.done.resumen) + '</p><div class="actions">' + (m.undone ? '<span class="muted">Undone: everything is back the way it was.</span>' : '<button class="btn ghost" data-a="ttsShiftUndo">Undo</button>') + cancel + "</div>";
     var list = m.prev ? '<div class="card" style="margin:10px 0;max-height:260px;overflow:auto" data-lenis-prevent><p style="margin:0 0 8px"><b>' + esc(m.prev.resumen) + "</b></p>" +
-      (m.prev.partidas.length ? '<table class="t"><tbody>' + m.prev.partidas.map(function (x) { return "<tr><td>" + esc(x.titulo) + '</td><td class="muted small" style="white-space:nowrap">' + esc(x.antes) + " → <b>" + esc(x.despues) + "</b></td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">No hay nada que recorrer desde esa fecha.</p>') + "</div>" : "";
-    return "<h2>Recorrer el calendario</h2><p class=\"muted small\" style=\"margin-top:0\">Todo lo que no esté hecho y empiece desde esa fecha se mueve en días hábiles, como el Gantt: cada partida sigue a la que va antes (el fraguado cuenta fines de semana). Lo que ya va corriendo ese día solo termina después. Los pagos y los días «No production» no se mueven. Con lluvia, primero se usa la reserva de clima.</p>" +
-      '<div class="row2"><label class="f">Desde<input type="date" data-sh="desde" value="' + esc(f.desde) + '"></label><label class="f">Días hábiles (negativo = adelantar)<input type="number" data-sh="dias" min="-60" max="60" step="1" value="' + esc(f.dias) + '"></label></div>' +
-      '<div class="row2"><label class="f">Motivo<input type="text" data-sh="motivo" maxlength="120" value="' + esc(f.motivo) + '" placeholder="lluvia, inspección, material…"></label><label class="f" style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" data-sh="reserva"' + (f.reserva ? " checked" : "") + "> Usar la reserva de clima (la fecha final no se mueve mientras alcance)</label></div>" +
-      list + '<div class="actions">' + cancel + '<button class="btn ghost" data-a="ttsShiftPreview">Ver qué cambia</button>' + (m.prev && m.prev.partidas.length ? '<button class="btn" data-a="ttsShiftApply">Aplicar</button>' : "") + "</div>";
+      (m.prev.partidas.length ? '<table class="t"><tbody>' + m.prev.partidas.map(function (x) { return "<tr><td>" + esc(x.titulo) + '</td><td class="muted small" style="white-space:nowrap">' + esc(x.antes) + " → <b>" + esc(x.despues) + "</b></td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">Nothing to shift from that date.</p>') + "</div>" : "";
+    return "<h2>Shift the schedule</h2><p class=\"muted small\" style=\"margin-top:0\">Everything not done that starts on or after that date moves by working days, like the Gantt: each item follows the one before it (concrete curing counts weekends). Anything already underway that day just finishes later. Payments and «No production» days don't move. For rain, the weather reserve is used first.</p>" +
+      '<div class="row2"><label class="f">From<input type="date" data-sh="desde" value="' + esc(f.desde) + '"></label><label class="f">Working days (negative = move earlier)<input type="number" data-sh="dias" min="-60" max="60" step="1" value="' + esc(f.dias) + '"></label></div>' +
+      '<div class="row2"><label class="f">Reason<input type="text" data-sh="motivo" maxlength="120" value="' + esc(f.motivo) + '" placeholder="rain, inspection, material…"></label><label class="f" style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" data-sh="reserva"' + (f.reserva ? " checked" : "") + "> Use the weather reserve (the end date doesn't move while it lasts)</label></div>" +
+      list + '<div class="actions">' + cancel + '<button class="btn ghost" data-a="ttsShiftPreview">See what changes</button>' + (m.prev && m.prev.partidas.length ? '<button class="btn" data-a="ttsShiftApply">Apply</button>' : "") + "</div>";
   }
   function shiftRead() { var f = S.modal.f; root.querySelectorAll("[data-sh]").forEach(function (el) { f[el.dataset.sh] = el.type === "checkbox" ? el.checked : el.value; }); return { projectId: S.pid, desde: f.desde, dias: Number(f.dias), motivo: f.motivo, reserva: !!f.reserva }; }
   function placeFixModal(m) {
-    var head = "<h2>📍 Cambiar lugar · " + esc(m.name || "") + "</h2>";
-    if (!m.opts) return head + '<p class="muted">Cargando sus lugares…</p>';
-    var quick = ["Confirmado con el foreman", "Su obra asignada es esa", "Checó en el lugar equivocado"];
-    return head + '<p class="muted small" style="margin-top:0">' + (m.place ? "Checó en <b>" + esc(m.place) + "</b>. " : "") + "Elige el lugar correcto. Las horas no cambian; la checada queda validada y con historial.</p>" +
-      '<label class="f">Lugar correcto<select data-fix-place>' + m.opts.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === (m.pick || m.opts.assigned) ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
-      '<label class="f">Razón<input type="text" data-fix-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="Ej. Confirmado con el foreman"></label>' +
+    var head = "<h2>📍 Change place · " + esc(m.name || "") + "</h2>";
+    if (!m.opts) return head + '<p class="muted">Loading their places…</p>';
+    var quick = ["Confirmed with the foreman", "That's their assigned job", "Clocked in at the wrong place"];
+    return head + '<p class="muted small" style="margin-top:0">' + (m.place ? "Clocked in at <b>" + esc(m.place) + "</b>. " : "") + "Pick the right place. Hours don't change; the clock-in is validated and the history is kept.</p>" +
+      '<label class="f">Correct place<select data-fix-place>' + m.opts.options.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.key === (m.pick || m.opts.assigned) ? " selected" : "") + ">" + esc(o.name) + "</option>"; }).join("") + "</select></label>" +
+      '<label class="f">Reason<input type="text" data-fix-reason maxlength="300" value="' + esc(m.reason || "") + '" placeholder="e.g. Confirmed with the foreman"></label>' +
       '<div class="chips" style="margin:-4px 0 8px">' + quick.map(function (q) { return '<button type="button" class="chip" data-a="ttVPlaceWhy" data-t="' + esc(q) + '">' + esc(q) + "</button>"; }).join("") + "</div>" +
-      (m.opts.crew ? '<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-fix-assign checked> Dejarlo también como su lugar asignado (su reloj se lo ofrece ya escogido)</label>' : "") +
-      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttVPlaceSave">Guardar y validar</button></div>';
+      (m.opts.crew ? '<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-fix-assign checked> Also make it their assigned place (their clock shows it already picked)</label>' : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" data-a="ttVPlaceSave">Save and validate</button></div>';
   }
   function renameModal(m) {
-    var head = "<h2>✏️ Nombre · " + esc(m.name || "") + "</h2>";
-    if (!m.info) return head + '<p class="muted">Cargando…</p>';
+    var head = "<h2>✏️ Name · " + esc(m.name || "") + "</h2>";
+    if (!m.info) return head + '<p class="muted">Loading…</p>';
     var I = m.info;
-    return head + '<p class="muted small" style="margin-top:0">Es la misma persona: sus horas, checadas y mensajes siguen siendo suyos y salen con el nombre nuevo. Su forma de entrar no cambia.</p>' +
-      '<div class="row2"><label class="f">Nombre<input type="text" data-rn-first maxlength="60" value="' + esc(I.first) + '"></label><label class="f">Apellido<input type="text" data-rn-last maxlength="60" value="' + esc(I.last) + '" placeholder="Ej. Ramírez López"></label></div>' +
-      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>Historial</b>' + I.history.map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + ": «" + esc(h.before) + "» → «" + esc(h.after) + "»</div>"; }).join("") + "</div>" : "") +
-      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button class="btn" data-a="ttsRenameSave">Guardar</button></div>';
+    return head + '<p class="muted small" style="margin-top:0">Same person: their hours, clock-ins and messages stay theirs and show the new name. The way they log in doesn’t change.</p>' +
+      '<div class="row2"><label class="f">First name<input type="text" data-rn-first maxlength="60" value="' + esc(I.first) + '"></label><label class="f">Last name<input type="text" data-rn-last maxlength="60" value="' + esc(I.last) + '" placeholder="e.g. Ramírez López"></label></div>' +
+      (I.history.length ? '<div class="muted small" style="margin:8px 0"><b>History</b>' + I.history.map(function (h) { return "<div>" + esc(ttWhenC(h.at)) + " · " + esc(h.by) + ": «" + esc(h.before) + "» → «" + esc(h.after) + "»</div>"; }).join("") + "</div>" : "") +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" data-a="ttsRenameSave">Save</button></div>';
   }
   function closeCrewModal(m) {
     var es = ttL() === "es", cancel = '<button type="button" class="btn ghost" data-a="close">' + (es ? "Cancelar" : "Cancel") + "</button>";
@@ -5921,7 +5921,7 @@
     "@keyframes la-g5{0%,18%{opacity:1}20%,100%{opacity:0}}.la-cap{position:absolute;left:6px;right:6px;bottom:14px;background:#2B2833;color:#fff;border-radius:8px;padding:5px 6px;text-align:center;font:600 10px/1.2 Barlow,system-ui}" +
     "@media (prefers-reduced-motion:reduce){.la-ph *{animation-duration:6s!important}}";
   function laCss() { if (document.getElementById("la-css")) return; var st = document.createElement("style"); st.id = "la-css"; st.textContent = LA_CSS; document.head.appendChild(st); }
-  function laPortal(extra) { return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:11px">BlueSierra</b><span style="font-size:8px;color:#888">bluesierracorp.com</span></div><div style="border:1px solid #e5e1da;border-radius:10px;padding:8px"><div style="font-size:8px;letter-spacing:.08em;color:#858A7B">MI RELOJ</div>' + (extra || '<div class="la-btn">CHECAR</div>') + "</div>"; }
+  function laPortal(extra) { return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:11px">BlueSierra</b><span style="font-size:8px;color:#888">bluesierracorp.com</span></div><div style="border:1px solid #e5e1da;border-radius:10px;padding:8px"><div style="font-size:8px;letter-spacing:.08em;color:#858A7B">MY CLOCK</div>' + (extra || '<div class="la-btn">CHECK IN</div>') + "</div>"; }
   function laRow(color, label, right, cls) { return '<div class="la-row' + (cls ? " " + cls : "") + '"><i style="background:' + color + '"></i><b>' + label + "</b>" + (right || "<em>›</em>") + "</div>"; }
   function laPhone(os, n) {
     var es = ttL() === "es", T = function (a, b) { return es ? a + ' <span style="color:#999">(' + b + ")</span>" : b; }, bar = '<div class="la-bar"><span>9:41</span><span>▮▮▮ ◔</span></div>', home = os === "ios" ? '<div class="la-home"></div>' : "";
@@ -5936,7 +5936,7 @@
       if (n === 3) return '<div class="la-ph la-n2">' + bar + '<div class="la-f"><div class="la-sc"><div class="la-h">' + (es ? "Ajustes" : "Settings") + "</div>" + laRow("#0a84ff", "Wi-Fi") + laRow("#0a84ff", "Bluetooth") + laRow("#34c759", es ? "Celular" : "Cellular") + laRow("#34c759", es ? "Batería" : "Battery") + laRow("#0a84ff", T("Privacidad y seguridad", "Privacy & Security"), "", "la-hi") + "</div>" + tapAt(100, 172) + "</div>" +
         '<div class="la-f"><div class="la-sc"><div class="la-h">' + T("Privacidad y seguridad", "Privacy & Security") + "</div>" + laRow("#0a84ff", T("Localización", "Location Services"), "<em>No ›</em>", "la-hi") + laRow("#8e8e93", es ? "Rastreo" : "Tracking") + laRow("#ff9f0a", es ? "Contactos" : "Contacts") + laRow("#ff375f", es ? "Calendarios" : "Calendars") + "</div>" + tapAt(100, 58) + "</div>" + home + cap(es ? "Privacidad › Localización" : "Privacy › Location Services") + "</div>";
       return '<div class="la-ph la-n3">' + bar + '<div class="la-f"><div class="la-sc"><div class="la-h">' + T("Localización", "Location Services") + '</div><div class="la-row la-hi"><b>' + T("Localización", "Location Services") + '</b><span class="la-tg"></span></div><p style="font-size:8px;color:#888;margin:6px 2px">' + (es ? "Préndela: tiene que quedar verde." : "Turn it on: it has to be green.") + "</p></div>" + tapAt(160, 58) + "</div>" +
-        '<div class="la-f"><div class="la-sc"><div class="la-h">' + T("Localización", "Location Services") + "</div>" + laRow("#8e8e93", "Cámara") + laRow("#0a84ff", "Chrome") + laRow("#0a84ff", "Safari", "<em>" + (es ? "Nunca" : "Never") + " ›</em>", "la-hi") + laRow("#34c759", "Maps") + "</div>" + tapAt(100, 128) + "</div>" +
+        '<div class="la-f"><div class="la-sc"><div class="la-h">' + T("Localización", "Location Services") + "</div>" + laRow("#8e8e93", "Camera") + laRow("#0a84ff", "Chrome") + laRow("#0a84ff", "Safari", "<em>" + (es ? "Nunca" : "Never") + " ›</em>", "la-hi") + laRow("#34c759", "Maps") + "</div>" + tapAt(100, 128) + "</div>" +
         '<div class="la-f"><div class="la-sc"><div class="la-h">Safari</div><div style="font-size:8px;color:#888;margin:0 2px 4px">' + (es ? "PERMITIR ACCESO A LA UBICACIÓN" : "ALLOW LOCATION ACCESS") + "</div>" + laRow("#fff", es ? "Nunca" : "Never", " ") + laRow("#fff", T("Preguntar", "Ask Next Time"), " ") + laRow("#fff", T("Al usar la app", "While Using the App"), '<b style="color:#0a84ff;flex:none">✓</b>', "la-hi") + "</div>" + tapAt(100, 113) + "</div>" + home + cap(es ? "Prende y elige «Al usar la app»" : "Turn on, then While Using the App") + "</div>";
     }
     if (n === 1) return sc(laPortal(), '<div class="la-panel"><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px"><div class="la-tile">Wi-Fi</div><div class="la-tile">Bluetooth</div><div class="la-tile">' + (es ? "Linterna" : "Flashlight") + '</div><div class="la-tile">📍 ' + (es ? "Ubicación" : "Location") + "</div></div></div>" + '<span class="la-sw la-dn"></span>' + cap(es ? "Baja la barra de arriba con el dedo" : "Swipe down from the top"));
@@ -5995,7 +5995,7 @@
   }
   /* ---- «Pregúntale» (Jesús, 24-nov): the office asks in plain words; Jesús's private AI answers with the portal's data,
      through this portal's server (the browser never talks to the AI). Phase 1: staff only. ---- */
-  var ASK_NA = "El asistente no está disponible ahorita.";
+  var ASK_NA = "The assistant isn't available right now.";
   function askCss() { if (document.getElementById("ask-css")) return; var st = document.createElement("style"); st.id = "ask-css";
     st.textContent = "#bsp-ask{position:fixed;right:20px;bottom:88px;z-index:49;font-size:14px}#bsp-ask.gone{display:none}.ak-bubble{width:52px;height:52px;border-radius:50%;border:0;background:#4a7a3f;color:#fff;font-size:22px;display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.22);cursor:pointer;transition:transform .15s}.ak-bubble:hover{transform:scale(1.06)}" +
       ".ak-panel{display:none;position:fixed;right:20px;bottom:20px;width:400px;max-width:calc(100vw - 24px);height:min(600px,calc(100vh - 40px));background:#fff;border:1px solid #e2ddd5;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.22);flex-direction:column;overflow:hidden}#bsp-ask.open .ak-panel{display:flex}#bsp-ask.open .ak-bubble{display:none}" +
@@ -6028,63 +6028,63 @@
   function askMd(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>"); }
   function askView() {
     askCss(); var A = S.ask || (S.ask = { conv: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), msgs: [] });
-    var sug = ["¿Cuántas horas trabajó cada persona esta semana?", "¿Cuánto falta por cobrar en cada obra?", "¿Quién checó sin ubicación esta semana?", "¿Cuál es el contrato de Derynck y cuánto se ha pagado?"];
+    var sug = ["How many hours did each person work this week?", "How much is left to collect on each project?", "Who clocked in without location this week?", "What's the Derynck contract and how much has been paid?"];
     var msgs = A.msgs.map(function (m) {
       if (m.from === "me") return '<div class="ask-me">' + esc(m.text) + "</div>";
-      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Fuentes:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
+      return '<div class="ask-bot' + (m.na ? " na" : "") + '">' + askMd(m.text) + askPropHtml(m) + ((m.fuentes || []).length ? '<div class="ask-src"><b>Sources:</b> ' + m.fuentes.map(function (f) { return esc(f.titulo) + (f.detalle ? ' <span class="muted">(' + esc(f.detalle) + ")</span>" : ""); }).join(" · ") + "</div>" : "") + "</div>";
     }).join("");
-    return '<div class="card ask-card"><p class="muted small" style="margin-top:0">Pregunta o pide en tus palabras, escribiendo o con el 🎤: horas, checadas, obras, facturas… o «agrégale una nota a Tom sobre…», «pasa la demolición de Derynck al 30». Los cambios no se hacen hasta que tocas «Aplicar». Contesta la IA privada de Blue Sierra con los datos del portal. Puede equivocarse: revisa lo importante antes de usarlo.</p>' +
-      '<div class="ask-msgs">' + (msgs || '<div class="muted">Todavía no hay preguntas en esta conversación.</div>') + (A.busy ? '<div class="ask-typing">Pensando… (si pides cambios puede tardar hasta un minuto)</div>' : "") + "</div>" +
-      '<div class="ask-in"><textarea data-ask-input rows="2" maxlength="1500" placeholder="Ej.: ¿Cuántas horas trabajó José esta semana?"' + (A.busy ? " disabled" : "") + ">" + esc(S.askDraft || "") + '</textarea>' + (askMicOk() ? '<button class="btn ghost" data-a="ttsAskMic" title="Hablar" aria-label="Hablar"' + (A.busy ? " disabled" : "") + ' style="min-width:52px' + (S.askListening ? ";background:#b3261e;color:#fff;border-color:#b3261e" : "") + '">' + (S.askListening ? "■" : "🎤") + "</button>" : "") + '<button class="btn" data-a="ttsAskSend"' + (A.busy ? " disabled" : "") + ">Preguntar</button></div>" + (S.askListening ? '<p class="muted small" style="margin:6px 0 0">Escuchando… habla y suelta; se manda solo.</p>' : "") +
+    return '<div class="card ask-card"><p class="muted small" style="margin-top:0">Ask or request in your own words, typing or with the 🎤: hours, clock-ins, projects, invoices… or «add a note to Tom about…», «move the Derynck demolition to the 30th». Nothing changes until you tap «Apply». Blue Sierra’s private AI answers with the portal’s data. It can be wrong: check anything important before you use it.</p>' +
+      '<div class="ask-msgs">' + (msgs || '<div class="muted">No questions in this conversation yet.</div>') + (A.busy ? '<div class="ask-typing">Thinking… (changes can take up to a minute)</div>' : "") + "</div>" +
+      '<div class="ask-in"><textarea data-ask-input rows="2" maxlength="1500" placeholder="e.g. How many hours did José work this week?"' + (A.busy ? " disabled" : "") + ">" + esc(S.askDraft || "") + '</textarea>' + (askMicOk() ? '<button class="btn ghost" data-a="ttsAskMic" title="Talk" aria-label="Talk"' + (A.busy ? " disabled" : "") + ' style="min-width:52px' + (S.askListening ? ";background:#b3261e;color:#fff;border-color:#b3261e" : "") + '">' + (S.askListening ? "■" : "🎤") + "</button>" : "") + '<button class="btn" data-a="ttsAskSend"' + (A.busy ? " disabled" : "") + ">Ask</button></div>" + (S.askListening ? '<p class="muted small" style="margin:6px 0 0">Listening… talk, then pause; it sends by itself.</p>' : "") +
       (A.msgs.length ? "" : '<div class="ask-sug">' + sug.map(function (x, i) { return '<button class="chip" data-a="ttsAskSug" data-i="' + i + '">' + esc(x) + "</button>"; }).join("") + "</div>") +
-      (A.msgs.length ? '<div style="margin-top:10px"><button class="link small" data-a="ttsAskNew">Nueva conversación</button></div>' : "") + "</div>";
+      (A.msgs.length ? '<div style="margin-top:10px"><button class="link small" data-a="ttsAskNew">New conversation</button></div>' : "") + "</div>";
   }
   function askPropHtml(m) {
     var pr = m.propuesta; if (!pr) return "";
-    var lines = (pr.lineas || []).map(function (l) { return "<li" + (l.error ? ' style="color:#b3261e"' : "") + ">" + esc(l.error ? "No se puede: " + l.error : l.resumen) + "</li>"; }).join("");
+    var lines = (pr.lineas || []).map(function (l) { return "<li" + (l.error ? ' style="color:#b3261e"' : "") + ">" + esc(l.error ? "Can't do: " + l.error : l.resumen) + "</li>"; }).join("");
     var res = (pr.resultado || []).map(function (r) { return "<li>" + (r.error ? "⚠ " : "✓ ") + esc(r.resumen) + (r.error ? ' <span style="color:#b3261e">(' + esc(r.error) + ")</span>" : "") + "</li>"; }).join("");
     var st = pr.estado || (pr.id ? "propuesto" : "");
-    var btns = st === "propuesto" && pr.aplicables ? '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-a="ttsBotApply" data-id="' + esc(pr.id) + '" style="background:#4a7a3f;border-color:#4a7a3f">✅ Aplicar ' + (pr.aplicables > 1 ? pr.aplicables + " cambios" : "el cambio") + '</button><button class="btn ghost" data-a="ttsBotDrop" data-id="' + esc(pr.id) + '">Descartar</button></div>'
-      : st === "aplicado" ? '<div style="margin-top:6px"><b>Aplicado.</b>' + (pr.deshacer ? ' <button class="link small" data-a="ttsBotUndo" data-id="' + esc(pr.id) + '">Deshacer</button>' : "") + "</div>"
-      : st === "deshecho" ? '<div style="margin-top:6px"><b>Deshecho.</b> <span class="muted small">Los mensajes y avances ya enviados no se borran.</span></div>'
-      : st === "descartado" ? '<div style="margin-top:6px" class="muted">Descartado: no se cambió nada.</div>' : "";
-    return '<div style="margin-top:10px;border-top:1px dashed #d9d5cf;padding-top:8px"><b>Propuesta de cambios</b>' + (st === "propuesto" ? ' <span class="muted small">(nada cambia hasta que toques «Aplicar»)</span>' : "") + '<ul style="margin:6px 0 0 18px;padding:0">' + (res || lines) + "</ul>" + btns + "</div>";
+    var btns = st === "propuesto" && pr.aplicables ? '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-a="ttsBotApply" data-id="' + esc(pr.id) + '" style="background:#4a7a3f;border-color:#4a7a3f">✅ Apply ' + (pr.aplicables > 1 ? pr.aplicables + " changes" : "the change") + '</button><button class="btn ghost" data-a="ttsBotDrop" data-id="' + esc(pr.id) + '">Discard</button></div>'
+      : st === "aplicado" ? '<div style="margin-top:6px"><b>Applied.</b>' + (pr.deshacer ? ' <button class="link small" data-a="ttsBotUndo" data-id="' + esc(pr.id) + '">Undo</button>' : "") + "</div>"
+      : st === "deshecho" ? '<div style="margin-top:6px"><b>Undone.</b> <span class="muted small">Messages and updates already sent aren’t deleted.</span></div>'
+      : st === "descartado" ? '<div style="margin-top:6px" class="muted">Discarded: nothing was changed.</div>' : "";
+    return '<div style="margin-top:10px;border-top:1px dashed #d9d5cf;padding-top:8px"><b>Proposed changes</b>' + (st === "propuesto" ? ' <span class="muted small">(nothing changes until you tap «Apply»)</span>' : "") + '<ul style="margin:6px 0 0 18px;padding:0">' + (res || lines) + "</ul>" + btns + "</div>";
   }
   function askFindProp(id) { var hit = null; ((S.ask && S.ask.msgs) || []).forEach(function (m) { if (m.propuesta && m.propuesta.id === id) hit = m.propuesta; }); return hit; }
   function askPropAct(b, action, estado) {
     var pr = askFindProp(b.dataset.id); if (!pr) return;
-    return run(b, async function () { var r = await call(action, { id: pr.id }); pr.estado = estado; if (r && r.resultado) pr.resultado = r.resultado; if (action === "botAplicar") pr.deshacer = !!(r && r.deshacer); toast(estado === "aplicado" ? "Cambios aplicados ✓" : estado === "deshecho" ? "Cambios deshechos" : "Descartado"); keepScroll(render); });
+    return run(b, async function () { var r = await call(action, { id: pr.id }); pr.estado = estado; if (r && r.resultado) pr.resultado = r.resultado; if (action === "botAplicar") pr.deshacer = !!(r && r.deshacer); toast(estado === "aplicado" ? "Changes applied ✓" : estado === "deshecho" ? "Changes undone" : "Discarded"); keepScroll(render); });
   }
   /* 🎤 Talk to it (Jesús, 24-nov): the phone's own speech-to-text (Chrome / Safari), Spanish; what you say is sent when you stop.
      If you asked by voice, the answer is read aloud too. */
   function askMicOk() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
   function askMic() {
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return toast("Tu navegador no deja dictar aquí. Usa el micrófono del teclado del teléfono.");
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return toast("Your browser can't take dictation here. Use the mic on your phone's keyboard.");
     if (S.askRec) { try { S.askRec.stop(); } catch (e) {} return; }
-    var rec = new SR(), said = ""; rec.lang = "es-MX"; rec.interimResults = true; rec.continuous = false; S.askRec = rec; S.askListening = 1; keepScroll(render);
+    var rec = new SR(), said = ""; rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; S.askRec = rec; S.askListening = 1; keepScroll(render);
     rec.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; said = t; S.askDraft = t; document.querySelectorAll("[data-ask-input]").forEach(function (ta) { ta.value = t; }); };
-    rec.onerror = function (e) { if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Permite el micrófono para dictar."); };
+    rec.onerror = function (e) { if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Allow the microphone to dictate."); };
     rec.onend = function () { S.askRec = null; S.askListening = 0; keepScroll(render); if (said.trim().length > 1) { S.askVoice = 1; askSend(said); } };
     try { rec.start(); } catch (e) { S.askRec = null; S.askListening = 0; keepScroll(render); }
   }
-  function askSpeak(text) { try { if (!window.speechSynthesis) return; var u = new SpeechSynthesisUtterance(String(text || "").replace(/\*\*/g, "").slice(0, 600)); u.lang = "es-MX"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} }
+  function askSpeak(text) { try { if (!window.speechSynthesis) return; var u = new SpeechSynthesisUtterance(String(text || "").replace(/\*\*/g, "").slice(0, 600)); u.lang = "en-US"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} }
   var AK_ICON = {
     mic: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
     send: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
     fresh: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
     x: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>' };
   /* The project on screen, so Pregúntale talks about it (its suggestions, and the question carries which job you're looking at). */
-  function askCtx() { var d = S.data, p = d && d.project; return S.pid && p && p.id === S.pid ? { id: p.id, name: p.name || "esta obra", phase: p.phase || "" } : null; }
+  function askCtx() { var d = S.data, p = d && d.project; return S.pid && p && p.id === S.pid ? { id: p.id, name: p.name || "this project", phase: p.phase || "" } : null; }
   function askSugList() {
     var cx = askCtx(); if (!cx) return [["⏱️", ASK_SUG[0]], ["💵", ASK_SUG[1]], ["📍", ASK_SUG[2]], ["📄", ASK_SUG[3]]];
-    var n = cx.name; return [["📅", "¿Qué sigue esta semana en " + n + "?"], ["💵", "¿Cuánto falta por cobrar en " + n + "?"], ["✅", "¿Qué falta por decidir o aprobar en " + n + "?"], ["🌧️", "Recorre " + n + " 1 día por lluvia"]];
+    var n = cx.name; return [["📅", "What's next this week at " + n + "?"], ["💵", "How much is left to collect on " + n + "?"], ["✅", "What's still waiting on a decision or approval at " + n + "?"], ["🌧️", "Push " + n + " back 1 day for rain"]];
   }
-  var ASK_SUG = ["¿Cuántas horas trabajó cada persona esta semana?", "¿Cuánto falta por cobrar en cada obra?", "¿Quién checó sin ubicación esta semana?", "¿Cuál es el contrato de Derynck y cuánto se ha pagado?"];
+  var ASK_SUG = ["How many hours did each person work this week?", "How much is left to collect on each project?", "Who clocked in without location this week?", "What's the Derynck contract and how much has been paid?"];
   async function askSend(text) {
     var A = S.ask; text = String(text || "").trim(); if (!A || !text || A.busy) return;
     A.msgs.push({ from: "me", text: text }); A.busy = 1; S.askDraft = ""; keepScroll(render);
     var res;
-    var cx0 = askCtx(), q = cx0 && text.toLowerCase().indexOf(String(cx0.name).toLowerCase()) < 0 ? "(Estoy viendo la obra «" + cx0.name + "».) " + text : text;
+    var cx0 = askCtx(), q = cx0 && text.toLowerCase().indexOf(String(cx0.name).toLowerCase()) < 0 ? "(Viewing job «" + cx0.name + "».) " + text : text;
     try { res = await Promise.race([call("preguntar", { pregunta: q, conversacion_id: A.conv }), new Promise(function (_, rej) { setTimeout(function () { rej(new Error("ask-timeout")); }, 65000); })]); }
     catch (e) { res = { disponible: false, respuesta: /ask-timeout|fetch|network/i.test(e.message || "") ? ASK_NA : e.message }; }
     A.busy = 0; A.msgs.push({ from: "bot", text: res.respuesta || ASK_NA, fuentes: res.fuentes || [], na: !res.disponible, propuesta: res.propuesta || null }); if (res.conversacion_id) A.conv = res.conversacion_id;
@@ -6092,40 +6092,43 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
-    { id: "2026-11-26d", fecha: "26 de noviembre", puntos: [
-      "<b>Contacts:</b> pestaña nueva en cada obra con todos los involucrados (permisos, inspectores, arquitectos, subcontratistas): 📞 llamar y ✉️ correo con un toque. Solo el equipo los ve, salvo los marcados «compartir con el cliente»."] },
-    { id: "2026-11-26c", fecha: "26 de noviembre", puntos: [
-      "<b>PDF más rápidos:</b> el contrato y los documentos se precargan al abrir Contract & billing y se quedan guardados en tu aparato; la segunda vez abren al instante.",
-      "<b>Un solo botón «＋ Add a PDF»</b> (solo Jesús): pregunta quién lo ve, «📄 cliente y PM» o «💲 dinero: cliente y oficina»."] },
-    { id: "2026-11-26b", fecha: "26 de noviembre", puntos: [
-      "<b>Fotos por aprobar:</b> las fotos nuevas de la pestaña Photos las ve solo el equipo (oficina y crew) hasta que Jesús las aprueba; ahí ya las ve el cliente. Salen con la etiqueta «Waiting for OK»."] },
-    { id: "2026-11-26a", fecha: "26 de noviembre", puntos: [
-      "<b>Planos en lista:</b> en Plans cada juego de planos se abre y se cierra con un clic; adentro están sus hojas.",
-      "<b>Ver sin bajar:</b> el contrato y los documentos de Contract & billing se abren dentro del portal («View»), página por página, y se cierran ahí mismo."] },
-    { id: "2026-11-25c", fecha: "25 de noviembre (noche)", puntos: [
-      "<b>Pregúntale ✨ nuevo:</b> arriba dice en qué obra estás, las sugerencias son de esa obra y ya entiende de cuál hablas. Barra redonda con 🎤 y flecha; Enter envía."] },
-    { id: "2026-11-25b", fecha: "25 de noviembre (noche)", puntos: [
-      "<b>Documentos en Contract & billing:</b> PDFs privados junto al contrato (estado de change orders, resumen de pagos, minutas). «Para todos los del contrato» lo ve también el PM; «Solo facturación» nunca lo ve la crew. Súbanlos ligeros (menos de 8 MB).",
-      "<b>Pregúntale ✨</b> ya contesta desde el portal."] },
-    { id: "2026-11-25a", fecha: "25 de noviembre", puntos: [
-      "<b>Arquitectos y clientes «solo ver»:</b> en la pestaña People del proyecto, el botón «👁 Solo ver / ✍ Puede escribir». Los arquitectos nuevos entran en «Solo ver»: ven su proyecto pero no escriben ni cambian nada.",
-      "<b>Lugar de una checada:</b> «📍 Cambiar lugar» en Today. Y «✏️ Nombre» en Horas → Settings para corregir nombre y apellido."] },
-    { id: "2026-11-24b", fecha: "24 de noviembre (tarde)", puntos: [
-      "<b>Lunch automático:</b> se descuentan 30 min cuando el turno va de antes de las 12:00 a después de la 1:00 pm sin comida checada. En <b>Today</b> → «🍽 Lunch esta semana» marcas varios días, escribes la razón una vez y lo pones en 0 o 30. Regular y overtime se recalculan solos y queda el historial.",
-      "<b>Lugar asignado:</b> en Horas → Settings, «📍 Lugar asignado» en cada persona de la crew (solo admin, con razón e historial). Les sale ya escogido en su reloj.",
-      "<b>Reloj de la crew más simple:</b> su lugar ya escogido y un botón grande; los otros lugares en «Cambiar lugar». Nuevo lugar: «Transporte y logística».",
-      "<b>Pregúntale flotante:</b> el botón ✨ verde arriba del chat, en todas las páginas.",
-      "<b>Recorrer el calendario:</b> en Schedule, «⇥ Recorrer» (o por voz: «llovió hoy en Derynck»). Mueve todo lo que sigue como el Gantt, usa primero la reserva de clima y no mueve los pagos. Se puede deshacer."] },
-    { id: "2026-11-24a", fecha: "24 de noviembre", puntos: [
-      "<b>Reloj de la crew:</b> un solo botón «Mantenimiento» (la propiedad la toma el GPS) y «Park McKee HOA» aparte, con sus propias horas. «Yard» ya no le sale a la crew; la oficina lo sigue viendo.",
-      "<b>Salidas olvidadas:</b> si alguien no checa salida, el turno se cierra solo a la hora de salida de su horario (3:30 pm), o en su último toque si fue más tarde. En Today sale como «Closed automatically… (no check-out)».",
-      "<b>El trabajador ya no pone su hora de salida.</b> Si de verdad salió más tarde, la oficina o el supervisor la corrige con pruebas (corrección de oficina).",
-      "<b>Faltas del mes:</b> Today avisa cuando alguien lleva 2 salidas olvidadas; a la 3.ª sugiere llamada de atención por escrito. Nunca se descuenta pago.",
-      "<b>Supervisores:</b> botón «Cerrar el día de mi cuadrilla» en el reloj: marca salida a todos los que siguen adentro.",
-      "<b>Pregúntale:</b> pestaña nueva para la oficina. Pregunta o pide cambios escribiendo o con el 🎤 (horas, obras, facturas; «agrégale una nota a Tom…», «pasa la demolición al 30»). Los cambios solo se hacen cuando tocas «Aplicar», y las fechas se pueden deshacer. Se activa cuando Jesús conecte el asistente.",
-      "<b>Contrato firmado:</b> dentro de Contract & billing hay un lugar para el PDF del contrato (privado, sin link público). Lo ven admin, el cliente y el arquitecto si están marcados. <b>#pm</b> (supervisores) ve el contrato y sus líneas, pero nunca las facturas ni lo cobrado o pagado.",
-      "<b>Checar es más rápido:</b> el GPS empieza a buscar desde que abres el reloj; al tocar Entrada/Salida ya no espera hasta 12 segundos (normalmente 1 a 4).",
-      "Arreglo: el teléfono de la crew ya no da el error de chat «Project not found»."] }
+    { id: "2026-11-26e", fecha: "Nov 26", puntos: [
+      "<b>The whole portal is in English now:</b> screens, the crew clock, emails and Ask AI ✨ (the assistant also answers in English).",
+      "<b>Contacts by team:</b> architect, civil, structural, geotechnical, inspectors, utilities, owner & GC, and the owner's other contractors."] },
+    { id: "2026-11-26d", fecha: "Nov 26", puntos: [
+      "<b>Contacts:</b> a new tab on every project with everyone involved (permits, inspectors, architects, subs): 📞 call and ✉️ email with one tap. Only the team sees them, except the ones marked «shared with the client»."] },
+    { id: "2026-11-26c", fecha: "Nov 26", puntos: [
+      "<b>Faster PDFs:</b> the contract and documents preload when you open Contract & billing and stay saved on your device; the second time they open instantly.",
+      "<b>One «＋ Add a PDF» button</b> (Jesús only): it asks who sees it, «📄 client and PM» or «💲 money: client and office»."] },
+    { id: "2026-11-26b", fecha: "Nov 26", puntos: [
+      "<b>Photos waiting for OK:</b> new photos in the Photos tab are seen only by the team (office and crew) until Jesús approves them; then the client sees them. They show the «Waiting for OK» label."] },
+    { id: "2026-11-26a", fecha: "Nov 26", puntos: [
+      "<b>Plans as a list:</b> in Plans each plan set opens and closes with one click; its sheets are inside.",
+      "<b>View without downloading:</b> the contract and documents in Contract & billing open inside the portal («View»), page by page, and close right there."] },
+    { id: "2026-11-25c", fecha: "Nov 25 (evening)", puntos: [
+      "<b>New Ask AI ✨:</b> the top shows which project you're on, the suggestions are for that project and it knows which one you mean. Round bar with 🎤 and an arrow; Enter sends."] },
+    { id: "2026-11-25b", fecha: "Nov 25 (evening)", puntos: [
+      "<b>Documents in Contract & billing:</b> private PDFs next to the contract (change order status, payment summary, meeting minutes). «Everyone on the contract» is also seen by the PM; «Billing only» is never seen by the crew. Keep them light (under 8 MB).",
+      "<b>Ask AI ✨</b> now answers from the portal."] },
+    { id: "2026-11-25a", fecha: "Nov 25", puntos: [
+      "<b>View-only architects and clients:</b> in the project's People tab, the «👁 View only / ✍ Can write» button. New architects start as «View only»: they see their project but can't write or change anything.",
+      "<b>Place of a clock-in:</b> «📍 Change place» in Today. And «✏️ Name» in Hours → Settings to fix first and last names."] },
+    { id: "2026-11-24b", fecha: "Nov 24 (afternoon)", puntos: [
+      "<b>Automatic lunch:</b> 30 min are deducted when a shift runs from before 12:00 to after 1:00 pm with no meal clocked. In <b>Today</b> → «🍽 Lunch this week» you check several days, write the reason once and set them to 0 or 30. Regular and overtime recalculate by themselves and the history is kept.",
+      "<b>Assigned place:</b> in Hours → Settings, «📍 Assigned place» on each crew member (admin only, with a reason and history). It shows up already picked on their clock.",
+      "<b>Simpler crew clock:</b> their place already picked and one big button; other places under «Change place». New place: «Transport & logistics».",
+      "<b>Floating Ask AI ✨:</b> the green ✨ button above the chat, on every page.",
+      "<b>Shift the schedule:</b> in Schedule, «⇥ Shift» (or by voice: «it rained today at Derynck»). It moves everything after it like the Gantt, uses the weather reserve first and doesn't move payments. It can be undone."] },
+    { id: "2026-11-24a", fecha: "Nov 24", puntos: [
+      "<b>Crew clock:</b> a single «Maintenance» button (GPS picks the property) and «Park McKee HOA» on its own, with its own hours. The crew no longer sees «Yard»; the office still does.",
+      "<b>Forgotten check-outs:</b> if someone doesn't check out, the shift closes by itself at their scheduled end time (3:30 pm), or at their last tap if that was later. In Today it shows as «Closed automatically… (no check-out)».",
+      "<b>Workers no longer enter their own check-out time.</b> If they really left later, the office or the supervisor fixes it with proof (office correction).",
+      "<b>Misses this month:</b> Today warns when someone has 2 forgotten check-outs; at the 3rd it suggests a written warning. Pay is never deducted.",
+      "<b>Supervisors:</b> a «Close my crew's day» button on the clock: it checks out everyone still clocked in.",
+      "<b>Ask AI ✨:</b> a new tab for the office. Ask questions or request changes by typing or with the 🎤 (hours, projects, invoices; «add a note to Tom…», «move the demolition to the 30th»). Changes only happen when you tap «Apply», and dates can be undone. It turns on when Jesús connects the assistant.",
+      "<b>Signed contract:</b> inside Contract & billing there's a place for the contract PDF (private, no public link). Admin, the client and the architect see it if they're checked. <b>#pm</b> (supervisors) sees the contract and its lines, but never the invoices or what was billed or paid.",
+      "<b>Clocking is faster:</b> GPS starts looking as soon as you open the clock; tapping Check in / Check out no longer waits up to 12 seconds (usually 1 to 4).",
+      "Fix: the crew phone no longer shows the «Project not found» chat error."] }
   ];
   function newsKey() { return "bsp_news_seen_" + (S.me && S.me.key); }
   function newsSeen() { try { localStorage.setItem(newsKey(), WHATS_NEW[0].id); } catch (e) {} }
@@ -6137,8 +6140,8 @@
     S.modal = { type: "lsxNews", items: seen ? items.slice(0, 3) : items.slice(0, 1) }; keepScroll(render);
   }
   function newsModal(m) {
-    return "<h2>🆕 Novedades del portal</h2>" + m.items.map(function (n) { return '<div style="margin:6px 0 12px"><div class="eyebrow">' + esc(n.fecha) + '</div><ul style="margin:6px 0 0 18px;padding:0;line-height:1.45">' + n.puntos.map(function (x) { return '<li style="margin-bottom:6px">' + x + "</li>"; }).join("") + "</ul></div>"; }).join("") +
-      '<div class="actions"><button class="btn" data-a="ttsNewsOk">Entendido</button></div>';
+    return "<h2>🆕 What's new in the portal</h2>" + m.items.map(function (n) { return '<div style="margin:6px 0 12px"><div class="eyebrow">' + esc(n.fecha) + '</div><ul style="margin:6px 0 0 18px;padding:0;line-height:1.45">' + n.puntos.map(function (x) { return '<li style="margin-bottom:6px">' + x + "</li>"; }).join("") + "</ul></div>"; }).join("") +
+      '<div class="actions"><button class="btn" data-a="ttsNewsOk">Got it</button></div>';
   }
   function ttCarryHtml(d) { var es = ttL() === "es"; return (d.carry || []).map(function (c) { return '<div class="muted small tt-carry">↳ ' + (es ? "Viene del turno que empezó el " : "From the shift that started ") + esc(ttDayName(c.from_day)) + " " + ttHm(c.start) + ": " + ttDur(c.min) + (es ? " cuentan en este día" : " count on this day") + "</div>"; }).join(""); }
   function ttLongHtml(s) { var es = ttL() === "es"; return '<p class="bad-t small">⚠ ' + (es ? "Turno de " + ttDur(s.paid_min) + ": no cuenta hasta que la oficina ponga la hora real de salida." : ttDur(s.paid_min) + " shift: not counted until the office records the real check-out time.") + "</p>"; }
@@ -6159,7 +6162,7 @@
     if (S.ttsPick == null || !places.some(function (o) { return o.ref_type + "|" + o.ref_id === S.ttsPick; })) S.ttsPick = ttPickDefault(places);
     var kind = working ? "out" : "in", nowHm = ttHm(new Date().toISOString()), ok = working || !!S.ttsPick, pend = working && t.presence && t.presence.status !== "verified" && !ttCrewUI();
     var crewUI = ttCrewUI(), preview = !!t.preview;
-    if (t.stale && !t.stale.asked && S.ttStaleSkip !== t.stale.shift_id && !preview) return '<div class="card tts tt-pend"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + ttStaleHtml(t.stale) + '<div class="tt-foot">' + ttSyncLine() + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
+    if (t.stale && !t.stale.asked && S.ttStaleSkip !== t.stale.shift_id && !preview) return '<div class="card tts tt-pend"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span></div>' + ttStaleHtml(t.stale) + '<div class="tt-foot">' + ttSyncLine() + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
     var clock = (preview ? '<p class="muted small tts-prev">' + (es ? "Vista previa: así lo ve el trabajador. Puedes practicar la entrada y la salida; no se guarda nada." : "Preview: this is what the worker sees. Try checking in and out; nothing is saved.") + "</p>" : "") + '<button class="tts-clock k-' + kind + '" data-a="ttsGo" data-k="' + kind + '"' + (busy || !ok ? " disabled" : "") + ">" + TT_CLOCK + "<b>" + (kind === "in" ? (es ? "ENTRADA" : "CHECK IN") : (es ? "SALIDA" : "CHECK OUT")) + '</b><span class="tts-time"' + (S.ttsOther ? "" : " data-tts-clock") + ">" + (busy ? (S.ttSync && S.ttSync.st === "locating" ? (es ? "Buscando tu ubicación…" : "Finding your location…") : tx("saving")) : S.ttsOther ? (es ? "a la hora que pongas" : "at the time you set") : nowHm) + "</span></button>" +
       (S.ttsOther ? '<label class="tts-other">' + (es ? (kind === "in" ? "¿A qué hora llegaste?" : "¿A qué hora saliste?") : (kind === "in" ? "What time did you start?" : "What time did you stop?")) + '<input type="time" data-tts-time value="' + esc(S.ttsOtherV || nowHm24()) + '"></label><small class="muted">' + (es ? "La oficina aprueba esta hora. Se guarda también la hora real del toque." : "The office approves this time. The real tap time is saved too.") + "</small>" : "") +
       (crewUI || (t.strict && kind === "out") ? "" : '<button class="link small tts-otherlink" data-a="ttsOther">' + (S.ttsOther ? (es ? "Usar la hora de ahora" : "Use the time now") : (es ? (kind === "in" ? "¿Llegaste a otra hora?" : "¿Saliste a otra hora?") : (kind === "in" ? "Started at a different time?" : "Stopped at a different time?"))) + "</button>");
@@ -6178,7 +6181,7 @@
         '<div class="tts-q"><span class="tts-n">3</span>' + tx("q_clock") + "</div>");
     }
     if (t.stale && !preview) body = ttStaleNote(t.stale) + body;
-    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span><button class="link small" data-a="ttLang">' + tx("lang") + "</button></div>" + body + clock + ttForgotHtml() + ttMissLink() + ttCloseCrewLink() +
+    return '<div class="card tts tt-' + (pend ? "pend" : m) + '"><div class="tts-top"><span class="eyebrow">' + (es ? "Mi reloj" : "My clock") + '</span></div>' + body + clock + ttForgotHtml() + ttMissLink() + ttCloseCrewLink() +
       '<div class="tt-foot">' + ttSyncLine() + (crewUI ? "" : '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span>") + "</div>" + (crewUI ? ttRecentHtml() : "") + "</div>";
   }
   /* The crew's own records: day, jobsite, in → out, hours. */
@@ -6215,7 +6218,7 @@
     var news = (t.news || []).length ? '<button class="tt-news" data-a="ttMy">' + (t.news.length === 1 ? (ttL() === "es" ? "Decidieron tu corrección: " : "Your correction was decided: ") + tx("c_" + t.news[0].status) : t.news.length + (ttL() === "es" ? " correcciones decididas" : " corrections decided")) + " ›</button>" : "";
     return '<div class="card tt-card tt-' + m + '"><div class="tt-top"><span class="tt-dot"></span><div class="tt-st"><b>' + tx(m) + "</b>" +
       (sh && sh.start ? '<small class="muted">' + tx("since") + " " + ttHm(sh.start) + ' · <span data-tt-since="' + esc(sh.start) + '">' + ttDur((Date.now() - new Date(sh.start)) / 6e4) + "</span></small>" : '<small class="muted">' + tx("today") + ": " + ttDur(t.today_min) + "</small>") + "</div>" +
-      '<button class="link small tt-lang" data-a="ttLang">' + tx("lang") + "</button></div>" +
+      "</div>" +
       (sh && sh.job && m !== "off" ? '<div class="tt-job">' + esc(ttJobName(sh.job)) + "</div>" : "") +
       '<div class="tt-btns">' + btns + "</div>" + news + '<div class="tt-foot">' + ttSyncLine() + '<span class="tt-links"><button class="link small" data-a="ttMy">' + tx("my") + '</button> · <button class="link small" data-a="ttFix">' + tx("fix") + '</button> · <button class="link small" data-a="ttPriv">' + tx("what") + "</button></span></div></div>";
   }
@@ -6394,7 +6397,7 @@
         (ex ? '<q class="tt-vc-ex">' + esc(ex.text) + "</q>" : "") + "</div>" +
         (sh && sh.hist ? ttHistHtml(sh.hist) : "") +
         '<div class="tt-vc-a"><button class="link small" data-a="ttVWhere" data-id="' + esc(c.id) + '">' + (wOpen ? "Hide" : "Where? ▸") + "</button>" +
-        (adminR ? '<button class="link small" data-a="ttVPlace" data-case="' + esc(c.id) + '" data-emp="' + esc(c.emp) + '" data-name="' + esc(c.name) + '" data-place="' + esc(c.place || "") + '">📍 Cambiar lugar</button>' : "") +
+        (adminR ? '<button class="link small" data-a="ttVPlace" data-case="' + esc(c.id) + '" data-emp="' + esc(c.emp) + '" data-name="' + esc(c.name) + '" data-place="' + esc(c.place || "") + '">📍 Change place</button>' : "") +
         (adminR && sh ? '<button class="link small" data-a="ttVEdit" data-id="' + esc(c.id) + '">Edit</button><button class="link small bad-t" data-a="ttVDel" data-id="' + esc(c.id) + '">Delete</button>' : "") +
         (c.can_decide ? '<button class="btn ghost sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="reject">Reject</button><button class="btn sm" data-a="ttVDec" data-ids="' + esc(c.id) + '" data-d="accept">Accept</button>' : '<small class="muted">Another reviewer decides</small>') + "</div>" +
         (wOpen ? (c.evidence ? caseCard(c, i, true) : '<div class="tt-case-d muted small">Loading where they checked in…</div>') : "") + "</div>"; };
@@ -6466,7 +6469,7 @@
           (d.status !== "trusted" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="trust">approve</button>' : "") + (d.status !== "blocked" ? ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="block">block</button>' : "") + ' <button class="link small" data-a="ttDevSet" data-emp="' + esc(p.email) + '" data-dev="' + esc(d.dev) + '" data-d="remove">remove</button></span>'; }).join("");
         var level = p.role === "crew" ? '<select class="tt-lvl" data-tt-set="crew_level" data-email="' + esc(p.email) + '"><option value="labor"' + (p.crew_level === "labor" ? " selected" : "") + '>#labor · clock only</option><option value="supervisor"' + (p.crew_level !== "labor" ? " selected" : "") + ">#supervisor / PM · sees their projects</option></select>" +
           '<select class="tt-lvl tt-work" data-tt-set="work" data-email="' + esc(p.email) + '" title="What they can clock into">' + [["build", "🏗️ Active jobs only"], ["maint", "🌿 Maintenance only"], ["both", "🏗️+🌿 Active jobs and maintenance"]].map(function (o) { return '<option value="' + o[0] + '"' + ((p.work || "build") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" : "";
-        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button>" + (p.role === "crew" ? ' · <button class="link small" data-a="ttsAssignOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">📍 Lugar asignado</button>' : "") + ' · <button class="link small" data-a="ttsRenameOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">✏️ Nombre</button>' + "</div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
+        var access = level + '<div class="tt-acc-row">' + (p.phone ? "📱 " + esc(phoneFmt(p.phone)) + (p.has_pin ? " · PIN set" : " · no PIN") : '<span class="muted">No phone login</span>') + ' <button class="link small" data-a="ttAccess" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '" data-phone="' + esc(p.phone || "") + '">' + (p.phone ? "New PIN" : "Phone login") + "</button>" + (p.role === "crew" ? ' · <button class="link small" data-a="ttsAssignOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">📍 Assigned place</button>' : "") + ' · <button class="link small" data-a="ttsRenameOpen" data-emp="' + esc(p.email) + '" data-name="' + esc(p.name) + '">✏️ Name</button>' + "</div>" + (devs ? '<div class="tt-devs">' + devs + "</div>" : "");
         var cb = function (k, val, dis) { return '<input type="checkbox" data-tt-set="' + k + '" data-email="' + esc(p.email) + '"' + (val ? " checked" : "") + (dis ? " disabled" : "") + ' aria-label="' + esc(k + " " + p.name) + '">'; };
         return "<tr><td><b>" + esc(p.name) + '</b> <small class="muted">' + esc(p.role === "staff" ? "team" : p.role) + (p.crews.length ? " · " + esc(p.crews.join(", ")) : "") + "</small>" + access + "</td><td>" + cb("clock", p.clock || r.all, r.all) + "</td>" +
           Object.keys(TT_PERM_TXT).map(function (k) { return "<td>" + (p.admin ? '<span class="muted small">all</span>' : cb(k, p.perms.indexOf(k) > -1, p.role === "crew" && (k === "accounting" || k === "period_close"))) + "</td>"; }).join("") +
@@ -6580,7 +6583,7 @@
     if (a === "ttVPlaceWhy") { var fr = root.querySelector("[data-fix-reason]"); if (fr) { fr.value = b.dataset.t; S.modal.reason = b.dataset.t; } return; }
     if (a === "ttVPlaceSave") { var fm = S.modal, fpl = (root.querySelector("[data-fix-place]") || {}).value || "", frs = (root.querySelector("[data-fix-reason]") || {}).value || "", fas = !!(root.querySelector("[data-fix-assign]") || {}).checked;
       fm.pick = fpl; fm.reason = frs;
-      return run(b, async function () { var r = await call("ttFixPlace", { case_id: fm.case_id, place: fpl, reason: frs, assign: fas }); S.modal = null; S.td = null; ttReviewLoad(true); toast("Lugar corregido: " + r.from + " → " + r.to + " · validada ✓" + (r.assigned ? " · ahora es su lugar asignado" : "")); keepScroll(render); }); }
+      return run(b, async function () { var r = await call("ttFixPlace", { case_id: fm.case_id, place: fpl, reason: frs, assign: fas }); S.modal = null; S.td = null; ttReviewLoad(true); toast("Place fixed: " + r.from + " → " + r.to + " · validated ✓" + (r.assigned ? " · now their assigned place" : "")); keepScroll(render); }); }
     if (a === "ttVWhy") { var inp = root.querySelector("form[data-form=ttVDec] input[name=why]"); if (inp) { inp.value = b.dataset.t; inp.focus(); } return; }
     if (a === "ttCase") { var cn = (root.querySelector('.tt-cnote[data-i="' + i + '"]') || {}).value || "", cs = S.ttCases[i];
       return run(b, async function () { await call("ttPresenceDecide", { id: cs.id, decision: b.dataset.d, note: cn }); ttReviewLoad(true); ttLoad(); toast(b.dataset.d === "accept" ? "Accepted. The decision and reason are on record." : "Rejected. No hours were deleted; record a correction if needed."); keepScroll(render); }); }
@@ -6590,22 +6593,22 @@
     if (a === "ttsCloseCrewGo") return closeCrewGo(b);
     if (a === "ttsRenameOpen") { var rem = b.dataset.emp; S.modal = { type: "lsxRename", email: rem, name: b.dataset.name }; keepScroll(render); call("ttRenameInfo", { email: rem }).then(function (r) { if (S.modal && S.modal.type === "lsxRename") { S.modal.info = r; keepScroll(render); } }).catch(function (er) { toast(er.message); }); return; }
     if (a === "ttsRenameSave") { var rm = S.modal, f1 = (root.querySelector("[data-rn-first]") || {}).value || "", l1 = (root.querySelector("[data-rn-last]") || {}).value || "";
-      return run(b, async function () { var r = await call("ttRename", { email: rm.email, first: f1, last: l1 }); S.modal = null; toast(r.same ? "Ya se llamaba así." : "Nombre guardado: " + r.name + " ✓"); ttSetLoad && ttSetLoad(); S.ttR = null; keepScroll(render); }); }
+      return run(b, async function () { var r = await call("ttRename", { email: rm.email, first: f1, last: l1 }); S.modal = null; toast(r.same ? "That was already their name." : "Name saved: " + r.name + " ✓"); ttSetLoad && ttSetLoad(); S.ttR = null; keepScroll(render); }); }
     if (a === "ttsLunchOpen") { S.modal = { type: "lsxLunch", sel: {} }; lunchLoad(S.lunch && S.lunch.week, true); return keepScroll(render); }
     if (a === "ttsLunchWk") { S.modal.sel = {}; lunchLoad(b.dataset.w, true); return keepScroll(render); }
     if (a === "ttsLunchSet") {
       var mm = S.modal, rsn = (root.querySelector("[data-lunch-reason]") || {}).value || "", pick = [];
       root.querySelectorAll("[data-lunch-i]").forEach(function (c) { if (c.checked) { var x = S.lunch.days[+c.dataset.lunchI]; pick.push({ emp: x.emp, date: x.date, minutes: +b.dataset.m }); } });
-      mm.reason = rsn; if (!pick.length) { toast("Marca primero los días que cambian."); return; }
-      return run(b, async function () { var r = await call("ttLunchSet", { reason: rsn, changes: pick }); toast(r.changed ? "Guardado: " + r.changed + " día" + (r.changed === 1 ? "" : "s") + " ✓" : "Ya estaba así."); mm.sel = {}; mm.reason = ""; S.ttR = null; S.td = null; lunchLoad(S.lunch.week, true); });
+      mm.reason = rsn; if (!pick.length) { toast("First check the days that change."); return; }
+      return run(b, async function () { var r = await call("ttLunchSet", { reason: rsn, changes: pick }); toast(r.changed ? "Saved: " + r.changed + " day" + (r.changed === 1 ? "" : "s") + " ✓" : "It was already like that."); mm.sel = {}; mm.reason = ""; S.ttR = null; S.td = null; lunchLoad(S.lunch.week, true); });
     }
     if (a === "ttsAssignOpen") { var em = b.dataset.emp, nm0 = b.dataset.name; S.modal = { type: "lsxAssign", email: em, name: nm0 }; keepScroll(render); call("ttAssignInfo", { email: em }).then(function (r) { if (S.modal && S.modal.type === "lsxAssign") { S.modal.info = r; keepScroll(render); } }).catch(function (e) { toast(e.message); }); return; }
     if (a === "ttsAssignSave") { var md = S.modal, pl = (root.querySelector("[data-assign-place]") || {}).value || "", rs = (root.querySelector("[data-assign-reason]") || {}).value || "";
-      return run(b, async function () { await call("ttAssignSet", { email: md.email, place: pl, reason: rs }); S.modal = null; toast("Lugar asignado guardado ✓"); ttSetLoad && ttSetLoad(); keepScroll(render); }); }
-    if (a === "ttsShiftOpen") { S.modal = { type: "lsxShift", f: { desde: today(), dias: 1, motivo: "lluvia", reserva: true } }; return keepScroll(render); }
+      return run(b, async function () { await call("ttAssignSet", { email: md.email, place: pl, reason: rs }); S.modal = null; toast("Assigned place saved ✓"); ttSetLoad && ttSetLoad(); keepScroll(render); }); }
+    if (a === "ttsShiftOpen") { S.modal = { type: "lsxShift", f: { desde: today(), dias: 1, motivo: "rain", reserva: true } }; return keepScroll(render); }
     if (a === "ttsShiftPreview") { var q = shiftRead(); return run(b, async function () { var r = await call("schedShift", q); S.modal.prev = r; keepScroll(render); }); }
-    if (a === "ttsShiftApply") { var q2 = shiftRead(); q2.aplicar = true; return run(b, async function () { var r = await call("schedShift", q2); S.modal = { type: "lsxShift", f: S.modal.f, done: r }; await refresh(true); toast("Calendario recorrido ✓"); }); }
-    if (a === "ttsShiftUndo") return run(b, async function () { await call("botDeshacer", { id: S.modal.done.id }); S.modal.undone = 1; await refresh(true); toast("Deshecho: todo quedó como antes"); });
+    if (a === "ttsShiftApply") { var q2 = shiftRead(); q2.aplicar = true; return run(b, async function () { var r = await call("schedShift", q2); S.modal = { type: "lsxShift", f: S.modal.f, done: r }; await refresh(true); toast("Schedule shifted ✓"); }); }
+    if (a === "ttsShiftUndo") return run(b, async function () { await call("botDeshacer", { id: S.modal.done.id }); S.modal.undone = 1; await refresh(true); toast("Undone: everything is back the way it was"); });
     if (a === "ttsNewsOk") { newsSeen(); S.modal = null; return keepScroll(render); }
     if (a === "ttsAskSend") { var ai = root.querySelector("[data-ask-input]"); return askSend(ai ? ai.value : S.askDraft); }
     if (a === "ttsAskSug") { askEnsure(); return askSend(b.classList.contains("ak-sug") ? ((askSugList()[+b.dataset.i] || [])[1] || "") : (ASK_SUG[+b.dataset.i] || "")); }
@@ -6780,7 +6783,7 @@
         '<div class="actions">' + cancel + '<button class="btn" type="submit">Save</button></div></form>';
     }
     if (m.type === "lsxTtAccess") {
-      if (m.pin) { var smsTxt = "Hola " + first(m.name || "") + ", ya tienes acceso al portal de Blue Sierra. Entra a https://www.bluesierracorp.com/portal con tu número de teléfono y este código: " + m.pin + ". Después eliges tu propio PIN. El código vence en 7 días.";
+      if (m.pin) { var smsTxt = "Hi " + first(m.name || "") + ", you now have access to the Blue Sierra portal. Go to https://www.bluesierracorp.com/portal and log in with your phone number and this code: " + m.pin + ". Then you'll choose your own PIN. The code expires in 7 days.";
         return "<h2>Welcome code for " + esc(m.name) + '</h2><div class="tt-pin-show"><div>📱 ' + esc(phoneFmt(m.phone)) + '</div><div class="tt-pin">' + esc(m.pin) + '</div></div><p class="muted small">Shown only once. Text it to them: they open the portal, type their phone number and this code, and then choose their own PIN. The code works for 7 days. The first phone they use becomes theirs; any other phone waits for your approval.</p>' +
           '<div class="actions"><button class="btn ghost" data-a="ttCopyMsg" data-c="' + esc(smsTxt) + '">Copy the message</button><a class="btn" href="sms:+1' + esc(m.phone) + "?&body=" + encodeURIComponent(smsTxt) + '">Send by text</a><button class="btn ghost" data-a="close">Done</button></div>'; }
       return "<h2>" + (m.email ? "Phone login for " + esc(m.name) : "Add a crew member by phone") + '</h2><form class="form" data-form="ttAccess">' + (m.email ? "" : '<label class="f">Name<input name="name" required maxlength="80"></label><label class="f">Level<select name="level"><option value="labor" selected>#labor · only clocks in and out</option><option value="supervisor">#supervisor / PM · also sees the projects you add them to</option></select></label>') +
