@@ -631,8 +631,9 @@
     else if (!d.billing) tabs = tabs.map(function (t) { return t[0] === "invoices" ? ["invoices", "Contract", 0] : t; });
     if (S.me.money && !S.viewAs) tabs.splice(tabs.findIndex(function (t) { return t[0] === "checklist"; }), 0, ["money", "#money", 0]);
     if (staff() || (crew() && !S.me.labor)) tabs.splice(Math.max(0, tabs.findIndex(function (t) { return t[0] === "checklist"; })), 0, ["costs", "Costs", 0]);
+    if (team() || (d.contacts || []).length) tabs.push(["contacts", "Contacts", 0]);
     if (staff()) tabs.push(["people", "People", 0]);
-    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, costs: (staff() || (crew() && !S.me.labor)) ? tabCosts : tabOverview, money: S.me.money && !S.viewAs ? tabMoney : tabOverview, people: staff() ? tabPeople : tabOverview }[S.tab] || tabOverview;
+    var body = { overview: tabOverview, plans: tabPlans, schedule: tabSchedule, updates: tabUpdates, photos: tabPhotos, messages: tabMessages, invoices: tabInvoices, checklist: tabChecklist, costs: (staff() || (crew() && !S.me.labor)) ? tabCosts : tabOverview, money: S.me.money && !S.viewAs ? tabMoney : tabOverview, people: staff() ? tabPeople : tabOverview, contacts: tabContacts }[S.tab] || tabOverview;
     return (staff() || (S.projects || []).length > 1 ? '<button class="crumb link" data-a="home">← All projects</button>' : "") +
       '<section class="phead' + (p.lat != null ? " has-map" : "") + '" style="' + (p.lat != null ? "" : bg(p.cover)) + '">' + mapHtml(p) + todayHtml(p) + '<div class="phead-flex"><div><div class="eyebrow">' + esc([p.city, p.phase].filter(Boolean).join(" · ")) + "</div><h1>" + esc(p.name) + "</h1>" +
       (p.summary ? "<p>" + esc(p.summary) + "</p>" : "") + (function () { var cm = contractMath(); return cm.has ? '<div class="phead-money"><span><b>' + money(cm.total) + '</b> contract</span><span><b>' + pctOf(cm.paid, cm.total) + "%</b> paid</span>" + (cm.waiting ? "<span><b>" + money(cm.waiting) + "</b> due</span>" : "") + "</div>" : ""; })() + "</div>" +
@@ -642,6 +643,37 @@
       body();
   }
 
+  var CT_GROUPS = [["client", "Client"], ["design", "Design team: architects & engineers"], ["gov", "Permits & inspections"], ["trades", "Contractors & suppliers"], ["team", "Blue Sierra"]];
+  function tabContacts() {
+    pvCss();
+    var list = (S.data && S.data.contacts) || [], q = String(S.ctQ || "").toLowerCase(), st = staff();
+    var shown = !q ? list : list.filter(function (c) { return [c.name, c.company, c.role, c.email].join(" ").toLowerCase().indexOf(q) > -1; });
+    var head = '<div class="section-title" style="margin-top:0"><div><h2>Contacts</h2><span class="muted small">Everyone on this job: who they are and how to reach them.' + (team() ? " Only the team sees a contact unless it's marked «shared»." : "") + "</span></div>" +
+      (st ? '<button class="btn sm" data-a="ctEdit">＋ Add contact</button>' : "") + "</div>";
+    var search = list.length > 6 ? '<input type="search" class="ct-search" data-ct-q placeholder="Search a name, company or role" value="' + esc(S.ctQ || "") + '">' : "";
+    if (!list.length) return head + '<div class="empty">' + (st ? "No contacts yet. Add the inspectors, architects, engineers and subs on this job." : "No contacts shared yet.") + "</div>";
+    return head + search + CT_GROUPS.map(function (g) {
+      var rows = shown.filter(function (c) { return c.grp === g[0]; }); if (!rows.length) return "";
+      return '<div class="ct-group"><div class="eyebrow">' + esc(g[1]) + " · " + rows.length + "</div>" + rows.map(function (c) {
+        return '<div class="card ct-row"><div class="ct-main"><b>' + esc(c.name) + "</b>" + (c.share && team() ? '<span class="pill" style="margin-left:6px">Shared with the client</span>' : "") +
+          '<div class="muted small">' + esc([c.role, c.company].filter(Boolean).join(" · ")) + "</div>" + (c.notes ? '<div class="small ct-notes">' + esc(c.notes) + "</div>" : "") + "</div>" +
+          '<div class="ct-acts">' + (c.phone ? '<a class="btn ghost sm" href="tel:' + esc(String(c.phone).replace(/[^\d+]/g, "")) + '">📞 ' + esc(c.phone) + "</a>" : "") + (c.email ? '<a class="btn ghost sm" href="mailto:' + esc(c.email) + '">✉️ Email</a>' : "") +
+          (st ? '<button class="btn ghost sm" data-a="ctEdit" data-id="' + esc(c.id) + '" aria-label="Edit">✏️</button>' : "") + "</div></div>";
+      }).join("") + "</div>";
+    }).join("") + (q && !shown.length ? '<div class="empty">Nobody matches «' + esc(S.ctQ) + "».</div>" : "");
+  }
+  function contactModal(m) {
+    var c = m.id ? (((S.data || {}).contacts || []).filter(function (x) { return x.id === m.id; })[0] || {}) : {};
+    return "<h2>" + (m.id ? "Edit contact" : "Add a contact") + '</h2><form class="form" data-form="contact">' +
+      '<label class="f">Name<input type="text" name="name" required value="' + esc(c.name || "") + '" placeholder="e.g. Paul Jones"></label>' +
+      '<div class="row2"><label class="f">Company<input type="text" name="company" value="' + esc(c.company || "") + '" placeholder="e.g. County of Santa Clara"></label><label class="f">Role on this job<input type="text" name="role" value="' + esc(c.role || "") + '" placeholder="e.g. Building inspector"></label></div>' +
+      '<label class="f">Group<select name="grp">' + CT_GROUPS.map(function (g) { return '<option value="' + g[0] + '"' + ((c.grp || "trades") === g[0] ? " selected" : "") + ">" + esc(g[1]) + "</option>"; }).join("") + "</select></label>" +
+      '<div class="row2"><label class="f">Email<input type="email" name="email" value="' + esc(c.email || "") + '"></label><label class="f">Phone<input type="tel" name="phone" value="' + esc(c.phone || "") + '"></label></div>' +
+      '<label class="f">Notes (team only)<input type="text" name="notes" value="' + esc(c.notes || "") + '" placeholder="e.g. call before 10 am; handles the fire inspection"></label>' +
+      '<label class="ck"><input type="checkbox" name="share"' + (c.share ? " checked" : "") + "> The client and the architect can see this contact</label>" +
+      '<div class="actions">' + (m.id ? '<button type="button" class="link small bad" data-a="ctDel" data-id="' + esc(m.id) + '" style="margin-right:auto">Remove</button>' : "") + '<button type="button" class="btn ghost" data-a="close">Cancel</button><button class="btn" type="submit">Save</button></div></form>';
+  }
+  root.addEventListener("input", function (e) { var t = e.target; if (!t.matches || !t.matches("[data-ct-q]")) return; S.ctQ = t.value; var pos = t.selectionStart; keepScroll(render); var n = root.querySelector("[data-ct-q]"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) {} } });
   function stat(label, big, small) { return '<div class="card stat"><div class="eyebrow">' + label + "</div><b>" + big + "</b><span>" + small + "</span></div>"; }
 
   function tabOverview() {
@@ -1398,6 +1430,7 @@
       "#bs-portal .planset.ps-closed{padding-top:14px;padding-bottom:14px;margin-bottom:10px}#bs-portal .ps-tog:hover .ps-chev{background:#e7e2da}" +
       "#bs-portal .ph-wait{position:absolute;top:8px;left:8px;background:#b9770e;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;letter-spacing:.02em}#bs-portal .ph.ph-review{position:relative;outline:2px dashed #d8a13a;outline-offset:-2px}" +
       "#bs-portal .bd-opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid #e2ddd5;border-radius:14px;margin-bottom:10px;cursor:pointer}#bs-portal .bd-opt:has(input:checked){border-color:#5b8f4e;background:#f4f9f1}#bs-portal .bd-opt input{margin-top:4px}#bs-portal .bd-opt span{display:flex;flex-direction:column;gap:3px}#bs-portal .bd-opt small{color:#6b6670;line-height:1.35}" +
+      "#bs-portal .ct-group{margin:16px 0}#bs-portal .ct-group .eyebrow{margin-bottom:8px}#bs-portal .ct-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;padding:12px 16px;margin-bottom:8px}#bs-portal .ct-main{min-width:200px;flex:1}#bs-portal .ct-acts{display:flex;gap:6px;flex-wrap:wrap}#bs-portal .ct-notes{color:#7a6a3a;margin-top:4px}#bs-portal .ct-search{width:100%;max-width:420px;margin:4px 0 6px;padding:10px 14px;border:1px solid #ddd7ce;border-radius:999px;font:inherit}" +
       "#bs-portal .ph-waitbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;border-left:4px solid #d8a13a;margin-bottom:14px}";
     document.head.appendChild(st);
     root.addEventListener("contextmenu", function (e) { if (e.target && e.target.closest && e.target.closest(".pv-stage")) e.preventDefault(); });
@@ -2356,6 +2389,7 @@
     }
     if (m.type === "sheet") body = sheetModal(m);
     if (m.type === "pdfView") body = pvModal(m);
+    if (m.type === "contact") body = contactModal(m);
     if (m.type === "bdAdd") body = '<h2>Add a PDF</h2><p class="muted" style="margin:4px 0 14px">Who should see it?</p>' +
       '<label class="bd-opt"><input type="radio" name="bdlvl" value="contract"><span><b>📄 The client and the PM</b><small>Change orders, meeting notes, permits. No prices.</small></span></label>' +
       '<label class="bd-opt"><input type="radio" name="bdlvl" value="billing" checked><span><b>💲 Money: the client and the office only</b><small>Payment summary, anything with prices or amounts. The PM and the crew never see it.</small></span></label>' +
@@ -2484,6 +2518,8 @@
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
       case "ctrOpen": pvOpen("contract", "", (((S.data || {}).contract || {}).doc || {}).name || "Signed contract.pdf"); return;
       case "bdAdd": pvCss(); S.modal = { type: "bdAdd" }; return keepScroll(render);
+      case "ctEdit": S.modal = { type: "contact", id: b.dataset.id || "" }; return keepScroll(render);
+      case "ctDel": if (!window.confirm("Remove this contact from the job?")) return; run(b, async function () { await call("deleteContact", { contactId: b.dataset.id }); S.modal = null; await refresh(true); toast("Contact removed"); }); return;
       case "bdOpen": pvOpen("doc", b.getAttribute("data-id"), (((((S.data || {}).contract || {}).docs) || []).filter(function (x) { return x.id === b.getAttribute("data-id"); })[0] || {}).name || "Document.pdf"); return;
       case "bdDel": if (!window.confirm("Remove this document from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("billDocRemove", { docId: b.getAttribute("data-id") }); await refresh(true); toast("Document removed"); }); return;
       case "ctrDel": if (!window.confirm("Remove the signed contract from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("contractRemove", { projectId: S.pid }); await refresh(true); toast("Contract removed"); }); return;
@@ -2783,6 +2819,10 @@
         S.pending = S.pending.filter(function (x) { return sentU.indexOf(x) < 0; }); f.reset();
         await refresh(true); toast(fd.get("notify") ? "Posted and emailed to the client" : "Posted"); return;
       }
+      if (kind === "contact") {
+        await call("saveContact", { projectId: S.pid, contact: { id: S.modal && S.modal.id || undefined, name: v("name"), company: v("company"), role: v("role"), grp: v("grp"), email: v("email"), phone: v("phone"), notes: v("notes"), share: !!fd.get("share") } });
+        S.modal = null; await refresh(true); toast("Contact saved ✓"); return;
+      }
       if (kind === "photos") {
         if (!S.pending.length) throw new Error("Choose at least one photo.");
         var sentP = S.pending.slice();
@@ -2891,7 +2931,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261126001942";
+  var BUILD = "20261126004638";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6052,6 +6092,8 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-26d", fecha: "26 de noviembre", puntos: [
+      "<b>Contacts:</b> pestaña nueva en cada obra con todos los involucrados (permisos, inspectores, arquitectos, subcontratistas): 📞 llamar y ✉️ correo con un toque. Solo el equipo los ve, salvo los marcados «compartir con el cliente»."] },
     { id: "2026-11-26c", fecha: "26 de noviembre", puntos: [
       "<b>PDF más rápidos:</b> el contrato y los documentos se precargan al abrir Contract & billing y se quedan guardados en tu aparato; la segunda vez abren al instante.",
       "<b>Un solo botón «＋ Add a PDF»</b> (solo Jesús): pregunta quién lo ve, «📄 cliente y PM» o «💲 dinero: cliente y oficina»."] },
