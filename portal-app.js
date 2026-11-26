@@ -136,11 +136,11 @@
   function keepScroll(fn) { var y = window.scrollY; fn(); window.scrollTo(0, y); }
 
   /* Preview: the admin reads the portal the way a #client, #architect or #crew member gets it from the server. Nothing saves. */
-  var VIEWABLE = { contractDoc: 1, oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
+  var VIEWABLE = { contractDoc: 1, billDoc: 1, oxCalls: 1, oxCallSlots: 1, acLoad: 1, oxSetterReached: 1, jcProject: 1, listProjects: 1, getProject: 1, activity: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1, ttState: 1 };
   /* Google sometimes never starts a request (Executions shows "Failed, 0 s") and the browser would wait for minutes.
      So if there's no answer after a few seconds, the same request goes again with the same id, and the first answer wins.
      The server never does a save twice: a copy of a save still running hears "still working" and waits for its answer. */
-  var SLOW_ACTS = { ttFixPlace: 1, ttLunchSet: 1, schedShift: 1, botDeshacer: 1, contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
+  var SLOW_ACTS = { billDocUpload: 1, billDoc: 1, ttFixPlace: 1, ttLunchSet: 1, schedShift: 1, botDeshacer: 1, contractUpload: 1, contractDoc: 1, preguntar: 1, oxCityRun: 1, planStart: 1, planPages: 1, planFinish: 1, uploadPhotos: 1, postUpdate: 1, saveProject: 1, saveInvoice: 1, grSavePdf: 1, grAddPhotos: 1, grSendEmail: 1, grSaveEstimate: 1, lsVisitUpdate: 1, lsFuelFind: 1,
     oxAiDraft: 1, oxAiSave: 1, oxBrief: 1, oxEnrich: 1, oxRrScout: 1, oxEnrichCheck: 1, oxFindFree: 1, oxGmailSync: 1, oxCheckReplies: 1, oxImport: 1, oxExport: 1, qbImport: 1, qbFinance: 1, qbMoney: 1, qbSpend: 1, qbSendInvoice: 1, feedback: 1, wipeProject: 1 };
   var MED_ACTS = { todayQueue: 1, getProject: 1, oxHome: 1, ttReview: 1, jcSummary: 1, jcProject: 1, lsHome: 1, oxCalls: 1, oxSetterFirms: 1, oxSetterReached: 1, chatFeed: 1, activity: 1, qbInvoices: 1, qbCustomers: 1 };
   var BG_ACTS = { tick: 1, typing: 1, presence: 1, markRead: 1 };
@@ -1596,7 +1596,7 @@
     var c = S.data.contract || { lines: [] }, lines = (c.lines || []).filter(function (l) { return l.status !== "rejected"; });
     var counts = function (l) { return l.kind === "base" || l.status === "approved"; }, total = lines.filter(counts).reduce(function (a, l) { return a + l.amount; }, 0);
     var rows = lines.map(function (l) { return "<tr" + (counts(l) ? "" : ' class="muted-row"') + "><td><b style='font-weight:500'>" + (l.number ? esc(l.number) + " · " : "") + esc(l.title) + "</b>" + (l.kind === "change" ? ' <span class="pill ' + (l.status === "approved" ? "ok" : "gold") + '">' + (l.status === "approved" ? "Approved change" : "Proposed, not in total") + "</span>" : "") + '</td><td class="num">' + (l.amount < 0 ? "−" + money(-l.amount) : money(l.amount)) + "</td></tr>"; }).join("");
-    return contractDocCard() + (lines.length ? '<div class="section-title"><div><h2>The contract</h2><span class="muted small">What was agreed, line by line. Invoices and payments stay with the office.</span></div></div>' +
+    return contractDocCard() + billDocsCard() + (lines.length ? '<div class="section-title"><div><h2>The contract</h2><span class="muted small">What was agreed, line by line. Invoices and payments stay with the office.</span></div></div>' +
       '<div class="card tbl" data-lenis-prevent><table class="t sov"><thead><tr><th>Contract line</th><th class="num">Value</th></tr></thead><tbody>' + rows + '<tr><td><b>Contract total</b></td><td class="num"><b>' + money(total) + "</b></td></tr></tbody></table></div>" : (S.data.contract && S.data.contract.doc ? "" : '<div class="empty">The contract is not in the portal yet.</div>'));
   }
   function tabInvoices() {
@@ -1632,7 +1632,7 @@
     var vis = staff() ? '<div class="card bill-vis bill-tags">' + ICON.eye + '<div class="bt-main"><b>Who sees Contract & billing</b><div class="tag-pick bt-pick">' +
       BT.map(function (t) { return '<label class="tg-opt o-' + t[0] + '"><input type="checkbox" data-bill-tag="' + t[0] + '"' + (t[2] ? " checked" : "") + (adm ? "" : " disabled") + "><span>#" + t[0] + "</span></label>"; }).join("") + "</div>" +
       '<span class="muted small">' + (who.length ? "Seen by Jesús, #money" + (who.length ? ", " + esc(who.join(", ")) : "") + "." : "Only Jesús and #money.") + (aud.indexOf("client") > -1 || aud.indexOf("architect") > -1 ? " Outside people see the contract, change orders and invoices marked Paid, Due or Overdue; drafts, void invoices and team notes stay hidden." : "") + (adm ? "" : " Only Jesús changes this.") + "</span></div></div>" : "";
-    return vis + contractDocCard() + head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
+    return vis + contractDocCard() + billDocsCard() + head + breakdown + '<div class="section-title"><h2>Invoices</h2>' + (staff() ? '<button class="btn sm" data-a="modal" data-m="invoice">New invoice</button>' : "") + "</div>" + table + (staff() ? qbProjectBox() : "");
   }
 
   /* The signed contract: one private PDF per project, opened only by the people who see Contract & billing. */
@@ -1645,6 +1645,48 @@
       (d ? '<button class="btn sm" data-a="ctrOpen">View PDF</button>' : "") +
       (adm ? '<label class="btn ghost sm" style="cursor:pointer">' + (d ? "Replace" : "Upload the PDF") + '<input type="file" accept="application/pdf" data-ctr-up hidden></label>' + (d ? '<button class="btn ghost sm" data-a="ctrDel">Remove</button>' : "") : "") + "</div>";
   }
+  /* Documents: private PDFs next to the contract. «Contract» level = whoever sees the contract (also #pm); «Billing» = only who sees invoices (never the crew). */
+  function bdCanWrite() { return !!(S.me && !S.viewAs && (S.me.admin || S.me.money)); }
+  function billDocsCard() {
+    var list = ((S.data && S.data.contract) || {}).docs || [], w = bdCanWrite();
+    if (!list.length && !w) return "";
+    var kb = function (n) { return n ? (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB") : ""; };
+    var rows = list.map(function (d) {
+      return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line,#eee)"><div style="flex:1;min-width:180px"><b style="font-weight:500">' + esc(d.name) + '</b><div class="muted small">' +
+        (d.level === "billing" ? "Billing only" : "Everyone who sees the contract") + (d.at ? " · " + esc(String(d.at).slice(0, 10)) : "") + (d.size ? " · " + kb(d.size) : "") + "</div></div>" +
+        '<button class="btn sm" data-a="bdOpen" data-id="' + esc(d.id) + '">View</button>' +
+        (w ? '<label class="btn ghost sm" style="cursor:pointer">Replace<input type="file" accept="application/pdf" data-bd-up="' + esc(d.level) + '" data-bd-rep="' + esc(d.id) + '" hidden></label><button class="btn ghost sm" data-a="bdDel" data-id="' + esc(d.id) + '">Remove</button>' : "") + "</div>";
+    }).join("");
+    return '<div class="card bd-docs" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Documents</b><div class="muted small">' +
+      (list.length ? list.length + (list.length === 1 ? " document." : " documents.") : "No documents yet.") + (w ? " Upload light PDFs (under 8 MB). Private: never shared by link." : "") + "</div></div>" +
+      (w ? '<label class="btn ghost sm" style="cursor:pointer">+ For everyone on the contract<input type="file" accept="application/pdf" data-bd-up="contract" hidden></label><label class="btn ghost sm" style="cursor:pointer">+ Billing only<input type="file" accept="application/pdf" data-bd-up="billing" hidden></label>' : "") +
+      "</div>" + rows + "</div>";
+  }
+  function bdOpen(b) {
+    var w = null; try { w = window.open("", "_blank"); } catch (e) {}
+    return run(b, async function () {
+      try {
+        var r = await call("billDoc", { docId: b.getAttribute("data-id") }), bin = atob(String(r.data).split(",")[1] || ""), u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        var url = URL.createObjectURL(new Blob([u8], { type: "application/pdf" }));
+        if (w && !w.closed) w.location.href = url;
+        else { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; a.download = r.name || "Document.pdf"; document.body.appendChild(a); a.click(); a.remove(); }
+        b.disabled = false; b.innerHTML = "View";
+      } catch (e) { if (w && !w.closed) w.close(); throw e; }
+    });
+  }
+  root.addEventListener("change", function (e) {
+    var t = e.target; if (!t.matches || !t.matches("input[data-bd-up]") || !bdCanWrite()) return;
+    var file = t.files && t.files[0]; if (!file) return;
+    var lab = t.closest("label");
+    run(lab, async function () {
+      if (file.type !== "application/pdf") throw new Error("Pick a PDF.");
+      if (file.size > 8 * 1024 * 1024) throw new Error("That PDF is over 8 MB. Make it lighter first.");
+      var data = await new Promise(function (ok, bad) { var fr = new FileReader(); fr.onload = function () { ok(fr.result); }; fr.onerror = function () { bad(new Error("Couldn't read the PDF.")); }; fr.readAsDataURL(file); });
+      await call("billDocUpload", { projectId: S.pid, name: file.name, level: t.getAttribute("data-bd-up"), replaceId: t.getAttribute("data-bd-rep") || "", file: { mime: "application/pdf", data: data } });
+      await refresh(true); toast("Document saved ✓");
+    });
+  });
   function ctrOpen(b) {
     var w = null; try { w = window.open("", "_blank"); } catch (e) {}
     return run(b, async function () {
@@ -2356,6 +2398,8 @@
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
       case "ctrOpen": ctrOpen(b); return;
+      case "bdOpen": bdOpen(b); return;
+      case "bdDel": if (!window.confirm("Remove this document from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("billDocRemove", { docId: b.getAttribute("data-id") }); await refresh(true); toast("Document removed"); }); return;
       case "ctrDel": if (!window.confirm("Remove the signed contract from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("contractRemove", { projectId: S.pid }); await refresh(true); toast("Contract removed"); }); return;
       case "billAud": run(b, async function () { var pj = S.data.project, l = (pj.billing_aud || []).filter(function (x) { return x !== "client"; }); if (b.dataset.v === "on") l.push("client");
         await call("saveProject", { project: { id: pj.id, name: pj.name, billing_aud: l } }); await refresh(true); toast(b.dataset.v === "on" ? "The client now sees Contract & billing" : "Hidden from the client"); }); return;
@@ -2758,7 +2802,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261125180520";
+  var BUILD = "20261125231528";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5883,6 +5927,9 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-25b", fecha: "25 de noviembre (noche)", puntos: [
+      "<b>Documentos en Contract & billing:</b> PDFs privados junto al contrato (estado de change orders, resumen de pagos, minutas). «Para todos los del contrato» lo ve también el PM; «Solo facturación» nunca lo ve la crew. Súbanlos ligeros (menos de 8 MB).",
+      "<b>Pregúntale ✨</b> ya contesta desde el portal."] },
     { id: "2026-11-25a", fecha: "25 de noviembre", puntos: [
       "<b>Arquitectos y clientes «solo ver»:</b> en la pestaña People del proyecto, el botón «👁 Solo ver / ✍ Puede escribir». Los arquitectos nuevos entran en «Solo ver»: ven su proyecto pero no escriben ni cambian nada.",
       "<b>Lugar de una checada:</b> «📍 Cambiar lugar» en Today. Y «✏️ Nombre» en Horas → Settings para corregir nombre y apellido."] },
