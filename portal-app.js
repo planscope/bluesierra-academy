@@ -1359,6 +1359,7 @@
   var VIS = { team: "Team only", architect: "Team + architect", all: "Everyone on the project" };
   function boxesHtml(x) { return (x.boxes || []).map(function (bx) { return '<i class="cbox" style="left:' + bx[0] * 100 + "%;top:" + bx[1] * 100 + "%;width:" + bx[2] * 100 + "%;height:" + bx[3] * 100 + '%"></i>'; }).join(""); }
   function tabPlans() {
+    pvCss();
     var sets = planSets(), open = S.planOpen && planById(S.planOpen);
     var unfinished = ((S.data.plans) || []).filter(function (d) { return d.status !== "ready"; });
     var head = '<div class="section-title" style="margin-top:0"><div><h2>Plans</h2><span class="muted small">Every revision of the drawings. Each new upload is compared with the last one, and changed sheets are highlighted.</span></div>' +
@@ -1370,18 +1371,63 @@
       var sh = cur.sheets || [], nCh = sh.filter(function (x) { return x.status === "changed"; }).length, nNew = sh.filter(function (x) { return x.status === "new"; }).length;
       var isFirstRev = st.revs[st.revs.length - 1].id === cur.id, filt = (S.planFilter || {})[cur.id] || "all";
       var shown = sh.filter(function (x) { return filt === "all" || x.status === filt; });
-      return '<section class="card planset" id="plan-' + esc(st.set) + '"><div class="ps-head"><div><div class="eyebrow">Plan set</div><h3>' + esc(st.set) + "</h3>" +
+      var isOpen = !!(S.psOpen || {})[st.set] || !!(open && open.set === st.set) || sets.length === 1;
+      return '<section class="card planset ' + (isOpen ? "ps-open" : "ps-closed") + '" id="plan-' + esc(st.set) + '"><div class="ps-head"><div><button class="ps-tog" data-a="psToggle" data-set="' + esc(st.set) + '" aria-expanded="' + (isOpen ? "true" : "false") + '"><span class="ps-chev" aria-hidden="true">›</span><span class="ps-tt"><span class="eyebrow">Plan set · ' + sh.length + (sh.length === 1 ? " sheet" : " sheets") + '</span><span class="ps-name">' + esc(st.set) + "</span></span></button>" +
         '<div class="ps-meta"><span class="pill dark">' + esc(cur.rev) + (cur.id === st.latest.id ? " · latest" : "") + '</span><span class="muted small">' + day(cur.date) + " · uploaded by " + esc(cur.by) + '</span><span class="pill">' + esc(VIS[cur.visible] || "") + "</span></div></div>" +
         '<div class="actions">' + (cur.pdf ? '<a class="btn ghost sm" href="' + esc(cur.pdf) + '" target="_blank" rel="noopener noreferrer">Download PDF</a>' : "") + (staff() ? '<button class="btn ghost sm" data-a="delPlan" data-id="' + esc(cur.id) + '">Delete revision</button>' : "") + "</div></div>" +
-        (cur.notes ? '<p class="ps-notes">“' + esc(cur.notes) + "”</p>" : "") +
+        (!isOpen ? "" : (cur.notes ? '<p class="ps-notes">“' + esc(cur.notes) + "”</p>" : "") +
         (st.revs.length > 1 ? '<div class="chips revs">' + st.revs.map(function (r) { return '<button class="chip' + (r.id === cur.id ? " on" : "") + '" data-a="planRev" data-set="' + esc(st.set) + '" data-id="' + esc(r.id) + '">' + esc(r.rev) + "</button>"; }).join("") + "</div>" : "") +
         (!isFirstRev ? '<div class="ps-sum">' + (nCh ? '<span class="tag t-changed">' + nCh + " changed</span>" : '<span class="tag t-same">No changes found</span>') + (nNew ? '<span class="tag t-new">' + nNew + " new</span>" : "") +
           '<span class="ps-filter">' + [["all", "All sheets"], ["changed", "Changed"], ["new", "New"]].map(function (o) { return '<button class="link small' + (filt === o[0] ? " on" : "") + '" data-a="planFilter" data-id="' + esc(cur.id) + '" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join(" · ") + "</span></div>" : "") +
         '<div class="sheets">' + shown.map(function (x) {
           return '<button class="sheet s-' + esc(isFirstRev ? "none" : x.status) + '" data-a="sheet" data-id="' + esc(cur.id) + '" data-n="' + x.n + '"><span class="sh-img"><img src="' + esc(x.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + (isFirstRev || x.status !== "changed" ? "" : boxesHtml(x)) + "</span>" +
             '<span class="sh-cap"><b>' + esc(sheetLabel(x)) + "</b>" + (isFirstRev ? "" : x.status === "changed" ? '<span class="tag t-changed">Changed</span>' : x.status === "new" ? '<span class="tag t-new">New</span>' : '<span class="tag t-same">Same</span>') + "</span></button>";
-        }).join("") + (shown.length ? "" : '<div class="empty" style="grid-column:1/-1">No sheets in this filter.</div>') + "</div></section>";
+        }).join("") + (shown.length ? "" : '<div class="empty" style="grid-column:1/-1">No sheets in this filter.</div>') + "</div>") + "</section>";
     }).join("");
+  }
+  /* In-portal PDF viewer for the signed contract and the Contract & billing documents: pages drawn as images inside the
+     portal (pdf.js, already used for plans: nothing new to load), no download button, closes right there. */
+  function pvCss() { if (document.getElementById("pv-css")) return; var st = document.createElement("style"); st.id = "pv-css";
+    st.textContent = "#bs-portal .modal.m-pdfView{width:min(1100px,100%);max-height:calc(100vh - 24px);display:flex;flex-direction:column;padding:16px 18px;background:#fff}#bs-portal .pv-stage{background:#f3f1ed;border-radius:12px;padding:14px}" +
+      "#bs-portal .pv-page{display:block;width:100%;height:auto;margin:0 auto 14px;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.14);-webkit-user-select:none;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}" +
+      "#bs-portal .pv-name{font-size:18px;margin:2px 0 0;word-break:break-word}@media (max-width:620px){#bs-portal .modal.m-pdfView{padding:10px;max-height:100vh;border-radius:0}#bs-portal .pv-stage{padding:8px}}" +
+      "#bs-portal .ps-tog{display:flex;align-items:flex-start;gap:10px;border:0;background:none;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer}#bs-portal .ps-tt{display:flex;flex-direction:column}#bs-portal .ps-name{font-size:22px;font-weight:500;margin:2px 0 6px;line-height:1.2}" +
+      "#bs-portal .ps-chev{display:inline-grid;place-items:center;width:28px;height:28px;margin-top:6px;border-radius:50%;background:#f1eee8;font-size:18px;transition:transform .2s;flex:none}#bs-portal .ps-open .ps-chev{transform:rotate(90deg)}" +
+      "#bs-portal .planset.ps-closed{padding-top:14px;padding-bottom:14px;margin-bottom:10px}#bs-portal .ps-tog:hover .ps-chev{background:#e7e2da}";
+    document.head.appendChild(st);
+    root.addEventListener("contextmenu", function (e) { if (e.target && e.target.closest && e.target.closest(".pv-stage")) e.preventDefault(); });
+  }
+  function pvKey(m) { return m.kind + ":" + (m.id || S.pid); }
+  function pvOpen(kind, id, name) { pvCss(); S.pvErr = ""; S.zoom = 100; S.modal = { type: "pdfView", kind: kind, id: id || "", name: name }; keepScroll(render); pvLoad(); }
+  async function pvLoad() {
+    var m = S.modal; if (!m || m.type !== "pdfView") return;
+    var key = pvKey(m); S.pv = S.pv || {}; var c = S.pv[key]; if (c && (c.pages || c.busy)) return;
+    c = S.pv[key] = { busy: 1, pages: null, err: "", total: 0, done: 0 };
+    var again = function () { if (S.modal && S.modal.type === "pdfView" && pvKey(S.modal) === key) keepScroll(render); };
+    try {
+      var r = await call(m.kind === "contract" ? "contractDoc" : "billDoc", m.kind === "contract" ? { projectId: S.pid } : { docId: m.id });
+      var bin = atob(String(r.data).split(",")[1] || ""), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      var lib = await pdfjs(), pdf = await lib.getDocument({ data: u8 }).promise, out = [];
+      c.total = pdf.numPages; again();
+      for (var n = 1; n <= pdf.numPages; n++) {
+        var pg = await pdf.getPage(n), vp0 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: Math.min(2.5, 1500 / vp0.width) });
+        var cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        await pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        out.push(cv.toDataURL("image/jpeg", 0.82)); cv.width = cv.height = 0;
+        c.pages = out.slice(); c.done = n; again();
+      }
+      try { pdf.destroy(); } catch (e) {}
+    } catch (e) { c.err = (e && e.message) || "Couldn't open the PDF."; delete S.pv[key]; S.pvErr = c.err; }
+    c.busy = 0; again();
+  }
+  function pvModal(m) {
+    var c = (S.pv || {})[pvKey(m)] || { busy: 1, err: S.pvErr || "" }, pages = c.pages || [];
+    if (!c.busy && !c.pages && !c.err) setTimeout(pvLoad, 0);
+    return '<div class="sv-bar"><div><div class="eyebrow">' + (m.kind === "contract" ? "Signed contract" : "Document") + '</div><h2 class="pv-name">' + esc(m.name) + "</h2></div>" +
+      '<div class="sv-tools"><span class="muted small">' + (c.total ? (c.busy ? (c.done || 0) + " / " + c.total + " pages…" : c.total + (c.total === 1 ? " page" : " pages")) : "") + "</span>" +
+      '<button class="icon-btn" data-a="zoom" data-z="-1" aria-label="Zoom out">−</button><button class="icon-btn" data-a="zoom" data-z="1" aria-label="Zoom in">+</button><button class="icon-btn" data-a="close" aria-label="Close">✕</button></div></div>' +
+      '<div class="sv-stage pv-stage" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' +
+      (c.err ? '<div class="empty">' + esc(c.err) + "</div>" : pages.map(function (src, i) { return '<img class="pv-page" src="' + src + '" alt="Page ' + (i + 1) + '" draggable="false">'; }).join("") + (c.busy ? '<div class="loading" style="min-height:30vh">Opening…</div>' : "")) + "</div></div>";
   }
   /* The sheet viewer: the sheet with its changes boxed in red, or an overlay against the previous revision (red = removed, blue = added). */
   function sheetModal(m) {
@@ -2277,6 +2323,7 @@
           : '<div class="empty">Nobody else can see this channel yet.</div><div class="actions"><button class="btn ghost" data-a="close">Close</button></div>');
     }
     if (m.type === "sheet") body = sheetModal(m);
+    if (m.type === "pdfView") body = pvModal(m);
     if (m.type === "dm") {
       var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
       body = "<h2>Private message</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Only you and the person you pick will see it. Nobody else on the project, not even the team.</p>" +
@@ -2397,8 +2444,8 @@
       case "moneyRefresh": loadMoney(true); keepScroll(render); return;
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
-      case "ctrOpen": ctrOpen(b); return;
-      case "bdOpen": bdOpen(b); return;
+      case "ctrOpen": pvOpen("contract", "", (((S.data || {}).contract || {}).doc || {}).name || "Signed contract.pdf"); return;
+      case "bdOpen": pvOpen("doc", b.getAttribute("data-id"), (((((S.data || {}).contract || {}).docs) || []).filter(function (x) { return x.id === b.getAttribute("data-id"); })[0] || {}).name || "Document.pdf"); return;
       case "bdDel": if (!window.confirm("Remove this document from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("billDocRemove", { docId: b.getAttribute("data-id") }); await refresh(true); toast("Document removed"); }); return;
       case "ctrDel": if (!window.confirm("Remove the signed contract from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("contractRemove", { projectId: S.pid }); await refresh(true); toast("Contract removed"); }); return;
       case "billAud": run(b, async function () { var pj = S.data.project, l = (pj.billing_aud || []).filter(function (x) { return x !== "client"; }); if (b.dataset.v === "on") l.push("client");
@@ -2565,6 +2612,7 @@
       case "sheetNav":
         var dd = planById(S.modal.id), li = dd.sheets.map(function (x) { return x.n; }).indexOf(S.modal.n) + (+b.dataset.d);
         if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; } return keepScroll(render);
+      case "psToggle": S.psOpen = S.psOpen || {}; var psWas = !!S.psOpen[b.dataset.set] || !!(S.planOpen && planById(S.planOpen) && planById(S.planOpen).set === b.dataset.set); S.psOpen[b.dataset.set] = !psWas; if (psWas && S.planOpen && planById(S.planOpen) && planById(S.planOpen).set === b.dataset.set) S.planOpen = null; pvCss(); return keepScroll(render);
       case "planRev": S.planRev = S.planRev || {}; S.planRev[b.dataset.set] = b.dataset.id; S.planOpen = null; return keepScroll(render);
       case "planFilter": S.planFilter = S.planFilter || {}; S.planFilter[b.dataset.id] = b.dataset.v; return keepScroll(render);
       case "delPlan": sure("Delete this revision and its sheets?", function () { run(b, async function () { await call("deletePlan", { id: b.dataset.id }); S.planOpen = null; await refresh(); toast("Revision deleted"); }); }); return;
@@ -2802,7 +2850,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261125235801";
+  var BUILD = "20261126000740";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5963,6 +6011,9 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-26a", fecha: "26 de noviembre", puntos: [
+      "<b>Planos en lista:</b> en Plans cada juego de planos se abre y se cierra con un clic; adentro están sus hojas.",
+      "<b>Ver sin bajar:</b> el contrato y los documentos de Contract & billing se abren dentro del portal («View»), página por página, y se cierran ahí mismo."] },
     { id: "2026-11-25c", fecha: "25 de noviembre (noche)", puntos: [
       "<b>Pregúntale ✨ nuevo:</b> arriba dice en qué obra estás, las sugerencias son de esa obra y ya entiende de cuál hablas. Barra redonda con 🎤 y flecha; Enter envía."] },
     { id: "2026-11-25b", fecha: "25 de noviembre (noche)", puntos: [
