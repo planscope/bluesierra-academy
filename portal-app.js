@@ -820,6 +820,7 @@
       "</div></div>";
   }
   function composer(ch, root) {
+    if (S.me && S.me.viewOnly && !S.viewAs) return '<div class="card muted small" style="padding:12px 14px">👁 You have view-only access to this project. Blue Sierra will keep you posted here.</div>';
     var key = root ? "thread" : "main", pend = (S.att && S.att[key]) || [];
     var ph = root ? "Reply in thread…" : isDm(ch) ? "Private message to " + dmWith(ch).name + " (only the two of you see this)" : ch === "team" ? "Message the team (only Blue Sierra sees this)" : ch === "architect" ? "Message the architect" : staff() ? "Message the client and architect" : "Message Blue Sierra";
     return '<form class="card composer" data-form="chat" data-ch="' + ch + '"' + (root ? ' data-root="' + esc(root) + '"' : "") + '><div class="mention-wrap"><textarea name="text" data-chat placeholder="' + esc(ph) + '"></textarea></div>' +
@@ -1970,6 +1971,7 @@
     return '<div class="section-title" style="margin-top:0"><h2>People on this project</h2>' + (S.me.admin ? '<button class="btn ghost sm" data-a="modal" data-m="viewAs">' + ICON.eye + " Preview as…</button>" : "") + '</div><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
       ppl.map(function (x) { return '<div style="display:flex;align-items:center;gap:12px">' + av(x.name, x.avatar, x.role) + '<div style="flex:1"><b style="font-weight:500">' + esc(x.name) + '</b><div class="muted small">' + idLine(x.email, x.phone) + "</div></div>" +
         '<span class="role-chips">' + roleChip(x.role, x.money) + "</span>" + (x.email !== S.me.email && (S.me.admin || ["client", "architect", "crew"].indexOf(x.role) > -1) ? '<button class="btn ghost sm" data-a="modal" data-m="role" data-email="' + esc(x.email) + '" data-from="project">Change</button>' : "") +
+        (S.me.admin && (x.role === "client" || x.role === "architect") ? '<button class="btn ghost sm" data-a="accessTog" data-email="' + esc(x.email) + '" data-v="' + (x.access === "view" ? "" : "view") + '" title="' + (x.access === "view" ? "Only sees the project. Tap to let them write in the chat, checklist and requests." : "Can write. Tap to make it view-only.") + '">' + (x.access === "view" ? "👁 Solo ver" : "✍ Puede escribir") + "</button>" : "") +
         (x.role === "client" || x.role === "architect" || x.role === "crew" ? '<button class="icon-btn" data-a="removePerson" data-email="' + esc(x.email) + '" aria-label="Remove access">×</button>' : "") + "</div>"; }).join("") + "</div>" +
       (S.me.admin ? addHow(S.addHow) : "") + (S.me.admin && S.addHow === "phone" ? crewPhoneForm(S.pid) : '<form class="card form" data-form="person" style="margin-top:16px"><h3>Give someone access</h3><div class="row2"><label class="f">Name<input type="text" name="name" required></label><label class="f">Email<input type="email" name="email" required></label></div>' +
       '<div class="f"><span>Role</span>' + rolePicker("client", ["client", "architect", "crew"].concat(S.me.admin ? ["staff"] : [])) + "</div>" +
@@ -2381,6 +2383,7 @@
       case "toggle": run(null, async function () { await call("toggleChecklist", { itemId: b.dataset.id }); await reload(); }); return;
       case "delCheck": sure("Delete this checklist item?", function () { run(null, async function () { await call("deleteChecklistItem", { itemId: b.dataset.id }); await reload(); }); }); return;
       case "closeQ": run(b, async function () { await call("closeQuestion", { questionId: b.dataset.id }); await reload(true); }); return;
+      case "accessTog": run(b, async function () { await call("setAccess", { email: b.dataset.email, access: b.dataset.v }); await refresh(true); toast(b.dataset.v === "view" ? "Now view-only ✓" : "Can now write ✓"); }); return;
       case "removePerson": sure("Remove " + b.dataset.email + " from this project?", function () { run(null, async function () { await call("removePerson", { projectId: S.pid, email: b.dataset.email }); await reload(); ping(); toast("Access removed"); }); }); return;
       case "cover": run(b, async function () { await call("setCover", { projectId: S.pid, fileId: b.dataset.id }); S.lb = null; await reload(true); toast("Cover photo updated"); }); return;
       case "schedMode": S.sched.view = b.dataset.v; return keepScroll(render);
@@ -2755,7 +2758,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261124161049";
+  var BUILD = "20261125180501";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5880,6 +5883,10 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-25a", fecha: "25 de noviembre", puntos: [
+      "<b>Arquitectos y clientes «solo ver»:</b> en la pestaña People del proyecto, el botón «👁 Solo ver / ✍ Puede escribir». Los arquitectos nuevos entran en «Solo ver»: ven su proyecto pero no escriben ni cambian nada.",
+      "<b>Pregúntale ya contesta:</b> el botón ✨ verde está conectado a la IA de la casa. Pregunta por horas, obras, calendario o facturas; los cambios solo pasan con «Aplicar». Puede tardar hasta un minuto.",
+      "<b>Lugar de una checada:</b> «📍 Cambiar lugar» en Today. Y «✏️ Nombre» en Horas → Settings para corregir nombre y apellido."] },
     { id: "2026-11-24b", fecha: "24 de noviembre (tarde)", puntos: [
       "<b>Lunch automático:</b> se descuentan 30 min cuando el turno va de antes de las 12:00 a después de la 1:00 pm sin comida checada. En <b>Today</b> → «🍽 Lunch esta semana» marcas varios días, escribes la razón una vez y lo pones en 0 o 30. Regular y overtime se recalculan solos y queda el historial.",
       "<b>Lugar asignado:</b> en Horas → Settings, «📍 Lugar asignado» en cada persona de la crew (solo admin, con razón e historial). Les sale ya escogido en su reloj.",
