@@ -2802,7 +2802,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261125231528";
+  var BUILD = "20261125235801";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2986,22 +2986,28 @@
     if (!ASKF) {
       ASKF = document.createElement("div"); ASKF.id = "bsp-ask";
       ASKF.innerHTML = '<button class="ak-bubble" data-a="ttsAskOpen" aria-label="Pregúntale" title="Pregúntale: pregunta o pide cambios (escribiendo o hablando)">✨</button>' +
-        '<section class="ak-panel" aria-label="Pregúntale"><header class="ak-head"><b>✨ Pregúntale</b><span class="ak-sp"></span><button class="link small" data-a="ttsAskNew" title="Nueva conversación">Nueva</button><button class="ak-x" data-a="ttsAskClose" aria-label="Cerrar">×</button></header>' +
+        '<section class="ak-panel" aria-label="Pregúntale"><header class="ak-head"><span class="ak-av" aria-hidden="true">✨</span><div class="ak-tt"><b>Pregúntale</b><span class="ak-ctx"></span></div><span class="ak-sp"></span><button class="ak-ic" data-a="ttsAskNew" title="Nueva conversación" aria-label="Nueva conversación">' + AK_ICON.fresh + '</button><button class="ak-ic" data-a="ttsAskClose" title="Cerrar" aria-label="Cerrar">' + AK_ICON.x + '</button></header>' +
         '<div class="ak-body" data-lenis-prevent></div>' +
-        '<form class="ak-form"><textarea data-ask-input rows="1" maxlength="1500" placeholder="Pregunta o pide un cambio…" aria-label="Pregunta"></textarea>' + (askMicOk() ? '<button type="button" class="ak-mic" data-a="ttsAskMic" title="Hablar" aria-label="Hablar">🎤</button>' : "") + '<button class="btn sm" type="submit">Enviar</button></form></section>';
-      var f = ASKF.querySelector(".ak-form"), ta = f.querySelector("textarea");
-      f.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); var v = ta.value; ta.value = ""; ta.style.height = "auto"; askEnsure(); askSend(v); });
-      ta.addEventListener("input", function () { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; });
+        '<form class="ak-form"><div class="ak-pill"><textarea data-ask-input rows="1" maxlength="1500" placeholder="Pregunta o pide un cambio…" aria-label="Pregunta"></textarea>' + (askMicOk() ? '<button type="button" class="ak-mic" data-a="ttsAskMic" title="Hablar" aria-label="Hablar">' + AK_ICON.mic + '</button>' : "") + '<button class="ak-send" type="submit" title="Enviar" aria-label="Enviar" disabled>' + AK_ICON.send + '</button></div><div class="ak-foot">Nada cambia hasta que tocas «Aplicar».</div></form></section>';
+      var f = ASKF.querySelector(".ak-form"), ta = f.querySelector("textarea"), sendB = f.querySelector(".ak-send");
+      var sendOk = function () { sendB.disabled = !ta.value.trim() || ta.disabled; };
+      f.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); var v = ta.value; if (!v.trim()) return; ta.value = ""; ta.style.height = "auto"; sendOk(); askEnsure(); askSend(v); });
+      ta.addEventListener("input", function () { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; sendOk(); });
+      ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && window.innerWidth > 700) { e.preventDefault(); if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event("submit", { cancelable: true })); } });
     }
     if (ASKF.parentNode !== root) root.appendChild(ASKF);
     var onPage = S.home === "ask" && !S.pid;                                     // the full Pregúntale page is on screen: no floating copy
     ASKF.className = (S.askOpen && !onPage ? "open" : "") + (onPage ? " gone" : "");
     if (!S.askOpen || onPage) return;
     var A = askEnsure(), bd = ASKF.querySelector(".ak-body"), atEnd = bd.scrollHeight - bd.scrollTop - bd.clientHeight < 40;
-    var html = askMsgsHtml(A) || ('<div class="muted small" style="padding:4px 2px 10px">Pregunta o pide en tus palabras: horas, checadas, obras, facturas… o «agrégale una nota a Tom», «recorre Derynck 2 días por la lluvia». Nada cambia hasta que tocas «Aplicar».</div><div class="ask-sug">' + ASK_SUG.map(function (x, i) { return '<button class="chip" data-a="ttsAskSug" data-i="' + i + '">' + esc(x) + "</button>"; }).join("") + "</div>");
-    html += A.busy ? '<div class="ask-typing">Pensando…</div>' : "";
-    if (bd.__h !== html) { bd.innerHTML = html; bd.__h = html; if (atEnd || A.busy) bd.scrollTop = bd.scrollHeight; }
-    var ta2 = ASKF.querySelector("textarea"); ta2.disabled = !!A.busy;
+    var cx = askCtx(), ctxEl = ASKF.querySelector(".ak-ctx"), ctxTxt = cx ? cx.name + (cx.phase ? " · " + cx.phase : "") : "Todas las obras";
+    if (ctxEl && ctxEl.textContent !== ctxTxt) ctxEl.textContent = ctxTxt;
+    var first = String((S.me && S.me.name) || "").split(" ")[0];
+    var html = askMsgsHtml(A) || ('<div class="ak-hi"><div class="ak-hi-av" aria-hidden="true">✨</div><b>Hola' + (first ? ", " + esc(first) : "") + '</b><span>' + (cx ? "Pregúntame lo que sea de <b>" + esc(cx.name) + "</b> o pídeme un cambio." : "Pregúntame de horas, obras o facturas, o pídeme un cambio.") + '</span></div><div class="ak-sugs">' +
+      askSugList().map(function (x, i) { return '<button class="ak-sug" data-a="ttsAskSug" data-i="' + i + '"><span class="ak-sug-i" aria-hidden="true">' + x[0] + "</span>" + esc(x[1]) + "</button>"; }).join("") + "</div>");
+    html += A.busy ? '<div class="ak-dots" aria-label="Pensando"><i></i><i></i><i></i></div>' : "";
+    if (bd.__h !== html) { bd.innerHTML = html; bd.__h = html; if (!A.msgs.length) bd.scrollTop = 0; else if (atEnd || A.busy) bd.scrollTop = bd.scrollHeight; }
+    var ta2 = ASKF.querySelector("textarea"); ta2.disabled = !!A.busy; var sb2 = ASKF.querySelector(".ak-send"); if (sb2) sb2.disabled = !!A.busy || !ta2.value.trim();
     var mic = ASKF.querySelector(".ak-mic"); if (mic) mic.classList.toggle("on", !!S.askListening);
   }
   function askEnsure() { return S.ask || (S.ask = { conv: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), msgs: [] }); }
@@ -5870,7 +5876,25 @@
       ".ask-card{max-width:860px}.ask-msgs{display:flex;flex-direction:column;gap:10px;margin:6px 0 14px}.ask-me{align-self:flex-end;max-width:85%;background:#2B2833;color:#fff;border-radius:16px 16px 4px 16px;padding:10px 14px;white-space:pre-wrap}" +
       ".ask-bot{align-self:flex-start;max-width:92%;background:#F0EDE8;border:1px solid #e2ddd5;border-radius:16px 16px 16px 4px;padding:10px 14px;line-height:1.45}.ask-bot.na{background:#fff6e5;border-color:#f0d9a8}.ask-src{margin-top:8px;font-size:12px;color:#6b665e;border-top:1px solid #e2ddd5;padding-top:6px}" +
       ".ask-typing{align-self:flex-start;color:#858A7B;font-size:14px}.ask-in{display:flex;gap:8px;align-items:flex-end}.ask-in textarea{flex:1;min-height:52px;max-height:160px;border-radius:12px;border:1px solid #d9d5cf;padding:10px 12px;font:inherit;resize:vertical}" +
-      ".ask-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}";
+      ".ask-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}" +
+      /* 25-nov: the floating panel, modern */
+      ".ak-bubble{background:linear-gradient(135deg,#5b8f4e,#2f5a28)}.ak-panel{border-radius:22px;border-color:#e7e2da;box-shadow:0 24px 70px rgba(30,25,20,.25),0 2px 8px rgba(30,25,20,.06);background:#fdfcfa}" +
+      ".ak-head{padding:12px 12px 12px 14px;gap:10px;border-bottom:1px solid #efebe4;background:#fff}.ak-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#5b8f4e,#2f5a28);color:#fff;font-size:16px;flex:none}" +
+      ".ak-tt{display:flex;flex-direction:column;min-width:0;line-height:1.2}.ak-tt b{font-size:15px}.ak-ctx{font-size:12px;color:#7a756c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}" +
+      ".ak-ic{width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:#6b6670;display:grid;place-items:center;cursor:pointer}.ak-ic:hover{background:#f1eee8;color:#2B2833}" +
+      ".ak-body{padding:16px 14px;gap:12px;background:#fdfcfa}.ak-hi{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:18px 8px 6px;color:#2B2833}.ak-hi b{font-size:18px}.ak-hi span{color:#6b6670;font-size:14px;max-width:280px;line-height:1.4}" +
+      ".ak-hi-av{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;font-size:22px;background:linear-gradient(135deg,#eaf3e6,#d6e8cf);margin-bottom:4px}" +
+      ".ak-sugs{display:flex;flex-direction:column;gap:8px;margin-top:10px}.ak-sug{display:flex;align-items:center;gap:10px;text-align:left;width:100%;padding:11px 12px;border:1px solid #e7e2da;border-radius:14px;background:#fff;font:inherit;font-size:14px;color:#2B2833;cursor:pointer;transition:border-color .15s,background .15s,transform .15s}" +
+      ".ak-sug:hover{border-color:#b9cfae;background:#f6faf3;transform:translateY(-1px)}.ak-sug-i{width:28px;height:28px;border-radius:9px;background:#f3f0ea;display:grid;place-items:center;flex:none;font-size:15px}" +
+      "#bsp-ask .ask-me{background:#2f5a28;border-radius:18px 18px 4px 18px}#bsp-ask .ask-bot{background:#fff;border-color:#ebe6df;border-radius:18px 18px 18px 4px;box-shadow:0 1px 2px rgba(0,0,0,.04)}" +
+      ".ak-dots{align-self:flex-start;display:flex;gap:5px;padding:12px 14px;background:#fff;border:1px solid #ebe6df;border-radius:18px 18px 18px 4px}.ak-dots i{width:7px;height:7px;border-radius:50%;background:#9aa58f;animation:akdot 1.1s infinite ease-in-out}.ak-dots i:nth-child(2){animation-delay:.15s}.ak-dots i:nth-child(3){animation-delay:.3s}" +
+      "@keyframes akdot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}" +
+      ".ak-form{display:block;padding:10px 12px 8px;border-top:1px solid #efebe4;background:#fff}.ak-pill{display:flex;align-items:flex-end;gap:6px;border:1px solid #ddd7ce;border-radius:24px;padding:5px 5px 5px 14px;background:#fff;transition:border-color .15s,box-shadow .15s}" +
+      ".ak-pill:focus-within{border-color:#6f9a62;box-shadow:0 0 0 3px rgba(91,143,78,.15)}.ak-form .ak-pill textarea{flex:1;border:0;outline:0;resize:none;padding:8px 0;min-height:22px;max-height:120px;background:transparent;font:inherit;font-size:15px;line-height:1.4}" +
+      ".ak-pill .ak-mic{width:36px;height:36px;border-radius:50%;border:0;background:transparent;color:#6b6670;display:grid;place-items:center;flex:none}.ak-pill .ak-mic:hover{background:#f1eee8}.ak-pill .ak-mic.on{background:#b3261e;color:#fff}" +
+      ".ak-send{width:36px;height:36px;border-radius:50%;border:0;background:#2f5a28;color:#fff;display:grid;place-items:center;cursor:pointer;flex:none;transition:opacity .15s,transform .15s}.ak-send:disabled{opacity:.3;cursor:default}.ak-send:not(:disabled):hover{transform:scale(1.06)}" +
+      "#bsp-ask .ak-pill textarea{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;padding:8px 0!important;min-height:22px!important;border-radius:0!important;resize:none!important}" +
+      ".ak-foot{font-size:11px;color:#9a958c;text-align:center;margin-top:6px}";
     document.head.appendChild(st); }
   function askMd(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>"); }
   function askView() {
@@ -5915,18 +5939,32 @@
     try { rec.start(); } catch (e) { S.askRec = null; S.askListening = 0; keepScroll(render); }
   }
   function askSpeak(text) { try { if (!window.speechSynthesis) return; var u = new SpeechSynthesisUtterance(String(text || "").replace(/\*\*/g, "").slice(0, 600)); u.lang = "es-MX"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) {} }
+  var AK_ICON = {
+    mic: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+    send: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+    fresh: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+    x: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>' };
+  /* The project on screen, so Pregúntale talks about it (its suggestions, and the question carries which job you're looking at). */
+  function askCtx() { var d = S.data, p = d && d.project; return S.pid && p && p.id === S.pid ? { id: p.id, name: p.name || "esta obra", phase: p.phase || "" } : null; }
+  function askSugList() {
+    var cx = askCtx(); if (!cx) return [["⏱️", ASK_SUG[0]], ["💵", ASK_SUG[1]], ["📍", ASK_SUG[2]], ["📄", ASK_SUG[3]]];
+    var n = cx.name; return [["📅", "¿Qué sigue esta semana en " + n + "?"], ["💵", "¿Cuánto falta por cobrar en " + n + "?"], ["✅", "¿Qué falta por decidir o aprobar en " + n + "?"], ["🌧️", "Recorre " + n + " 1 día por lluvia"]];
+  }
   var ASK_SUG = ["¿Cuántas horas trabajó cada persona esta semana?", "¿Cuánto falta por cobrar en cada obra?", "¿Quién checó sin ubicación esta semana?", "¿Cuál es el contrato de Derynck y cuánto se ha pagado?"];
   async function askSend(text) {
     var A = S.ask; text = String(text || "").trim(); if (!A || !text || A.busy) return;
     A.msgs.push({ from: "me", text: text }); A.busy = 1; S.askDraft = ""; keepScroll(render);
     var res;
-    try { res = await Promise.race([call("preguntar", { pregunta: text, conversacion_id: A.conv }), new Promise(function (_, rej) { setTimeout(function () { rej(new Error("ask-timeout")); }, 65000); })]); }
+    var cx0 = askCtx(), q = cx0 && text.toLowerCase().indexOf(String(cx0.name).toLowerCase()) < 0 ? "(Estoy viendo la obra «" + cx0.name + "».) " + text : text;
+    try { res = await Promise.race([call("preguntar", { pregunta: q, conversacion_id: A.conv }), new Promise(function (_, rej) { setTimeout(function () { rej(new Error("ask-timeout")); }, 65000); })]); }
     catch (e) { res = { disponible: false, respuesta: /ask-timeout|fetch|network/i.test(e.message || "") ? ASK_NA : e.message }; }
     A.busy = 0; A.msgs.push({ from: "bot", text: res.respuesta || ASK_NA, fuentes: res.fuentes || [], na: !res.disponible, propuesta: res.propuesta || null }); if (res.conversacion_id) A.conv = res.conversacion_id;
     if (S.askVoice) { S.askVoice = 0; askSpeak(res.respuesta || ASK_NA); }
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-25c", fecha: "25 de noviembre (noche)", puntos: [
+      "<b>Pregúntale ✨ nuevo:</b> arriba dice en qué obra estás, las sugerencias son de esa obra y ya entiende de cuál hablas. Barra redonda con 🎤 y flecha; Enter envía."] },
     { id: "2026-11-25b", fecha: "25 de noviembre (noche)", puntos: [
       "<b>Documentos en Contract & billing:</b> PDFs privados junto al contrato (estado de change orders, resumen de pagos, minutas). «Para todos los del contrato» lo ve también el PM; «Solo facturación» nunca lo ve la crew. Súbanlos ligeros (menos de 8 MB).",
       "<b>Pregúntale ✨</b> ya contesta desde el portal."] },
@@ -6431,7 +6469,7 @@
     if (a === "ttsShiftUndo") return run(b, async function () { await call("botDeshacer", { id: S.modal.done.id }); S.modal.undone = 1; await refresh(true); toast("Deshecho: todo quedó como antes"); });
     if (a === "ttsNewsOk") { newsSeen(); S.modal = null; return keepScroll(render); }
     if (a === "ttsAskSend") { var ai = root.querySelector("[data-ask-input]"); return askSend(ai ? ai.value : S.askDraft); }
-    if (a === "ttsAskSug") return askSend(ASK_SUG[+b.dataset.i] || "");
+    if (a === "ttsAskSug") { askEnsure(); return askSend(b.classList.contains("ak-sug") ? ((askSugList()[+b.dataset.i] || [])[1] || "") : (ASK_SUG[+b.dataset.i] || "")); }
     if (a === "ttsAskMic") return askMic();
     if (a === "ttsBotApply") return askPropAct(b, "botAplicar", "aplicado");
     if (a === "ttsBotDrop") return askPropAct(b, "botDescartar", "descartado");
