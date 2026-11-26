@@ -2758,7 +2758,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261125180501";
+  var BUILD = "20261125180520";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -5885,7 +5885,6 @@
   var WHATS_NEW = [
     { id: "2026-11-25a", fecha: "25 de noviembre", puntos: [
       "<b>Arquitectos y clientes «solo ver»:</b> en la pestaña People del proyecto, el botón «👁 Solo ver / ✍ Puede escribir». Los arquitectos nuevos entran en «Solo ver»: ven su proyecto pero no escriben ni cambian nada.",
-      "<b>Pregúntale ya contesta:</b> el botón ✨ verde está conectado a la IA de la casa. Pregunta por horas, obras, calendario o facturas; los cambios solo pasan con «Aplicar». Puede tardar hasta un minuto.",
       "<b>Lugar de una checada:</b> «📍 Cambiar lugar» en Today. Y «✏️ Nombre» en Horas → Settings para corregir nombre y apellido."] },
     { id: "2026-11-24b", fecha: "24 de noviembre (tarde)", puntos: [
       "<b>Lunch automático:</b> se descuentan 30 min cuando el turno va de antes de las 12:00 a después de la 1:00 pm sin comida checada. En <b>Today</b> → «🍽 Lunch esta semana» marcas varios días, escribes la razón una vez y lo pones en 0 o 30. Regular y overtime se recalculan solos y queda el historial.",
