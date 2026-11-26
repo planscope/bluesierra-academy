@@ -1397,11 +1397,37 @@
       "#bs-portal .ps-chev{display:inline-grid;place-items:center;width:28px;height:28px;margin-top:6px;border-radius:50%;background:#f1eee8;font-size:18px;transition:transform .2s;flex:none}#bs-portal .ps-open .ps-chev{transform:rotate(90deg)}" +
       "#bs-portal .planset.ps-closed{padding-top:14px;padding-bottom:14px;margin-bottom:10px}#bs-portal .ps-tog:hover .ps-chev{background:#e7e2da}" +
       "#bs-portal .ph-wait{position:absolute;top:8px;left:8px;background:#b9770e;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;letter-spacing:.02em}#bs-portal .ph.ph-review{position:relative;outline:2px dashed #d8a13a;outline-offset:-2px}" +
+      "#bs-portal .bd-opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid #e2ddd5;border-radius:14px;margin-bottom:10px;cursor:pointer}#bs-portal .bd-opt:has(input:checked){border-color:#5b8f4e;background:#f4f9f1}#bs-portal .bd-opt input{margin-top:4px}#bs-portal .bd-opt span{display:flex;flex-direction:column;gap:3px}#bs-portal .bd-opt small{color:#6b6670;line-height:1.35}" +
       "#bs-portal .ph-waitbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;border-left:4px solid #d8a13a;margin-bottom:14px}";
     document.head.appendChild(st);
     root.addEventListener("contextmenu", function (e) { if (e.target && e.target.closest && e.target.closest(".pv-stage")) e.preventDefault(); });
   }
   function pvKey(m) { return m.kind + ":" + (m.id || S.pid); }
+  var PVDB = null;
+  function pvDb() { return PVDB || (PVDB = new Promise(function (ok) { try { var r = indexedDB.open("bsp-pdf", 1); r.onupgradeneeded = function () { r.result.createObjectStore("f"); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { ok(null); }; } catch (e) { ok(null); } })); }
+  async function pvIdb(k, v) { var db = await pvDb(); if (!db) return null; return new Promise(function (ok) { try { var st = db.transaction("f", v ? "readwrite" : "readonly").objectStore("f"), q = v ? st.put(v, k) : st.get(k); q.onsuccess = function () { ok(v ? true : q.result || null); }; q.onerror = function () { ok(null); }; } catch (e) { ok(null); } }); }
+  function pvClearAll() { try { S.pvBytes = {}; S.pv = {}; PVDB = null; indexedDB.deleteDatabase("bsp-pdf"); } catch (e) {} }
+  function pvVer(kind, id) { var c = (S.data && S.data.contract) || {}; if (kind === "contract") return "c:" + S.pid + ":" + ((c.doc || {}).at || ""); var d = (c.docs || []).filter(function (x) { return x.id === id; })[0] || {}; return "d:" + id + ":" + (d.at || ""); }
+  async function pvBytes(kind, id) {
+    var k = pvVer(kind, id); S.pvBytes = S.pvBytes || {}; if (S.pvBytes[k]) return S.pvBytes[k];
+    var got = await pvIdb(k); if (got) return (S.pvBytes[k] = got);
+    var p = S.pvBytes[k + "~"] || (S.pvBytes[k + "~"] = (async function () {
+      var r = await call(kind === "contract" ? "contractDoc" : "billDoc", kind === "contract" ? { projectId: S.pid } : { docId: id });
+      var bin = atob(String(r.data).split(",")[1] || ""), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      S.pvBytes[k] = u8; pvIdb(k, u8); return u8;
+    })());
+    try { return await p; } finally { delete S.pvBytes[k + "~"]; }
+  }
+  function pvPrefetch() {
+    var c = (S.data && S.data.contract) || {}, pid = S.pid; S.pvPre = S.pvPre || {};
+    if (!pid || S.pvPre[pid] || !(c.doc || (c.docs || []).length)) return; S.pvPre[pid] = 1;
+    try { if (navigator.connection && navigator.connection.saveData) return; } catch (e) {}
+    setTimeout(async function () {
+      try { await pdfjs(); } catch (e) {}
+      var list = (c.doc ? [["contract", ""]] : []).concat((c.docs || []).slice().sort(function (a, b) { return (a.size || 0) - (b.size || 0); }).map(function (d) { return ["doc", d.id]; }));
+      for (var i = 0; i < list.length; i++) { if (S.pid !== pid) return; try { await pvBytes(list[i][0], list[i][1]); } catch (e) {} }
+    }, 900);
+  }
   function pvOpen(kind, id, name) { pvCss(); S.pvErr = ""; S.zoom = 100; S.modal = { type: "pdfView", kind: kind, id: id || "", name: name }; keepScroll(render); pvLoad(); }
   async function pvLoad() {
     var m = S.modal; if (!m || m.type !== "pdfView") return;
@@ -1409,9 +1435,8 @@
     c = S.pv[key] = { busy: 1, pages: null, err: "", total: 0, done: 0 };
     var again = function () { if (S.modal && S.modal.type === "pdfView" && pvKey(S.modal) === key) keepScroll(render); };
     try {
-      var r = await call(m.kind === "contract" ? "contractDoc" : "billDoc", m.kind === "contract" ? { projectId: S.pid } : { docId: m.id });
-      var bin = atob(String(r.data).split(",")[1] || ""), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-      var lib = await pdfjs(), pdf = await lib.getDocument({ data: u8 }).promise, out = [];
+      var u8 = await pvBytes(m.kind, m.id);
+      var lib = await pdfjs(), pdf = await lib.getDocument({ data: u8.slice() }).promise, out = [];
       c.total = pdf.numPages; again();
       for (var n = 1; n <= pdf.numPages; n++) {
         var pg = await pdf.getPage(n), vp0 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: Math.min(2.5, 1500 / vp0.width) });
@@ -1650,6 +1675,7 @@
       '<div class="card tbl" data-lenis-prevent><table class="t sov"><thead><tr><th>Contract line</th><th class="num">Value</th></tr></thead><tbody>' + rows + '<tr><td><b>Contract total</b></td><td class="num"><b>' + money(total) + "</b></td></tr></tbody></table></div>" : (S.data.contract && S.data.contract.doc ? "" : '<div class="empty">The contract is not in the portal yet.</div>'));
   }
   function tabInvoices() {
+    if (S.data && S.data.contract && (S.data.billing || S.data.contract_view)) pvPrefetch();
     if (!S.data.billing && S.data.contract_view) return contractOnlyView();
     var m = contractMath(), list = visibleInvoices().slice().sort(function (a, b) { return (b.issued || "9") < (a.issued || "9") ? -1 : (b.issued || "9") > (a.issued || "9") ? 1 : 0; });
     var showRet = m.pct > 0 || m.inv.some(function (i) { return i.retainage; });
@@ -1703,13 +1729,13 @@
     var kb = function (n) { return n ? (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB") : ""; };
     var rows = list.map(function (d) {
       return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line,#eee)"><div style="flex:1;min-width:180px"><b style="font-weight:500">' + esc(d.name) + '</b><div class="muted small">' +
-        (d.level === "billing" ? "Billing only" : "Everyone who sees the contract") + (d.at ? " · " + esc(String(d.at).slice(0, 10)) : "") + (d.size ? " · " + kb(d.size) : "") + "</div></div>" +
+        (d.level === "billing" ? "💲 Money: client and office only" : "📄 Client and PM") + (d.at ? " · " + esc(String(d.at).slice(0, 10)) : "") + (d.size ? " · " + kb(d.size) : "") + "</div></div>" +
         '<button class="btn sm" data-a="bdOpen" data-id="' + esc(d.id) + '">View</button>' +
         (w ? '<label class="btn ghost sm" style="cursor:pointer">Replace<input type="file" accept="application/pdf" data-bd-up="' + esc(d.level) + '" data-bd-rep="' + esc(d.id) + '" hidden></label><button class="btn ghost sm" data-a="bdDel" data-id="' + esc(d.id) + '">Remove</button>' : "") + "</div>";
     }).join("");
     return '<div class="card bd-docs" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Documents</b><div class="muted small">' +
-      (list.length ? list.length + (list.length === 1 ? " document." : " documents.") : "No documents yet.") + (w ? " Upload light PDFs (under 8 MB). Private: never shared by link." : "") + "</div></div>" +
-      (w ? '<label class="btn ghost sm" style="cursor:pointer">+ For everyone on the contract<input type="file" accept="application/pdf" data-bd-up="contract" hidden></label><label class="btn ghost sm" style="cursor:pointer">+ Billing only<input type="file" accept="application/pdf" data-bd-up="billing" hidden></label>' : "") +
+      (list.length ? list.length + (list.length === 1 ? " document." : " documents.") : "No documents yet.") + (w ? " Only you add them. They open inside the portal and are never shared by link." : "") + "</div></div>" +
+      (w ? '<button class="btn ghost sm" data-a="bdAdd">＋ Add a PDF</button>' : "") +
       "</div>" + rows + "</div>";
   }
   function bdOpen(b) {
@@ -1727,13 +1753,15 @@
   }
   root.addEventListener("change", function (e) {
     var t = e.target; if (!t.matches || !t.matches("input[data-bd-up]") || !bdCanWrite()) return;
+    var lvlPick = t.hasAttribute("data-bd-modal") ? ((document.querySelector('input[name="bdlvl"]:checked') || {}).value || "billing") : t.getAttribute("data-bd-up");
     var file = t.files && t.files[0]; if (!file) return;
     var lab = t.closest("label");
     run(lab, async function () {
       if (file.type !== "application/pdf") throw new Error("Pick a PDF.");
       if (file.size > 8 * 1024 * 1024) throw new Error("That PDF is over 8 MB. Make it lighter first.");
       var data = await new Promise(function (ok, bad) { var fr = new FileReader(); fr.onload = function () { ok(fr.result); }; fr.onerror = function () { bad(new Error("Couldn't read the PDF.")); }; fr.readAsDataURL(file); });
-      await call("billDocUpload", { projectId: S.pid, name: file.name, level: t.getAttribute("data-bd-up"), replaceId: t.getAttribute("data-bd-rep") || "", file: { mime: "application/pdf", data: data } });
+      await call("billDocUpload", { projectId: S.pid, name: file.name, level: lvlPick, replaceId: t.getAttribute("data-bd-rep") || "", file: { mime: "application/pdf", data: data } });
+      if (S.modal && S.modal.type === "bdAdd") S.modal = null;
       await refresh(true); toast("Document saved ✓");
     });
   });
@@ -2328,6 +2356,11 @@
     }
     if (m.type === "sheet") body = sheetModal(m);
     if (m.type === "pdfView") body = pvModal(m);
+    if (m.type === "bdAdd") body = '<h2>Add a PDF</h2><p class="muted" style="margin:4px 0 14px">Who should see it?</p>' +
+      '<label class="bd-opt"><input type="radio" name="bdlvl" value="contract"><span><b>📄 The client and the PM</b><small>Change orders, meeting notes, permits. No prices.</small></span></label>' +
+      '<label class="bd-opt"><input type="radio" name="bdlvl" value="billing" checked><span><b>💲 Money: the client and the office only</b><small>Payment summary, anything with prices or amounts. The PM and the crew never see it.</small></span></label>' +
+      '<p class="muted small" style="margin:12px 0 0">Keep it light (under 8 MB). It opens inside the portal; nobody gets a download link.</p>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-a="close">Cancel</button><label class="btn" style="cursor:pointer">Choose the PDF<input type="file" accept="application/pdf" data-bd-up="billing" data-bd-modal="1" hidden></label></div>';
     if (m.type === "dm") {
       var ppl2 = (d.members || []).filter(function (x) { return x.key && x.key !== S.me.key && dmOk(x.role); });
       body = "<h2>Private message</h2><p class=\"muted\" style=\"margin:4px 0 14px\">Only you and the person you pick will see it. Nobody else on the project, not even the team.</p>" +
@@ -2435,7 +2468,7 @@
       case "restart": forget(); S.step = "email"; S.phone = ""; S.email = ""; return render();
       case "retry": root.innerHTML = '<div class="loading">Loading…</div>'; return route();
       case "forget": store("del"); resetState(); S.step = loginStep(); return render();
-      case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} store("del"); resetState(); S.step = loginStep(); history.pushState(null, "", location.pathname + location.search); render(); }); return;
+      case "logout": run(b, async function () { try { await call("logout"); } catch (er) {} pvClearAll(); store("del"); resetState(); S.step = loginStep(); history.pushState(null, "", location.pathname + location.search); render(); }); return;
       case "home": refreshList(); return go(null);
       case "open": return go(b.dataset.id);
       case "tab": S.pending = []; S.lb = null; return go(S.pid, b.dataset.t);
@@ -2450,6 +2483,7 @@
       case "finRefresh": loadFin(true); keepScroll(render); return;
       case "finFilter": S.finFilter = b.dataset.v; keepScroll(render); return;
       case "ctrOpen": pvOpen("contract", "", (((S.data || {}).contract || {}).doc || {}).name || "Signed contract.pdf"); return;
+      case "bdAdd": pvCss(); S.modal = { type: "bdAdd" }; return keepScroll(render);
       case "bdOpen": pvOpen("doc", b.getAttribute("data-id"), (((((S.data || {}).contract || {}).docs) || []).filter(function (x) { return x.id === b.getAttribute("data-id"); })[0] || {}).name || "Document.pdf"); return;
       case "bdDel": if (!window.confirm("Remove this document from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("billDocRemove", { docId: b.getAttribute("data-id") }); await refresh(true); toast("Document removed"); }); return;
       case "ctrDel": if (!window.confirm("Remove the signed contract from the portal? (The file goes to the Drive trash.)")) return; run(b, async function () { await call("contractRemove", { projectId: S.pid }); await refresh(true); toast("Contract removed"); }); return;
@@ -2857,7 +2891,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261126001328";
+  var BUILD = "20261126001942";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6018,6 +6052,9 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-26c", fecha: "26 de noviembre", puntos: [
+      "<b>PDF más rápidos:</b> el contrato y los documentos se precargan al abrir Contract & billing y se quedan guardados en tu aparato; la segunda vez abren al instante.",
+      "<b>Un solo botón «＋ Add a PDF»</b> (solo Jesús): pregunta quién lo ve, «📄 cliente y PM» o «💲 dinero: cliente y oficina»."] },
     { id: "2026-11-26b", fecha: "26 de noviembre", puntos: [
       "<b>Fotos por aprobar:</b> las fotos nuevas de la pestaña Photos las ve solo el equipo (oficina y crew) hasta que Jesús las aprueba; ahí ya las ve el cliente. Salen con la etiqueta «Waiting for OK»."] },
     { id: "2026-11-26a", fecha: "26 de noviembre", puntos: [
