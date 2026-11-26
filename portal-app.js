@@ -702,10 +702,12 @@
   }
 
   function tabPhotos() {
-    var d = S.data;
-    return (staff() ? '<form class="card composer" data-form="photos"><h3>Upload photos</h3>' + photoPicker("Choose photos") + '<input type="text" name="caption" placeholder="Caption (optional), e.g. Retaining wall pour"><div class="actions"><button class="btn" type="submit">Upload</button></div></form>' : "") +
+    var d = S.data, wait = d.photos.filter(function (ph) { return ph.review; }).length, adm = !!(S.me && S.me.admin && !S.viewAs);
+    pvCss();
+    return (staff() ? '<form class="card composer" data-form="photos"><h3>Upload photos</h3>' + photoPicker("Choose photos") + '<input type="text" name="caption" placeholder="Caption (optional), e.g. Retaining wall pour"><p class="muted small" style="margin:8px 0 0">New photos are seen only by the team until Jesús approves them for the client.</p><div class="actions"><button class="btn" type="submit">Upload</button></div></form>' : "") +
+      (wait && staff() ? '<div class="card ph-waitbar"><div><b>' + wait + (wait === 1 ? " photo is" : " photos are") + " waiting for " + (adm ? "your" : "Jesús's") + ' OK</b><div class="muted small">The client and the architect don\'t see ' + (wait === 1 ? "it" : "them") + " yet. Open a photo to approve it one by one.</div></div>" + (adm ? '<button class="btn sm" data-a="phApproveAll">✓ Approve all for the client</button>' : "") + "</div>" : "") +
       '<div class="section-title"><h2>Photos</h2><span class="muted small">' + d.photos.length + "</span></div>" +
-      (d.photos.length ? '<div class="photo-grid big">' + d.photos.map(function (ph, i) { return '<button class="ph" style="' + bg(ph.thumb) + '" data-a="lb" data-i="' + i + '">' + (ph.caption ? '<span class="cap">' + esc(ph.caption) + "</span>" : "") + "</button>"; }).join("") + "</div>" : '<div class="empty">No photos yet.</div>');
+      (d.photos.length ? '<div class="photo-grid big">' + d.photos.map(function (ph, i) { return '<button class="ph' + (ph.review ? " ph-review" : "") + '" style="' + bg(ph.thumb) + '" data-a="lb" data-i="' + i + '">' + (ph.review ? '<span class="ph-wait">Waiting for OK</span>' : "") + (ph.caption ? '<span class="cap">' + esc(ph.caption) + "</span>" : "") + "</button>"; }).join("") + "</div>" : '<div class="empty">No photos yet.</div>');
   }
 
   function answerBox(q) {
@@ -1393,7 +1395,9 @@
       "#bs-portal .pv-name{font-size:18px;margin:2px 0 0;word-break:break-word}@media (max-width:620px){#bs-portal .modal.m-pdfView{padding:10px;max-height:100vh;border-radius:0}#bs-portal .pv-stage{padding:8px}}" +
       "#bs-portal .ps-tog{display:flex;align-items:flex-start;gap:10px;border:0;background:none;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer}#bs-portal .ps-tt{display:flex;flex-direction:column}#bs-portal .ps-name{font-size:22px;font-weight:500;margin:2px 0 6px;line-height:1.2}" +
       "#bs-portal .ps-chev{display:inline-grid;place-items:center;width:28px;height:28px;margin-top:6px;border-radius:50%;background:#f1eee8;font-size:18px;transition:transform .2s;flex:none}#bs-portal .ps-open .ps-chev{transform:rotate(90deg)}" +
-      "#bs-portal .planset.ps-closed{padding-top:14px;padding-bottom:14px;margin-bottom:10px}#bs-portal .ps-tog:hover .ps-chev{background:#e7e2da}";
+      "#bs-portal .planset.ps-closed{padding-top:14px;padding-bottom:14px;margin-bottom:10px}#bs-portal .ps-tog:hover .ps-chev{background:#e7e2da}" +
+      "#bs-portal .ph-wait{position:absolute;top:8px;left:8px;background:#b9770e;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;letter-spacing:.02em}#bs-portal .ph.ph-review{position:relative;outline:2px dashed #d8a13a;outline-offset:-2px}" +
+      "#bs-portal .ph-waitbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;border-left:4px solid #d8a13a;margin-bottom:14px}";
     document.head.appendChild(st);
     root.addEventListener("contextmenu", function (e) { if (e.target && e.target.closest && e.target.closest(".pv-stage")) e.preventDefault(); });
   }
@@ -2411,7 +2415,8 @@
     var ph = S.data.photos[S.lb.i]; if (!ph) return "";
     return '<div class="lightbox" role="dialog" aria-label="Photo" data-lenis-prevent><img referrerpolicy="no-referrer" src="' + esc(ph.full) + '" alt="' + esc(ph.caption || "Project photo") + '">' +
       '<div class="lb-bar"><span>' + [esc(ph.caption || ""), day(ph.at), (S.lb.i + 1) + "/" + S.data.photos.length].filter(Boolean).join(" · ") + "</span><span style=\"display:flex;gap:8px\">" +
-      (staff() ? '<button class="btn ghost sm" style="color:#fff;border-color:rgba(255,255,255,.4)" data-a="cover" data-id="' + esc(ph.file_id) + '">Use as cover</button><button class="btn ghost sm" style="color:#fff;border-color:rgba(255,255,255,.4)" data-a="delPhoto" data-id="' + esc(ph.id) + '">Delete</button>' : "") +
+      (ph.review && staff() ? '<span class="ph-wait" style="position:static">Team only · waiting for OK</span>' + (S.me && S.me.admin && !S.viewAs ? '<button class="btn sm" style="background:#fff;color:#1f3d1a" data-a="phApprove" data-id="' + esc(ph.id) + '">✓ Approve for the client</button>' : "") : "") +
+      (staff() ? (ph.review ? "" : '<button class="btn ghost sm" style="color:#fff;border-color:rgba(255,255,255,.4)" data-a="cover" data-id="' + esc(ph.file_id) + '">Use as cover</button>') + '<button class="btn ghost sm" style="color:#fff;border-color:rgba(255,255,255,.4)" data-a="delPhoto" data-id="' + esc(ph.id) + '">Delete</button>' : "") +
       '<a class="btn ghost sm" style="color:#fff;border-color:rgba(255,255,255,.4)" href="' + esc(ph.full) + '" target="_blank" rel="noopener noreferrer">Open full size</a><button class="icon-btn" data-a="lbClose" aria-label="Close">×</button></span></div>' +
       '<button class="icon-btn nav prev" data-a="lbPrev" aria-label="Previous">‹</button><button class="icon-btn nav next" data-a="lbNext" aria-label="Next">›</button></div>';
   }
@@ -2469,6 +2474,8 @@
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
+      case "phApprove": run(b, async function () { await call("photoApprove", { projectId: S.pid, photoIds: [b.dataset.id] }); await refresh(true); toast("Shared with the client ✓"); }); return;
+      case "phApproveAll": run(b, async function () { var r = await call("photoApprove", { projectId: S.pid }); await refresh(true); toast((r.approved || 0) + " shared with the client ✓"); }); return;
       case "lbPrev": S.lb.i = (S.lb.i - 1 + S.data.photos.length) % S.data.photos.length; return keepScroll(render);
       case "lbNext": S.lb.i = (S.lb.i + 1) % S.data.photos.length; return keepScroll(render);
       case "toggle": run(null, async function () { await call("toggleChecklist", { itemId: b.dataset.id }); await reload(); }); return;
@@ -2850,7 +2857,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261126000740";
+  var BUILD = "20261126001328";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -6011,6 +6018,8 @@
     render(); setTimeout(function () { var l = document.querySelector(".ask-msgs"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
   }
   var WHATS_NEW = [
+    { id: "2026-11-26b", fecha: "26 de noviembre", puntos: [
+      "<b>Fotos por aprobar:</b> las fotos nuevas de la pestaña Photos las ve solo el equipo (oficina y crew) hasta que Jesús las aprueba; ahí ya las ve el cliente. Salen con la etiqueta «Waiting for OK»."] },
     { id: "2026-11-26a", fecha: "26 de noviembre", puntos: [
       "<b>Planos en lista:</b> en Plans cada juego de planos se abre y se cierra con un clic; adentro están sus hojas.",
       "<b>Ver sin bajar:</b> el contrato y los documentos de Contract & billing se abren dentro del portal («View»), página por página, y se cierran ahí mismo."] },
