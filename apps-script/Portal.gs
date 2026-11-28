@@ -3241,3 +3241,105 @@ ACTIONS.getProject = function (me, b) {
   try { if (r && r.project) { var p = findBy("Projects", "id", r.project.id); if (p) r.contacts = contactsOut(me, p); } } catch (e) {}
   return r;
 };
+
+/* ======================================================================================================
+   Marks on plans (Jesús, 27-nov: «que las personas puedan en los planos poner marks… y otra parte del equipo lo vea en campo
+   como nota… como lo que estamos haciendo con el @»). A mark is a numbered pin on one sheet of a plan revision, with a note,
+   replies and Open/Done. The team (office + crew) sees every mark on the plans it can see; the client and the architect see a
+   mark only when it's shared with them (or they made it). Labor never sees plans. Notices go to the bell through the chat
+   events the portal already has (#crew for the team, #client/#architect only when shared); "@Full Name" emails that person
+   when they're not in the portal.
+   ====================================================================================================== */
+TABLES.PlanMarks = ["id", "project_id", "plan_id", "sheet_n", "x", "y", "num", "text", "aud", "status", "author", "author_email", "at", "done_by", "done_at", "edited_at"];
+TABLES.MarkReplies = ["id", "mark_id", "project_id", "author", "author_email", "at", "text"];
+PREFETCH.getProject = (PREFETCH.getProject || []).concat(["PlanMarks", "MarkReplies"]);
+["markAdd", "markReply", "markDone", "markShare", "markDelete"].forEach(function (a) { PREFETCH[a] = ["Projects", "People", "Plans", "PlanMarks", "MarkReplies", "Messages"]; });
+var MARK_AUDS = ["client", "architect"];
+function markAud(v) { return splitIds(v).filter(function (a, i, l) { return MARK_AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
+function markLabor(me) { return typeof ttIsLabor === "function" && ttIsLabor(me); }
+function markSees(me, m) { if (markLabor(me)) return false; if (isTeam(me)) return true; return (me.role === "client" || me.role === "architect") && markAud(m.aud).indexOf(me.role) > -1; }
+function markCanWrite(me) { return !me.preview && !markLabor(me) && (isTeam(me) || me.role === "client" || me.role === "architect"); }
+function markCanClose(me, m) { return !me.preview && (isStaff(me) || (me.role === "crew" && !markLabor(me)) || m.author_email === me.email); }
+function markNeed(me, id) {
+  var m = findBy("PlanMarks", "id", id); if (!m) throw new Error("That mark isn't there anymore.");
+  var p = needProject(me, m.project_id), d = findBy("Plans", "id", m.plan_id);
+  if (!d || !planVisible(d, me) || !markSees(me, m)) throw new Error("That mark isn't there anymore.");
+  return { m: m, p: p, d: d };
+}
+function markSheetName(d, n) { var s = parseJson(d.sheets, []).filter(function (x) { return Number(x.n) === Number(n); })[0]; return (s && s.sheet) || "page " + n; }
+function markOut(me, m, reps) {
+  return { id: m.id, plan_id: m.plan_id, n: Number(m.sheet_n), x: num(m.x), y: num(m.y), num: Number(m.num) || 0, text: m.text,
+    status: m.status === "done" ? "done" : "open", author: m.author, akey: keyOf(m.author_email), mine: m.author_email === me.email, at: m.at,
+    done_by: m.done_by || "", done_at: m.done_at || "", edited_at: m.edited_at || "",
+    shared: isTeam(me) ? markAud(m.aud) : [],                                      // an outsider never learns who else sees it
+    canClose: markCanClose(me, m), canDelete: !me.preview && (me.role === "admin" || (m.author_email === me.email && !(reps || []).length)),
+    replies: (reps || []).map(function (r) { return { id: r.id, author: r.author, akey: keyOf(r.author_email), at: r.at, text: r.text, mine: r.author_email === me.email }; }) };
+}
+function marksOut(me, p) {
+  if (markLabor(me)) return [];
+  var plans = {}; rows("Plans").forEach(function (d) { if (d.project_id === p.id && planVisible(d, me)) plans[d.id] = 1; });
+  var reps = {}; rows("MarkReplies").forEach(function (r) { if (r.project_id === p.id) (reps[r.mark_id] = reps[r.mark_id] || []).push(r); });
+  return rows("PlanMarks").filter(function (m) { return m.project_id === p.id && plans[m.plan_id] && markSees(me, m); })
+    .map(function (m) { return markOut(me, m, reps[m.id]); });
+}
+/* The bell: one chat event for the team (#crew is read by the office and the crew), one more per outside audience it's shared with. */
+function markNotify(p, me, m, d, verb, text) {
+  var what = verb + " " + d.set + " · " + markSheetName(d, m.sheet_n) + " (mark " + m.num + ")", ref = "mark:" + m.id + ":" + m.plan_id + ":" + m.sheet_n;
+  postEvent(p, me, "mark", what, String(text || "").slice(0, 400), ref, "crew");
+  markAud(m.aud).forEach(function (a) { postEvent(p, me, "mark", what, String(text || "").slice(0, 400), ref, a); });
+  if (String(text || "").indexOf("@") < 0) return;
+  membersOf(p).forEach(function (x) {
+    if (x.email === me.email || !mentions(text, x.name) || !markSees(x, m) || isLive(x.email)) return;
+    try { if (MailApp.getRemainingDailyQuota() < CONFIG.MAIL_RESERVE) return; } catch (e) {}
+    safeMail(function () { sendMail(x.email, me.name + " mentioned you on a plan · " + p.name, "<p>Hi " + esc(first(x.name)) + ",</p><p><b>" + esc(me.name) + "</b> mentioned you on <b>" + esc(d.set + " · " + markSheetName(d, m.sheet_n)) + "</b> (mark " + m.num + ") on " + esc(p.name) + ":</p><blockquote style='border-left:3px solid #ddd;margin:0;padding-left:12px;color:#333'>" + nl2br(esc(text)) + "</blockquote>" + button("Open the plan", deep(p.id, "plans"))); });
+  });
+}
+ACTIONS.markAdd = function (me, b) {
+  if (!markCanWrite(me)) throw new Error("You can't add marks.");
+  var p = needProject(me, b.projectId), d = findBy("Plans", "id", b.planId);
+  if (!d || d.project_id !== p.id || !planVisible(d, me) || d.status !== "ready") throw new Error("That plan isn't here anymore.");
+  var n = Number(b.n); if (!parseJson(d.sheets, []).some(function (x) { return Number(x.n) === n; })) throw new Error("That sheet isn't in this plan.");
+  var x = Number(b.x), y = Number(b.y); if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) throw new Error("Tap on the sheet to place the mark.");
+  var text = clean(b.text, 2000); if (!text) throw new Error("Write what the mark is about.");
+  var aud = isTeam(me) ? markAud([].concat(b.share || []).join(",")) : [me.role];          // the client's or architect's own mark: they and the team
+  var last = 0; rows("PlanMarks").forEach(function (r) { if (r.project_id === p.id) last = Math.max(last, Number(r.num) || 0); });
+  var m = { id: newId("k"), project_id: p.id, plan_id: d.id, sheet_n: String(n), x: x.toFixed(4), y: y.toFixed(4), num: String(last + 1), text: text, aud: aud.join(","),
+    status: "open", author: me.name, author_email: me.email, at: now(), done_by: "", done_at: "", edited_at: "" };
+  insert("PlanMarks", m);
+  markNotify(p, me, m, d, "marked", text);
+  return { mark: markOut(me, m, []), marks: marksOut(me, p) };
+};
+ACTIONS.markReply = function (me, b) {
+  if (!markCanWrite(me)) throw new Error("You can't reply here.");
+  var k = markNeed(me, b.markId), text = clean(b.text, 2000); if (!text) throw new Error("Write a reply.");
+  insert("MarkReplies", { id: newId("r"), mark_id: k.m.id, project_id: k.p.id, author: me.name, author_email: me.email, at: now(), text: text });
+  markNotify(k.p, me, k.m, k.d, "replied on", text);
+  return { marks: marksOut(me, k.p) };
+};
+ACTIONS.markDone = function (me, b) {
+  var k = markNeed(me, b.markId); if (!markCanClose(me, k.m)) throw new Error("Only the team or whoever made the mark can close it.");
+  var done = b.done !== false && b.done !== "false";
+  update("PlanMarks", "id", k.m.id, done ? { status: "done", done_by: me.name, done_at: now() } : { status: "open", done_by: "", done_at: "" });
+  if (done) markNotify(k.p, me, Object.assign({}, k.m, { status: "done" }), k.d, "closed", k.m.text.slice(0, 160));
+  return { marks: marksOut(me, k.p) };
+};
+ACTIONS.markShare = function (me, b) {
+  if (!isStaff(me) || me.preview) throw new Error("Only the office shares marks with the client or the architect.");
+  var k = markNeed(me, b.markId), aud = markAud([].concat(b.share || []).join(",")), was = markAud(k.m.aud);
+  update("PlanMarks", "id", k.m.id, { aud: aud.join(",") });
+  var added = aud.filter(function (a) { return was.indexOf(a) < 0; });
+  added.forEach(function (a) { postEvent(k.p, me, "mark", "shared " + k.d.set + " · " + markSheetName(k.d, k.m.sheet_n) + " (mark " + k.m.num + ")", k.m.text.slice(0, 400), "mark:" + k.m.id + ":" + k.m.plan_id + ":" + k.m.sheet_n, a); });
+  return { marks: marksOut(me, k.p) };
+};
+ACTIONS.markDelete = function (me, b) {
+  var k = markNeed(me, b.markId), hasReplies = rows("MarkReplies").some(function (r) { return r.mark_id === k.m.id; });
+  if (me.preview || !(me.role === "admin" || (k.m.author_email === me.email && !hasReplies))) throw new Error("Only Jesús deletes a mark that has replies.");
+  removeWhere("MarkReplies", function (r) { return r.mark_id === k.m.id; }); removeWhere("PlanMarks", function (r) { return r.id === k.m.id; });
+  return { marks: marksOut(me, k.p) };
+};
+var _getProjectMarks = ACTIONS.getProject;
+ACTIONS.getProject = function (me, b) {
+  var r = _getProjectMarks(me, b);
+  try { if (r && r.project) { var p = findBy("Projects", "id", r.project.id); if (p) { r.marks = marksOut(me, p); r.canMark = markCanWrite(me); } } } catch (e) {}
+  return r;
+};

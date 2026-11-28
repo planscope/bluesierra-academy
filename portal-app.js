@@ -819,7 +819,7 @@
       (m.status === "call" && m.ref ? '<div class="meet-row"><span class="meet-code" title="Meeting code">' + esc(meetCode(m.ref)) + '</span><button class="link small" data-a="copyCode" data-c="' + esc(meetCode(m.ref)) + '">Copy code</button></div>' + (!API ? '<div class="muted small">Preview: this is a sample code, not a real meeting.</div>' : "") : "") +
       (m.ref && /^call:/.test(m.ref) ? '<button class="ev-btn" data-a="joinCall" data-room="' + esc(m.ref.slice(5)) + '" data-p="' + esc(S.pid || "") + '">' + ICON.video + " Join the call →</button>" :
        m.ref && /^meet:https:\/\/meet\.google\.com\//.test(m.ref) ? '<a class="ev-btn" href="' + esc(meetUrl(m.ref)) + '" target="' + (PHONE ? "_blank" : "bsp-meet") + '" rel="noopener">' + ICON.video + " Join the call →</a>" :
-       m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule", meet: "Join the call 📹", plan: "See what changed" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
+       m.ref ? '<button class="ev-btn" data-a="ref" data-ref="' + esc(m.ref) + '">' + ({ invoice: "See the invoice", update: "See the update", co: "See the contract", check: "See the checklist", sched: "See the schedule", meet: "Join the call 📹", plan: "See what changed", mark: "See the mark" }[m.ref.split(":")[0]] || "Open") + " →</button>" : "") +
       reactHtml(m) + (!opts.inThread && opts.replies && opts.replies.length ? '<button class="m-replies" data-a="thread" data-id="' + esc(m.id) + '">' + opts.replies.length + " repl" + (opts.replies.length > 1 ? "ies" : "y") + "</button>" : "") +
       "</div></div>";
   }
@@ -827,6 +827,7 @@
   function openRef(ref, pid) {
     if (/^meet:/.test(ref)) { if (PHONE) { location.href = meetUrl(ref); } else window.open(meetUrl(ref), "bsp-meet", "width=1180,height=780"); return; }
     if (/^plan:/.test(ref)) { S.bell = false; S.planOpen = ref.slice(5); return go(pid || S.pid, "plans"); }
+    if (/^mark:/.test(ref)) { var mk = ref.split(":"); S.bell = false; if ((pid || S.pid) === S.pid && S.tab === "plans" && planById(mk[2])) return openMark(mk[1], mk[2], +mk[3]); S.markGoto = { id: mk[1], plan: mk[2], n: +mk[3] }; return go(pid || S.pid, "plans"); }
     var t = String(ref).split(":"), tab = { invoice: "invoices", co: "invoices", update: "updates", check: "checklist", sched: "schedule" }[t[0]] || "overview";
     var target = { invoice: "inv-", update: "up-", check: "ck-" }[t[0]];
     S.bell = false; S.flash = target ? target + t[1] : null;
@@ -1400,7 +1401,8 @@
       (staff() ? '<button class="btn sm" data-a="modal" data-m="planUp">＋ Upload a revision</button>' : "") + "</div>";
     if (!sets.length) return head + '<div class="empty">' + (staff() ? "No plans yet. Upload the current set (a PDF) and the field crew will always have the latest sheets." : "No plans have been shared yet.") + "</div>" +
       unfinished.map(function (d) { return '<p class="muted small">Unfinished upload: ' + esc(d.set + " " + d.rev) + ' · <button class="link small" data-a="delPlan" data-id="' + esc(d.id) + '">remove</button></p>'; }).join("");
-    return head + sets.map(function (st) {
+    if (S.markGoto && planById(S.markGoto.plan)) { var mg = S.markGoto; S.markGoto = null; setTimeout(function () { openMark(mg.id, mg.plan, mg.n); }, 0); }
+    return head + marksList() + sets.map(function (st) {
       var cur = (open && open.set === st.set) ? open : (S.planRev && planById(S.planRev[st.set])) || st.latest;
       var sh = cur.sheets || [], nCh = sh.filter(function (x) { return x.status === "changed"; }).length, nNew = sh.filter(function (x) { return x.status === "new"; }).length;
       var isFirstRev = st.revs[st.revs.length - 1].id === cur.id, filt = (S.planFilter || {})[cur.id] || "all";
@@ -1415,7 +1417,7 @@
           '<span class="ps-filter">' + [["all", "All sheets"], ["changed", "Changed"], ["new", "New"]].map(function (o) { return '<button class="link small' + (filt === o[0] ? " on" : "") + '" data-a="planFilter" data-id="' + esc(cur.id) + '" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join(" · ") + "</span></div>" : "") +
         '<div class="sheets">' + shown.map(function (x) {
           return '<button class="sheet s-' + esc(isFirstRev ? "none" : x.status) + '" data-a="sheet" data-id="' + esc(cur.id) + '" data-n="' + x.n + '"><span class="sh-img"><img src="' + esc(x.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + (isFirstRev || x.status !== "changed" ? "" : boxesHtml(x)) + "</span>" +
-            '<span class="sh-cap"><b>' + esc(sheetLabel(x)) + "</b>" + (isFirstRev ? "" : x.status === "changed" ? '<span class="tag t-changed">Changed</span>' : x.status === "new" ? '<span class="tag t-new">New</span>' : '<span class="tag t-same">Same</span>') + "</span></button>";
+            '<span class="sh-cap"><b>' + esc(sheetLabel(x)) + "</b>" + (function () { var k = marksFor(cur.id, x.n).filter(function (m) { return m.status === "open"; }).length; return k ? '<span class="tag mk-tag">' + k + " mark" + (k > 1 ? "s" : "") + "</span>" : ""; })() + (isFirstRev ? "" : x.status === "changed" ? '<span class="tag t-changed">Changed</span>' : x.status === "new" ? '<span class="tag t-new">New</span>' : '<span class="tag t-same">Same</span>') + "</span></button>";
         }).join("") + (shown.length ? "" : '<div class="empty" style="grid-column:1/-1">No sheets in this filter.</div>') + "</div>") + "</section>";
     }).join("");
   }
@@ -1499,15 +1501,75 @@
     var mode = S.sheetMode || "hl", key = d.id + ":" + x.n, cmp = S.cmpCache && S.cmpCache[key];
     var canCmp = !!(x.prev && x.prev.id && planById(x.prev.id));
     var stage = mode === "cmp" && canCmp ? (cmp ? '<img src="' + cmp + '" alt="Comparison">' : '<div class="loading" style="min-height:40vh">Comparing with ' + esc(x.prev.rev || "the last revision") + "…</div>")
-      : '<span class="sh-wrap"><img src="' + esc(x.full) + '" alt="' + esc(sheetLabel(x)) + '" referrerpolicy="no-referrer">' + (mode === "hl" && !firstRev && x.status === "changed" ? boxesHtml(x) : "") + "</span>";
+      : '<span class="sh-wrap' + (S.markPlace ? " placing" : "") + '"><img src="' + esc(x.full) + '" alt="' + esc(sheetLabel(x)) + '" referrerpolicy="no-referrer">' + (mode === "hl" && !firstRev && x.status === "changed" ? boxesHtml(x) : "") + pinsHtml(d, x) + "</span>";
     if (mode === "cmp" && canCmp && !cmp) setTimeout(function () { buildCompare(d, x); }, 0);
     return '<div class="sv-bar"><div><div class="eyebrow">' + esc(d.set + " · " + d.rev) + "</div><h2>" + esc(sheetLabel(x)) + (firstRev ? "" : ' <span class="tag t-' + esc(x.status) + '">' + esc({ changed: "Changed", new: "New", same: "Same" }[x.status] || "") + "</span>") + "</h2></div>" +
       '<div class="sv-tools"><div class="chips">' + [["hl", "Highlights"], ["plain", "Clean"]].concat(canCmp ? [["cmp", "Compare with " + (x.prev.rev || "last")]] : []).map(function (o) { return '<button class="chip' + (mode === o[0] ? " on" : "") + '" data-a="sheetMode" data-v="' + o[0] + '">' + esc(o[1]) + "</button>"; }).join("") + "</div>" +
+      (S.data && S.data.canMark && mode !== "cmp" ? '<button class="chip mk-add' + (S.markPlace ? " on" : "") + '" data-a="markPlace">' + (S.markPlace ? "Tap the spot · Cancel" : "＋ Mark") + "</button>" : "") +
       '<button class="icon-btn" data-a="zoom" data-z="-1" aria-label="Zoom out">−</button><button class="icon-btn" data-a="zoom" data-z="1" aria-label="Zoom in">+</button>' +
       '<button class="icon-btn" data-a="sheetNav" data-d="-1" aria-label="Previous sheet"' + (i <= 0 ? " disabled" : "") + '>‹</button><span class="muted small">' + (i + 1) + " / " + list.length + '</span><button class="icon-btn" data-a="sheetNav" data-d="1" aria-label="Next sheet"' + (i >= list.length - 1 ? " disabled" : "") + ">›</button>" +
       '<button class="icon-btn" data-a="close" aria-label="Close">✕</button></div></div>' +
       (mode === "cmp" ? '<div class="sv-legend"><span><i style="background:#e5484d"></i>Removed</span><span><i style="background:#1f6fe5"></i>Added</span><span><i style="background:#9a958c"></i>Same</span></div>' : mode === "hl" && !firstRev && x.status === "changed" && (x.boxes || []).length ? '<div class="sv-legend"><span><i class="cl"></i>' + x.boxes.length + " area" + (x.boxes.length > 1 ? "s" : "") + " changed since " + esc((x.prev && x.prev.rev) || "the last revision") + "</span></div>" : "") +
-      '<div class="sv-stage" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' + stage + "</div></div>";
+      '<div class="sv-stage" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' + stage + "</div></div>" + (mode === "cmp" ? "" : markPanel(d, x));
+  }
+  /* ---------------- marks on plans (27-nov) ---------------- */
+  function marksAll() { return (S.data && S.data.marks) || []; }
+  function marksFor(planId, n) { return marksAll().filter(function (m) { return m.plan_id === planId && m.n === n; }); }
+  function markById(id) { return marksAll().filter(function (m) { return m.id === id; })[0]; }
+  function markWhen(at) { var t = Date.parse(String(at || "").replace(" ", "T")); return t && Date.now() - t < 6 * 864e5 ? ago(t) : day(at); }
+  function markText(t) { return esc(t).replace(/(^|\s)(@[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ]*(?: [A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ]*)?)/g, '$1<b class="mk-at">$2</b>'); }
+  function pinsHtml(d, x) {
+    var dr = S.markDraft && S.markDraft.plan === d.id && S.markDraft.n === x.n ? S.markDraft : null;
+    return marksFor(d.id, x.n).map(function (m) {
+      return '<button class="mk-pin' + (m.status === "done" ? " done" : "") + (S.markSel === m.id ? " sel" : "") + '" data-a="markOpen" data-id="' + esc(m.id) + '" style="left:' + m.x * 100 + "%;top:" + m.y * 100 + '%" aria-label="Mark ' + m.num + '">' + m.num + "</button>";
+    }).join("") + (dr ? '<i class="mk-pin draft" style="left:' + dr.x * 100 + "%;top:" + dr.y * 100 + '%">＋</i>' : "");
+  }
+  function markAtChips() {
+    var me = S.me && S.me.name, seen = {};
+    var list = ((S.data && S.data.members) || []).filter(function (x) { if (!x.name || x.name === me || seen[x.name]) return false; seen[x.name] = 1; return true; }).slice(0, 12);
+    return list.length ? '<div class="mk-ats"><span class="muted small">Notify:</span>' + list.map(function (x) { var f = x.name.split(" ")[0], dup = list.filter(function (y) { return y.name.split(" ")[0] === f; }).length > 1; return '<button class="mk-atb" data-a="markAt" data-name="' + esc(x.name) + '">@' + esc(dup ? x.name : f) + "</button>"; }).join("") + "</div>" : "";
+  }
+  function markShareHtml(on, id) {
+    return '<div class="mk-share"><span class="muted small">Who sees it:</span><span class="pill">Team</span>' + [["client", "Client"], ["architect", "Architect"]].map(function (o) {
+      return '<button class="chip' + (on.indexOf(o[0]) > -1 ? " on" : "") + '" data-a="markShareTog" data-v="' + o[0] + '"' + (id ? ' data-id="' + esc(id) + '"' : "") + ">" + (on.indexOf(o[0]) > -1 ? "✓ " : "＋ ") + o[1] + "</button>";
+    }).join("") + "</div>";
+  }
+  function markPanel(d, x) {
+    var dr = S.markDraft, m = S.markSel && markById(S.markSel);
+    if (dr && dr.plan === d.id && dr.n === x.n) {
+      return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><b>New mark on ' + esc(sheetLabel(x)) + '</b><button class="icon-btn" data-a="markCancel" aria-label="Cancel">✕</button></div>' +
+        '<textarea class="mk-text" rows="3" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea>' + markAtChips() +
+        (staff() ? markShareHtml(dr.share || [], "") : '<p class="muted small">Blue Sierra\'s team will see it.</p>') +
+        '<div class="mk-actions"><button class="btn sm" data-a="markSave">Save mark</button><button class="btn ghost sm" data-a="markCancel">Cancel</button></div></div>';
+    }
+    if (!m || m.plan_id !== d.id || m.n !== x.n) return "";
+    return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><div class="mk-who"><b>' + esc(m.author) + '</b><span class="muted small">' + esc(markWhen(m.at)) + "</span></div>" +
+      '<span class="tag ' + (m.status === "done" ? "t-same" : "t-new") + '">' + (m.status === "done" ? "Done" : "Open") + '</span><button class="icon-btn" data-a="markClose" aria-label="Close">✕</button></div>' +
+      '<p class="mk-body">' + markText(m.text) + "</p>" + (m.status === "done" && m.done_by ? '<p class="muted small">✓ Done by ' + esc(m.done_by) + " · " + esc(markWhen(m.done_at)) + "</p>" : "") +
+      (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p></div>"; }).join("") +
+      (S.data.canMark ? '<textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea>' + markAtChips() : "") +
+      '<div class="mk-actions">' + (S.data.canMark ? '<button class="btn sm" data-a="markReply" data-id="' + esc(m.id) + '">Reply</button>' : "") +
+      (m.canClose ? '<button class="btn ghost sm" data-a="markDone" data-id="' + esc(m.id) + '" data-v="' + (m.status === "done" ? "0" : "1") + '">' + (m.status === "done" ? "Reopen" : "✓ Done") + "</button>" : "") +
+      (m.canDelete ? '<button class="link small mk-del" data-a="markDel" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</div>" +
+      (staff() ? markShareHtml(m.shared || [], m.id) : "") + "</div>";
+  }
+  function marksList() {
+    var all = marksAll(); if (!all.length) return "";
+    var f = S.markFilter || "open", nOpen = all.filter(function (m) { return m.status === "open"; }).length;
+    var list = all.filter(function (m) { return f === "all" || (f === "mine" ? m.mine : m.status === f); }).sort(function (a, b) { return b.num - a.num; });
+    return '<section class="card mk-list"><div class="mk-lh"><div><b>Marks on the plans</b> <span class="muted small">' + nOpen + " open</span></div><span class=\"chips\">" +
+      [["open", "Open"], ["mine", "Mine"], ["done", "Done"], ["all", "All"]].map(function (o) { return '<button class="chip' + (f === o[0] ? " on" : "") + '" data-a="markFilter" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</span></div>" +
+      (list.length ? list.slice(0, 60).map(function (m) {
+        var d = planById(m.plan_id), sh = d && (d.sheets || []).filter(function (z) { return z.n === m.n; })[0];
+        return '<button class="mk-row" data-a="markGo" data-id="' + esc(m.id) + '" data-plan="' + esc(m.plan_id) + '" data-n="' + m.n + '"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><span class="mk-rt"><b>' + esc((d ? d.set + " · " : "") + (sh ? sheetLabel(sh) : "Page " + m.n)) + "</b><span>" + esc(String(m.text).slice(0, 160)) +
+          '</span><span class="muted small">' + esc(m.author) + " · " + esc(markWhen(m.at)) + ((m.replies || []).length ? " · " + m.replies.length + " repl" + (m.replies.length > 1 ? "ies" : "y") : "") + "</span></span></button>";
+      }).join("") : '<div class="muted small" style="padding:8px 2px">Nothing here.</div>') + "</section>";
+  }
+  function openMark(id, plan, n) {
+    if (!planById(plan)) return toast("That plan isn't here anymore.");
+    S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.markPlace = false; S.markDraft = null; S.markSel = id; S.modal = { type: "sheet", id: plan, n: +n };
+    keepScroll(render);
+    setTimeout(function () { var pin = root.querySelector('.mk-pin[data-id="' + id + '"]'); if (pin) { pin.scrollIntoView({ block: "center", inline: "center" }); pin.classList.add("pulse"); } }, 250);
   }
   function loadScript(src) { return new Promise(function (res, rej) { var sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = function () { rej(new Error("Couldn't load the PDF reader. Check your connection.")); }; document.head.appendChild(sc); }); }
   async function pdfjs() { if (!window.pdfjsLib) { await loadScript(PDFJS + "pdf.min.js"); window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; } return window.pdfjsLib; }
@@ -2540,7 +2602,30 @@
       case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "", issue: b.dataset.issue || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
-      case "close": S.modal = null; S.scDraft = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
+      case "markPlace": S.markPlace = !S.markPlace; S.markDraft = null; S.markSel = null; return keepScroll(render);
+      case "markCancel": S.markDraft = null; S.markPlace = false; return keepScroll(render);
+      case "markClose": S.markSel = null; return keepScroll(render);
+      case "markOpen": S.markSel = b.dataset.id; S.markDraft = null; S.markPlace = false; return keepScroll(render);
+      case "markFilter": S.markFilter = b.dataset.v; return keepScroll(render);
+      case "markGo": return openMark(b.dataset.id, b.dataset.plan, +b.dataset.n);
+      case "markAt": { var ta = root.querySelector(".mk-panel textarea"); if (ta) { ta.value = ta.value + (ta.value && !/\s$/.test(ta.value) ? " " : "") + "@" + b.dataset.name + " "; ta.focus(); } return; }
+      case "markShareTog": {
+        var v = b.dataset.v;
+        if (!b.dataset.id) { var dr = S.markDraft; if (!dr) return; dr.share = dr.share || []; dr.share = dr.share.indexOf(v) > -1 ? dr.share.filter(function (z) { return z !== v; }) : dr.share.concat([v]); var keepTxt = (root.querySelector(".mk-text") || {}).value || ""; keepScroll(render); var t2 = root.querySelector(".mk-text"); if (t2) t2.value = keepTxt; return; }
+        var mk0 = markById(b.dataset.id); if (!mk0) return; var sh0 = mk0.shared || [], nx = sh0.indexOf(v) > -1 ? sh0.filter(function (z) { return z !== v; }) : sh0.concat([v]);
+        run(b, async function () { var r = await call("markShare", { markId: mk0.id, share: nx }); S.data.marks = r.marks; keepScroll(render); toast(nx.length ? "Now the " + nx.join(" and ") + " can see this mark" : "Only the team sees this mark now"); }); return;
+      }
+      case "markSave": {
+        var drs = S.markDraft, txt = ((root.querySelector(".mk-text") || {}).value || "").trim(); if (!drs) return; if (!txt) return toast("Write what the mark is about.");
+        run(b, async function () { var r = await call("markAdd", { projectId: S.pid, planId: drs.plan, n: drs.n, x: drs.x, y: drs.y, text: txt, share: drs.share || [] }); S.data.marks = r.marks; S.markDraft = null; S.markPlace = false; S.markSel = r.mark.id; keepScroll(render); toast("Mark " + r.mark.num + " saved"); }); return;
+      }
+      case "markReply": {
+        var rt = ((root.querySelector(".mk-reply") || {}).value || "").trim(); if (!rt) return toast("Write a reply.");
+        run(b, async function () { var r = await call("markReply", { markId: b.dataset.id, text: rt }); S.data.marks = r.marks; keepScroll(render); var t3 = root.querySelector(".mk-reply"); if (t3) t3.value = ""; }); return;
+      }
+      case "markDone": run(b, async function () { var r = await call("markDone", { markId: b.dataset.id, done: b.dataset.v === "1" }); S.data.marks = r.marks; keepScroll(render); toast(b.dataset.v === "1" ? "Marked as done" : "Open again"); }); return;
+      case "markDel": sure("Delete this mark?", function () { run(b, async function () { var r = await call("markDelete", { markId: b.dataset.id }); S.data.marks = r.marks; S.markSel = null; keepScroll(render); toast("Mark deleted"); }); }); return;
+      case "close": S.modal = null; S.scDraft = null; S.markPlace = false; S.markDraft = null; S.markSel = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
@@ -2683,12 +2768,12 @@
         run(b, async function () { await call("deleteProject", { projectId: b.dataset.id, confirm: cf ? cf.value : "" }); S.modal = null; S.projects = null; toast("Project deleted. You can restore it from Home."); go(null); });
         return;
       case "restoreProject": run(b, async function () { await call("restoreProject", { projectId: b.dataset.id }); S.projects = null; refreshList(); toast("Project restored"); }); return;
-      case "sheet": S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.modal = { type: "sheet", id: b.dataset.id, n: +b.dataset.n }; return keepScroll(render);
+      case "sheet": S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.markPlace = false; S.markDraft = null; S.markSel = null; S.modal = { type: "sheet", id: b.dataset.id, n: +b.dataset.n }; return keepScroll(render);
       case "sheetMode": S.sheetMode = b.dataset.v; return keepScroll(render);
       case "zoom": S.zoom = Math.max(100, Math.min(600, (S.zoom || 100) + (+b.dataset.z) * 50)); return keepScroll(render);
       case "sheetNav":
         var dd = planById(S.modal.id), li = dd.sheets.map(function (x) { return x.n; }).indexOf(S.modal.n) + (+b.dataset.d);
-        if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; } return keepScroll(render);
+        if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; S.markDraft = null; S.markSel = null; } return keepScroll(render);
       case "psToggle": S.psOpen = S.psOpen || {}; var psWas = !!S.psOpen[b.dataset.set] || !!(S.planOpen && planById(S.planOpen) && planById(S.planOpen).set === b.dataset.set); S.psOpen[b.dataset.set] = !psWas; if (psWas && S.planOpen && planById(S.planOpen) && planById(S.planOpen).set === b.dataset.set) S.planOpen = null; pvCss(); return keepScroll(render);
       case "planRev": S.planRev = S.planRev || {}; S.planRev[b.dataset.set] = b.dataset.id; S.planOpen = null; return keepScroll(render);
       case "planFilter": S.planFilter = S.planFilter || {}; S.planFilter[b.dataset.id] = b.dataset.v; return keepScroll(render);
@@ -2931,7 +3016,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261127202509";
+  var BUILD = "20261127204438";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2948,6 +3033,35 @@
   /* ================= Beta v1.1: live chat, chat dock, support widget, smoother redraws ================= */
   // The Webflow page smooth-scrolls with Lenis, which makes the wheel lag behind. Inside the portal: plain, instant scrolling.
   root.setAttribute("data-lenis-prevent", "");
+  (function () {
+    root.addEventListener("click", function (e) {
+      if (!S.markPlace || !S.modal || S.modal.type !== "sheet") return;
+      var w = e.target.closest && e.target.closest(".sh-wrap"); if (!w || e.target.closest(".mk-pin")) return;
+      var img = w.querySelector("img"); if (!img) return; var r = img.getBoundingClientRect();
+      var x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
+      e.preventDefault(); e.stopPropagation();
+      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: x, y: y, share: [] }; S.markPlace = false; keepScroll(render);
+      setTimeout(function () { var ta = root.querySelector(".mk-panel .mk-text"); if (ta) ta.focus({ preventScroll: true }); }, 80);
+    }, true);
+    var st = document.createElement("style");
+    st.textContent = "#bs-portal .sh-wrap.placing{cursor:crosshair}#bs-portal .sh-wrap.placing img{outline:3px dashed #2f6fd6;outline-offset:-3px}" +
+      "#bs-portal .mk-pin{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;border:2px solid #fff;background:#e5484d;color:#fff;font:600 13px/26px inherit;text-align:center;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;z-index:2}" +
+      "#bs-portal .mk-pin.done{background:#8b8b85}#bs-portal .mk-pin.sel{background:#1f6fe5;width:36px;height:36px;line-height:32px;z-index:3}#bs-portal .mk-pin.draft{background:#1f6fe5;font-style:normal;pointer-events:none}" +
+      "#bs-portal .mk-pin.pulse{animation:mkPulse 1.2s ease 2}@keyframes mkPulse{50%{box-shadow:0 0 0 10px rgba(31,111,229,.25)}}" +
+      "#bs-portal .modal.m-sheet{position:relative}#bs-portal .mk-panel{position:absolute;right:18px;top:110px;width:min(360px,calc(100% - 36px));max-height:calc(100% - 130px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:14px;z-index:5}" +
+      "#bs-portal .mk-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}#bs-portal .mk-h .icon-btn{margin-left:auto}#bs-portal .mk-who{display:flex;flex-direction:column;line-height:1.2}" +
+      "#bs-portal .mk-num{display:inline-grid;place-items:center;min-width:26px;height:26px;border-radius:50%;background:#e5484d;color:#fff;font-weight:600;font-size:13px;flex:none}#bs-portal .mk-num.done{background:#8b8b85}" +
+      "#bs-portal .mk-body{white-space:pre-wrap;margin:4px 0 8px;font-size:15px;line-height:1.45}#bs-portal .mk-at{color:#1f6fe5;font-weight:600}" +
+      "#bs-portal .mk-rep{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}#bs-portal .mk-rep p{margin:2px 0 0;white-space:pre-wrap}" +
+      "#bs-portal .mk-panel textarea{width:100%;box-sizing:border-box;margin-top:8px;font:inherit;font-size:16px}#bs-portal .mk-ats{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}" +
+      "#bs-portal .mk-atb{border:1px solid var(--line);background:#f6f4f0;border-radius:99px;padding:3px 9px;font-size:12px;cursor:pointer}#bs-portal .mk-actions{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}#bs-portal .mk-del{margin-left:auto;color:#a2504a}" +
+      "#bs-portal .mk-share{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}" +
+      "#bs-portal .mk-list{margin-bottom:14px}#bs-portal .mk-lh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}" +
+      "#bs-portal .mk-row{display:flex;gap:10px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;cursor:pointer;font:inherit;color:inherit}#bs-portal .mk-row:hover{background:#faf8f4}" +
+      "#bs-portal .mk-rt{display:flex;flex-direction:column;gap:2px;min-width:0}#bs-portal .mk-rt span{overflow-wrap:anywhere}#bs-portal .mk-tag{background:#fde8e8;color:#a2504a}" +
+      "@media (max-width:620px){#bs-portal .mk-panel{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:62vh;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}#bs-portal .mk-pin{width:34px;height:34px;line-height:30px}}";
+    document.head.appendChild(st);
+  })();
   (function () {
     var st = document.createElement("style");
     st.textContent = "#bs-portal{overflow-x:clip;max-width:100vw}" +
