@@ -37,7 +37,7 @@ var CONFIG = {
 };
 
 var TABLES = {
-  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon", "billing_aud", "architect_name", "architect_logo", "qb_customer"],
+  Projects: ["id", "name", "client_name", "address", "city", "phase", "progress", "start_date", "target_date", "summary", "cover_file_id", "folder_id", "status", "created_at", "retainage_pct", "lat", "lon", "billing_aud", "architect_name", "architect_logo", "qb_customer", "contract_file_id", "contract_name", "contract_at", "contract_by"],
   People: ["email", "name", "role", "project_ids", "active", "created_at", "avatar", "pin_hash", "pin_salt", "pin_fails", "pin_lock", "money"],
   Sessions: ["token_hash", "email", "expires_at", "created_at"],
   Timeline: ["id", "project_id", "at", "author", "text", "photo_ids", "emailed", "pinned", "aud", "author_email"],
@@ -68,7 +68,7 @@ var PREFETCH = {
 };
 PREFETCH.setPin = ["People"]; PREFETCH.saveProfile = ["People"];
 var NO_LOCK = { markRead: 1, presence: 1, startCall: 1, callInvite: 1, qbStatus: 1, qbCustomers: 1, qbInvoices: 1, qbConnectUrl: 1, qbMoney: 1, qbFinance: 1, qbSpend: 1, qbCategories: 1, qbSendInvoice: 1, feedback: 1 };   // startCall locks only for its chat card          // only touch your own row / the cache: no need to queue behind other saves
-var READ_ONLY = { chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
+var READ_ONLY = { contractDoc: 1, chatFeed: 1, listFeedback: 1, me: 1, listProjects: 1, getProject: 1, activity: 1, listTeam: 1, mailStatus: 1, planImage: 1, planText: 1, lsHome: 1, lsProperty: 1, lsEstimate: 1 };
 /* Chat channels per project: "client" (client, architect and team), "architect" (architect and team), "team" (team only). */
 var CHANNELS = ["client", "architect", "team", "crew"];
 /* Permission tags. Everything that can be limited (chat, updates, checklist items, contract & billing) carries #tags:
@@ -103,6 +103,7 @@ function doPost(e) {
   OUTBOX = [];
   try {
     var b = JSON.parse((e.postData && e.postData.contents) || "{}");
+    if (!b.action && b.accion === "datos_bot") b.action = "datos_bot";                    // Hearth's envelope for reading data
     var pub = PUBLIC[b.action], fn;
     MAIL_NOTICES = notices;
     rid = ridOf(b);
@@ -118,6 +119,7 @@ function doPost(e) {
       }
       fn = ACTIONS[b.action];
       if (!fn) throw new Error("Unknown action.");
+      if (me && !isStaff(me) && me.access === "view" && !READ_ONLY[b.action] && !VIEW_OK[b.action]) throw new Error("You have view-only access to this project.");
       if (READ_ONLY[b.action] || NO_LOCK[b.action]) res = fn(me, b);
       else {
         if (PRELOCK[b.action]) try { PRELOCK[b.action](me, b); } catch (e) {}   // slow lookups (addresses) before getting in line, so others don't wait on them
@@ -151,7 +153,7 @@ function ridDrop(rid) { try { CacheService.getScriptCache().remove("rid:" + rid)
 function dataVer() { try { return CacheService.getScriptCache().get("dver") || "0"; } catch (e) { return "0"; } }
 function dataBump() { try { CacheService.getScriptCache().put("dver", String(Date.now()), 21600); } catch (e) {} }
 var BUMP_TOO = { oxCityRun: 1, ttPunch: 1, startCall: 1, callInvite: 1, qbSendInvoice: 1, setFeedback: 1 };   // saves that skip the lock
-var NO_BUMP = { presence: 1, tick: 1, typing: 1, markRead: 1, feedback: 1, feedbackFeed: 1, checkEmail: 1, checkPhone: 1 };
+var NO_BUMP = { contractDoc: 1, presence: 1, tick: 1, typing: 1, markRead: 1, feedback: 1, feedbackFeed: 1, checkEmail: 1, checkPhone: 1 };
 /* Which projects have plan sets: just that column (the Plans tab is big — every sheet's boxes live in it). */
 function planProjectIds() {
   if (_ROWS.Plans) return _ROWS.Plans;
@@ -164,6 +166,7 @@ function keepWarm() {
   if (h < 6 || h >= 19 || dow === "7") return "off";
   var url = ""; try { url = ScriptApp.getService().getUrl(); } catch (e) {} if (!url) return "no url";
   try { UrlFetchApp.fetch(url, { method: "post", contentType: "text/plain;charset=utf-8", payload: JSON.stringify({ action: "me", token: "warm" }), muteHttpExceptions: true, followRedirects: true }); } catch (e) {}
+  try { var c0 = CacheService.getScriptCache(); if (typeof ttAutoCloseAll === "function" && !c0.get("autoclose")) { c0.put("autoclose", "1", 3300); ttAutoCloseAll(); } } catch (e) {}   // once an hour: close forgotten shifts
   return "warm";
 }
 function warmEnsure() {
@@ -270,7 +273,7 @@ function auth(token) {
   try { CacheService.getScriptCache().put("who:" + email, JSON.stringify({ email: p.email, name: p.name, role: p.role, project_ids: p.project_ids, active: p.active, money: p.money, avatar: p.avatar }), 180); } catch (e) {}
   return p;
 }
-function publicMe(p) { return { email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", setter: p.role === "setter", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, pinTemp: !!(p.pin_hash && p.pin_temp), preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
+function publicMe(p) { return { viewOnly: !isStaff(p) && p.role !== "crew" && p.access === "view", email: p.email, name: p.name, role: p.role, staff: isStaff(p), admin: p.role === "admin", crew: p.role === "crew", setter: p.role === "setter", money: canMoney(p), key: pkey(p.email), avatar: p.avatar || "", hasPin: !!p.pin_hash, pinTemp: !!(p.pin_hash && p.pin_temp), preview: p.preview || "", rt: (function () { try { return rtClient(p); } catch (e) { return null; } })(), calls: (function () { try { return dailyOn() ? "portal" : "meet"; } catch (e) { return "meet"; } })(), ls: (function () { try { return typeof lsRole === "function" ? lsRole(p) : ""; } catch (e) { return ""; } })() }; }
 /* #money: the admin always; a team member only when Jesús turns it on. Clients, architects and crew never. */
 function canMoney(p) { return !p.preview && (p.role === "admin" || (p.role === "staff" && isTrue(p.money))); }
 /* A make-believe person with one role, on every live project, who owns nothing: what the server sends them is what that role sees. */
@@ -311,14 +314,20 @@ function readTags(text) {
 }
 function cleanAud(v) { return (Array.isArray(v) ? v : splitIds(v)).map(String).filter(function (a, i, l) { return AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
 /* Contract & billing, per project. The admin and #money always see it; the rest of #team unless the admin turns #team off ("noteam");
-   #pm (crew supervisors on the project) only when tagged; #labor never; the client and the architect only when tagged. */
+   the crew never sees billing; the client and the architect only when tagged.
+   24-nov (Jesús): #pm (crew supervisors on the project) sees the CONTRACT (lines and the signed PDF) but never the billing
+   (invoices, billed, paid, balance). Labor never gets into the portal. */
+function canContract(me, p) {
+  if (canBill(me, p)) return true;
+  return me.role === "crew" && billAud(p.billing_aud).indexOf("pm") > -1 && !(typeof ttIsLabor === "function" && ttIsLabor(me));
+}
 var BILL_AUDS = ["client", "architect", "pm", "noteam"];
 function billAud(v) { return (Array.isArray(v) ? v : splitIds(v)).map(String).filter(function (a, i, l) { return BILL_AUDS.indexOf(a) > -1 && l.indexOf(a) === i; }); }
 function canBill(me, p) {
   var l = billAud(p.billing_aud);
   if (me.role === "admin" && !me.preview) return true;
   if (isStaff(me)) return canMoney(me) || l.indexOf("noteam") < 0;
-  if (me.role === "crew") return l.indexOf("pm") > -1 && !(typeof ttIsLabor === "function" && ttIsLabor(me));
+  if (me.role === "crew") return false;                                              // Jesús, 24-nov: the crew never sees billing (invoices, billed, paid)
   return l.indexOf(me.role) > -1;
 }
 function billChannel(p) { return audList(p.billing_aud).indexOf("client") > -1 ? "client" : audList(p.billing_aud).indexOf("architect") > -1 ? "architect" : "team"; }
@@ -352,7 +361,7 @@ var ACTIONS = {
   },
 
   getProject: function (me, b) {
-    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me), team = isTeam(me), crew = me.role === "crew", bill = canBill(me, p);
+    var p = needProject(me, b.projectId), id = p.id, staff = isStaff(me), team = isTeam(me), crew = me.role === "crew", bill = canBill(me, p), ctr = canContract(me, p);
     var by = function (t) { return rows(t).filter(function (r) { return r.project_id === id; }); };
     var ppl = peopleIndex(), tl = by("Timeline").filter(function (u) { return audOk(me, u.aud); }), hiddenU = {};
     by("Timeline").forEach(function (u) { if (!audOk(me, u.aud)) hiddenU[u.id] = 1; });
@@ -360,7 +369,7 @@ var ACTIONS = {
       project: projectOut(p),
       timeline: tl.reverse().map(function (u) { var o = Object.assign({}, u, { aud: audView(me, u.aud), akey: keyOf(u.author_email), avatar: (ppl[u.author_email] || {}).avatar || "" }); delete o.author_email; return o; }),
       photos: by("Photos").filter(function (ph) { return !hiddenU[ph.update_id]; }).reverse().map(photoOut),
-      billing: bill,
+      billing: bill, contract_view: ctr,
       // Clients never receive other people's email addresses.
       messages: messagesOut(by("Messages"), me),
       reads: readsFor(me, id), seen: seenFor(me, p),
@@ -370,13 +379,13 @@ var ACTIONS = {
       checklist: by("Checklist").filter(function (c) { return audOk(me, c.aud) || isAssigned(c, me.email); }).sort(function (a, c) { return Number(a.sort || 0) - Number(c.sort || 0); }).map(function (c) { return checkOut(c, me, ppl); }),
       schedule: by("Schedule").sort(function (a, c) { return a.start < c.start ? -1 : a.start > c.start ? 1 : Number(a.sort || 0) - Number(c.sort || 0); })
         .map(function (x) { return schedOut(x, team, ppl); }),
-      contract: !bill ? { retainage_pct: 0, lines: [] } : contractOut(by("ContractLines"), p, staff),
+      contract: !ctr ? { retainage_pct: 0, lines: [] } : Object.assign(contractOut(by("ContractLines"), p, staff), { doc: contractDocOut(p) }),
       plans: plansOut(by("Plans"), me),
       phases: CONFIG.PHASES,
       rt: (function () { try { return rtProject(me, p); } catch (e) { return null; } })()
     };
     if (me.role === "admin") data.wipe = lastWipe(id);
-    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), avatar: x.avatar || "" }; });
+    if (staff) data.people = rows("People").filter(function (x) { return isStaff(x) || splitIds(x.project_ids).indexOf(id) > -1; }).map(function (x) { return { email: x.email, name: x.name, role: x.role, money: canMoney(x), active: isTrue(x.active), access: x.access || "", avatar: x.avatar || "" }; });
     return data;
   },
 
@@ -429,9 +438,10 @@ var ACTIONS = {
       if (existing.role !== role && existing.role !== "admin" && (admin || (!isStaff(existing) && role !== "staff"))) patch.role = role;   // only admins touch team roles
       if (b.name && clean(b.name, 120) && (!isStaff(existing) || admin)) patch.name = clean(b.name, 120);     // the name you type now wins
       if (admin && b.money != null) patch.money = (patch.role || existing.role) === "staff" && b.money ? "yes" : "";
+      if (role === "architect" && existing.role !== "architect" && !existing.access) patch.access = "view";   // Jesús, 25-nov: an architect only gets the right to see
       update("People", "email", email, patch);
     } else {
-      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" && role !== "setter" ? p.id : "", active: "yes", created_at: now(), money: admin && role === "staff" && b.money ? "yes" : "" });
+      insert("People", { email: email, name: clean(b.name, 120) || email, role: role, project_ids: p && role !== "staff" && role !== "setter" ? p.id : "", active: "yes", created_at: now(), money: admin && role === "staff" && b.money ? "yes" : "", access: role === "architect" ? "view" : "" });
     }
     if (b.invite && !p && (role === "staff" || role === "crew")) safeMail(function () {
       sendMail(email, "You're on the " + CONFIG.COMPANY + " portal team",
@@ -738,6 +748,32 @@ var ACTIONS = {
     // Ring each person we called, wherever they are in the portal (instant, through Firebase).
     try { who.forEach(function (x) { rtQueue("rt/u/" + rtUser(x.email) + "/call", "put", { id: newId("c"), pid: p.id, project: p.name, channel: ch, from: me.name, akey: pkey(me.email), avatar: me.avatar || "", url: as(x.email), code: code, ts: Date.now() }); }); } catch (e) {}
     return { url: as(me.email), code: code };
+  },
+
+  /* ---------- The signed contract (PDF): only people who see Contract & billing can open it; the file is never shared by link ---------- */
+  contractUpload: function (me, b) {
+    if (me.role !== "admin" || me.preview) throw new Error("Only an admin uploads the signed contract.");
+    var p = needProject(me, b.projectId), f = b.file || {};
+    if (String(f.mime || "") !== "application/pdf") throw new Error("The contract must be a PDF.");
+    var bytes = Utilities.base64Decode(String(f.data || "").replace(/^data:[^,]+,/, ""));
+    if (!bytes.length || bytes.length > 15 * 1024 * 1024) throw new Error("The PDF must be under 15 MB.");
+    var name = clean(b.name, 120) || "Signed contract.pdf"; if (!/\.pdf$/i.test(name)) name += ".pdf";
+    var file = projectFolder(p).createFile(Utilities.newBlob(bytes, "application/pdf", name));   // private: no link sharing
+    if (p.contract_file_id) try { DriveApp.getFileById(p.contract_file_id).setTrashed(true); } catch (e) {}
+    update("Projects", "id", p.id, { contract_file_id: file.getId(), contract_name: name, contract_at: now(), contract_by: me.name });
+    return { doc: contractDocOut(findBy("Projects", "id", p.id)) };
+  },
+  contractDoc: function (me, b) {
+    var p = needProject(me, b.projectId);
+    if (!canContract(me, p) || !p.contract_file_id) throw new Error("Contract not found.");
+    var blob = DriveApp.getFileById(p.contract_file_id).getBlob();
+    return { name: p.contract_name || "Contract.pdf", data: "data:application/pdf;base64," + Utilities.base64Encode(blob.getBytes()) };
+  },
+  contractRemove: function (me, b) {
+    if (me.role !== "admin" || me.preview) throw new Error("Only an admin removes the signed contract.");
+    var p = needProject(me, b.projectId);
+    if (p.contract_file_id) try { DriveApp.getFileById(p.contract_file_id).setTrashed(true); } catch (e) {}
+    update("Projects", "id", p.id, { contract_file_id: "", contract_name: "", contract_at: "", contract_by: "" }); return {};
   },
 
   /* ---------- Plans: revisions of the drawing set, with what changed sheet by sheet ---------- */
@@ -2372,6 +2408,7 @@ function summary(p, inv, msgs, tl, me, lines, reads) {
     unread: me ? unreadOf(me, mine(msgs), reads || {}) : 0
   });
 }
+function contractDocOut(p) { return p.contract_file_id ? { name: p.contract_name || "Contract.pdf", at: p.contract_at || "", by: p.contract_by || "" } : null; }
 function projectOut(p) {
   return { id: p.id, name: p.name, client_name: p.client_name, address: p.address, city: p.city, phase: p.phase, progress: Number(p.progress || 0),
     start_date: p.start_date, target_date: p.target_date, summary: p.summary, status: p.status, cover: p.cover_file_id ? img(p.cover_file_id, 1200) : "",
@@ -2609,7 +2646,7 @@ function prefetch(tables) {
 function tableSheet(t) {
   if (_SHEETS[t]) return _SHEETS[t];
   var book = ss(), sh = book.getSheetByName(t);
-  if (!sh) sh = book.insertSheet(t, book.getNumSheets());
+  if (!sh) { try { sh = book.insertSheet(t, book.getNumSheets()); } catch (e) { SpreadsheetApp.flush(); sh = book.getSheetByName(t); if (!sh) throw e; } }   // two requests creating a new tab at once: use the one that won
   var n = TABLES[t].length;
   if (sh.getLastRow() === 0) {
     sh.getRange(1, 1, sh.getMaxRows(), n).setNumberFormat("@");
@@ -2734,5 +2771,445 @@ ACTIONS.moveNow = function (me, b) {
 function permisos() {
   ScriptApp.getProjectTriggers(); DriveApp.getRootFolder(); GmailApp.getAliases(); CalendarApp.getDefaultCalendar(); UrlFetchApp.fetch("https://www.google.com/generate_204", { muteHttpExceptions: true });
   try { SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
-  Logger.log("Listo: el servidor nuevo tiene permiso. Regresa a Claude.");
+  Logger.log("Done: the new server has permission. Go back to Claude.");
 }
+
+/* ======================================================================================================
+   «Pregúntale» (Jesús, 24-nov-2026): the office asks in plain words and Jesús's private AI (Hearth, on the YERBAPC)
+   answers with the portal's real data. The browser never talks to Hearth: this server checks the person is staff,
+   signs the question (HMAC-SHA256) and forwards it; Hearth reads data back through datos_bot (its own secret, read only).
+   Secrets live only in Script Properties (BOT_URL, BOT_SECRET_ASK, BOT_SECRET_DATA), set from the Mac with its private
+   key (botConfig). Phase 1: staff only (admin + office). Every question and answer goes to the "Bot log" tab.
+   ====================================================================================================== */
+TABLES["Bot log"] = ["id", "at", "email", "name", "role", "conversacion_id", "pregunta", "respuesta", "fuentes", "datos_usados", "ms", "status"];
+var BOT_NA = "The assistant isn't available right now.";
+function hmacHex(secret, text) { return Utilities.computeHmacSha256Signature(String(text), String(secret)).map(function (b) { return ((b + 256) % 256).toString(16).padStart(2, "0"); }).join(""); }
+function eqConst(a, b) { a = String(a); b = String(b); if (a.length !== b.length) return false; var d = 0; for (var i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+function botLog(row) { try { withLock(function () { insert("Bot log", row); }); } catch (e) { /* the answer still goes back */ } }
+function macKeyOk(k) { var h = PropertiesService.getScriptProperties().getProperty("FEED_KEY_HASH"); k = String(k || ""); return !!h && k.length >= 40 && sha(k) === h; }
+ACTIONS.preguntar = function (me, b) {
+  if (!me || !isStaff(me) || me.preview) throw new Error("Only Blue Sierra staff can use the assistant.");
+  var q = clean(b.pregunta, 1500); if (q.length < 2) throw new Error("Type your question.");
+  var pr = PropertiesService.getScriptProperties(), url = pr.getProperty("BOT_URL"), sec = pr.getProperty("BOT_SECRET_ASK");
+  var conv = /^c[A-Za-z0-9]{6,40}$/.test(String(b.conversacion_id || "")) ? String(b.conversacion_id) : newId("c"), row = findPerson(me.email) || me, t0 = Date.now();
+  var log = { id: newId("bq"), at: now(), email: normEmail(me.email), name: row.name || "", role: row.role || "", conversacion_id: conv, pregunta: q, respuesta: "", fuentes: "", datos_usados: "", ms: "", status: "" };
+  if (!url || !sec) { log.status = "sin configurar"; botLog(log); return { disponible: false, respuesta: BOT_NA, conversacion_id: conv }; }
+  var rolBot = log.email === "jtoto@bluesierracorp.com" ? "jesus" : "oficina";           // Hearth answers only these two (phase 1: staff only)
+  // ASCII-only JSON (accents as \u00fa): the bytes Google sends are the bytes we signed, whatever charset UrlFetch uses (25-nov: «Jesús» broke the signature → 401)
+  var body = JSON.stringify({ pregunta: q, usuario: { email: log.email, nombre: log.name, rol: rolBot, rol_portal: log.role }, conversacion_id: conv, ts: Date.now() }).replace(/[\u007f-\uffff]/g, function (c) { return "\\u" + ("0000" + c.charCodeAt(0).toString(16)).slice(-4); }), code = 0, txt = "", res = null;
+  try {
+    var r = UrlFetchApp.fetch(url.replace(/\/+$/, "") + "/api/bs-bot", { method: "post", contentType: "application/json; charset=utf-8", payload: body, headers: { "X-BS-Firma": hmacHex(sec, body) }, muteHttpExceptions: true, followRedirects: true });
+    code = r.getResponseCode(); txt = r.getContentText(); res = parseJson(txt, null);
+  } catch (e) { txt = String(e && e.message || e); }
+  log.ms = String(Date.now() - t0);
+  if (code !== 200 || !res || typeof res.respuesta !== "string" || res.error || Date.now() - t0 > 62000) {
+    log.status = ("error " + code + " " + String((res && res.error) || txt)).slice(0, 200); botLog(log);
+    return { disponible: false, respuesta: BOT_NA, conversacion_id: conv };
+  }
+  var fuentes = (Array.isArray(res.fuentes) ? res.fuentes : []).slice(0, 12).map(function (f) { return typeof f === "string" ? { titulo: clean(f, 160) } : { titulo: clean(f && f.titulo, 160), detalle: clean(f && f.detalle, 300) }; }).filter(function (f) { return f.titulo; });
+  var usados = (Array.isArray(res.datos_usados) ? res.datos_usados : []).slice(0, 12).map(function (x) { return clean(x, 60); }).filter(Boolean), resp = String(res.respuesta).slice(0, 8000);
+  log.respuesta = resp; log.fuentes = JSON.stringify(fuentes); log.datos_usados = usados.join(", "); log.status = "ok";
+  var propuesta = null;
+  if (Array.isArray(res.acciones) && res.acciones.length) propuesta = botPropose(me, res.acciones, conv, q);
+  if (propuesta) log.status = "ok · propuesta " + propuesta.id;
+  botLog(log);
+  return { disponible: true, respuesta: resp, fuentes: fuentes, datos_usados: usados, conversacion_id: conv, propuesta: propuesta };
+};
+NO_LOCK.preguntar = 1; NO_BUMP.preguntar = 1;                                          // a question changes no portal data (the log row doesn't count)
+/* The Mac sets the bot's address and secrets with its own private key (the same one that reads portal requests). Never shown back. */
+PUBLIC.botConfig = function (b) {
+  if (!macKeyOk(b.key)) throw new Error("No access.");
+  var pr = PropertiesService.getScriptProperties();
+  if (b.url != null) { var u = String(b.url).trim(); if (u && !/^https:\/\/[a-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._\-\/]*)?$/i.test(u)) throw new Error("Bad URL."); if (u) pr.setProperty("BOT_URL", u); else pr.deleteProperty("BOT_URL"); }
+  [["secreto_pregunta", "BOT_SECRET_ASK"], ["secreto_datos", "BOT_SECRET_DATA"]].forEach(function (x) { if (b[x[0]] == null) return; var v = String(b[x[0]]); if (!/^[0-9a-f]{64,128}$/.test(v)) throw new Error("A secret must be 64-128 hex characters."); pr.setProperty(x[1], v); });
+  if (pr.getProperty("BOT_SECRET_ASK") && pr.getProperty("BOT_SECRET_ASK") === pr.getProperty("BOT_SECRET_DATA")) throw new Error("The two secrets must be different.");
+  return { url: pr.getProperty("BOT_URL") || "", secreto_pregunta: !!pr.getProperty("BOT_SECRET_ASK"), secreto_datos: !!pr.getProperty("BOT_SECRET_DATA") };
+};
+PUBLIC_NO_LOCK.botConfig = 1;
+/* Hearth reads the portal (read only). payload = JSON text, firma = hex HMAC-SHA256(BOT_SECRET_DATA, payload); ts within 60 s. */
+PUBLIC.datos_bot = function (b) {
+  var sec = PropertiesService.getScriptProperties().getProperty("BOT_SECRET_DATA"), pl = String(b.datos != null ? b.datos : b.payload || "");
+  if (!sec || !pl || !eqConst(hmacHex(sec, pl), String(b.firma || "").toLowerCase())) throw new Error("No access.");
+  var q0 = parseJson(pl, null); if (!q0 || typeof q0 !== "object") throw new Error("Bad payload.");
+  var q = Object.assign({}, q0.filtros && typeof q0.filtros === "object" ? q0.filtros : {}, q0); q.accion = q0.tipo || q0.accion;   // {tipo, filtros:{desde,hasta,persona,obra}, ts} (also accepts them flat)
+  var tsMs = Number(q.ts) < 1e12 ? Number(q.ts) * 1000 : Number(q.ts);                 // seconds or milliseconds
+  if (!(Math.abs(Date.now() - tsMs) <= 60000)) throw new Error("Expired.");
+  var today0 = ttDayOf(ttNow()), dOk = function (v) { return /^\d{4}-\d\d-\d\d$/.test(String(v || "")); }, given = dOk(q.desde) || dOk(q.hasta);
+  var d0 = dOk(q.desde) ? q.desde : ttAddDays(dOk(q.hasta) ? q.hasta : today0, -6), d1 = dOk(q.hasta) ? q.hasta : today0;
+  if (d1 < d0) { var sw = d0; d0 = d1; d1 = sw; }
+  if (ttAddDays(d0, 186) < d1) throw new Error("Ask for 6 months or less at a time.");
+  var per = String(q.persona || "").toLowerCase().trim(), ob = String(q.obra || "").toLowerCase().trim();
+  var whoOk = function (email, name) { return !per || String(email).toLowerCase() === per || String(name || "").toLowerCase().indexOf(per) > -1; };
+  var pjs = rows("Projects").filter(function (p) { return p.status !== "deleted"; }), pjName = {}; pjs.forEach(function (p) { pjName[p.id] = p.name; });
+  var obOk = function (id, name) { return !ob || String(id).toLowerCase() === ob || String(name || pjName[id] || "").toLowerCase().indexOf(ob) > -1; };
+  var hrs = function (min) { return Math.round(min / 6) / 10; }, filas = [], accion = String(q.accion || "");
+  if (accion === "personas") {
+    filas = rows("People").filter(function (p) { return whoOk(p.email, p.name); }).map(function (p) {
+      return { nombre: p.name, email: p.email, rol: p.role, activo: isTrue(p.active), nivel: p.role === "crew" ? (ttIsLabor(p) ? "labor" : "supervisor") : "", trabajo: p.role === "crew" ? ttWorkOf(p) : "",
+        reloj: typeof ttEnabled === "function" ? ttEnabled(p) : false, supervisor: p.supervisor ? personName(p.supervisor) : "", pago: p.pay_type || "", tarifa: p.pay_rate || "", obras: splitIds(p.project_ids).map(function (id) { return pjName[id]; }).filter(Boolean).join(", ") };
+    });
+  } else if (accion === "horas") {
+    ttTeam().forEach(function (p) {
+      var emp = normEmail(p.email); if (!whoOk(emp, p.name)) return;
+      var per0 = ttPerDay(ttShifts(ttEvents(emp))), weeks = {};
+      Object.keys(per0).sort().forEach(function (d) { if (d < d0 || d > d1 || !per0[d]) return; var m = ttMin(per0[d]); filas.push({ tipo: "dia", persona: p.name || emp, email: emp, fecha: d, minutos: m, horas: hrs(m) }); weeks[ttWeekStart(d)] = 1; });
+      Object.keys(weeks).sort().forEach(function (ws) {
+        var days = []; for (var i = 0; i < 7; i++) days.push(ttMin(per0[ttAddDays(ws, i)] || 0));
+        var c = ttCalcWeek(days, p.pay_type), tot = days.reduce(function (a, x) { return a + x; }, 0);
+        filas.push({ tipo: "semana", persona: p.name || emp, email: emp, semana_inicio: ws, minutos: tot, horas: hrs(tot), regulares: hrs(c.reg), extra_1_5: hrs(c.ot), doble: hrs(c.dt), pago: p.pay_type || "" });
+      });
+    });
+  } else if (accion === "checadas") {
+    var NAMES = { "in": "entrada", out: "salida", meal_start: "inicio comida", meal_end: "fin comida", rest_start: "inicio descanso", rest_end: "fin descanso", "switch": "cambio de obra", presence: "reintento de ubicación", "void": "turno anulado", restore: "turno restaurado" };
+    rows("TtEvents").forEach(function (e) {
+      var ms = ttMs(e.at); if (ms == null) return; var d = ttDayOf(ms); if (d < d0 || d > d1) return;
+      var nm = personName(e.emp); if (!whoOk(e.emp, nm) || !obOk(e.ref_id, e.ref_name)) return;
+      filas.push({ persona: nm, email: e.emp, tipo: NAMES[e.kind] || e.kind, fecha: d, hora: ttLocal(ms, "HH:mm"), obra: e.ref_name || "", gps: e.presence === "verified" ? "verificado" : e.presence === "outside" ? "fuera de la obra" : e.loc_status === "ok" ? "ubicación tomada, por revisar" : e.loc_status === "imprecise" ? "ubicación aproximada" : e.loc_status === "denied" ? "permiso negado" : e.kind === "in" || e.kind === "switch" ? "sin ubicación" : "",
+        sin_senal: isTrue(e.offline), origen: e.source === "correction" ? "corrección" : e.source === "supervisor" ? "supervisor" : "teléfono", reemplazado: !!e.supersedes, nota: e.note || "" });
+    });
+    filas.sort(function (a, b2) { return (a.fecha + a.hora).localeCompare(b2.fecha + b2.hora); });
+  } else if (accion === "obras") {
+    var inv = rows("Invoices"), lines = rows("ContractLines");
+    filas = pjs.filter(function (p) { return obOk(p.id, p.name); }).map(function (p) {
+      var mo = moneyOf(p, inv.filter(function (i) { return i.project_id === p.id; }), lines.filter(function (l) { return l.project_id === p.id; }));
+      return { id: p.id, nombre: p.name, cliente: p.client_name, direccion: [p.address, p.city].filter(Boolean).join(", "), fase: p.phase, estado: p.status || "active", avance: p.progress, inicio: p.start_date, fin_meta: p.target_date,
+        contrato: mo.total, facturado: mo.billed, pagado: mo.paid, por_cobrar: mo.waiting, vencido: mo.overdue, retenido: mo.held, por_facturar: mo.left };
+    });
+  } else if (accion === "facturas") {
+    filas = rows("Invoices").filter(function (i) { var d = String(i.issued || "").slice(0, 10); return obOk(i.project_id) && (!given || (d >= d0 && d <= d1)); }).map(function (i) {
+      return { numero: i.number, obra: pjName[i.project_id] || "", titulo: i.title, monto: num(i.amount), retenido: num(i.retainage), estado: i.status, emitida: i.issued, vence: i.due, pagada: i.paid_date };
+    });
+  } else if (accion === "calendario") {                                                    // to propose date changes (fase 2): the real names and ids
+    filas = rows("Schedule").filter(function (x) { return pjName[x.project_id] && obOk(x.project_id); }).map(function (x) {
+      return { id: x.id, obra: pjName[x.project_id], tipo: x.kind, titulo: x.title, inicio: x.start, fin: x.end, fase: x.phase, estado: x.status || "planned", de_quien: x.owner || "" };
+    }).sort(function (a, c) { return (a.obra + a.inicio).localeCompare(c.obra + c.inicio); });
+  } else if (accion === "pendientes") {
+    filas = rows("Checklist").filter(function (x) { return pjName[x.project_id] && obOk(x.project_id); }).map(function (x) {
+      return { id: x.id, obra: pjName[x.project_id], fase: x.phase, pendiente: x.item, hecho: isTrue(x.done), de_quien: x.owner || "", vence: x.due || "" };
+    });
+  } else if (accion === "miembros") {                                                       // who is on each job (to send a note to Tom)
+    filas = [];
+    pjs.filter(function (p) { return obOk(p.id, p.name); }).forEach(function (p) { membersOf(p).forEach(function (m) { if (!whoOk(m.email, m.name)) return; filas.push({ obra: p.name, nombre: m.name, email: m.email, rol: m.role }); }); });
+  } else throw new Error("Unknown accion (horas, checadas, obras, personas, facturas, calendario, pendientes, miembros).");
+  var total = filas.length;
+  return { accion: accion, desde: d0, hasta: d1, filas: filas.slice(0, 500), total: total, truncado: total > 500 };
+};
+PUBLIC_NO_LOCK.datos_bot = 1; NO_BUMP.datos_bot = 1; NO_BUMP.botConfig = 1;
+
+/* ---- «Pregúntale» fase 2 (Jesús, 24-nov): "agrégale una nota a Tom…", "pasa la demolición al 30". The AI only PROPOSES; the
+   change happens when Jesús or the office taps «Aplicar» (admins only). Allowed: a message to a project's client or one person,
+   a project update, a schedule item's dates/status, a checklist item done/undone. Never money, hours, people or deletes.
+   Proposals live on the server (the browser only holds an id); before applying, each value is checked again; dates and
+   checklist changes can be undone for 7 days. Everything goes to the "Bot cambios" tab. ---- */
+TABLES["Bot cambios"] = ["id", "at", "email", "conversacion_id", "pregunta", "acciones", "estado", "decidido_por", "decidido_at", "resultado", "deshacer"];
+function botAdmin(me) { return !!me && me.role === "admin" && !me.preview; }
+function botFind(list, q, label, nameOf) {
+  q = String(q || "").toLowerCase().trim(); if (!q) throw new Error("Missing " + label + ".");
+  var hit = list.filter(function (x) { return String(x.id).toLowerCase() === q; }); if (hit.length) return hit[0];
+  hit = list.filter(function (x) { return String(nameOf(x) || "").toLowerCase().indexOf(q) > -1; });
+  if (hit.length === 1) return hit[0];
+  if (!hit.length) throw new Error("Couldn't find " + label + " «" + q + "».");
+  throw new Error("More than one match for " + label + " «" + q + "»: " + hit.slice(0, 5).map(nameOf).join(" · ") + ".");
+}
+function botFmt(d) { if (!d) return "—"; var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], x = String(d).split("-"); return m[Number(x[1]) - 1] + " " + Number(x[2]) + (x[0] !== today().slice(0, 4) ? ", " + x[0] : ""); }
+function botResolve(me, a) {
+  var op = String(a && a.tipo || ""), pj = botFind(rows("Projects").filter(function (x) { return x.status !== "deleted"; }), a.obra, "the project", function (x) { return x.name; });
+  if (op === "mensaje") {
+    var texto = clean(a.texto, 2000); if (texto.length < 2) throw new Error("The message text is missing.");
+    var paraEmail = "", para = "the client chat";
+    if (a.para) { var who = botFind(membersOf(pj).filter(function (x) { return !isStaff(x); }), a.para, "the person", function (x) { return x.name + " " + x.email; }); paraEmail = normEmail(who.email); para = who.name; }
+    return { tipo: op, obra: pj.id, obra_nombre: pj.name, para: paraEmail, texto: texto, resumen: pj.name + " · message to " + para + ": «" + texto.slice(0, 160) + (texto.length > 160 ? "…" : "") + "» (they get a portal notice)" };
+  }
+  if (op === "avance") {
+    var tx = clean(a.texto, 3000); if (tx.length < 2) throw new Error("The update text is missing.");
+    var cl = a.para_cliente !== false;
+    return { tipo: op, obra: pj.id, obra_nombre: pj.name, texto: tx, aud: cl ? ["client"] : ["team"], avisar: cl && a.avisar_correo === true, resumen: pj.name + " · update " + (cl ? "for the client" : "team only") + ": «" + tx.slice(0, 160) + (tx.length > 160 ? "…" : "") + "»" };
+  }
+  if (op === "fecha") {
+    var it = botFind(rows("Schedule").filter(function (x) { return x.project_id === pj.id; }), a.item, "the schedule item", function (x) { return x.title; });
+    var ini = a.inicio != null ? dateOrEmpty(a.inicio) : it.start, fin = a.fin != null ? (a.fin === "" ? "" : dateOrEmpty(a.fin)) : it.end, est = a.estado != null ? String(a.estado) : it.status || "planned";
+    if (!ini) throw new Error("Invalid start date for «" + it.title + "».");
+    if (a.fin && !fin) throw new Error("Invalid end date for «" + it.title + "».");
+    if (["planned", "in progress", "done"].indexOf(est) < 0) throw new Error("Invalid status (planned, in progress, done).");
+    if (it.kind !== "task") fin = "";
+    if (fin && fin < ini) throw new Error("In «" + it.title + "» the end is before the start.");
+    var antes = { start: it.start, end: it.end, status: it.status || "planned" }, despues = { start: ini, end: fin, status: est };
+    if (JSON.stringify(antes) === JSON.stringify(despues)) return null;
+    var EST = { planned: "planned", "in progress": "in progress", done: "done" };
+    return { tipo: op, obra: pj.id, obra_nombre: pj.name, item: it.id, antes: antes, despues: despues, resumen: pj.name + " · «" + it.title + "»: " + botFmt(antes.start) + (antes.end ? "–" + botFmt(antes.end) : "") + " (" + EST[antes.status] + ") → " + botFmt(despues.start) + (despues.end ? "–" + botFmt(despues.end) : "") + " (" + EST[despues.status] + ")" };
+  }
+  if (op === "pendiente") {
+    var ck = botFind(rows("Checklist").filter(function (x) { return x.project_id === pj.id; }), a.item, "the checklist item", function (x) { return x.item; });
+    var want = a.hecho !== false; if (isTrue(ck.done) === want) return null;
+    return { tipo: op, obra: pj.id, obra_nombre: pj.name, item: ck.id, antes: { done: isTrue(ck.done) }, despues: { done: want }, resumen: pj.name + " · to-do «" + ck.item + "»: " + (want ? "mark done" : "reopen") };
+  }
+  if (op === "recorrer") {
+    var pl = schedShiftPlan(pj, { desde: a.desde, dias: a.dias, motivo: a.motivo, reserva: a.reserva });
+    if (!pl.cambios.length) return null;
+    return { tipo: op, obra: pj.id, obra_nombre: pj.name, cambios: pl.cambios, resumen: pl.resumen };
+  }
+  throw new Error("I can't do «" + op + "» yet (I can: message, update, date, to-do, shift).");
+}
+/* ---- Recorrer el calendario (Jesús, 24-nov): «recorre Derynck 2 días por la lluvia», by voice or with the Schedule button.
+   Everything not done that starts on/after the date moves N working days (weekends and «No production» days don't count);
+   a task already running on that date keeps its start and ends later. Payments and «No production» blocks stay put.
+   For weather, the pooled weather reserve absorbs it first (its end stays), so the completion date holds while there is reserve. ---- */
+function schedDays(pjId) {
+  var blocked = {};
+  rows("Schedule").filter(function (x) { return x.project_id === pjId && /^no production/i.test(x.title || "") && x.start; }).forEach(function (x) {
+    var d = new Date(x.start + "T12:00:00Z"), e = new Date((x.end || x.start) + "T12:00:00Z"); while (d <= e) { blocked[d.toISOString().slice(0, 10)] = 1; d.setUTCDate(d.getUTCDate() + 1); }
+  });
+  var isWd = function (s) { var w = new Date(s + "T12:00:00Z").getUTCDay(); return w !== 0 && w !== 6 && !blocked[s]; };
+  var step = function (s, k) { var d = new Date(s + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + k); return d.toISOString().slice(0, 10); };
+  var add = function (s, n) { var d = s; if (n === 0) { while (!isWd(d)) d = step(d, 1); return d; } var k = n > 0 ? 1 : -1, left = Math.abs(n); while (left > 0) { d = step(d, k); if (isWd(d)) left--; } return d; };
+  var count = function (a, b) { if (!a || !b || b < a) return 0; var n = 0, d = a; while (d <= b) { if (isWd(d)) n++; d = step(d, 1); } return n; };
+  var calDays = function (a, b) { return Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5); };
+  return { isWd: isWd, add: add, count: count, step: step, calDays: calDays };
+}
+function schedShiftPlan(pj, o) {
+  var n = Math.round(Number(o.dias)); if (!n || Math.abs(n) > 60) throw new Error("Say how many working days to shift (1 to 60, or negative to move earlier).");
+  var all = rows("Schedule").filter(function (x) { return x.project_id === pj.id; }), W = schedDays(pj.id);
+  var desde = dateOrEmpty(o.desde);
+  if (!desde && o.desde) { var anc = botFind(all, o.desde, "the schedule item", function (x) { return x.title; }); desde = anc.start; }
+  if (!desde) desde = today();
+  var fixed = function (x) { return x.kind === "payment" || /^no production/i.test(x.title || "") || x.status === "done"; };
+  var isRes = function (x) { return /weather reserve|reserva/i.test(x.title || ""); };
+  var weather = o.reserva !== false, res = weather ? all.filter(function (x) { return isRes(x) && x.status !== "done" && x.end >= desde; })[0] : null;
+  var cambios = [], resInfo = null, newEnd = {}, newStart = {};
+  var chain = function (x) { return x.kind === "task" && x.end && !fixed(x) && !isRes(x) && !/selections|submittals|purchasing/i.test(x.title || ""); };
+  var preds = all.filter(chain);
+  // Like a Gantt: each item keeps the gap it had after the task that finished last before it; if that task moved, it follows it.
+  all.slice().sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : String(a.end || "") < String(b.end || "") ? -1 : 1; }).forEach(function (x) {
+    if (fixed(x) || !x.start || x === res) return;
+    var a = { start: x.start, end: x.end || "", title: x.title }, d = null;
+    if (x.start >= desde) {
+      var pr = null; preds.forEach(function (q) { if (q !== x && q.end < x.start && newEnd[q.id] && (!pr || q.end > pr.end)) pr = q; });
+      var s2;
+      if (pr) { var lag = W.count(W.step(pr.end, 1), x.start), cal = /cure|fragu/i.test(x.title || "");          // a cure starts the day after the pour, weekend or not
+        s2 = lag > 0 && !cal ? W.add(newEnd[pr.id], lag) : W.step(newEnd[pr.id], W.calDays(pr.end, x.start)); }
+      else s2 = W.add(x.start, n);
+      var e2 = "";
+      if (x.end) e2 = /cure|fragu/i.test(x.title) ? W.step(s2, W.calDays(x.start, x.end)) : W.add(s2, Math.max(0, W.count(x.start, x.end) - 1));
+      d = { start: s2, end: e2, title: x.title };
+    } else if (x.end && x.end >= desde && chain(x)) d = { start: x.start, end: W.add(x.end, n), title: x.title };   // running on that date: it just ends later
+    if (d) { if (chain(x)) newEnd[x.id] = d.end; if (d.start !== a.start || d.end !== a.end) cambios.push({ item: x.id, antes: a, despues: d }); }
+  });
+  if (res) {
+    var have = W.count(res.start, res.end), lastEnd = cambios.reduce(function (m, c) { return c.despues.end > m ? c.despues.end : c.despues.start > m ? c.despues.start : m; }, "");
+    var rs = lastEnd ? W.add(lastEnd, 1) : res.start, re = res.end, left = W.count(rs, re);
+    if (left < 1) { re = W.add(rs, Math.max(0, have - Math.abs(n)) || 0); left = W.count(rs, re); }
+    var t2 = String(res.title).replace(/\(\s*\d+\s*working days?\s*\)/i, "(" + left + " working days)");
+    if (rs !== res.start || re !== res.end || t2 !== res.title) cambios.push({ item: res.id, antes: { start: res.start, end: res.end || "", title: res.title }, despues: { start: rs, end: re, title: t2 } });
+    resInfo = { antes: have, despues: left, fin: re };
+  }
+  var hito = all.filter(function (x) { return x.kind === "milestone" && /completion|terminaci/i.test(x.title || ""); }).sort(function (a, b) { return a.start < b.start ? 1 : -1; })[0], hitoD = hito && cambios.filter(function (c) { return c.item === hito.id; })[0];
+  var why = clean(o.motivo, 120);
+  var resumen = pj.name + " · shift " + cambios.filter(function (c) { return !res || c.item !== res.id; }).length + " items " + Math.abs(n) + " working day" + (Math.abs(n) === 1 ? "" : "s") + (n < 0 ? " earlier" : " later") + " from " + botFmt(desde) + (why ? " (" + why + ")" : "") +
+    (hito ? " · completion: " + botFmt(hito.start) + (hitoD ? " → " + botFmt(hitoD.despues.start) : " (same)") : "") + (resInfo ? " · weather reserve: " + resInfo.antes + " → " + resInfo.despues + " days" : "") + " · payments don't move";
+  return { desde: desde, dias: n, cambios: cambios, resumen: resumen, reserva: resInfo };
+}
+function schedShiftRun(me, x, undo) {
+  var list = x.cambios || [], want = undo ? "despues" : "antes", set = undo ? "antes" : "despues";
+  list.forEach(function (c) { var it = findBy("Schedule", "id", c.item); if (!it) throw new Error("an item no longer exists; nothing was changed");
+    if (it.start !== c[want].start || String(it.end || "") !== String(c[want].end || "") || it.title !== c[want].title) throw new Error("«" + it.title + "» changed in the meantime; nothing was changed"); });
+  list.forEach(function (c) { update("Schedule", "id", c.item, { start: c[set].start, end: c[set].end, title: c[set].title, edited_by: me.email, edited_at: now() }); });
+  return (undo ? "moved back " : "shifted ") + list.length + " items";
+}
+/* The Schedule button: preview first, then apply (kept in «Bot cambios», so «Deshacer» works the same). */
+ACTIONS.schedShift = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin shifts the schedule.");
+  var pj = needProject(me, b.projectId), plan = schedShiftPlan(pj, { desde: b.desde, dias: b.dias, motivo: b.motivo, reserva: b.reserva });
+  var EST = function (c) { return { titulo: c.despues.title, antes: botFmt(c.antes.start) + (c.antes.end ? "–" + botFmt(c.antes.end) : ""), despues: botFmt(c.despues.start) + (c.despues.end ? "–" + botFmt(c.despues.end) : "") }; };
+  if (!b.aplicar) return { resumen: plan.resumen, partidas: plan.cambios.map(EST) };
+  if (!plan.cambios.length) throw new Error("Nothing to shift from that date.");
+  return withLock(function () {                                                           // the preview reads only; applying takes the save lock
+  var x = { tipo: "recorrer", obra: pj.id, obra_nombre: pj.name, cambios: plan.cambios, resumen: plan.resumen }, how = schedShiftRun(me, x, false), id = newId("bc");
+  insert("Bot cambios", { id: id, at: now(), email: normEmail(me.email), conversacion_id: "", pregunta: "Shift button: " + plan.resumen, acciones: JSON.stringify([x]), estado: "aplicado", decidido_por: normEmail(me.email), decidido_at: now(), resultado: JSON.stringify([{ resumen: plan.resumen, ok: how }]), deshacer: JSON.stringify([Object.assign({}, x, { tipo: "recorrer_deshacer" })]) });
+  postEvent(pj, me, "date", "moved the schedule", plan.resumen.replace(pj.name + " · ", ""), "sched:shift", "team");
+  if (typeof dataBump === "function") try { dataBump(); } catch (e) {}
+  return { id: id, resumen: plan.resumen, partidas: plan.cambios.length };
+  });
+};
+NO_LOCK.schedShift = 1;
+function botPropose(me, acciones, conv, pregunta) {
+  if (!botAdmin(me)) return { id: "", lineas: [{ error: "Only Jesús, Sareli and Nayeli can request changes." }], aplicables: 0 };
+  var lineas = [], ok = [];
+  acciones.slice(0, 40).forEach(function (a) { try { var r = botResolve(me, a); if (r) { ok.push(r); lineas.push({ resumen: r.resumen }); } } catch (e) { lineas.push({ error: String(e.message || e) }); } });
+  if (!ok.length) return { id: "", lineas: lineas.length ? lineas : [{ error: "Nothing to change: it's already like that." }], aplicables: 0 };
+  var id = newId("bc");
+  try { withLock(function () { insert("Bot cambios", { id: id, at: now(), email: normEmail(me.email), conversacion_id: conv, pregunta: String(pregunta).slice(0, 1500), acciones: JSON.stringify(ok), estado: "propuesto", decidido_por: "", decidido_at: "", resultado: "", deshacer: "" }); }); }
+  catch (e) { return { id: "", lineas: [{ error: "Couldn't save the proposal: " + e.message }], aplicables: 0 }; }
+  return { id: id, lineas: lineas, aplicables: ok.length };
+}
+function botRun(me, x) {
+  if (x.tipo === "mensaje") { ACTIONS.sendMessage(me, { projectId: x.obra, text: x.texto, channel: x.para ? dmOf(pkey(me.email), pkey(x.para)) : "client" }); return "enviado"; }   // private: from whoever taps «Aplicar»
+  if (x.tipo === "avance") { ACTIONS.postUpdate(me, { projectId: x.obra, text: x.texto, aud: x.aud, notify: !!x.avisar }); return "publicado"; }
+  if (x.tipo === "fecha" || x.tipo === "fecha_deshacer") {
+    var it = findBy("Schedule", "id", x.item); if (!it) throw new Error("it no longer exists");
+    var want = x.tipo === "fecha" ? x.antes : x.despues, set = x.tipo === "fecha" ? x.despues : x.antes;
+    if (it.start !== want.start || String(it.end || "") !== String(want.end || "") || (it.status || "planned") !== want.status) throw new Error("someone changed it in the meantime; it wasn't touched");
+    ACTIONS.saveScheduleItem(me, { projectId: x.obra, item: { id: it.id, kind: it.kind, title: it.title, start: set.start, end: set.end, phase: it.phase, owner: it.owner === "client" ? "client" : "blue sierra", status: set.status } });
+    return "cambiada";
+  }
+  if (x.tipo === "recorrer" || x.tipo === "recorrer_deshacer") return schedShiftRun(me, x, x.tipo === "recorrer_deshacer");
+  if (x.tipo === "pendiente" || x.tipo === "pendiente_deshacer") {
+    var ck = findBy("Checklist", "id", x.item); if (!ck) throw new Error("it no longer exists");
+    var w = x.tipo === "pendiente" ? x.antes.done : x.despues.done; if (isTrue(ck.done) !== w) throw new Error("someone changed it in the meantime; it wasn't touched");
+    ACTIONS.toggleChecklist(me, { itemId: ck.id }); return "cambiado";
+  }
+  throw new Error("unknown action");
+}
+function botNeedRow(me, id) {
+  if (!botAdmin(me)) throw new Error("Only Jesús, Sareli and Nayeli can apply changes.");
+  var r = findBy("Bot cambios", "id", String(id || "")); if (!r) throw new Error("Couldn't find that proposal."); return r;
+}
+ACTIONS.botAplicar = function (me, b) {
+  var r = botNeedRow(me, b.id); if (r.estado !== "propuesto") throw new Error("That proposal is already " + ({ propuesto: "proposed", aplicado: "applied", descartado: "discarded", deshecho: "undone", vencido: "expired" }[r.estado] || r.estado) + ".");
+  var t0 = ttMs(String(r.at).replace(" ", "T")) || Date.parse(r.at); if (t0 && Date.now() - t0 > 6 * 36e5) { update("Bot cambios", "id", r.id, { estado: "vencido" }); throw new Error("The proposal is more than 6 hours old; ask for it again."); }
+  var acc = parseJson(r.acciones, []), res = [], undo = [];
+  acc.forEach(function (x) {
+    try { var how = botRun(me, x); res.push({ resumen: x.resumen, ok: how }); if (x.tipo === "fecha" || x.tipo === "pendiente" || x.tipo === "recorrer") undo.push(Object.assign({}, x, { tipo: x.tipo + "_deshacer" })); }
+    catch (e) { res.push({ resumen: x.resumen, error: String(e.message || e) }); }
+  });
+  update("Bot cambios", "id", r.id, { estado: "aplicado", decidido_por: normEmail(me.email), decidido_at: now(), resultado: JSON.stringify(res), deshacer: JSON.stringify(undo) });
+  return { resultado: res, deshacer: undo.length > 0 };
+};
+ACTIONS.botDescartar = function (me, b) { var r = botNeedRow(me, b.id); if (r.estado !== "propuesto") throw new Error("That proposal is already " + ({ propuesto: "proposed", aplicado: "applied", descartado: "discarded", deshecho: "undone", vencido: "expired" }[r.estado] || r.estado) + "."); update("Bot cambios", "id", r.id, { estado: "descartado", decidido_por: normEmail(me.email), decidido_at: now() }); return {}; };
+ACTIONS.botDeshacer = function (me, b) {
+  var r = botNeedRow(me, b.id); if (r.estado !== "aplicado") throw new Error("Only applied changes can be undone.");
+  var t1 = Date.parse(String(r.decidido_at).replace(" ", "T")); if (t1 && Date.now() - t1 > 7 * 864e5) throw new Error("More than 7 days have passed; change it by hand.");
+  var res = []; parseJson(r.deshacer, []).forEach(function (x) { try { res.push({ resumen: x.resumen, ok: botRun(me, x) }); } catch (e) { res.push({ resumen: x.resumen, error: String(e.message || e) }); } });
+  update("Bot cambios", "id", r.id, { estado: "deshecho", resultado: JSON.stringify(res) });
+  return { resultado: res, nota: "Messages and updates already sent aren't deleted." };
+};
+
+/* Jesús, 25-nov: «al arquitecto le des las opciones de ver el proyecto que yo solamente le estoy otorgando derecho a ver».
+   People.access = "view": an outsider (architect or client) sees their project(s) but can't change or write anything.
+   New architects start that way. Only an admin switches it ("view" ⇄ "" = can also write in the chat, checklist and requests). */
+// «access» column is added at the very end (after tt_home, in Time.gs): the sheet keeps columns in the order they were added (27-nov fix).
+var VIEW_OK = { markRead: 1, presence: 1, tick: 1, typing: 1, logout: 1, saveProfile: 1, setPin: 1, feedback: 1, feedbackFeed: 1, checkEmail: 1, checkPhone: 1 };
+ACTIONS.setAccess = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús changes what an outside person can do.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || isStaff(p) || isTeam(p)) throw new Error("Only clients and architects have view-only access.");
+  var v = b.access === "view" ? "view" : "";
+  if (String(p.access || "") === v) return { access: v };
+  update("People", "email", e, { access: v });
+  try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
+  return { access: v };
+};
+
+/* ---------- Contract & billing documents (Jesús, 25-nov): change-order status, payment summary, meeting notes…
+   Private Drive files (no link sharing), served through the portal like the signed contract.
+   level "contract": whoever sees the contract (incl. #pm crew). level "billing": only who sees billing (never the crew). ---------- */
+TABLES.BillDocs = ["id", "project_id", "name", "file_id", "level", "at", "by", "size"];
+READ_ONLY.billDoc = 1; NO_BUMP.billDoc = 1; VIEW_OK.billDoc = 1;
+function billDocOk(me, p, d) { return d.level === "billing" ? canBill(me, p) : canContract(me, p); }
+function billDocsOut(me, p) {
+  return rows("BillDocs").filter(function (d) { return d.project_id === p.id && billDocOk(me, p, d); })
+    .sort(function (a, c) { return a.at < c.at ? 1 : a.at > c.at ? -1 : 0; })
+    .map(function (d) { return { id: d.id, name: d.name, level: d.level === "billing" ? "billing" : "contract", at: d.at, by: d.by, size: num(d.size) }; });
+}
+function billDocNeedWrite(me) { if (me.preview || !(me.role === "admin" || canMoney(me))) throw new Error("Only Jesús and people tagged #money add billing documents."); }
+ACTIONS.billDocUpload = function (me, b) {
+  billDocNeedWrite(me); var p = needProject(me, b.projectId), f = b.file || {};
+  if (String(f.mime || "") !== "application/pdf") throw new Error("Documents must be PDF.");
+  var bytes = Utilities.base64Decode(String(f.data || "").replace(/^data:[^,]+,/, ""));
+  if (!bytes.length || bytes.length > 8 * 1024 * 1024) throw new Error("Keep documents under 8 MB (make them lighter first).");
+  var name = clean(b.name, 120) || "Document.pdf"; if (!/\.pdf$/i.test(name)) name += ".pdf";
+  var level = b.level === "billing" ? "billing" : "contract";
+  var old = b.replaceId ? findBy("BillDocs", "id", b.replaceId) : null; if (old && old.project_id !== p.id) old = null;
+  var file = projectFolder(p).createFile(Utilities.newBlob(bytes, "application/pdf", name));   // private: no link sharing
+  var row = { name: name, file_id: file.getId(), level: level, at: now(), by: me.name, size: String(bytes.length) };
+  if (old) { try { DriveApp.getFileById(old.file_id).setTrashed(true); } catch (e) {} update("BillDocs", "id", old.id, row); row.id = old.id; }
+  else { row.id = newId("b"); row.project_id = p.id; insert("BillDocs", row); }
+  return { docs: billDocsOut(me, p) };
+};
+ACTIONS.billDoc = function (me, b) {
+  var d = findBy("BillDocs", "id", b.docId); if (!d) throw new Error("Document not found.");
+  var p = needProject(me, d.project_id); if (!billDocOk(me, p, d)) throw new Error("Document not found.");
+  return { name: d.name, data: "data:application/pdf;base64," + Utilities.base64Encode(DriveApp.getFileById(d.file_id).getBlob().getBytes()) };
+};
+ACTIONS.billDocRemove = function (me, b) {
+  billDocNeedWrite(me); var d = findBy("BillDocs", "id", b.docId); if (!d) return {};
+  var p = needProject(me, d.project_id);
+  try { DriveApp.getFileById(d.file_id).setTrashed(true); } catch (e) {}
+  removeWhere("BillDocs", function (r) { return r.id === d.id; }); return { docs: billDocsOut(me, p) };
+};
+var _getProjectDocs = ACTIONS.getProject;
+ACTIONS.getProject = function (me, b) {
+  var r = _getProjectDocs(me, b);
+  try { if (r && r.contract && r.project) { var p = findBy("Projects", "id", r.project.id); if (p) r.contract.docs = billDocsOut(me, p); } } catch (e) {}
+  return r;
+};
+
+/* ---------- Photos waiting for Jesús's OK (Jesús, 26-nov): «no sale nada que yo no apruebe».
+   New photos uploaded in the Photos tab are seen only by the team (office + crew) until an admin approves them;
+   then the client and the architect see them. Photos inside a posted update stay as before (the update itself is the OK).
+   Old photos (no status) count as approved. ---------- */
+if (TABLES.Photos.indexOf("status") < 0) TABLES.Photos.push("status");
+function photoHidden(ph) { return String(ph.status || "") === "review"; }
+var _uploadPhotosReview = ACTIONS.uploadPhotos;
+ACTIONS.uploadPhotos = function (me, b) {
+  needStaff(me); var p = needProject(me, b.projectId), coverBefore = p.cover_file_id || "";
+  var ids = savePhotos(me, p, b.photos || [], clean(b.caption, 300), "");
+  var fids = {}; ids.forEach(function (id) { update("Photos", "id", id, { status: "review" }); var r = findBy("Photos", "id", id); if (r) fids[r.file_id] = 1; });
+  var p2 = findBy("Projects", "id", p.id); if (p2 && fids[p2.cover_file_id]) update("Projects", "id", p.id, { cover_file_id: coverBefore });   // a photo waiting for OK never becomes the cover
+  return { count: ids.length, review: ids.length };
+};
+ACTIONS.photoApprove = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only Jesús approves photos for the client.");
+  var p = needProject(me, b.projectId), want = Array.isArray(b.photoIds) ? b.photoIds.map(String) : null;
+  var list = rows("Photos").filter(function (ph) { return ph.project_id === p.id && photoHidden(ph) && (!want || want.indexOf(ph.id) > -1); });
+  list.forEach(function (ph) { update("Photos", "id", ph.id, { status: "approved" }); });
+  if (list.length && !p.cover_file_id) update("Projects", "id", p.id, { cover_file_id: list[0].file_id });
+  if (list.length) postEvent(p, me, "photos", "shared " + list.length + (list.length === 1 ? " new photo" : " new photos"), "", "photos", "client");
+  return { approved: list.length };
+};
+var _setCoverReview = ACTIONS.setCover;
+ACTIONS.setCover = function (me, b) {
+  var ph = rows("Photos").filter(function (r) { return r.project_id === b.projectId && r.file_id === String(b.fileId); })[0];
+  if (ph && photoHidden(ph)) throw new Error("Approve the photo first: the client sees the cover.");
+  return _setCoverReview(me, b);
+};
+var _getProjectPhotos = ACTIONS.getProject;
+ACTIONS.getProject = function (me, b) {
+  var r = _getProjectPhotos(me, b);
+  try {
+    if (r && r.photos && r.photos.length) {
+      var st = {}; rows("Photos").forEach(function (ph) { if (photoHidden(ph)) st[ph.id] = 1; });
+      if (isTeam(me)) r.photos.forEach(function (ph) { if (st[ph.id]) ph.review = true; });
+      else r.photos = r.photos.filter(function (ph) { return !st[ph.id]; });
+    }
+  } catch (e) {}
+  return r;
+};
+
+/* ---------- Project contacts (Jesús, 26-nov): everyone on the job in one list (permits, inspectors, architects, subs),
+   with a tap to call or email. Team only by default; a contact marked «share» is also seen by the client and the architect. ---------- */
+TABLES.Contacts = ["id", "project_id", "name", "company", "role", "grp", "email", "phone", "notes", "share", "sort", "at", "by"];
+var CONTACT_GROUPS = ["architect", "civil", "structural", "geotech", "design", "gov", "utility", "owner", "client", "trades", "team"];
+function contactsOut(me, p) {
+  return rows("Contacts").filter(function (c) { return c.project_id === p.id && (isTeam(me) || isTrue(c.share)); })
+    .sort(function (a, b) { return CONTACT_GROUPS.indexOf(a.grp) - CONTACT_GROUPS.indexOf(b.grp) || String(a.name).localeCompare(String(b.name)); })
+    .map(function (c) { return { id: c.id, name: c.name, company: c.company, role: c.role, grp: CONTACT_GROUPS.indexOf(c.grp) > -1 ? c.grp : "trades", email: c.email, phone: c.phone, notes: isTeam(me) ? c.notes : "", share: isTrue(c.share) }; });
+}
+ACTIONS.saveContact = function (me, b) {
+  needStaff(me); var p = needProject(me, b.projectId), f = b.contact || {};
+  var row = { name: clean(f.name, 120), company: clean(f.company, 120), role: clean(f.role, 160), grp: CONTACT_GROUPS.indexOf(f.grp) > -1 ? f.grp : "trades",
+    email: f.email ? normEmail(f.email) : "", phone: clean(f.phone, 40).replace(/[^\d+()\-. x]/g, ""), notes: clean(f.notes, 500), share: f.share ? "yes" : "", at: now(), by: me.name };
+  if (!row.name) throw new Error("Write the contact's name.");
+  if (row.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.email)) throw new Error("That email doesn't look right.");
+  if (f.id) { var old = findBy("Contacts", "id", f.id); if (!old || old.project_id !== p.id) throw new Error("Contact not found."); update("Contacts", "id", f.id, row); }
+  else { row.id = newId("k"); row.project_id = p.id; row.sort = String(Date.now()); insert("Contacts", row); }
+  return { contacts: contactsOut(me, p) };
+};
+ACTIONS.deleteContact = function (me, b) {
+  needStaff(me); var c = findBy("Contacts", "id", b.contactId); if (!c) return {};
+  var p = needProject(me, c.project_id); removeWhere("Contacts", function (r) { return r.id === c.id; }); return { contacts: contactsOut(me, p) };
+};
+var _getProjectContacts = ACTIONS.getProject;
+ACTIONS.getProject = function (me, b) {
+  var r = _getProjectContacts(me, b);
+  try { if (r && r.project) { var p = findBy("Projects", "id", r.project.id); if (p) r.contacts = contactsOut(me, p); } } catch (e) {}
+  return r;
+};

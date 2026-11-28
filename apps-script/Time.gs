@@ -37,13 +37,13 @@ TABLES.TtMeals = ["id", "emp", "shift_id", "day", "answer", "start", "minutes", 
    is flagged on every check-in made from it for another person. */
 TABLES.TtDevices = ["key", "dev", "emp", "label", "first_seen", "last_seen", "uses", "status", "by", "at"];
 TABLES.TtAudit = ["id", "at", "by", "emp", "kind", "ref", "before", "after", "note"];
-var TT_T = ["TtEvents", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals", "TtPresence", "TtDevices"];
+var TT_T = ["TtEvents", "TtLunch", "TtCorrections", "TtWeeks", "TtPeriods", "TtAbsence", "TtZones", "TtAudit", "TtMeals", "TtPresence", "TtDevices"];
 var TT_READ = ["People", "LsCrews", "LsVisits", "LsProps", "Projects", "Schedule"].concat(TT_T);   // Schedule: the jobsite's tasks on the clock screen
 var TT_NOW = 0;                                                                     // tests set a fixed clock; production uses the real one
 function ttNow() { return TT_NOW || Date.now(); }
 var TT_PERMS = ["time_review", "accounting", "pay_view", "pay_rates", "period_close", "time_export", "clock_others"];
 /* Activity is separate from the place. Main ones for landscaping / hardscape; load, travel, materials, dump runs are secondary. */
-var TT_ACTS = { scope: 1, general: 1, maint: 1, prune: 1, irrig: 1, pavers: 1, concrete: 1, walls: 1, other: 1, load: 1, travel: 1, materials: 1, disposal: 1, office: 1 };
+var TT_ACTS = { logistics: 1, scope: 1, general: 1, maint: 1, prune: 1, irrig: 1, pavers: 1, concrete: 1, walls: 1, other: 1, load: 1, travel: 1, materials: 1, disposal: 1, office: 1 };
 var TT_OPEN_CASE = { pending: 1, verified_later: 1 };
 var TT_REASONS = { missed_in: 1, missed_out: 1, wrong_job: 1, meal: 1, tech: 1, other: 1, office_fix: 1, declared: 1, no_signal: 1, no_location: 1, forgot_out: 1 };   // no_signal / no_location: "I couldn't clock"; forgot_out: the check-out time of a shift left open (Nov 23)   // declared: a time typed on the clock screen instead of "now"
 var TT_ORDER = { "in": 0, meal_end: 1, rest_end: 1, "switch": 2, meal_start: 3, rest_start: 3, out: 4 };
@@ -54,7 +54,7 @@ var TT_RULES = { v: "CA-2026.1", note: "Estimate. Accounting must validate these
 function ttCfg() { return cfgMemo("tt", ttCfg0); }
 function ttCfg0() {
   var pr = cfgProps(), n = function (k, d) { var v = Number(pr.getProperty(k)); return isFinite(v) && pr.getProperty(k) !== null ? v : d; };
-  return { week_start: n("TT_WEEK_START", 1), radius: n("TT_RADIUS_M", 150), acc_ok: n("TT_ACC_OK_M", 100), open_long_h: n("TT_OPEN_LONG_H", 12), long_shift_h: n("TT_LONG_SHIFT_H", 16), retention: pr.getProperty("TT_RETENTION") || "4 years" };
+  return { week_start: n("TT_WEEK_START", 1), radius: n("TT_RADIUS_M", 150), acc_ok: n("TT_ACC_OK_M", 100), open_long_h: n("TT_OPEN_LONG_H", 12), long_shift_h: n("TT_LONG_SHIFT_H", 16), retention: pr.getProperty("TT_RETENTION") || "4 years", auto_lunch: String(pr.getProperty("TT_AUTO_LUNCH") || "1") !== "0" };
 }
 /* ---- time helpers (UTC in storage, company time zone on screen) ---- */
 function ttMs(iso) { var t = Date.parse(String(iso || "")); return isNaN(t) ? null : t; }
@@ -84,7 +84,7 @@ function ttPerms(me) {
   splitIds(p.perms).forEach(function (k) { if (TT_PERMS.indexOf(k) > -1) o[k] = 1; });
   if (o.accounting) o.time_review = 1; return o;
 }
-function ttLang(me) { var p = ttRow(me); return p.lang === "en" || p.lang === "es" ? p.lang : p.role === "crew" ? "es" : "en"; }
+function ttLang(me) { return "en"; }
 function ttErr(me, es, en) { return new Error(ttLang(me) === "es" ? es : en); }
 /* Rollout: nobody sees the clock until Jesús turns it on, per person (People.clock) or for everyone (TT_ALL). */
 function ttAll() { return cfgMemo("ttAll", function () { return PropertiesService.getScriptProperties().getProperty("TT_ALL") === "yes"; }); }
@@ -276,9 +276,9 @@ ACTIONS.ttDevice = function (me, b) {
 function ttPhone(v) { var d = String(v || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); return d.length === 10 ? d : ""; }
 function ttByPhone(ph) { return ph ? rows("People").filter(function (p) { return ttPhone(p.phone) === ph && isTrue(p.active); })[0] || null : null; }
 PUBLIC.checkPhone = function (b) {
-  var ph = ttPhone(b.phone); if (!ph) throw new Error("Escribe tu número de 10 dígitos. / Type your 10-digit number.");
+  var ph = ttPhone(b.phone); if (!ph) throw new Error("Type your 10-digit phone number.");
   var p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
-  return { hasPin: !!p.pin_hash, welcome: !!(p.pin_hash && p.pin_temp), name: first(p.name), lang: p.lang || (p.role === "crew" ? "es" : "en") };
+  return { hasPin: !!p.pin_hash, welcome: !!(p.pin_hash && p.pin_temp), name: first(p.name), lang: "en" };
 };
 PUBLIC.loginPhone = function (b) {
   var ph = ttPhone(b.phone), p = ttByPhone(ph); if (!p) throw new Error(NO_ACCESS);
@@ -289,7 +289,7 @@ PUBLIC.loginPhone = function (b) {
 var ttLoginPin0 = PUBLIC.loginPin;
 PUBLIC.loginPin = function (b) {
   var who = findPerson(normEmail(b.email)), temp = who && who.pin_temp ? String(who.pin_temp) : "";
-  if (temp && temp < now()) throw new Error("Tu código de bienvenida venció. Pídele uno nuevo a la oficina. / Your welcome code expired. Ask the office for a new one.");
+  if (temp && temp < now()) throw new Error("Your welcome code expired. Ask the office for a new one.");
   var r = ttLoginPin0(b); try { if (b.device_id) ttDev(normEmail(b.email), b.device_id, b.ua, "login"); } catch (e) {}
   if (temp) r.mustSetPin = true;                                                         // they came in with the office's code: next they choose their own PIN
   return r;
@@ -355,6 +355,7 @@ function ttAuthorized(emp, t, id) {
     if (w === "build" && (t === "visit" || t === "property" || t === "maint")) return { ok: false, name: "" };
     if (w === "maint" && t === "project") return { ok: false, name: "" }; }
   if (t === "maint") return staff || crewAny ? { ok: true, name: ttMaintTile(who).name } : null;
+  if (t === "logistics") return staff || crewAny ? { ok: true, name: ttLogTile(who).name } : null;
   if (t === "visit") { var v = findBy("LsVisits", "id", id), p = v && findBy("LsProps", "id", v.property_id); return p && p.status !== "deleted" ? { ok: staff || crewAny || crews.indexOf(v.crew_id) > -1 || crews.indexOf(p.crew_id) > -1, name: p.name } : null; }
   if (t === "property") { var pp = findBy("LsProps", "id", id); return pp && pp.status !== "deleted" && !isTrue(pp.sample) ? { ok: staff || crewAny || crews.indexOf(pp.crew_id) > -1, name: pp.name } : null; }
   if (t === "project") { var pj = findBy("Projects", "id", id); return pj && pj.status !== "deleted" && pj.status !== "archived" ? { ok: staff || crewAny || splitIds(who.project_ids).indexOf(id) > -1, name: pj.name } : null; }
@@ -367,6 +368,7 @@ function ttJob(me, emp, b) {
   var note = act === "other" ? clean(b.act_note, 80) : "", scopeId = "";
   if (act === "other" && note.length < 2) throw ttErr(me, "Escribe la actividad.", "Write the activity.");
   var t = String(b.ref_type || ""), id = String(b.ref_id || ""), name = "";
+  if (t === "logistics") { id = "all"; if (act === "general") act = "logistics"; }
   if (act === "scope") {                                                                // must be an item of this jobsite's own scope
     var it = ttScopeOf(b.scope_ref_type || t, b.scope_ref_id || id).filter(function (x) { return x.id === String(b.scope_id || ""); })[0];
     if (!it) throw ttErr(me, "Esa actividad no está en el alcance de este jobsite. Elige otra o escríbela.", "That activity isn't in this jobsite's scope. Pick another or write it.");
@@ -445,8 +447,45 @@ function ttStateOf(emp) {
 }
 /* Crew see only their kind of work on the clock: active construction jobs, maintenance (one "Maintenance" choice, the property
    comes from the GPS), or both. Not marked yet = active jobs only, unless they're on a maintenance crew (then both). Jesús, Nov 23. The office always sees every place. */
-function ttWorkOf(p) { var w = String((p && p.work) || ""); if (w === "maint" || w === "both" || w === "build") return w; return p && p.email && ttCrewsOf(normEmail(p.email)).length ? "both" : "build"; }   // not marked: on a maintenance crew = both, otherwise active jobs only
+function ttWorkOf(p) { var w = String((p && p.work) || ""); if (w === "maint" || w === "both" || w === "build") return w; return "both"; }   // not marked: both (Jesús, 24-nov: every crew member gets their jobs + one "Mantenimiento"); the office can still set "Active jobs only"   // not marked: on a maintenance crew = both, otherwise active jobs only
 var TT_MAINT_NEAR_M = 800;                                                                  // a maintenance check-in takes the nearest property within this distance
+/* ---- Forgotten check-outs (Jesús, 24-nov: "if they can skip the check-out and write notes, they always find excuses") ----
+   A shift nobody closed is closed automatically 2 h after the scheduled end of the day: at that end time (the crew's hours,
+   or TT_DAY_END, 3:30 pm by default), or at the last real tap if that was later. The worker never types the time; if they
+   really worked later, the supervisor or the office records it with evidence. Every automatic close counts as a strike. */
+function ttStrict() { return cfgProps().getProperty("TT_STRICT_OUT") !== "0"; }   // on unless Jesús turns it off (Script Property TT_STRICT_OUT = 0)
+function ttDayEndFor(emp, day) {
+  var hm = null; ttCrewsOf(emp).forEach(function (c) { var m = String(c.hours || "").match(/(\d{1,2}):(\d\d)\s*$/); if (m && !hm) hm = ("0" + m[1]).slice(-2) + ":" + m[2]; });
+  if (!hm) { var v = String(cfgProps().getProperty("TT_DAY_END") || "15:30"), m2 = v.match(/^(\d{1,2}):(\d\d)$/); hm = m2 ? ("0" + m2[1]).slice(-2) + ":" + m2[2] : "15:30"; }
+  return hm;
+}
+function ttAutoCloseEmp(emp, nowMs) {
+  nowMs = nowMs || ttNow(); var made = 0; if (!ttStrict()) return 0;
+  ttShifts(ttEvents(emp), nowMs).forEach(function (s) {
+    if (!s.open || s.voided || s.broken) return;
+    var hm = ttDayEndFor(emp, s.day), endMs = ttFromLocal(s.day + " " + hm), lastMs = s.events.reduce(function (m, e) { var t = ttMs(e.at); return t > m ? t : m; }, s.start);
+    if (nowMs < Math.max(endMs, lastMs) + 2 * 36e5) return;                                   // still within the day (2 h of grace)
+    var at = Math.max(lastMs, Math.min(endMs, nowMs));
+    insert("TtEvents", { id: newId("te"), emp: emp, actor: "system", kind: "out", at: ttIso(at), device_at: "", recv_at: ttIso(nowMs), tz: CONFIG.TZ, act: "", ref_type: "", ref_id: "", ref_name: "",
+      lat: "", lon: "", acc: "", loc_at: "", loc_status: "none", zone: "none", zone_name: "", zone_m: "", source: "auto", offline: "", seq: "", client_key: "", device: "", shift_id: s.id, supersedes: "", corr_id: "",
+      note: "Automatic check-out: they didn't check out (schedule " + hm + ")", status: "ok", case_id: "", scope_id: "" });
+    made++;
+  });
+  return made;
+}
+function ttAutoCloseAll() {                                                                  // the hourly sweep (from the keep-warm trigger)
+  return withLock(function () { var n = 0; ttTeam().forEach(function (p) { n += ttAutoCloseEmp(normEmail(p.email)); }); if (n) { ttBump(); if (typeof dataBump === "function") dataBump(); } return n; });
+}
+function ttForgotMonth(emp, evs) {                                                          // strikes this calendar month
+  var m = ttDayOf(ttNow()).slice(0, 7); return (evs || ttEvents(emp)).filter(function (e) { return e.source === "auto" && e.kind === "out" && ttDayOf(ttMs(e.at)).slice(0, 7) === m; }).length;
+}
+/* Properties measured on their own (their own choice on the clock): Script Property TT_OWN_PROPS (property ids, comma-separated);
+   until it's set, Park McKee HOA (Jesús, 24-nov). */
+function ttOwnProp(p) {
+  if (!p || p.status === "deleted" || isTrue(p.sample)) return false;
+  var v = cfgProps().getProperty("TT_OWN_PROPS");
+  return v != null ? splitIds(v).indexOf(p.id) > -1 : /park\s*mc\s*kee/i.test(String(p.name || ""));
+}
 function ttNearestProp(loc) {
   loc = loc || {}; var lat = Number(loc.lat), lon = Number(loc.lon); if (loc.status !== "ok" || !isFinite(lat) || !isFinite(lon)) return null;
   var best = null; rows("LsProps").forEach(function (p) { if (p.status === "deleted" || isTrue(p.sample) || p.lat === "" || p.lon === "" || !isFinite(num(p.lat)) || !(num(p.lat) || num(p.lon))) return;
@@ -465,10 +504,21 @@ function ttSuggest(emp, who0, crews0) {
     .sort(function (a, b) { return (crews.indexOf(b.crew_id) > -1) - (crews.indexOf(a.crew_id) > -1); }).slice(0, 80).map(function (p) { return withScope({ ref_type: "property", ref_id: p.id, name: p.name, sub: addr(p), mine: crews.indexOf(p.crew_id) > -1 }); });
   var projs = rows("Projects").filter(function (p) { return (p.status === "active" || !p.status) && (crewAll || mineP.indexOf(p.id) > -1); })
     .sort(function (a, b) { return (mineP.indexOf(b.id) > -1) - (mineP.indexOf(a.id) > -1); }).map(function (p) { return withScope({ ref_type: "project", ref_id: p.id, name: p.name, sub: addr(p), mine: mineP.indexOf(p.id) > -1 }); });
-  var zones = ttZones().map(function (z) { return { ref_type: "zone", ref_id: z.id, name: z.name, sub: z.kind === "yard" ? "Yard" : "Office", geo: true, scope: [] }; });
+  var zones = ttZones().map(function (z) { return { ref_type: "zone", ref_id: z.id, name: z.name, sub: z.kind === "yard" ? "Yard" : "Office", kind: z.kind, geo: true, scope: [] }; });
   if (who.role === "crew") { var w = ttWorkOf(who);
-    if (w === "build") { visits = []; props = []; } else props = [ttMaintTile(who)];
-    if (w === "maint") projs = []; }
+    /* Jesús, 24-nov: ONE "Mantenimiento" for all maintenance (the property comes from the GPS), plus the properties measured on their
+       own (Park McKee HOA) as separate choices. "Mantenimiento" replaces the Yard tile for the crew; old Yard hours keep their id. */
+    if (w === "build") { visits = []; props = []; }
+    else props = [ttMaintTile(who)].concat(rows("LsProps").filter(function (p) { return ttOwnProp(p); }).map(function (p) { return withScope({ ref_type: "property", ref_id: p.id, name: p.name, sub: addr(p), own: true }); }));
+    if (w === "maint") projs = [];
+    zones = zones.filter(function (z) { return z.kind !== "yard"; });    // the office keeps Yard
+    props = props.concat([ttLogTile(who)]); }                             // Reyna, 24-nov: «Transporte y logística» as its own kind of work
+  // Sareli, 24-nov: the place an admin assigned goes first and comes pre-selected on the crew's clock
+  var home = String(who.tt_home || ""), hp = home.split("|");
+  if (home) { var all0 = visits.concat(projs, props, zones), hit = all0.filter(function (o) { return o.ref_type + "|" + o.ref_id === home; })[0];
+    if (!hit && hp[0] === "property") { var hpp = findBy("LsProps", "id", hp[1]); if (hpp && hpp.status !== "deleted") { hit = withScope({ ref_type: "property", ref_id: hpp.id, name: hpp.name, sub: addr(hpp) }); props = [hit].concat(props); } }
+    if (!hit && hp[0] === "project") { var hpj = findBy("Projects", "id", hp[1]); if (hpj && hpj.status !== "deleted") { hit = withScope({ ref_type: "project", ref_id: hpj.id, name: hpj.name, sub: addr(hpj) }); projs = [hit].concat(projs); } }
+    if (hit) hit.assigned = true; }
   return { visits: visits, properties: props, projects: projs, zones: zones };
 }
 /* What crew see about their own taps: that it was recorded, never whether the location or phone matched (that goes to the office). */
@@ -497,7 +547,7 @@ ACTIONS.ttState = function (me, b) {
     var spots = [].concat(sug.projects || [], sug.properties || []).filter(function (x) { return x && x.name; }), ex = [];
     [1, 2].forEach(function (back, i) { var d = ttAddDays(today0, -back), sp = spots[i % Math.max(1, spots.length)] || { name: "Jobsite" };
       ex.push({ day: d, place: sp.name, start: d + "T07:00:00", end: d + "T15:30:00", open: false, paid_min: 480, presence: "verified", example: true }); });
-    return { enabled: true, preview: true, mode: "off", shift: null, presence: null, today_min: 0, today: today0, server_now: ttIso(ttNow()), lang: "es", perms: {}, recent: ex, news: [], pending: 0, reviewer: false, admin: false,
+    return { enabled: true, preview: true, mode: "off", shift: null, presence: null, today_min: 0, today: today0, server_now: ttIso(ttNow()), lang: "en", perms: {}, recent: ex, news: [], pending: 0, reviewer: false, admin: false,
       suggest: sug, privacy: { retention: ttCfg().retention, radius: ttCfg().radius } };
   }
   ttClocker(me); var emp = normEmail(me.email), pm = ttPerms(me), row = ttRow(me), cfg = ttCfg();
@@ -507,6 +557,7 @@ ACTIONS.ttState = function (me, b) {
   var news = mine.filter(function (c) { return c.decided_at && (!c.seen_at || c.seen_at < c.decided_at); }).map(function (c) { return { id: c.id, status: c.status, date: c.date, note: c.decision_note }; });
   var stt = ttStateOf(emp);
   if (row.role === "crew") stt = ttCrewView(stt);
+  stt.forgot_month = ttForgotMonth(emp); stt.strict = ttStrict(); stt.auto_lunch = ttLunchOn();
   return Object.assign(stt, { lang: ttLang(me), labor: ttIsLabor(row), perms: pm, pay_type: row.pay_type || "", suggest: ttSuggest(emp), news: news, pending: mine.filter(function (c) { return c.status === "pending" || c.status === "needs_info"; }).length,
     privacy: { retention: cfg.retention, radius: cfg.radius }, reviewer: !!pm.time_review, enabled: true, office_pending: pm.time_review ? ttOfficePending(me) : 0, admin: me.role === "admin", team: pm.clock_others ? ttScope(me).map(function (e) { return { email: e, name: personName(e) }; }) : [] });
 };
@@ -529,6 +580,7 @@ ACTIONS.ttPunch = function (me, b) {
     if (dev > nowMs + 120000) { notes.push("device clock was ahead of the server"); at = nowMs; } else at = dev;
     if (nowMs - at > 7 * 864e5) { status = "conflict"; notes.push("arrived more than 7 days late"); }
   } else if (dev != null && Math.abs(dev - nowMs) > 5 * 60000) notes.push("device clock off by " + Math.round((dev - nowMs) / 60000) + " min");
+  if (!offline && ttAutoCloseEmp(emp, nowMs)) delete _ROWS.TtEvents;                     // a shift left open from another day closes at its scheduled end first
   var shifts = ttShifts(ttEvents(emp), nowMs).filter(function (s) { return !s.voided && !s.broken; }), stale = shifts.filter(function (s) { return ttStale(s, nowMs); }).pop() || null, open = shifts.filter(function (s) { return s.open && !ttStale(s, nowMs); }).pop(), id = newId("te"), sid = id, job = null, placeEv = false;
   var per = findBy("TtPeriods", "id", ttWeekStart(ttDayOf(at))); if (per && per.status === "closed") { status = "conflict"; notes.push("that week is already closed"); }
   if (kind === "in") {
@@ -562,6 +614,7 @@ ACTIONS.ttPunch = function (me, b) {
     throw ttErr(me, "Activa la ubicación de tu teléfono para checar, o escribe por qué no puedes.", "Turn on your phone's location to clock in, or write why you can't.");
   var loc = ttLocate(b.loc, job, dev != null ? dev : at);
   if (!placeEv) { loc.presence = ""; loc.presence_reason = ""; }                         // out / meals / activity changes: the location is kept as evidence only
+  else if (job.ref_type === "logistics") { loc.presence = "na"; loc.presence_reason = "on_the_road"; }   // Transporte y logística: on the road, no jobsite to check (location kept as evidence)
   var ev = Object.assign({ id: id, emp: emp, actor: me.email, kind: kind, at: ttIso(at), device_at: dev != null ? ttIso(dev) : "", recv_at: ttIso(nowMs), tz: CONFIG.TZ,
     act: kind === "in" || kind === "switch" ? job.act : "", act_note: kind === "in" || kind === "switch" ? job.act_note || "" : "", ref_type: job.ref_type || "", ref_id: job.ref_id || "", ref_name: job.ref_name || "",
     source: src, offline: offline ? "yes" : "", seq: String(num(b.seq) || ""), client_key: key, device: clean(b.device, 200), shift_id: sid, supersedes: "", corr_id: "", note: notes.join("; "), status: status, case_id: "", scope_id: kind === "in" || kind === "switch" ? job.scope_id || "" : "" }, loc);
@@ -572,14 +625,14 @@ ACTIONS.ttPunch = function (me, b) {
   }
   var ipv = String(b.ip || ""); if (/^[0-9a-fA-F:.]{3,45}$/.test(ipv)) ev.ip = ipv;     // as reported by the phone itself: supporting detail only
   var cs = placeEv && status === "ok" ? ttCaseOf(emp, sid) : null;
-  if (placeEv && status === "ok" && (cs || ev.presence !== "verified")) ev.case_id = cs ? cs.id : newId("tp");
+  if (placeEv && status === "ok" && (cs || (ev.presence !== "verified" && ev.presence !== "na"))) ev.case_id = cs ? cs.id : newId("tp");
   insert("TtEvents", ev);
   if (ev.case_id) cs = ttCaseTrack(ev, cs);
   if (noLoc.length >= 5 && ev.case_id) { var c9 = findBy("TtPresence", "id", ev.case_id); if (c9) { var ex9 = parseJson(c9.explain, []); ex9.push({ at: ttIso(nowMs), text: (ttLang(me) === "es" ? "Sin ubicación: " : "No location: ") + noLoc }); update("TtPresence", "id", c9.id, { explain: JSON.stringify(ex9), updated_at: ttIso(nowMs) }); } }
   if (src === "supervisor") ttAudit(me, emp, "clock_for", ev.id, null, { kind: kind, at: ev.at }, "clocked by a supervisor");
   var crewTap = (findPerson(emp) || {}).role === "crew" && src !== "supervisor";
   var out = { status: status, event: ttEvOut(ev, true), state: crewTap ? ttCrewView(ttStateOf(emp)) : ttStateOf(emp), presence: placeEv ? { result: ev.presence, reason: ev.presence_reason, dist: ev.zone_m ? num(ev.zone_m) : null, acc: ev.acc ? num(ev.acc) : null, radius: ev.radius_m ? num(ev.radius_m) : null, place: ev.ref_name, case: cs ? cs.status : "" } : null };
-  if (kind === "out" && status === "ok") { var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === sid; })[0]; if (s) { out.summary = ttShiftOut(s, false); out.summary.ask_meal = s.paid > 300 * 6e4 && !s.meals.length; } }
+  if (kind === "out" && status === "ok") { var s = ttShifts(ttEvents(emp)).filter(function (x) { return x.id === sid; })[0]; if (s) { out.summary = ttShiftOut(s, false); out.summary.ask_meal = !ttLunchOn() && s.paid > 300 * 6e4 && !s.meals.length; } }   // with automatic lunch the crew is never asked (Sareli, 24-nov)
   if (crewTap) {                                                                          // crew get "recorded"; the verdict, distance and phone check stay with the office
     if (out.summary) out.summary.events = [];
     if (out.presence) out.presence = { result: "recorded", loc_off: /^(denied|unsupported)$/.test(ev.loc_status || ""), retry: !!(placeEv && ev.presence !== "verified" && /^(timeout|unavailable|imprecise|stale|uncertain|none)$/.test(ev.presence_reason || "")) };
@@ -631,13 +684,13 @@ ACTIONS.ttPresenceDecideMany = function (me, b) {
   if (!done.length && failed.length) throw new Error(failed[0].error);
   return { done: done, failed: failed };
 };
-ACTIONS.ttSetLang = function (me, b) { ttClocker(me); var l = b.lang === "en" ? "en" : "es"; update("People", "email", normEmail(me.email), { lang: l }); return { lang: l }; };
+ACTIONS.ttSetLang = function (me, b) { ttClocker(me); var l = "en"; update("People", "email", normEmail(me.email), { lang: l }); return { lang: l }; };
 
 /* One workweek for one person: days, shifts, totals, overtime estimate, items to review, corrections, confirmation. */
 function ttWeekOf(emp, ws, forReviewer) {
   var we = ttAddDays(ws, 6), all = ttEvents(emp), sh = ttShifts(all), days = [], perDay = ttPerDay(sh), who = findPerson(emp) || {};
   var inWeek = sh.filter(function (s) { return s.day >= ws && s.day <= we || (s.end != null && ttDayOf(s.end) >= ws && s.day < ws); });
-  for (var i = 0; i < 7; i++) { var d = ttAddDays(ws, i); days.push({ date: d, paid_min: ttMin(perDay[d] || 0), shifts: inWeek.filter(function (s) { return s.day === d; }).map(function (s) { return ttShiftOut(s, true); }), carry: ttCarry(inWeek, d) }); }
+  for (var i = 0; i < 7; i++) { var d = ttAddDays(ws, i); days.push({ date: d, paid_min: ttMin(perDay[d] || 0), lunch: ttLunchOut(ttLunchDay(emp, sh, d)), shifts: inWeek.filter(function (s) { return s.day === d; }).map(function (s) { return ttShiftOut(s, true); }), carry: ttCarry(inWeek, d) }); }
   var gone = {}; all.forEach(function (e) { if (e.supersedes) gone[e.supersedes] = e.corr_id || e.id; });
   var replaced = all.filter(function (e) { return gone[e.id] && ttDayOf(ttMs(e.at)) >= ws && ttDayOf(ttMs(e.at)) <= we; }).map(function (e) { var o = ttEvOut(e, true); o.replaced_by = gone[e.id]; return o; });
   var conflicts = all.filter(function (e) { return e.status === "conflict" && ttDayOf(ttMs(e.at)) >= ws && ttDayOf(ttMs(e.at)) <= we; }).map(function (e) { return ttEvOut(e, true); });
@@ -774,7 +827,10 @@ ACTIONS.ttRequestCorrection = function (me, b) {
   if (office && me.role !== "admin") throw ttErr(me, "Solo el admin edita horas de otras personas.", "Only the admin edits other people's hours.");
   var reason = office ? "office_fix" : String(b.reason || ""); if (!TT_REASONS[reason]) throw ttErr(me, "Elige el motivo.", "Pick the reason.");
   var explain = clean(b.explain, 1000); if (explain.length < (office ? 8 : 3)) throw ttErr(me, "Explica qué pasó.", "Explain what happened.");
-  var changes = ttParseChanges(me, emp, b.changes), mineEv = {}; ttEvents(emp).forEach(function (e) { mineEv[e.id] = e; });
+  var changes = ttParseChanges(me, emp, b.changes), mineEv = {};
+  if (!office && ttStrict()) { var addsIn = changes.some(function (c) { return c.op === "add" && c.kind === "in"; }), outEv = {}; ttEvents(emp).forEach(function (e) { if (e.kind === "out") outEv[e.id] = 1; });
+    if (changes.some(function (c) { return (c.op === "add" && c.kind === "out" && !addsIn) || (c.op === "move" && outEv[c.target]); }))
+      throw ttErr(me, "La hora de salida no la pones tú: la pone tu supervisor o la oficina, con tu horario y el GPS.", "You can't set your own check-out time: your supervisor or the office records it."); } ttEvents(emp).forEach(function (e) { mineEv[e.id] = e; });
   changes.forEach(function (c) { var o = c.target && mineEv[c.target]; if (o) { c.orig_kind = o.kind; c.orig_at = ttIso(ttMs(o.at)); c.orig_local = ttLocal(ttMs(o.at)); c.orig_job = ttJobOf(o); } });   // what it was, shown next to what's asked
   if (!office && changes.some(function (c) { return c.op === "void" || c.op === "restore"; })) throw ttErr(me, "Solo la oficina puede anular una jornada.", "Only the office can void a shift.");
   var id = newId("tc"), pv = ttPreview(me, emp, changes, id, clean(b.declared_place, 120));
@@ -810,7 +866,18 @@ ACTIONS.ttDecide = function (me, b) {
   var per = findBy("TtPeriods", "id", c.period_id), closed = !!per && per.status === "closed";
   if (closed && !ttPerms(me).accounting) throw new Error("That week is closed. Only accounting decides changes to a closed week.");
   if (dec === "approve") {
-    var pv = ttPreview(me, c.emp, parseJson(c.changes, []), c.id, c.declared_place);      // re-checked against the records as they are now
+    var pv;
+    try { pv = ttPreview(me, c.emp, parseJson(c.changes, []), c.id, c.declared_place); }   // re-checked against the records as they are now
+    catch (err) {
+      // Sareli, 24-nov (Erick): the office had already fixed that shift by hand, so the request no longer fits. Close it as done instead of failing.
+      if (ttCoveredByOffice(c)) {
+        var t0 = ttIso(ttNow()), why = (note ? note + " · " : "") + "The office had already fixed it; nothing else was added.";
+        update("TtCorrections", "id", c.id, { status: "approved", decided_by: self, decided_at: t0, decision_note: why, applied: "", delta_min: "0", history: ttHist(c, me, "approved (already fixed by the office)", why) });
+        ttAudit(me, c.emp, "correction_closed_already_fixed", c.id, null, null, why);
+        return { correction: ttCorOut(findBy("TtCorrections", "id", c.id)), already: true };
+      }
+      throw ttErr(me, "Esta solicitud ya no cabe: la jornada cambió desde que la pidieron (" + err.message + "). Recházala con una nota, o corrige la jornada a mano.", "This request no longer fits: the shift changed since it was asked (" + err.message + "). Reject it with a note, or fix the shift by hand.");
+    }
     pv.virt.forEach(function (e) { insert("TtEvents", e); });
     var patch = { status: "approved", decided_by: self, decided_at: ttIso(ttNow()), decision_note: note, applied: pv.virt.map(function (e) { return e.id; }).join(","), delta_min: String(pv.delta),
       before: JSON.stringify({ before: pv.before, after: pv.after }), history: ttHist(c, me, "approved", note) };
@@ -890,6 +957,13 @@ function ttExc(emp, shifts, from, to, evs) {
       why: (c.place || "No jobsite") + " · " + ttHm(ttMs(c.first_at)) + " · " + (RS[c.first_reason] || c.first_reason) + (last.dist != null ? " (" + last.dist + " m away, ±" + last.acc + " m)" : "") + (atts.length > 1 ? " · " + atts.length + " tries" : "") + (c.status === "verified_later" ? " · verified from " + ttHm(ttMs(c.verified_at)) : "") + (parseJson(c.explain, []).length ? " · explained" : ""),
       next: "Look at the evidence, then accept or reject with a reason" });
   });
+  shifts.forEach(function (s) {
+    var ao = s.events.filter(function (e) { return e.source === "auto" && e.kind === "out"; })[0]; if (!ao || s.voided || s.day < from || s.day > to) return;
+    add({ key: "auto:" + s.id, kind: "auto_closed", day: s.day, shift_id: s.id, priority: 2, title: "Closed automatically at " + ttHm(ttMs(ao.at)) + " (no check-out)", why: "Checked in " + ttHuman(s.start) + "; the day ends " + ttDayEndFor(emp, s.day) + ". Counts until someone records the real time", next: "If they worked later, record it with evidence (office correction). Talk with " + nm });
+  });
+  var fm = ttForgotMonth(emp, evs);
+  if (fm >= 2) add({ key: "forgot:" + ttDayOf(ttNow()).slice(0, 7) + ":" + pkey(emp), kind: "forgot_month", day: today, priority: fm >= 3 ? 1 : 2, title: fm + " forgotten check-outs this month",
+    why: "Each one was closed automatically at the scheduled end", next: fm >= 3 ? "Written warning per company policy (never a pay deduction)" : "Remind " + nm + ": check out every day" });
   rows("TtCorrections").forEach(function (c) {
     if (c.emp !== emp) return;
     if (c.status === "pending" || c.status === "needs_info") add({ key: "cor:" + c.id, kind: "correction", day: c.date, priority: c.status === "pending" ? 1 : 3, title: c.status === "pending" ? "Correction to decide" : "Waiting on " + nm + "'s answer", why: (c.delta_min > 0 ? "+" : "") + num(c.delta_min) + " min · " + c.explain.slice(0, 80), next: c.status === "pending" ? "Approve, reject or ask" : "Wait for the reply" });
@@ -930,7 +1004,7 @@ function ttReviewBuild(me, b, pm, ws) {
       pending: w.corrections.filter(function (c) { return c.status === "pending"; }).length, confirm: w.confirm, approval: w.approval, self: emp === self, loc: loc,
       presence_open: w.exceptions.filter(function (x) { return x.kind === "presence"; }).length,
       role: pr.role, level: pr.role === "crew" ? (ttIsLabor(pr) ? "labor" : "pm") : pr.role === "admin" ? "admin" : "team", clock: ttEnabled(pr),
-      days: w.days.map(function (d) { return { date: d.date, paid_min: d.paid_min, carry: d.carry, shifts: d.shifts.map(function (s) {
+      days: w.days.map(function (d) { return { date: d.date, paid_min: d.paid_min, lunch: d.lunch, carry: d.carry, shifts: d.shifts.map(function (s) {
         var ins = s.events.filter(function (e) { return e.kind === "in"; })[0] || {}, outs = s.events.filter(function (e) { return e.kind === "out"; })[0] || null, c = ttCaseOf(emp, s.id);
         var places = []; s.segs.forEach(function (g) { var n = g.ref_name || "No jobsite"; if (places.indexOf(n) < 0) places.push(n); });
         var last = s.events.filter(function (e) { return e.presence; }).pop() || ins;
@@ -1081,6 +1155,14 @@ function ttTodayItems(me) {
   }); });
   return out;
 }
+/* "Close my crew's day": who in my team is still checked in (a supervisor with clock_others). */
+ACTIONS.ttCrewOpen = function (me, b) {
+  var pm = ttPerms(me); if (!pm.clock_others) throw ttErr(me, "No tienes permiso para cerrar el día de otras personas.", "You can't close other people's day.");
+  var self = normEmail(me.email), out = [];
+  ttScope(me).forEach(function (emp) { if (emp === self) return; var o = ttShifts(ttEvents(emp)).filter(function (s) { return s.open && !s.voided && !s.broken; }).pop(); if (o) out.push({ email: emp, name: personName(emp), since: ttIso(o.start), place: (o.job && o.job.ref_name) || "" }); });
+  return { open: out.sort(function (a, c) { return a.name.localeCompare(c.name); }) };
+};
+NO_LOCK.ttCrewOpen = 1; READ_ONLY.ttCrewOpen = 1;
 if (typeof tdItems === "function") { var ttTd0 = tdItems; tdItems = function (me) { return ttTd0(me).concat(ttTodayItems(me)); }; }
 if (PREFETCH.todayQueue) PREFETCH.todayQueue = PREFETCH.todayQueue.concat(TT_T.filter(function (t) { return PREFETCH.todayQueue.indexOf(t) < 0; }));
 ["ttState", "ttGeoTest", "ttSettings", "ttDevice", "ttCrewAccess", "ttAdminEdit", "ttPunch", "ttPresenceExplain", "ttPresenceDecide", "ttPresenceDecideMany", "ttCaseDetail", "ttPurgeShift", "ttMeal", "ttSetLang", "ttMyWeek", "ttConfirmWeek", "ttRequestCorrection", "ttDecide", "ttReply", "ttSeen", "ttReview", "ttApprove", "ttClose", "ttSetPerson", "ttSetAbsence"].forEach(function (a) { PREFETCH[a] = TT_READ; });
@@ -1150,7 +1232,7 @@ function jcCostOut(c, me, lines) {
     reviewed_by: c.reviewed_by ? personName(c.reviewed_by) : "", reviewed_at: c.reviewed_at || "", review_note: c.review_note || "", qb: c.qb_id ? { type: c.qb_type, id: c.qb_id } : null };
 }
 ACTIONS.jcProject = function (me, b) {
-  var p = jcProj(me, b.projectId), bill = canBill(me, p), review = jcReviewer(me), labor$ = jcLaborMoney(me);
+  var p = jcProj(me, b.projectId), bill = canContract(me, p), review = jcReviewer(me), labor$ = jcLaborMoney(me);
   var lines = jcLinesOf(p.id), byId = {}; lines.forEach(function (l) { byId[l.id] = l; });
   var costs = rows("JobCosts").filter(function (c) { return c.project_id === p.id; }).sort(function (a, c) { return String(c.at).localeCompare(String(a.at)); });
   var roll = {}; costs.forEach(function (c) { var k = byId[c.line_id] ? c.line_id : ""; var r = roll[k] = roll[k] || { approved: 0, pending: 0 }; if (c.status === "approved") r.approved += num(c.amount); else if (c.status === "submitted") r.pending += num(c.amount); });
@@ -1298,3 +1380,148 @@ ACTIONS.ttState = function (me, b) {
   if (typeof prefetch === "function") prefetch(TT_STATE_READ);
   var out = ttState1(me, b); if (!TT_NOW) bigCachePut(k, out, 60); return out;
 };
+
+/* ====================================== Sareli, 24-nov ======================================
+   1) Lunch: 30 minutes come off automatically on a day whose shift runs from before 12:00 to after 1:00 pm and has no meal clocked
+      (8:00–4:30 → 8 h; 8:30–4:30 → 7.5 h; 8:00–12:00 and 8:00–1:00 → nothing). The office changes any day (0, 30…) with a reason;
+      every change is kept (TtLunch is append-only: who, when, before → after, why). Regular / overtime follow from the day totals.
+      The crew never decides anything about lunch. TT_AUTO_LUNCH = "0" turns the automatic part off.
+   2) The place an admin assigns to each crew member (People.tt_home), pre-selected on their clock, with history (TtAssign).
+   3) «Transporte y logística»: a kind of work with no jobsite (ref_type "logistics"). */
+TABLES.TtLunch = ["id", "emp", "date", "minutes", "before", "reason", "by", "at"];
+TABLES.TtAssign = ["id", "emp", "before", "after", "after_name", "reason", "by", "at"];
+TABLES.People = TABLES.People.concat(["tt_home"]);
+TABLES.People = TABLES.People.concat(["access"]);   // 25-nov view-only outsiders; MUST stay last — the sheet has it in column X
+function ttLogTile(who) { var es = ttLang({ email: (who && who.email) || "" }) === "es"; return { ref_type: "logistics", ref_id: "all", name: es ? "Transporte y logística" : "Transport & logistics", sub: es ? "Manejando, recogiendo o entregando material" : "Driving, picking up or delivering material", geo: true, scope: [] }; }   // geo: no "missing map point" warning (nothing to check on the road)
+function ttLunchOn() { return ttCfg().auto_lunch; }
+var _TTL = null, _TTLsrc = null;
+function ttLunchRows(emp, d) {
+  var all = rows("TtLunch"); if (_TTLsrc !== all) { _TTLsrc = all; _TTL = {}; all.forEach(function (r) { var k = r.emp + "|" + r.date; (_TTL[k] = _TTL[k] || []).push(r); }); }
+  return (_TTL[emp + "|" + d] || []).slice().sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+}
+function ttLunchDay(emp, shifts, d) {
+  var day = (shifts || []).filter(function (s) { return s.day === d && !s.voided && !s.broken && ttCounts(s); });
+  var meal = day.reduce(function (a, s) { return a + (s.meal || 0); }, 0), n12 = ttFromLocal(d + " 12:00"), n13 = ttFromLocal(d + " 13:00");
+  var auto = ttLunchOn() && !meal && day.some(function (s) { return s.end != null && s.start < n12 && s.end > n13; }) ? 30 : 0;
+  var hist = emp ? ttLunchRows(emp, d) : [], last = hist[hist.length - 1];
+  return { auto: auto, min: last ? num(last.minutes) : auto, manual: last || null, history: hist, worked: day.length > 0 };
+}
+function ttLunchOut(L) { if (!L || (!L.auto && !L.manual)) return null; return { auto: L.auto, min: L.min, manual: L.manual ? { reason: L.manual.reason, by: personName(L.manual.by), at: L.manual.at } : null }; }
+var ttPerDay0 = ttPerDay;
+ttPerDay = function (shifts) {
+  var out = ttPerDay0(shifts), s0 = (shifts || []).filter(function (s) { return s.events && s.events.length; })[0], emp = s0 ? s0.events[0].emp : "";
+  if (!emp) return out;
+  Object.keys(out).forEach(function (d) { var L = ttLunchDay(emp, shifts, d); if (L.min > 0) out[d] = Math.max(0, out[d] - L.min * 60000); });
+  return out;
+};
+function ttLunchCan(me) { return !me.preview && (me.role === "admin" || !!ttPerms(me).time_review); }
+/* The office's list for one workweek: every day with lunch taken off (automatic or changed by hand), newest first. */
+ACTIONS.ttLunchList = function (me, b) {
+  if (!ttLunchCan(me)) throw new Error("Only the office reviews lunch.");
+  var ws = ttWeekStart(dateOrEmpty(b.week) || ttDayOf(ttNow())), we = ttAddDays(ws, 6), out = [];
+  ttScope(me).forEach(function (emp) {
+    var sh = ttShifts(ttEvents(emp));
+    for (var i = 0; i < 7; i++) { var d = ttAddDays(ws, i); if (d > ttDayOf(ttNow())) break; var L = ttLunchDay(emp, sh, d); if (!L.auto && !L.manual) continue;
+      out.push({ emp: emp, name: personName(emp), date: d, auto: L.auto, min: L.min, manual: !!L.manual,
+        history: L.history.map(function (h) { return { before: num(h.before), after: num(h.minutes), reason: h.reason, by: personName(h.by), at: h.at }; }) }); }
+  });
+  out.sort(function (a, c) { return a.date < c.date ? 1 : a.date > c.date ? -1 : a.name.localeCompare(c.name); });
+  return { week: ws, on: ttLunchOn(), days: out };
+};
+/* Change the lunch of one or more person-days at once, with one reason (required). */
+ACTIONS.ttLunchSet = function (me, b) {
+  if (!ttLunchCan(me)) throw new Error("Only the office changes lunch.");
+  var reason = clean(b.reason, 300); if (reason.length < 3) throw new Error("Write the reason for the change (e.g. «The supervisor confirmed they didn't take lunch»).");
+  var list = [].concat(b.changes || []).slice(0, 200), scope = ttScope(me), done = 0;
+  list.forEach(function (c) {
+    var emp = normEmail(c.emp), d = dateOrEmpty(c.date), m = Math.round(Number(c.minutes));
+    if (!emp || !d || !(m >= 0 && m <= 120)) throw new Error("Lunch: pick 0 to 120 minutes.");
+    if (scope.indexOf(emp) < 0) throw new Error("You don't review the hours of " + personName(emp) + ".");
+    var L = ttLunchDay(emp, ttShifts(ttEvents(emp)), d); if (!L.worked) throw new Error(personName(emp) + " didn't work on " + d + ".");
+    if (L.min === m) return;
+    insert("TtLunch", { id: newId("tl"), emp: emp, date: d, minutes: String(m), before: String(L.min), reason: reason, by: normEmail(me.email), at: ttIso(ttNow()) });
+    ttAudit(me, emp, "lunch", d, { minutes: L.min }, { minutes: m }, reason); done++;
+  });
+  return { changed: done };
+};
+/* The place an admin assigns (pre-selected on the crew's clock). Only admins; every change kept with who, when and why. */
+ACTIONS.ttAssignSet = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin changes the assigned place.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || p.role !== "crew") throw new Error("Pick someone from the crew.");
+  var reason = clean(b.reason, 300); if (reason.length < 3) throw new Error("Write why the assigned place changes.");
+  var place = String(b.place || ""), name = "";
+  if (place) { var pr = place.split("|"); if (pr.length !== 2) throw new Error("That place isn't valid."); var a = ttAuthorized(e, pr[0], pr[1]); if (!a) throw new Error("Couldn't find that place."); if (!a.ok) throw new Error("That place isn't for their type of work (" + ttWorkOf(p) + ")."); name = a.name; }
+  if (String(p.tt_home || "") === place) return { ok: true, same: true };
+  insert("TtAssign", { id: newId("ta"), emp: e, before: p.tt_home || "", after: place, after_name: name, reason: reason, by: normEmail(me.email), at: ttIso(ttNow()) });
+  update("People", "email", e, { tt_home: place }); ttAudit(me, e, "assign_place", e, { place: p.tt_home || "" }, { place: place }, reason);
+  try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
+  return { ok: true, name: name };
+};
+NO_LOCK.ttLunchList = 1; READ_ONLY.ttLunchList = 1; NO_LOCK.ttAssignInfo = 1; READ_ONLY.ttAssignInfo = 1;   // reads only: never wait for (or hold) the save lock
+ACTIONS.ttAssignInfo = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin sees this.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || p.role !== "crew") throw new Error("Pick someone from the crew.");
+  var g = ttSuggest(e), opts = [].concat(g.projects || [], g.properties || [], g.zones || []).map(function (o) { return { key: o.ref_type + "|" + o.ref_id, name: o.name }; });
+  return { current: p.tt_home || "", options: opts, history: rows("TtAssign").filter(function (r) { return r.emp === e; }).reverse().map(function (r) { return { after: r.after_name || (r.after ? r.after : "No assigned place"), reason: r.reason, by: personName(r.by), at: r.at }; }) };
+};
+
+/* Sareli, 24-nov: was the shift of this request fixed by the office after it was asked? (then approving it again would add a second check-out) */
+function ttCoveredByOffice(c) {
+  var sids = {}; if (c.shift_id) sids[c.shift_id] = 1; parseJson(c.changes, []).forEach(function (x) { if (x.shift_id) sids[x.shift_id] = 1; });
+  var adds = parseJson(c.changes, []).filter(function (x) { return x.op === "add"; }).map(function (x) { return x.kind; });
+  if (!Object.keys(sids).length || !adds.length || adds.some(function (k) { return k !== "out"; })) return false;
+  var sh = ttShifts(ttEvents(c.emp)).filter(function (x) { return sids[x.id] && !x.voided; });
+  if (!sh.length || sh.some(function (x) { return x.end == null; })) return false;      // still open: nothing covered it
+  return rows("TtCorrections").some(function (o) { return o.emp === c.emp && o.id !== c.id && o.status === "approved" && ["admin_edit", "office_fix"].indexOf(o.reason) > -1 && String(o.decided_at) >= String(c.requested_at); });
+}
+/* Sareli, 24-nov: change the place of ONE check-in from its validation card (Yard → 2940 Paseo Robles), with a short reason.
+   Admin only, no second approval: it is recorded as an office edit (history + audit), the check-in counts as validated,
+   and optionally that place becomes the person's assigned place so their clock offers it next time. */
+ACTIONS.ttPlaceOptions = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin changes the place.");
+  var e = normEmail(b.emp), p = findPerson(e); if (!p || !isTeam(p)) throw new Error("Pick someone on the team.");
+  var g = ttSuggest(e), opts = [].concat(g.projects || [], g.properties || [], g.zones || []).filter(function (o) { return o.ref_type !== "maint"; }).map(function (o) { return { key: o.ref_type + "|" + o.ref_id, name: o.name }; });
+  return { options: opts, assigned: p.tt_home || "", crew: p.role === "crew" };
+};
+NO_LOCK.ttPlaceOptions = 1; READ_ONLY.ttPlaceOptions = 1;
+ACTIONS.ttFixPlace = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin changes the place.");
+  var c = findBy("TtPresence", "id", String(b.case_id || "")); if (!c) throw new Error("Couldn't find that clock-in.");
+  var reason = clean(b.reason, 300); if (reason.length < 3) throw new Error("Write a short reason (e.g. «Confirmed with the foreman»).");
+  var pr = String(b.place || "").split("|"); if (pr.length !== 2) throw new Error("Pick the right place.");
+  var sh = ttShifts(ttEvents(c.emp)).filter(function (x) { return x.id === c.shift_id; })[0]; if (!sh) throw new Error("That shift no longer exists.");
+  var inE = sh.events.filter(function (e) { return e.kind === "in"; })[0]; if (!inE) throw new Error("That shift has no check-in.");
+  var a = ttAuthorized(c.emp, pr[0], pr[1]); if (!a) throw new Error("Couldn't find that place."); if (!a.ok) throw new Error("That place isn't for their type of work.");
+  var from = inE.ref_name || c.place || "no place", act = inE.act && inE.act !== "unassigned" ? inE.act : "general";
+  if (pr[0] === "logistics") act = "logistics";
+  var ok = ACTIONS.ttAdminEdit(me, { emp: c.emp, shift_id: c.shift_id, explain: "Place fixed: " + from + " → " + a.name + " · " + reason,
+    changes: [{ op: "retag", target: inE.id, ref_type: pr[0], ref_id: pr[1], act: act === "scope" || act === "other" ? "general" : act }] });
+  update("TtPresence", "id", c.id, { place: a.name, updated_at: ttIso(ttNow()) });
+  if (TT_OPEN_CASE[c.status] && normEmail(me.email) !== c.emp) ACTIONS.ttPresenceDecide(me, { id: c.id, decision: "accept", note: "Place fixed to " + a.name + ": " + reason }, true);
+  var assigned = false;
+  if (b.assign) { var who = findPerson(c.emp); if (who && who.role === "crew" && String(who.tt_home || "") !== b.place) { ACTIONS.ttAssignSet(me, { email: c.emp, place: b.place, reason: reason }); assigned = true; } }
+  return { ok: true, from: from, to: a.name, delta_min: ok.delta_min, assigned: assigned };
+};
+/* Sareli, 23-nov (fb92223fce13): change a person's name (e.g. «Alfredo» → «Alfredo Ramírez» once the last name is known).
+   Admin only. The person keeps the same id (their email / phone login), so every past hour, check-in and message stays theirs and
+   simply shows the new name. Each change is kept in the audit (before → after, who, when). */
+ACTIONS.ttRename = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin changes names.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || !isTeam(p)) throw new Error("Pick someone on the team.");
+  var first = clean(b.first, 60), last = clean(b.last, 60), name = (first + " " + last).replace(/\s+/g, " ").trim();
+  if (first.length < 2) throw new Error("Write the first name.");
+  var old = String(p.name || "");                                                         // read before the update (it changes the cached row)
+  if (name === old.trim()) return { ok: true, same: true, name: name };
+  update("People", "email", e, { name: name });
+  ttAudit(me, e, "rename", e, { name: old }, { name: name }, clean(b.reason, 200) || "Name fixed");
+  try { CacheService.getScriptCache().remove("who:" + e); } catch (x) {}
+  return { ok: true, name: name, before: old };
+};
+ACTIONS.ttRenameInfo = function (me, b) {
+  if (me.role !== "admin" || me.preview) throw new Error("Only an admin sees this.");
+  var e = normEmail(b.email), p = findPerson(e); if (!p || !isTeam(p)) throw new Error("Pick someone on the team.");
+  var parts = String(p.name || "").trim().split(/\s+/);
+  return { first: parts.shift() || "", last: parts.join(" "), history: rows("TtAudit").filter(function (a) { return a.emp === e && a.kind === "rename"; }).reverse().slice(0, 10)
+    .map(function (a) { return { before: (parseJson(a.before, {}) || {}).name || "", after: (parseJson(a.after, {}) || {}).name || "", by: personName(a.by), at: a.at }; }) };
+};
+NO_LOCK.ttRenameInfo = 1; READ_ONLY.ttRenameInfo = 1;
