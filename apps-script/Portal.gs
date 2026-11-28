@@ -158,7 +158,9 @@ var NO_BUMP = { contractDoc: 1, presence: 1, tick: 1, typing: 1, markRead: 1, fe
 function planProjectIds() {
   if (_ROWS.Plans) return _ROWS.Plans;
   try { var id = PropertiesService.getScriptProperties().getProperty("PORTAL_SHEET_ID"), c = TABLES.Plans.indexOf("project_id"), L = String.fromCharCode(65 + c);
-    var v = Sheets.Spreadsheets.Values.get(id, "'Plans'!" + L + "2:" + L).values || []; return v.map(function (r) { return { project_id: String(r[0] || "") }; }); } catch (e) { return rows("Plans"); }
+    var vr = Sheets.Spreadsheets.Values.batchGet(id, { ranges: ["'Plans'!A1:AZ1", "'Plans'!" + L + "2:" + L] }).valueRanges || [];
+    if (String((((vr[0] || {}).values || [[]])[0] || [])[c] || "") !== "project_id") return rows("Plans");   // the column isn't where we expect: read it by name
+    return ((vr[1] || {}).values || []).map(function (r) { return { project_id: String(r[0] || "") }; }); } catch (e) { return rows("Plans"); }
 }
 /* The first request of the morning used to wait 5–8 s for Google to start the server. A timer touches it every 5 minutes in work hours. */
 function keepWarm() {
@@ -1042,7 +1044,7 @@ var ACTIONS = {
     push("Projects", findBy("Projects", "id", p.id));
     var outsiders = rows("People").filter(function (x) { return !isStaff(x) && splitIds(x.project_ids).indexOf(p.id) > -1; });
     outsiders.forEach(function (x) { push("People", x); });
-    if (out.length) { var sh = tableSheet("Wipes"); sh.getRange(sh.getLastRow() + 1, 1, out.length, 7).setNumberFormat("@").setValues(out.map(function (r) { return r.map(safe); })); }
+    if (out.length) { var sh = tableSheet("Wipes"); sh.getRange(sh.getLastRow() + 1, 1, out.length, colKeys("Wipes").length).setNumberFormat("@").setValues(out.map(function (r) { var o = {}; TABLES.Wipes.forEach(function (k, i) { o[k] = r[i]; }); return cellsFor("Wipes", o); })); }
     WIPE_TABLES.forEach(function (t) { removeAll(t, function (r) { return r.project_id === p.id; }); });
     outsiders.forEach(function (x) { var ids = splitIds(x.project_ids).filter(function (i) { return i !== p.id; }); if (!ids.length && x.role !== "crew") purgePerson(x); else update("People", "email", x.email, { project_ids: ids.join(",") }); });
     update("Projects", "id", p.id, { progress: "0", phase: CONFIG.PHASES[0], cover_file_id: "" });
@@ -1069,8 +1071,8 @@ var ACTIONS = {
     Object.keys(add).forEach(function (t) {
       var have = {}; rows(t).forEach(function (r) { if (r.id) have[r.id] = 1; });
       var list = add[t].filter(function (r) { return !r.id || !have[r.id]; }); if (!list.length) return;
-      var sh = tableSheet(t), h = TABLES[t];
-      sh.getRange(sh.getLastRow() + 1, 1, list.length, h.length).setNumberFormat("@").setValues(list.map(function (r) { return h.map(function (k) { return safe(r[k] == null ? "" : String(r[k])); }); }));
+      var sh = tableSheet(t);
+      sh.getRange(sh.getLastRow() + 1, 1, list.length, colKeys(t).length).setNumberFormat("@").setValues(list.map(function (r) { return cellsFor(t, r); }));
       delete _ROWS[t];
     });
     removeAll("Wipes", function (r) { return r.wipe_id === w.id; });
@@ -2245,10 +2247,10 @@ function pinsFor(me, names, msgs, tl, ck) {
 }
 /* Remove many rows at once (rewrites the tab once instead of deleting row by row). */
 function removeAll(t, test) {
-  var sh = tableSheet(t), all = rows(t), keep = all.filter(function (r) { return !test(r); }), h = TABLES[t]; delete _ROWS[t];
+  var sh = tableSheet(t), all = rows(t), keep = all.filter(function (r) { return !test(r); }), w = colKeys(t).length; delete _ROWS[t];
   if (keep.length === all.length) return;
-  if (all.length) sh.getRange(2, 1, all.length, h.length).clearContent();
-  if (keep.length) sh.getRange(2, 1, keep.length, h.length).setNumberFormat("@").setValues(keep.map(function (r) { return h.map(function (k) { return safe(r[k] == null ? "" : String(r[k])); }); }));
+  if (all.length) sh.getRange(2, 1, all.length, w).clearContent();
+  if (keep.length) sh.getRange(2, 1, keep.length, w).setNumberFormat("@").setValues(keep.map(function (r) { return cellsFor(t, r); }));
 }
 /* ============================ email replies ============================ */
 
@@ -2515,9 +2517,9 @@ function readsAll(me) { var o = {}; rows("Reads").forEach(function (r) { if (r.e
 function readsFor(me, pid) { var all = readsAll(me), o = {}; Object.keys(all).forEach(function (k) { var i = k.indexOf("|"); if (k.slice(0, i) === pid) o[k.slice(i + 1)] = all[k]; }); return o; }
 function markReadNow(me, pid, ch, last) {
   last = /^[A-Za-z0-9_-]{1,40}$/.test(String(last || "")) ? String(last) : "";
-  var list = rows("Reads"), at = now(), h = TABLES.Reads, done = false;
+  var list = rows("Reads"), at = now(), h, done = false;
   for (var i = 0; i < list.length; i++) if (list[i].email === me.email && list[i].project_id === pid && list[i].channel === ch) {
-    var sh = tableSheet("Reads"); sh.getRange(i + 2, h.indexOf("at") + 1).setValue(at); list[i].at = at;
+    var sh = tableSheet("Reads"); h = colKeys("Reads"); sh.getRange(i + 2, h.indexOf("at") + 1).setValue(at); list[i].at = at;
     if (last) { sh.getRange(i + 2, h.indexOf("last_id") + 1).setValue(last); list[i].last_id = last; }
     done = true; break;
   }
@@ -2637,42 +2639,68 @@ function prefetch(tables) {
   try {
     var res = Sheets.Spreadsheets.Values.batchGet(id, { ranges: need.map(function (t) { return "'" + t + "'!A1:AZ"; }), valueRenderOption: "FORMATTED_VALUE" });
     (res.valueRanges || []).forEach(function (vr, i) {
-      var t = need[i], h = TABLES[t], v = vr.values || [], out = [];
-      for (var r = 1; r < v.length; r++) { var o = {}, row = v[r]; for (var c = 0; c < h.length; c++) o[h[c]] = row[c] == null ? "" : String(row[c]); out.push(o); }
+      var t = need[i], v = vr.values || [], out = [];
+      if (!v.length) return;                               // empty tab: let tableSheet() label it on first use
+      setCols(t, v[0]);
+      for (var r = 1; r < v.length; r++) out.push(rowFromCells(t, v[r]));
       _ROWS[t] = out;
     });
   } catch (e) { /* a tab may not exist yet: the normal one-by-one reads still work */ }
 }
+/* Every tab is read and written by the NAMES in its own header row, never by position (27-nov: one column added in the
+   wrong place shifted every People column and the crew couldn't log in by phone). TABLES[t] says which columns must
+   exist; the tab keeps its own order. A blank, repeated or unknown header keeps its cells untouched. */
+var _KEYAT = {};
+function setCols(t, hdr) {
+  var want = TABLES[t] || [], seen = {};
+  _KEYAT[t] = (hdr || []).map(function (x) { var n = String(x == null ? "" : x).trim(); if (!n || seen[n] || want.indexOf(n) < 0) return null; seen[n] = 1; return n; });
+  return _KEYAT[t];
+}
+function colKeys(t) { if (!_KEYAT[t] || !_SHEETS[t]) tableSheet(t); return _KEYAT[t]; }
+function rowFromCells(t, cells, conv) {
+  var keys = _KEYAT[t] || [], o = {}, x = null;
+  TABLES[t].forEach(function (k) { o[k] = ""; });
+  for (var c = 0; c < keys.length; c++) {
+    var v = cells[c], s0 = v == null ? "" : (conv ? conv(v) : String(v));
+    if (keys[c]) o[keys[c]] = s0; else if (s0 !== "") { x = x || {}; x[c] = s0; }
+  }
+  if (x) Object.defineProperty(o, "__x", { value: x, enumerable: false });   // other columns ride along, never shown
+  return o;
+}
+function cellsFor(t, o) { return colKeys(t).map(function (k, c) { var v = k ? o[k] : (o.__x && o.__x[c]); return safe(v == null ? "" : String(v)); }); }
 function tableSheet(t) {
   if (_SHEETS[t]) return _SHEETS[t];
   var book = ss(), sh = book.getSheetByName(t);
   if (!sh) { try { sh = book.insertSheet(t, book.getNumSheets()); } catch (e) { SpreadsheetApp.flush(); sh = book.getSheetByName(t); if (!sh) throw e; } }   // two requests creating a new tab at once: use the one that won
-  var n = TABLES[t].length;
-  if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, sh.getMaxRows(), n).setNumberFormat("@");
-    sh.getRange(1, 1, 1, n).setValues([TABLES[t]]); sh.setFrozenRows(1);
-  } else if (sh.getLastColumn() < n) {                     // a newer version added columns: label them, keep them as text
-    var from = sh.getLastColumn() + 1;
-    sh.getRange(1, from, sh.getMaxRows(), n - from + 1).setNumberFormat("@");
-    sh.getRange(1, from, 1, n - from + 1).setValues([TABLES[t].slice(from - 1)]);
+  var want = TABLES[t], last = sh.getLastColumn();
+  if (last === 0) {
+    sh.getRange(1, 1, sh.getMaxRows(), want.length).setNumberFormat("@");
+    sh.getRange(1, 1, 1, want.length).setValues([want]); sh.setFrozenRows(1); setCols(t, want);
+  } else {
+    var hdr = sh.getRange(1, 1, 1, last).getValues()[0], keys = setCols(t, hdr), miss = want.filter(function (k) { return keys.indexOf(k) < 0; });
+    if (miss.length) {                                     // a newer version added columns: label them at the end, keep them as text
+      sh.getRange(1, last + 1, sh.getMaxRows(), miss.length).setNumberFormat("@");
+      sh.getRange(1, last + 1, 1, miss.length).setValues([miss]); setCols(t, hdr.concat(miss));
+    }
   }
   _SHEETS[t] = sh;
   return sh;
 }
 function rows(t) {
   if (_ROWS[t]) return _ROWS[t];
-  var sh = tableSheet(t), v = sh.getDataRange().getValues(), h = TABLES[t], outR = [];
-  for (var i = 1; i < v.length; i++) { var o = {}; h.forEach(function (k, c) { o[k] = v[i][c] == null ? "" : cell(v[i][c]); }); outR.push(o); }
+  var sh = tableSheet(t), v = sh.getDataRange().getValues(), outR = [];
+  for (var i = 1; i < v.length; i++) outR.push(rowFromCells(t, v[i], cell));
   _ROWS[t] = outR;
   return outR;
 }
 function insert(t, obj) {
-  var sh = tableSheet(t), h = TABLES[t], r = sh.getLastRow() + 1, vals = h.map(function (k) { return obj[k] == null ? "" : String(obj[k]); });
-  sh.getRange(r, 1, 1, h.length).setNumberFormat("@").setValues([vals.map(safe)]);
-  if (_ROWS[t] && _ROWS[t].length === r - 2) { var o = {}; h.forEach(function (k, c) { o[k] = vals[c]; }); _ROWS[t].push(o); } else delete _ROWS[t];
+  var sh = tableSheet(t), r = sh.getLastRow() + 1, o = {};
+  TABLES[t].forEach(function (k) { o[k] = obj[k] == null ? "" : String(obj[k]); });
+  sh.getRange(r, 1, 1, _KEYAT[t].length).setNumberFormat("@").setValues([cellsFor(t, o)]);
+  if (_ROWS[t] && _ROWS[t].length === r - 2) _ROWS[t].push(o); else delete _ROWS[t];
 }
 function update(t, keyCol, keyVal, patch) {
-  var sh = tableSheet(t), list = rows(t), h = TABLES[t];
+  var sh = tableSheet(t), list = rows(t), h = colKeys(t);
   for (var i = 0; i < list.length; i++) if (list[i][keyCol] === String(keyVal)) {
     Object.keys(patch).forEach(function (k) {
       var c = h.indexOf(k); if (c < 0) return;

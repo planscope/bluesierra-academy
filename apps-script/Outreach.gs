@@ -72,15 +72,15 @@ function oxFlags(f) {
 /* ---------- writing whole tables at once (imports touch hundreds of rows; one write instead of hundreds) ---------- */
 function oxWriteAll(t, list) {
   if (typeof oxMemWrite === "function") return oxMemWrite(t, list, false);              // the portal preview keeps tables in memory
-  var sh = tableSheet(t), h = TABLES[t], last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, h.length).clearContent();
-  if (list.length) sh.getRange(2, 1, list.length, h.length).setNumberFormat("@").setValues(list.map(function (o) { return h.map(function (k) { return safe(String(o[k] == null ? "" : o[k])); }); }));
-  _ROWS[t] = list.map(function (o) { var x = {}; h.forEach(function (k) { x[k] = String(o[k] == null ? "" : o[k]); }); return x; });
+  var sh = tableSheet(t), w = colKeys(t).length, last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, w).clearContent();
+  if (list.length) sh.getRange(2, 1, list.length, w).setNumberFormat("@").setValues(list.map(function (o) { return cellsFor(t, o); }));
+  _ROWS[t] = list.map(function (o) { var x = {}; TABLES[t].forEach(function (k) { x[k] = String(o[k] == null ? "" : o[k]); }); return x; });
 }
 function oxAppend(t, list) {
   if (!list.length) return; if (typeof oxMemWrite === "function") return oxMemWrite(t, list, true);
-  var sh = tableSheet(t), h = TABLES[t], r = sh.getLastRow() + 1;
-  sh.getRange(r, 1, list.length, h.length).setNumberFormat("@").setValues(list.map(function (o) { return h.map(function (k) { return safe(String(o[k] == null ? "" : o[k])); }); }));
+  var sh = tableSheet(t), r = sh.getLastRow() + 1;
+  sh.getRange(r, 1, list.length, colKeys(t).length).setNumberFormat("@").setValues(list.map(function (o) { return cellsFor(t, o); }));
   delete _ROWS[t];
 }
 
