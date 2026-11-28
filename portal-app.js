@@ -1505,24 +1505,59 @@
     if (mode === "cmp" && canCmp && !cmp) setTimeout(function () { buildCompare(d, x); }, 0);
     return '<div class="sv-bar"><div><div class="eyebrow">' + esc(d.set + " · " + d.rev) + "</div><h2>" + esc(sheetLabel(x)) + (firstRev ? "" : ' <span class="tag t-' + esc(x.status) + '">' + esc({ changed: "Changed", new: "New", same: "Same" }[x.status] || "") + "</span>") + "</h2></div>" +
       '<div class="sv-tools"><div class="chips">' + [["hl", "Highlights"], ["plain", "Clean"]].concat(canCmp ? [["cmp", "Compare with " + (x.prev.rev || "last")]] : []).map(function (o) { return '<button class="chip' + (mode === o[0] ? " on" : "") + '" data-a="sheetMode" data-v="' + o[0] + '">' + esc(o[1]) + "</button>"; }).join("") + "</div>" +
-      (S.data && S.data.canMark && mode !== "cmp" ? '<button class="chip mk-add' + (S.markPlace ? " on" : "") + '" data-a="markPlace">' + (S.markPlace ? "Tap the spot · Cancel" : "＋ Mark") + "</button>" : "") +
+      (S.data && S.data.canMark && mode !== "cmp" ? '<button class="chip mk-add' + (S.markPlace ? " on" : "") + '" data-a="markPlace">' + (S.markPlace ? "✕ Cancel" : "＋ Mark") + "</button>" : "") +
       '<button class="icon-btn" data-a="zoom" data-z="-1" aria-label="Zoom out">−</button><button class="icon-btn" data-a="zoom" data-z="1" aria-label="Zoom in">+</button>' +
       '<button class="icon-btn" data-a="sheetNav" data-d="-1" aria-label="Previous sheet"' + (i <= 0 ? " disabled" : "") + '>‹</button><span class="muted small">' + (i + 1) + " / " + list.length + '</span><button class="icon-btn" data-a="sheetNav" data-d="1" aria-label="Next sheet"' + (i >= list.length - 1 ? " disabled" : "") + ">›</button>" +
       '<button class="icon-btn" data-a="close" aria-label="Close">✕</button></div></div>' +
       (mode === "cmp" ? '<div class="sv-legend"><span><i style="background:#e5484d"></i>Removed</span><span><i style="background:#1f6fe5"></i>Added</span><span><i style="background:#9a958c"></i>Same</span></div>' : mode === "hl" && !firstRev && x.status === "changed" && (x.boxes || []).length ? '<div class="sv-legend"><span><i class="cl"></i>' + x.boxes.length + " area" + (x.boxes.length > 1 ? "s" : "") + " changed since " + esc((x.prev && x.prev.rev) || "the last revision") + "</span></div>" : "") +
-      '<div class="sv-stage" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' + stage + "</div></div>" + (mode === "cmp" ? "" : markPanel(d, x));
+      (S.markPlace && mode !== "cmp" ? markToolsHtml() : "") + '<div class="sv-stage' + (S.markPlace && (S.markTool || "pin") !== "pin" ? " drawing" : "") + '" data-lenis-prevent><div class="sv-zoom" style="width:' + (S.zoom || 100) + '%">' + stage + "</div></div>" + (mode === "cmp" ? "" : markPanel(d, x));
   }
   /* ---------------- marks on plans (27-nov) ---------------- */
   function marksAll() { return (S.data && S.data.marks) || []; }
-  function marksFor(planId, n) { return marksAll().filter(function (m) { return m.plan_id === planId && m.n === n; }); }
+  function markOn(m, planId, n) { return (m.plan_id === planId && m.n === n) || (m.also || []).some(function (a) { return a.plan_id === planId && a.n === n; }); }
+  function marksFor(planId, n) { return marksAll().filter(function (m) { return markOn(m, planId, n); }); }
+  var MK_COL = { red: "#e5484d", blue: "#1f6fe5", green: "#2e8b57", orange: "#e8890c" };
+  function cloudPath(a, b) {
+    var L = Math.min(a[0], b[0]), T = Math.min(a[1], b[1]), R = Math.max(a[0], b[0]), B = Math.max(a[1], b[1]), pts = [], d = "M" + L + " " + T, prev = [L, T];
+    function edge(ax, ay, bx, by) { var n = Math.max(2, Math.round(Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay)) / 28)); for (var i = 1; i <= n; i++) pts.push([ax + (bx - ax) * i / n, ay + (by - ay) * i / n]); }
+    edge(L, T, R, T); edge(R, T, R, B); edge(R, B, L, B); edge(L, B, L, T);
+    pts.forEach(function (q) { var r = Math.sqrt((q[0] - prev[0]) * (q[0] - prev[0]) + (q[1] - prev[1]) * (q[1] - prev[1])) * 0.58; d += " A" + r.toFixed(1) + " " + r.toFixed(1) + " 0 0 1 " + q[0].toFixed(1) + " " + q[1].toFixed(1); prev = q; });
+    return d;
+  }
+  function shapeSvg(sh, sel) {
+    if (!sh || sh.k === "pin" || !sh.p || sh.p.length < 2) return "";
+    var col = MK_COL[sh.c] || MK_COL.red, P = sh.p.map(function (q) { return [q[0] * 1000, q[1] * 1000]; }), a = P[0], b = P[P.length - 1];
+    var st = ' stroke="' + col + '" stroke-width="' + (sel ? 5 : 3) + '" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"';
+    if (sh.k === "box") return '<rect x="' + Math.min(a[0], b[0]) + '" y="' + Math.min(a[1], b[1]) + '" width="' + Math.abs(b[0] - a[0]) + '" height="' + Math.abs(b[1] - a[1]) + '" fill="' + col + '" fill-opacity=".08"' + st + "/>";
+    if (sh.k === "cloud") return '<path d="' + cloudPath(a, b) + '" fill="' + col + '" fill-opacity=".06"' + st + "/>";
+    if (sh.k === "arrow") { var t = Math.atan2(b[1] - a[1], b[0] - a[0]), h = 24, w = 0.45; return '<path d="M' + a[0] + " " + a[1] + " L" + b[0] + " " + b[1] + " M" + (b[0] - h * Math.cos(t - w)) + " " + (b[1] - h * Math.sin(t - w)) + " L" + b[0] + " " + b[1] + " L" + (b[0] - h * Math.cos(t + w)) + " " + (b[1] - h * Math.sin(t + w)) + '" fill="none"' + st + "/>"; }
+    return '<polyline points="' + P.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" ") + '" fill="none"' + st + "/>";
+  }
+  function markToolsHtml() {
+    var t = S.markTool || "pin", c = S.markColor || "red";
+    return '<div class="mk-tools"><span class="mk-hint">' + (t === "pin" ? "Tap the spot" : t === "pen" ? "Draw with your finger or mouse" : "Drag on the sheet") + "</span>" +
+      [["pin", "📍", "Pin"], ["box", "▭", "Box"], ["cloud", "☁", "Cloud"], ["arrow", "↗", "Arrow"], ["pen", "✎", "Pen"]].map(function (o) { return '<button class="mk-tool' + (t === o[0] ? " on" : "") + '" data-a="markTool" data-v="' + o[0] + '"><b>' + o[1] + "</b><span>" + o[2] + "</span></button>"; }).join("") +
+      '<span class="mk-cols">' + ["red", "blue", "green", "orange"].map(function (k) { return '<button class="mk-col' + (c === k ? " on" : "") + '" data-a="markColor" data-v="' + k + '" style="background:' + MK_COL[k] + '" aria-label="' + k + '"></button>'; }).join("") + "</span></div>";
+  }
+  function markFilesHtml(list) { return list && list.length ? '<div class="mk-files">' + list.map(function (f) { return '<a href="' + esc(f.full) + '" target="_blank" rel="noopener noreferrer"><img src="' + esc(f.thumb) + '" alt="Photo" loading="lazy" referrerpolicy="no-referrer"></a>'; }).join("") + "</div>" : ""; }
+  function markPickHtml() {
+    var fs = S.markFiles || [];
+    return '<div class="mk-pick"><label class="mk-photo">📷 Photo<input type="file" accept="image/*" multiple hidden data-mk-files></label>' +
+      fs.map(function (f, i) { return '<span class="mk-thumb"><img src="' + f.data + '" alt=""><button data-a="markFileDel" data-i="' + i + '" aria-label="Remove photo">✕</button></span>'; }).join("") + "</div>";
+  }
+  function mkKeepTyping(fn) { var t = root.querySelector(".mk-panel textarea"), v = t ? t.value : "", cls = t ? t.className : ""; fn(); if (cls) { var t2 = root.querySelector(".mk-panel textarea." + cls.split(" ")[0]); if (t2) t2.value = v; } }
   function markById(id) { return marksAll().filter(function (m) { return m.id === id; })[0]; }
   function markWhen(at) { var t = Date.parse(String(at || "").replace(" ", "T")); return t && Date.now() - t < 6 * 864e5 ? ago(t) : day(at); }
   function markText(t) { return esc(t).replace(/(^|\s)(@[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ]*(?: [A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ]*)?)/g, '$1<b class="mk-at">$2</b>'); }
   function pinsHtml(d, x) {
     var dr = S.markDraft && S.markDraft.plan === d.id && S.markDraft.n === x.n ? S.markDraft : null;
-    return marksFor(d.id, x.n).map(function (m) {
-      return '<button class="mk-pin' + (m.status === "done" ? " done" : "") + (S.markSel === m.id ? " sel" : "") + '" data-a="markOpen" data-id="' + esc(m.id) + '" style="left:' + m.x * 100 + "%;top:" + m.y * 100 + '%" aria-label="Mark ' + m.num + '">' + m.num + "</button>";
-    }).join("") + (dr ? '<i class="mk-pin draft" style="left:' + dr.x * 100 + "%;top:" + dr.y * 100 + '%">＋</i>' : "");
+    var list = marksFor(d.id, x.n);
+    var svg = '<svg class="mk-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + list.map(function (m) { return m.status === "done" && S.markSel !== m.id ? "" : shapeSvg(m.shape, S.markSel === m.id); }).join("") +
+      (dr && dr.shape ? shapeSvg(dr.shape, true) : "") + '<g class="mk-live"></g></svg>';
+    return svg + list.map(function (m) {
+      var col = m.status === "done" ? "" : ' style="left:' + m.x * 100 + "%;top:" + m.y * 100 + "%;background:" + (MK_COL[(m.shape || {}).c] || MK_COL.red) + '"';
+      return '<button class="mk-pin' + (m.status === "done" ? " done" : "") + (S.markSel === m.id ? " sel" : "") + (m.plan_id !== d.id ? " carried" : "") + '" data-a="markOpen" data-id="' + esc(m.id) + '"' + (col || ' style="left:' + m.x * 100 + "%;top:" + m.y * 100 + '%"') + ' aria-label="Mark ' + m.num + '">' + m.num + "</button>";
+    }).join("") + (dr ? '<i class="mk-pin draft" style="left:' + dr.x * 100 + "%;top:" + dr.y * 100 + "%;background:" + (MK_COL[(dr.shape || {}).c] || MK_COL.blue) + '">＋</i>' : "");
   }
   function markAtChips() {
     var me = S.me && S.me.name, seen = {};
@@ -1538,16 +1573,17 @@
     var dr = S.markDraft, m = S.markSel && markById(S.markSel);
     if (dr && dr.plan === d.id && dr.n === x.n) {
       return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><b>New mark on ' + esc(sheetLabel(x)) + '</b><button class="icon-btn" data-a="markCancel" aria-label="Cancel">✕</button></div>' +
-        '<textarea class="mk-text" rows="3" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea>' + markAtChips() +
+        '<textarea class="mk-text" rows="3" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea>' + markPickHtml() + markAtChips() +
         (staff() ? markShareHtml(dr.share || [], "") : '<p class="muted small">Blue Sierra\'s team will see it.</p>') +
         '<div class="mk-actions"><button class="btn sm" data-a="markSave">Save mark</button><button class="btn ghost sm" data-a="markCancel">Cancel</button></div></div>';
     }
-    if (!m || m.plan_id !== d.id || m.n !== x.n) return "";
+    if (!m || !markOn(m, d.id, x.n)) return "";
+    var carried = m.plan_id !== d.id ? ((m.also || []).filter(function (a) { return a.plan_id === d.id; })[0] || {}).from : "";
     return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><div class="mk-who"><b>' + esc(m.author) + '</b><span class="muted small">' + esc(markWhen(m.at)) + "</span></div>" +
       '<span class="tag ' + (m.status === "done" ? "t-same" : "t-new") + '">' + (m.status === "done" ? "Done" : "Open") + '</span><button class="icon-btn" data-a="markClose" aria-label="Close">✕</button></div>' +
-      '<p class="mk-body">' + markText(m.text) + "</p>" + (m.status === "done" && m.done_by ? '<p class="muted small">✓ Done by ' + esc(m.done_by) + " · " + esc(markWhen(m.done_at)) + "</p>" : "") +
-      (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p></div>"; }).join("") +
-      (S.data.canMark ? '<textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea>' + markAtChips() : "") +
+      (carried ? '<p class="mk-from">↻ From ' + esc(carried) + ", still open</p>" : "") + '<p class="mk-body">' + markText(m.text) + "</p>" + markFilesHtml(m.files) + (m.status === "done" && m.done_by ? '<p class="muted small">✓ Done by ' + esc(m.done_by) + " · " + esc(markWhen(m.done_at)) + "</p>" : "") +
+      (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p>" + markFilesHtml(r.files) + "</div>"; }).join("") +
+      (S.data.canMark ? '<textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea>' + markPickHtml() + markAtChips() : "") +
       '<div class="mk-actions">' + (S.data.canMark ? '<button class="btn sm" data-a="markReply" data-id="' + esc(m.id) + '">Reply</button>' : "") +
       (m.canClose ? '<button class="btn ghost sm" data-a="markDone" data-id="' + esc(m.id) + '" data-v="' + (m.status === "done" ? "0" : "1") + '">' + (m.status === "done" ? "Reopen" : "✓ Done") + "</button>" : "") +
       (m.canDelete ? '<button class="link small mk-del" data-a="markDel" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</div>" +
@@ -1561,7 +1597,8 @@
       [["open", "Open"], ["mine", "Mine"], ["done", "Done"], ["all", "All"]].map(function (o) { return '<button class="chip' + (f === o[0] ? " on" : "") + '" data-a="markFilter" data-v="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</span></div>" +
       (list.length ? list.slice(0, 60).map(function (m) {
         var d = planById(m.plan_id), sh = d && (d.sheets || []).filter(function (z) { return z.n === m.n; })[0];
-        return '<button class="mk-row" data-a="markGo" data-id="' + esc(m.id) + '" data-plan="' + esc(m.plan_id) + '" data-n="' + m.n + '"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><span class="mk-rt"><b>' + esc((d ? d.set + " · " : "") + (sh ? sheetLabel(sh) : "Page " + m.n)) + "</b><span>" + esc(String(m.text).slice(0, 160)) +
+        var loc = (m.also || [])[0] || { plan_id: m.plan_id, n: m.n };
+        return '<button class="mk-row" data-a="markGo" data-id="' + esc(m.id) + '" data-plan="' + esc(loc.plan_id) + '" data-n="' + loc.n + '"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><span class="mk-rt"><b>' + esc((d ? d.set + " · " : "") + (sh ? sheetLabel(sh) : "Page " + m.n)) + "</b><span>" + esc(String(m.text).slice(0, 160)) +
           '</span><span class="muted small">' + esc(m.author) + " · " + esc(markWhen(m.at)) + ((m.replies || []).length ? " · " + m.replies.length + " repl" + (m.replies.length > 1 ? "ies" : "y") : "") + "</span></span></button>";
       }).join("") : '<div class="muted small" style="padding:8px 2px">Nothing here.</div>') + "</section>";
   }
@@ -2602,10 +2639,13 @@
       case "finUnlink": run(b, async function () { await call("qbLink", { projectId: b.dataset.pid, customerId: "" }); await loadFin(false); toast("Unlinked"); }); return;
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "", issue: b.dataset.issue || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
-      case "markPlace": S.markPlace = !S.markPlace; S.markDraft = null; S.markSel = null; return keepScroll(render);
-      case "markCancel": S.markDraft = null; S.markPlace = false; return keepScroll(render);
+      case "markPlace": S.markPlace = !S.markPlace; S.markDraft = null; S.markSel = null; S.markFiles = []; return keepScroll(render);
+      case "markTool": S.markTool = b.dataset.v; return keepScroll(render);
+      case "markColor": S.markColor = b.dataset.v; return keepScroll(render);
+      case "markFileDel": (S.markFiles || []).splice(+b.dataset.i, 1); return mkKeepTyping(function () { keepScroll(render); });
+      case "markCancel": S.markDraft = null; S.markPlace = false; S.markFiles = []; return keepScroll(render);
       case "markClose": S.markSel = null; return keepScroll(render);
-      case "markOpen": S.markSel = b.dataset.id; S.markDraft = null; S.markPlace = false; return keepScroll(render);
+      case "markOpen": S.markSel = b.dataset.id; S.markDraft = null; S.markPlace = false; S.markFiles = []; return keepScroll(render);
       case "markFilter": S.markFilter = b.dataset.v; return keepScroll(render);
       case "markGo": return openMark(b.dataset.id, b.dataset.plan, +b.dataset.n);
       case "markAt": { var ta = root.querySelector(".mk-panel textarea"); if (ta) { ta.value = ta.value + (ta.value && !/\s$/.test(ta.value) ? " " : "") + "@" + b.dataset.name + " "; ta.focus(); } return; }
@@ -2617,15 +2657,15 @@
       }
       case "markSave": {
         var drs = S.markDraft, txt = ((root.querySelector(".mk-text") || {}).value || "").trim(); if (!drs) return; if (!txt) return toast("Write what the mark is about.");
-        run(b, async function () { var r = await call("markAdd", { projectId: S.pid, planId: drs.plan, n: drs.n, x: drs.x, y: drs.y, text: txt, share: drs.share || [] }); S.data.marks = r.marks; S.markDraft = null; S.markPlace = false; S.markSel = r.mark.id; keepScroll(render); toast("Mark " + r.mark.num + " saved"); }); return;
+        run(b, async function () { var r = await call("markAdd", { projectId: S.pid, planId: drs.plan, n: drs.n, x: drs.x, y: drs.y, text: txt, share: drs.share || [], shape: drs.shape || null, files: S.markFiles || [] }); S.data.marks = r.marks; S.markFiles = []; S.markDraft = null; S.markPlace = false; S.markSel = r.mark.id; keepScroll(render); toast("Mark " + r.mark.num + " saved"); }); return;
       }
       case "markReply": {
-        var rt = ((root.querySelector(".mk-reply") || {}).value || "").trim(); if (!rt) return toast("Write a reply.");
-        run(b, async function () { var r = await call("markReply", { markId: b.dataset.id, text: rt }); S.data.marks = r.marks; keepScroll(render); var t3 = root.querySelector(".mk-reply"); if (t3) t3.value = ""; }); return;
+        var rt = ((root.querySelector(".mk-reply") || {}).value || "").trim(), rf = S.markFiles || []; if (!rt && !rf.length) return toast("Write a reply.");
+        run(b, async function () { var r = await call("markReply", { markId: b.dataset.id, text: rt, files: rf }); S.data.marks = r.marks; S.markFiles = []; keepScroll(render); var t3 = root.querySelector(".mk-reply"); if (t3) t3.value = ""; }); return;
       }
       case "markDone": run(b, async function () { var r = await call("markDone", { markId: b.dataset.id, done: b.dataset.v === "1" }); S.data.marks = r.marks; keepScroll(render); toast(b.dataset.v === "1" ? "Marked as done" : "Open again"); }); return;
       case "markDel": sure("Delete this mark?", function () { run(b, async function () { var r = await call("markDelete", { markId: b.dataset.id }); S.data.marks = r.marks; S.markSel = null; keepScroll(render); toast("Mark deleted"); }); }); return;
-      case "close": S.modal = null; S.scDraft = null; S.markPlace = false; S.markDraft = null; S.markSel = null; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
+      case "close": S.modal = null; S.scDraft = null; S.markPlace = false; S.markDraft = null; S.markSel = null; S.markFiles = []; keepScroll(render); if (S.verLater) { S.verLater = false; liveReload(); } return;
       case "unpick": S.pending.splice(+b.dataset.i, 1); return keepScroll(render);
       case "lb": S.lb = { i: +b.dataset.i }; return keepScroll(render);
       case "lbClose": S.lb = null; return keepScroll(render);
@@ -3016,7 +3056,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261127204438";
+  var BUILD = "20261127210547";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3026,7 +3066,8 @@
       var busy = S.modal || S.busy || document.querySelector(".hp-panel") || [].some.call(document.querySelectorAll("textarea, input[type=text]"), function (t) { return t.value && t === document.activeElement; });
       if (busy) { S.newBuild = true; return; }
       try { if (sessionStorage.getItem("bsp-reload-" + v.build)) return; sessionStorage.setItem("bsp-reload-" + v.build, "1"); } catch (e) { return; }   // once per version, never a loop
-      location.reload();
+      var sc = (document.querySelector('script[src*="portal-app.js"]') || {}).src, cs = (document.querySelector('link[href*="portal.css"]') || {}).href;
+      Promise.all([sc, cs].filter(Boolean).map(function (u) { return fetch(u, { cache: "reload" }).catch(function () {}); })).then(function () { location.reload(); });
     }).catch(function () {});
   }
   setInterval(checkBuild, 5 * 60000); document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(); });
@@ -3035,14 +3076,46 @@
   root.setAttribute("data-lenis-prevent", "");
   (function () {
     root.addEventListener("click", function (e) {
-      if (!S.markPlace || !S.modal || S.modal.type !== "sheet") return;
+      if (!S.markPlace || (S.markTool || "pin") !== "pin" || !S.modal || S.modal.type !== "sheet") return;
       var w = e.target.closest && e.target.closest(".sh-wrap"); if (!w || e.target.closest(".mk-pin")) return;
       var img = w.querySelector("img"); if (!img) return; var r = img.getBoundingClientRect();
       var x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
       e.preventDefault(); e.stopPropagation();
-      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: x, y: y, share: [] }; S.markPlace = false; keepScroll(render);
+      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: x, y: y, share: [], shape: { k: "pin", c: S.markColor || "red", p: [] } }; S.markPlace = false; S.markFiles = []; keepScroll(render);
       setTimeout(function () { var ta = root.querySelector(".mk-panel .mk-text"); if (ta) ta.focus({ preventScroll: true }); }, 80);
     }, true);
+    var MD = null;
+    root.addEventListener("pointerdown", function (e) {
+      if (!S.markPlace || (S.markTool || "pin") === "pin" || !S.modal || S.modal.type !== "sheet") return;
+      var w = e.target.closest && e.target.closest(".sh-wrap"); if (!w || e.target.closest(".mk-pin")) return;
+      if (MD) { var g0 = MD.w.querySelector(".mk-live"); if (g0) g0.innerHTML = ""; MD = null; return; }        // a second finger: that's a pinch, not a drawing
+      var img = w.querySelector("img"); if (!img) return; var r = img.getBoundingClientRect();
+      var f = function (ev) { return [Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))]; };
+      MD = { id: e.pointerId, w: w, f: f, k: S.markTool, c: S.markColor || "red", p: [f(e)] };
+      try { w.setPointerCapture(e.pointerId); } catch (x) {}
+      e.preventDefault();
+    }, true);
+    root.addEventListener("pointermove", function (e) {
+      if (!MD || e.pointerId !== MD.id) return; var q = MD.f(e);
+      if (MD.k === "pen") { var l = MD.p[MD.p.length - 1]; if (Math.abs(q[0] - l[0]) + Math.abs(q[1] - l[1]) > 0.003 && MD.p.length < 400) MD.p.push(q); } else MD.p = [MD.p[0], q];
+      var g = MD.w.querySelector(".mk-live"); if (g) g.innerHTML = shapeSvg({ k: MD.k, c: MD.c, p: MD.p }, true);
+      e.preventDefault();
+    }, true);
+    function mdEnd(e) {
+      if (!MD || e.pointerId !== MD.id) return; var d = MD; MD = null;
+      var a = d.p[0], b = d.p[d.p.length - 1], big = d.k === "pen" ? d.p.length > 2 : (Math.abs(a[0] - b[0]) > 0.006 || Math.abs(a[1] - b[1]) > 0.006);
+      if (!big || e.type === "pointercancel") { var g = d.w.querySelector(".mk-live"); if (g) g.innerHTML = ""; if (e.type === "pointerup") toast(d.k === "pen" ? "Draw a longer line." : "Drag on the sheet to draw it."); return; }
+      var anc = d.k === "box" || d.k === "cloud" ? [Math.min(a[0], b[0]), Math.min(a[1], b[1])] : a;
+      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: anc[0], y: anc[1], share: [], shape: { k: d.k, c: d.c, p: d.p } }; S.markPlace = false; S.markFiles = [];
+      keepScroll(render);
+      setTimeout(function () { var ta = root.querySelector(".mk-panel .mk-text"); if (ta) ta.focus({ preventScroll: true }); }, 80);
+    }
+    root.addEventListener("pointerup", mdEnd, true); root.addEventListener("pointercancel", mdEnd, true);
+    root.addEventListener("change", function (e) {
+      var inp = e.target; if (!inp.matches || !inp.matches("[data-mk-files]")) return;
+      var fl = [].slice.call(inp.files || []).filter(function (f) { return /^image\//.test(f.type); }).slice(0, 4);
+      Promise.all(fl.map(function (f) { return resize(f, 1600); })).then(function (list) { S.markFiles = (S.markFiles || []).concat(list).slice(0, 4); mkKeepTyping(function () { keepScroll(render); }); }).catch(function (er) { toast(er.message); });
+    });
     var st = document.createElement("style");
     st.textContent = "#bs-portal .sh-wrap.placing{cursor:crosshair}#bs-portal .sh-wrap.placing img{outline:3px dashed #2f6fd6;outline-offset:-3px}" +
       "#bs-portal .mk-pin{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;border:2px solid #fff;background:#e5484d;color:#fff;font:600 13px/26px inherit;text-align:center;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;z-index:2}" +
@@ -3059,7 +3132,15 @@
       "#bs-portal .mk-list{margin-bottom:14px}#bs-portal .mk-lh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}" +
       "#bs-portal .mk-row{display:flex;gap:10px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;cursor:pointer;font:inherit;color:inherit}#bs-portal .mk-row:hover{background:#faf8f4}" +
       "#bs-portal .mk-rt{display:flex;flex-direction:column;gap:2px;min-width:0}#bs-portal .mk-rt span{overflow-wrap:anywhere}#bs-portal .mk-tag{background:#fde8e8;color:#a2504a}" +
-      "@media (max-width:620px){#bs-portal .mk-panel{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:62vh;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}#bs-portal .mk-pin{width:34px;height:34px;line-height:30px}}";
+      "#bs-portal .mk-svg{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible}#bs-portal .sv-stage.drawing{touch-action:none}#bs-portal .sv-stage.drawing .sh-wrap{cursor:crosshair}" +
+      "#bs-portal .mk-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 0;padding:6px 8px;background:#f6f4f0;border-radius:12px}#bs-portal .mk-hint{font-size:13px;color:var(--muted);margin-right:4px}" +
+      "#bs-portal .mk-tool{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:5px 9px;font:inherit;font-size:13px;cursor:pointer}#bs-portal .mk-tool b{font-size:15px;font-weight:400}#bs-portal .mk-tool.on{background:#141413;color:#fff;border-color:#141413}" +
+      "#bs-portal .mk-cols{display:inline-flex;gap:6px;margin-left:auto}#bs-portal .mk-col{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}#bs-portal .mk-col.on{box-shadow:0 0 0 2px #141413}" +
+      "#bs-portal .mk-pin.carried{border-style:dashed}#bs-portal .mk-from{font-size:12px;color:#7a5b16;background:#fbf3df;border-radius:8px;padding:4px 8px;margin:0 0 6px;display:inline-block}" +
+      "#bs-portal .mk-files{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}#bs-portal .mk-files img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}" +
+      "#bs-portal .mk-pick{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}#bs-portal .mk-photo{border:1px solid var(--line);border-radius:99px;padding:4px 10px;font-size:13px;cursor:pointer;background:#fff}" +
+      "#bs-portal .mk-thumb{position:relative}#bs-portal .mk-thumb img{width:52px;height:52px;object-fit:cover;border-radius:8px}#bs-portal .mk-thumb button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:#141413;color:#fff;font-size:11px;line-height:20px;padding:0;cursor:pointer}" +
+      "@media (max-width:620px){#bs-portal .mk-tool span{display:none}#bs-portal .mk-cols{margin-left:0}#bs-portal .mk-panel{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:62vh;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}#bs-portal .mk-pin{width:34px;height:34px;line-height:30px}}";
     document.head.appendChild(st);
   })();
   (function () {
