@@ -1570,24 +1570,41 @@
     }).join("") + "</div>";
   }
   function markPanel(d, x) {
-    var dr = S.markDraft, m = S.markSel && markById(S.markSel);
+    var dr = S.markDraft, m = S.markSel && markById(S.markSel), full = S.mkFull ? " full" : "";
+    var grip = '<button class="mk-grip" data-a="mkGrow" aria-label="' + (S.mkFull ? "Show less" : "Show more") + '"><i></i></button>';
     if (dr && dr.plan === d.id && dr.n === x.n) {
-      return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><b>New mark on ' + esc(sheetLabel(x)) + '</b><button class="icon-btn" data-a="markCancel" aria-label="Cancel">✕</button></div>' +
-        '<textarea class="mk-text" rows="3" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea>' + markPickHtml() + markAtChips() +
-        (staff() ? markShareHtml(dr.share || [], "") : '<p class="muted small">Blue Sierra\'s team will see it.</p>') +
-        '<div class="mk-actions"><button class="btn sm" data-a="markSave">Save mark</button><button class="btn ghost sm" data-a="markCancel">Cancel</button></div></div>';
+      return '<div class="mk-panel compose' + full + '" data-lenis-prevent>' + grip +
+        '<div class="mk-h"><b>New mark on ' + esc(sheetLabel(x)) + '</b><button class="icon-btn" data-a="markCancel" aria-label="Cancel">✕</button></div>' +
+        '<div class="mk-row1"><textarea class="mk-text" rows="2" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea><button class="btn sm mk-send" data-a="markSave">Save</button></div>' +
+        markPickHtml() +
+        '<div class="mk-more">' + markAtChips() + (staff() ? markShareHtml(dr.share || [], "") : '<p class="muted small">Blue Sierra\'s team will see it.</p>') + "</div>" +
+        '<button class="mk-moreb" data-a="mkGrow">' + (S.mkFull ? "Fewer options ▴" : "@ Notify · Who sees it ▾") + "</button></div>";
     }
     if (!m || !markOn(m, d.id, x.n)) return "";
-    var carried = m.plan_id !== d.id ? ((m.also || []).filter(function (a) { return a.plan_id === d.id; })[0] || {}).from : "";
-    return '<div class="mk-panel" data-lenis-prevent><div class="mk-h"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><div class="mk-who"><b>' + esc(m.author) + '</b><span class="muted small">' + esc(markWhen(m.at)) + "</span></div>" +
+    var carried = m.plan_id !== d.id ? ((m.also || []).filter(function (a) { return a.plan_id === d.id; })[0] || {}).from : "", nr = (m.replies || []).length;
+    return '<div class="mk-panel view' + full + '" data-lenis-prevent>' + grip +
+      '<div class="mk-h"><span class="mk-num' + (m.status === "done" ? " done" : "") + '">' + m.num + '</span><div class="mk-who"><b>' + esc(m.author) + '</b><span class="muted small">' + esc(markWhen(m.at)) + "</span></div>" +
       '<span class="tag ' + (m.status === "done" ? "t-same" : "t-new") + '">' + (m.status === "done" ? "Done" : "Open") + '</span><button class="icon-btn" data-a="markClose" aria-label="Close">✕</button></div>' +
-      (carried ? '<p class="mk-from">↻ From ' + esc(carried) + ", still open</p>" : "") + '<p class="mk-body">' + markText(m.text) + "</p>" + markFilesHtml(m.files) + (m.status === "done" && m.done_by ? '<p class="muted small">✓ Done by ' + esc(m.done_by) + " · " + esc(markWhen(m.done_at)) + "</p>" : "") +
-      (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p>" + markFilesHtml(r.files) + "</div>"; }).join("") +
-      (S.data.canMark ? '<textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea>' + markPickHtml() + markAtChips() : "") +
-      '<div class="mk-actions">' + (S.data.canMark ? '<button class="btn sm" data-a="markReply" data-id="' + esc(m.id) + '">Reply</button>' : "") +
-      (m.canClose ? '<button class="btn ghost sm" data-a="markDone" data-id="' + esc(m.id) + '" data-v="' + (m.status === "done" ? "0" : "1") + '">' + (m.status === "done" ? "Reopen" : "✓ Done") + "</button>" : "") +
-      (m.canDelete ? '<button class="link small mk-del" data-a="markDel" data-id="' + esc(m.id) + '">Delete</button>' : "") + "</div>" +
-      (staff() ? markShareHtml(m.shared || [], m.id) : "") + "</div>";
+      (carried ? '<p class="mk-from">↻ From ' + esc(carried) + ", still open</p>" : "") + '<p class="mk-body">' + markText(m.text) + "</p>" + markFilesHtml(m.files) +
+      (m.status === "done" && m.done_by ? '<p class="muted small">✓ Done by ' + esc(m.done_by) + " · " + esc(markWhen(m.done_at)) + "</p>" : "") +
+      '<div class="mk-quick"><button class="btn ghost sm mk-repb" data-a="mkGrow">' + (S.mkFull ? "Hide replies ▴" : nr ? nr + " repl" + (nr > 1 ? "ies" : "y") + " · Reply ▾" : "Reply ▾") + "</button>" +
+      (m.canClose ? '<button class="btn ghost sm" data-a="markDone" data-id="' + esc(m.id) + '" data-v="' + (m.status === "done" ? "0" : "1") + '">' + (m.status === "done" ? "Reopen" : "✓ Done") + "</button>" : "") + "</div>" +
+      '<div class="mk-more">' +
+        (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p>" + markFilesHtml(r.files) + "</div>"; }).join("") +
+        (S.data.canMark ? '<div class="mk-row1"><textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea><button class="btn sm mk-send" data-a="markReply" data-id="' + esc(m.id) + '">Send</button></div>' + markPickHtml() + markAtChips() : "") +
+        (staff() ? markShareHtml(m.shared || [], m.id) : "") +
+        (m.canDelete ? '<div class="mk-actions"><button class="link small mk-del" data-a="markDel" data-id="' + esc(m.id) + '">Delete this mark</button></div>' : "") +
+      "</div></div>";
+  }
+  /* Keep the spot being marked in sight, above the note (on a phone the note covers the bottom of the plan). */
+  function mkCenter(id) {
+    setTimeout(function () {
+      var st = root.querySelector(".modal .sv-stage"), el = id ? root.querySelector('.mk-pin[data-id="' + id + '"]') : root.querySelector(".mk-pin.draft"); if (!st || !el) return;
+      var pnl = root.querySelector(".mk-panel"), sr = st.getBoundingClientRect(), er = el.getBoundingClientRect();
+      var visBottom = pnl && window.innerWidth <= 620 ? Math.min(sr.bottom, pnl.getBoundingClientRect().top) : sr.bottom;
+      var mid = sr.top + (visBottom - sr.top) / 2;
+      st.scrollTop += er.top + er.height / 2 - mid; st.scrollLeft += er.left + er.width / 2 - (sr.left + sr.width / 2);
+    }, 120);
   }
   function marksList() {
     var all = marksAll(); if (!all.length) return "";
@@ -1604,7 +1621,7 @@
   }
   function openMark(id, plan, n) {
     if (!planById(plan)) return toast("That plan isn't here anymore.");
-    S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.markPlace = false; S.markDraft = null; S.markSel = id; S.modal = { type: "sheet", id: plan, n: +n };
+    S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.markPlace = false; S.markDraft = null; S.markSel = id; S.mkFull = false; S.modal = { type: "sheet", id: plan, n: +n };
     keepScroll(render);
     setTimeout(function () { var pin = root.querySelector('.mk-pin[data-id="' + id + '"]'); if (pin) { pin.scrollIntoView({ block: "center", inline: "center" }); pin.classList.add("pulse"); } }, 250);
   }
@@ -2640,12 +2657,13 @@
       case "modal": S.modal = { type: b.dataset.m, id: b.dataset.id || null, kind: b.dataset.kind || "", email: b.dataset.email || "", from: b.dataset.from || "", visit: b.dataset.visit || "", prop: b.dataset.prop || "", issue: b.dataset.issue || "" }; return keepScroll(render);
       case "callGo": setTimeout(function () { S.modal = null; keepScroll(render); }, 600); return;   // let the tap open Meet first
       case "markPlace": S.markPlace = !S.markPlace; S.markDraft = null; S.markSel = null; S.markFiles = []; return keepScroll(render);
+      case "mkGrow": S.mkFull = !S.mkFull; mkKeepTyping(function () { keepScroll(render); }); if (S.mkFull) setTimeout(function () { var t = root.querySelector(".mk-panel .mk-reply"); if (t && window.innerWidth <= 620) t.focus({ preventScroll: true }); }, 60); return;
       case "markTool": S.markTool = b.dataset.v; return keepScroll(render);
       case "markColor": S.markColor = b.dataset.v; return keepScroll(render);
       case "markFileDel": (S.markFiles || []).splice(+b.dataset.i, 1); return mkKeepTyping(function () { keepScroll(render); });
       case "markCancel": S.markDraft = null; S.markPlace = false; S.markFiles = []; return keepScroll(render);
       case "markClose": S.markSel = null; return keepScroll(render);
-      case "markOpen": S.markSel = b.dataset.id; S.markDraft = null; S.markPlace = false; S.markFiles = []; return keepScroll(render);
+      case "markOpen": S.markSel = b.dataset.id; S.markDraft = null; S.markPlace = false; S.markFiles = []; S.mkFull = false; keepScroll(render); return mkCenter(b.dataset.id);
       case "markFilter": S.markFilter = b.dataset.v; return keepScroll(render);
       case "markGo": return openMark(b.dataset.id, b.dataset.plan, +b.dataset.n);
       case "markAt": { var ta = root.querySelector(".mk-panel textarea"); if (ta) { ta.value = ta.value + (ta.value && !/\s$/.test(ta.value) ? " " : "") + "@" + b.dataset.name + " "; ta.focus(); } return; }
@@ -3056,7 +3074,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261127210547";
+  var BUILD = "20261127223932";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3075,13 +3093,45 @@
   // The Webflow page smooth-scrolls with Lenis, which makes the wheel lag behind. Inside the portal: plain, instant scrolling.
   root.setAttribute("data-lenis-prevent", "");
   (function () {
+    var st = document.createElement("style");
+    st.textContent = "#bs-portal .mk-row1{display:flex;gap:8px;align-items:flex-end}#bs-portal .mk-row1 textarea{flex:1;margin-top:6px}#bs-portal .mk-send{flex:none}" +
+      "#bs-portal .mk-grip,#bs-portal .mk-moreb,#bs-portal .mk-repb{display:none}#bs-portal .mk-quick{display:flex;gap:8px;margin-top:8px}" +
+      "@media (max-width:620px){" +
+        "#bs-portal .modal-bg .modal.m-sheet{position:fixed;inset:0;width:100%;max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;padding:8px 10px 0;box-sizing:border-box}" +
+        "#bs-portal .m-sheet .sv-bar{flex-wrap:wrap;gap:6px;padding-right:44px}#bs-portal .m-sheet .sv-bar h2{font-size:16px;margin:0}#bs-portal .m-sheet .sv-bar .eyebrow{font-size:10px;letter-spacing:.08em}" +
+        "#bs-portal .m-sheet .sv-tools [data-a=close]{position:absolute;top:8px;right:10px;z-index:4;background:#fff}" +
+        "#bs-portal .m-sheet .sv-tools{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:6px;width:100%;margin-right:-44px}#bs-portal .m-sheet .sv-tools::-webkit-scrollbar{display:none}" +
+        "#bs-portal .m-sheet .sv-tools .chip,#bs-portal .m-sheet .sv-tools .icon-btn{flex:none}#bs-portal .m-sheet .sv-stage{margin-top:6px;border-radius:8px;padding-bottom:var(--mkh,0px)}" +
+        "#bs-portal .modal .mk-panel{position:fixed;left:0;right:0;top:auto;bottom:var(--kb,0px);width:auto;max-height:42vh;border-radius:16px 16px 0 0;padding:2px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.18);z-index:30;overflow:auto}" +
+        "#bs-portal .modal .mk-panel.full{max-height:78vh}#bs-portal .modal .mk-panel:not(.full) .mk-more{display:none}#bs-portal .modal .mk-panel .mk-h{margin-bottom:2px}" +
+        "#bs-portal .mk-grip{display:block;width:100%;height:18px;border:0;background:none;padding:0;cursor:pointer}#bs-portal .mk-grip i{display:block;width:40px;height:5px;border-radius:3px;background:#d6d2ca;margin:6px auto 0}" +
+        "#bs-portal .mk-moreb{display:block;border:0;background:none;padding:6px 0 0;font:inherit;font-size:13px;color:var(--muted);cursor:pointer}#bs-portal .mk-repb{display:inline-flex}" +
+        "#bs-portal .modal .mk-panel:not(.full) .mk-body{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:2px 0 4px}" +
+        "#bs-portal .modal .mk-panel:not(.full) .mk-files img{width:48px;height:48px}#bs-portal .modal .mk-panel textarea{font-size:16px}" +
+        "#bs-portal .modal .mk-tools{margin:6px 0 0;padding:4px 6px;flex-wrap:nowrap;overflow-x:auto}#bs-portal .mk-hint{display:none}" +
+      "}";
+    document.head.appendChild(st);
+    // the plan scrolls up past the note: the stage gets the note's height as bottom room
+    var lastH = -1;
+    function mkRoom() {
+      var md = root.querySelector(".modal.m-sheet"); if (!md) { lastH = -1; return; }
+      var pnl = root.querySelector(".mk-panel"), h = pnl && window.innerWidth <= 620 ? Math.round(pnl.getBoundingClientRect().height) : 0;
+      if (h !== lastH) { lastH = h; md.style.setProperty("--mkh", h + "px"); }
+    }
+    new MutationObserver(function () { requestAnimationFrame(mkRoom); }).observe(root, { childList: true, subtree: true });
+    window.addEventListener("resize", mkRoom);
+    // iPhone keyboard: keep the note right above it
+    var vv = window.visualViewport;
+    if (vv) { var kb = function () { var k = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); root.style.setProperty("--kb", k + "px"); mkRoom(); }; vv.addEventListener("resize", kb); vv.addEventListener("scroll", kb); }
+  })();
+  (function () {
     root.addEventListener("click", function (e) {
       if (!S.markPlace || (S.markTool || "pin") !== "pin" || !S.modal || S.modal.type !== "sheet") return;
       var w = e.target.closest && e.target.closest(".sh-wrap"); if (!w || e.target.closest(".mk-pin")) return;
       var img = w.querySelector("img"); if (!img) return; var r = img.getBoundingClientRect();
       var x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
       e.preventDefault(); e.stopPropagation();
-      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: x, y: y, share: [], shape: { k: "pin", c: S.markColor || "red", p: [] } }; S.markPlace = false; S.markFiles = []; keepScroll(render);
+      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: x, y: y, share: [], shape: { k: "pin", c: S.markColor || "red", p: [] } }; S.markPlace = false; S.markFiles = []; S.mkFull = false; keepScroll(render); mkCenter("");
       setTimeout(function () { var ta = root.querySelector(".mk-panel .mk-text"); if (ta) ta.focus({ preventScroll: true }); }, 80);
     }, true);
     var MD = null;
@@ -3106,8 +3156,8 @@
       var a = d.p[0], b = d.p[d.p.length - 1], big = d.k === "pen" ? d.p.length > 2 : (Math.abs(a[0] - b[0]) > 0.006 || Math.abs(a[1] - b[1]) > 0.006);
       if (!big || e.type === "pointercancel") { var g = d.w.querySelector(".mk-live"); if (g) g.innerHTML = ""; if (e.type === "pointerup") toast(d.k === "pen" ? "Draw a longer line." : "Drag on the sheet to draw it."); return; }
       var anc = d.k === "box" || d.k === "cloud" ? [Math.min(a[0], b[0]), Math.min(a[1], b[1])] : a;
-      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: anc[0], y: anc[1], share: [], shape: { k: d.k, c: d.c, p: d.p } }; S.markPlace = false; S.markFiles = [];
-      keepScroll(render);
+      S.markDraft = { plan: S.modal.id, n: S.modal.n, x: anc[0], y: anc[1], share: [], shape: { k: d.k, c: d.c, p: d.p } }; S.markPlace = false; S.markFiles = []; S.mkFull = false;
+      keepScroll(render); mkCenter("");
       setTimeout(function () { var ta = root.querySelector(".mk-panel .mk-text"); if (ta) ta.focus({ preventScroll: true }); }, 80);
     }
     root.addEventListener("pointerup", mdEnd, true); root.addEventListener("pointercancel", mdEnd, true);
