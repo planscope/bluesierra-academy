@@ -1575,7 +1575,7 @@
     if (dr && dr.plan === d.id && dr.n === x.n) {
       return '<div class="mk-panel compose' + full + '" data-lenis-prevent>' + grip +
         '<div class="mk-h"><b>New mark on ' + esc(sheetLabel(x)) + '</b><button class="icon-btn" data-a="markCancel" aria-label="Cancel">✕</button></div>' +
-        '<div class="mk-row1"><textarea class="mk-text" rows="2" maxlength="2000" placeholder="What should the team know here? Use @ to notify someone."></textarea><button class="btn sm mk-send" data-a="markSave">Save</button></div>' +
+        '<div class="mk-row1"><button class="icon-btn mk-x" data-a="markCancel" aria-label="Cancel">✕</button><textarea class="mk-text" rows="2" maxlength="2000" autocomplete="off" autocorrect="on" enterkeyhint="enter" placeholder="What should the team know here? Use @ to notify someone."></textarea><button class="btn sm mk-send" data-a="markSave">Save</button></div>' +
         markPickHtml() +
         '<div class="mk-more">' + markAtChips() + (staff() ? markShareHtml(dr.share || [], "") : '<p class="muted small">Blue Sierra\'s team will see it.</p>') + "</div>" +
         '<button class="mk-moreb" data-a="mkGrow">' + (S.mkFull ? "Fewer options ▴" : "@ Notify · Who sees it ▾") + "</button></div>";
@@ -1591,7 +1591,7 @@
       (m.canClose ? '<button class="btn ghost sm" data-a="markDone" data-id="' + esc(m.id) + '" data-v="' + (m.status === "done" ? "0" : "1") + '">' + (m.status === "done" ? "Reopen" : "✓ Done") + "</button>" : "") + "</div>" +
       '<div class="mk-more">' +
         (m.replies || []).map(function (r) { return '<div class="mk-rep"><b>' + esc(r.author) + '</b> <span class="muted small">' + esc(markWhen(r.at)) + '</span><p>' + markText(r.text) + "</p>" + markFilesHtml(r.files) + "</div>"; }).join("") +
-        (S.data.canMark ? '<div class="mk-row1"><textarea class="mk-reply" rows="2" maxlength="2000" placeholder="Reply…"></textarea><button class="btn sm mk-send" data-a="markReply" data-id="' + esc(m.id) + '">Send</button></div>' + markPickHtml() + markAtChips() : "") +
+        (S.data.canMark ? '<div class="mk-row1"><button class="icon-btn mk-x" data-a="mkGrow" aria-label="Close the reply">✕</button><textarea class="mk-reply" rows="2" maxlength="2000" autocomplete="off" autocorrect="on" placeholder="Reply…"></textarea><button class="btn sm mk-send" data-a="markReply" data-id="' + esc(m.id) + '">Send</button></div>' + markPickHtml() + markAtChips() : "") +
         (staff() ? markShareHtml(m.shared || [], m.id) : "") +
         (m.canDelete ? '<div class="mk-actions"><button class="link small mk-del" data-a="markDel" data-id="' + esc(m.id) + '">Delete this mark</button></div>' : "") +
       "</div></div>";
@@ -3074,7 +3074,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261127223932";
+  var BUILD = "20261127234050";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -3097,18 +3097,26 @@
     st.textContent = "#bs-portal .mk-row1{display:flex;gap:8px;align-items:flex-end}#bs-portal .mk-row1 textarea{flex:1;margin-top:6px}#bs-portal .mk-send{flex:none}" +
       "#bs-portal .mk-grip,#bs-portal .mk-moreb,#bs-portal .mk-repb{display:none}#bs-portal .mk-quick{display:flex;gap:8px;margin-top:8px}" +
       "@media (max-width:620px){" +
-        "#bs-portal .modal-bg .modal.m-sheet{position:fixed;inset:0;width:100%;max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;padding:8px 10px 0;box-sizing:border-box}" +
+        "#bs-portal .modal-bg .modal.m-sheet{position:fixed;left:0;right:0;top:var(--vvt,0px);bottom:auto;width:100%;max-width:none;height:100vh;height:var(--vvh,100dvh);max-height:none;border-radius:0;padding:8px 10px 0;box-sizing:border-box;overflow:hidden}" +
         "#bs-portal .m-sheet .sv-bar{flex-wrap:wrap;gap:6px;padding-right:44px}#bs-portal .m-sheet .sv-bar h2{font-size:16px;margin:0}#bs-portal .m-sheet .sv-bar .eyebrow{font-size:10px;letter-spacing:.08em}" +
         "#bs-portal .m-sheet .sv-tools [data-a=close]{position:absolute;top:8px;right:10px;z-index:4;background:#fff}" +
         "#bs-portal .m-sheet .sv-tools{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:6px;width:100%;margin-right:-44px}#bs-portal .m-sheet .sv-tools::-webkit-scrollbar{display:none}" +
         "#bs-portal .m-sheet .sv-tools .chip,#bs-portal .m-sheet .sv-tools .icon-btn{flex:none}#bs-portal .m-sheet .sv-stage{margin-top:6px;border-radius:8px;padding-bottom:var(--mkh,0px)}" +
-        "#bs-portal .modal .mk-panel{position:fixed;left:0;right:0;top:auto;bottom:var(--kb,0px);width:auto;max-height:42vh;border-radius:16px 16px 0 0;padding:2px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.18);z-index:30;overflow:auto}" +
+        "#bs-portal .modal .mk-panel{position:absolute;left:0;right:0;top:auto;bottom:0;width:auto;max-height:calc(var(--vvh,100vh) * .42);border-radius:16px 16px 0 0;padding:2px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.18);z-index:30;overflow:auto}" +
         "#bs-portal .modal .mk-panel.full{max-height:78vh}#bs-portal .modal .mk-panel:not(.full) .mk-more{display:none}#bs-portal .modal .mk-panel .mk-h{margin-bottom:2px}" +
         "#bs-portal .mk-grip{display:block;width:100%;height:18px;border:0;background:none;padding:0;cursor:pointer}#bs-portal .mk-grip i{display:block;width:40px;height:5px;border-radius:3px;background:#d6d2ca;margin:6px auto 0}" +
         "#bs-portal .mk-moreb{display:block;border:0;background:none;padding:6px 0 0;font:inherit;font-size:13px;color:var(--muted);cursor:pointer}#bs-portal .mk-repb{display:inline-flex}" +
         "#bs-portal .modal .mk-panel:not(.full) .mk-body{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:2px 0 4px}" +
         "#bs-portal .modal .mk-panel:not(.full) .mk-files img{width:48px;height:48px}#bs-portal .modal .mk-panel textarea{font-size:16px}" +
         "#bs-portal .modal .mk-tools{margin:6px 0 0;padding:4px 6px;flex-wrap:nowrap;overflow-x:auto}#bs-portal .mk-hint{display:none}" +
+        "#bs-portal .m-sheet .sv-tools .muted.small{white-space:nowrap;flex:none}#bs-portal .modal .mk-panel.full{max-height:calc(var(--vvh,100vh) * .8)}" +
+        "#bs-portal .mk-x{display:none}#bs-portal .modal .mk-panel textarea{min-height:44px;resize:none}" +
+        /* keyboard up: only what's needed to write */
+        "#bs-portal.kb-open .m-sheet .sv-bar,#bs-portal.kb-open .m-sheet .mk-tools,#bs-portal.kb-open .m-sheet .sv-legend{display:none}#bs-portal.kb-open .m-sheet .sv-stage{margin-top:0}" +
+        "#bs-portal.kb-open .modal .mk-panel{padding:4px 10px 6px;max-height:calc(var(--vvh,100vh) * .5);box-shadow:0 -4px 16px rgba(0,0,0,.16)}#bs-portal.kb-open .modal .mk-panel .mk-h,#bs-portal.kb-open .modal .mk-grip{display:none}" +
+        "#bs-portal.kb-open .modal .mk-panel .mk-rep,#bs-portal.kb-open .modal .mk-panel .mk-files,#bs-portal.kb-open .modal .mk-panel .mk-quick,#bs-portal.kb-open .modal .mk-panel .mk-from,#bs-portal.kb-open .modal .mk-panel .mk-share,#bs-portal.kb-open .modal .mk-panel .mk-actions{display:none}" +
+        "#bs-portal.kb-open .modal .mk-panel .mk-body{-webkit-line-clamp:1;margin:2px 0;font-size:13px;color:var(--muted)}#bs-portal.kb-open .mk-x{display:inline-flex;flex:none;width:34px;height:34px}" +
+        "#bs-portal.kb-open .modal .mk-panel textarea{min-height:38px;height:38px;margin-top:2px;padding:8px 10px}#bs-portal.kb-open .modal .mk-panel .mk-pick{display:inline-flex;margin-top:4px}#bs-portal.kb-open .modal .mk-moreb{display:inline-block;margin-left:10px;padding-top:0}" +
       "}";
     document.head.appendChild(st);
     // the plan scrolls up past the note: the stage gets the note's height as bottom room
@@ -3122,7 +3130,17 @@
     window.addEventListener("resize", mkRoom);
     // iPhone keyboard: keep the note right above it
     var vv = window.visualViewport;
-    if (vv) { var kb = function () { var k = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); root.style.setProperty("--kb", k + "px"); mkRoom(); }; vv.addEventListener("resize", kb); vv.addEventListener("scroll", kb); }
+    // pin the viewer to exactly what's visible: with the keyboard up iOS shrinks and scrolls the visible area
+    var kbWas = false;
+    function kb() {
+      if (!vv) return; var open = window.innerWidth <= 620 && window.innerHeight - vv.height > 120 && !!root.querySelector(".modal.m-sheet");
+      root.style.setProperty("--vvt", Math.round(vv.offsetTop) + "px"); root.style.setProperty("--vvh", Math.round(vv.height) + "px");
+      root.classList.toggle("kb-open", open); mkRoom();
+      if (open !== kbWas) { kbWas = open; if (open && (S.markDraft || S.markSel)) setTimeout(function () { mkCenter(S.markDraft ? "" : S.markSel); }, 180); }
+    }
+    if (vv) { vv.addEventListener("resize", kb); vv.addEventListener("scroll", kb); kb(); }
+    // the note grows with what you write (up to ~4 lines), so it starts small
+    root.addEventListener("input", function (e) { var t = e.target; if (!t.matches || !t.matches(".mk-panel textarea") || window.innerWidth > 620) return; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight + 2, 112) + "px"; mkRoom(); });
   })();
   (function () {
     root.addEventListener("click", function (e) {
