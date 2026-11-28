@@ -2685,7 +2685,7 @@
       case "restoreProject": run(b, async function () { await call("restoreProject", { projectId: b.dataset.id }); S.projects = null; refreshList(); toast("Project restored"); }); return;
       case "sheet": S.sheetMode = S.sheetMode || "hl"; S.zoom = 100; S.modal = { type: "sheet", id: b.dataset.id, n: +b.dataset.n }; return keepScroll(render);
       case "sheetMode": S.sheetMode = b.dataset.v; return keepScroll(render);
-      case "zoom": S.zoom = Math.max(100, Math.min(400, (S.zoom || 100) + (+b.dataset.z) * 50)); return keepScroll(render);
+      case "zoom": S.zoom = Math.max(100, Math.min(600, (S.zoom || 100) + (+b.dataset.z) * 50)); return keepScroll(render);
       case "sheetNav":
         var dd = planById(S.modal.id), li = dd.sheets.map(function (x) { return x.n; }).indexOf(S.modal.n) + (+b.dataset.d);
         if (dd.sheets[li]) { S.modal.n = dd.sheets[li].n; S.zoom = 100; } return keepScroll(render);
@@ -2931,7 +2931,7 @@
   };
 
   /* New version published? Refresh by itself when nobody's typing or in a form (checked every 5 minutes and when you come back). */
-  var BUILD = "20261126015054";
+  var BUILD = "20261127202509";
   function checkBuild() {
     if (!API) return;
     var base = ((document.querySelector('script[src*="portal-app.js"]') || {}).src || "").replace(/portal-app\.js.*$/, "");
@@ -2948,6 +2948,61 @@
   /* ================= Beta v1.1: live chat, chat dock, support widget, smoother redraws ================= */
   // The Webflow page smooth-scrolls with Lenis, which makes the wheel lag behind. Inside the portal: plain, instant scrolling.
   root.setAttribute("data-lenis-prevent", "");
+  (function () {
+    var st = document.createElement("style");
+    st.textContent = "#bs-portal{overflow-x:clip;max-width:100vw}" +
+      "#bs-portal .topbar .brand{min-width:0;flex:1 1 auto}#bs-portal .topbar .who{flex:none}" +
+      "#bs-portal .topbar .brand .logo{width:112px;height:14px;flex:0 1 112px;min-width:0;max-width:100%}";
+    document.head.appendChild(st);
+  })();
+  /* Plans and PDFs: pinch with two fingers zooms the sheet only (the page stays put), the fingers move it around,
+     one finger scrolls it, double-tap zooms in and back out. A Mac trackpad pinch does the same. */
+  (function () {
+    var st = document.createElement("style");
+    st.textContent = "#bs-portal .sv-stage{touch-action:pan-x pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}#bs-portal .sv-stage.pinching .sv-zoom{transition:none}" +
+      "#bs-portal .sv-zoom img{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}";
+    document.head.appendChild(st);
+    var ZMIN = 100, ZMAX = 600, P = null, tap = { t: 0, x: 0, y: 0 };
+    function stageOf(e) { return e.target && e.target.closest ? e.target.closest("#bs-portal .sv-stage") : null; }
+    function spot(stage, cx, cy) { var b = stage.querySelector(".sv-zoom"), r = b && b.getBoundingClientRect(); return r && r.width ? { fx: (cx - r.left) / r.width, fy: (cy - r.top) / r.height } : null; }
+    // z: new zoom (%); the spot f of the sheet ends up under the screen point cx, cy
+    function zoomTo(stage, z, cx, cy, f) {
+      var b = stage.querySelector(".sv-zoom"); if (!b) return;
+      f = f || spot(stage, cx, cy); z = Math.round(Math.max(ZMIN, Math.min(ZMAX, z)));
+      b.style.width = z + "%"; S.zoom = z;
+      if (!f) return; var r = b.getBoundingClientRect();
+      stage.scrollLeft += r.left + f.fx * r.width - cx; stage.scrollTop += r.top + f.fy * r.height - cy;
+    }
+    function two(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return { d: Math.sqrt(dx * dx + dy * dy) || 1, x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 }; }
+    document.addEventListener("touchstart", function (e) {
+      var stage = stageOf(e); if (!stage) return;
+      if (e.touches.length === 2) { var g = two(e.touches); P = { stage: stage, d0: g.d, z0: S.zoom || 100, f: spot(stage, g.x, g.y) }; stage.classList.add("pinching"); e.preventDefault(); return; }
+      if (e.touches.length !== 1) return;
+      var t0 = e.touches[0], now = Date.now();
+      if (now - tap.t < 320 && Math.abs(t0.clientX - tap.x) < 30 && Math.abs(t0.clientY - tap.y) < 30) {   // double-tap
+        e.preventDefault(); tap.t = 0; stage.classList.add("pinching");
+        zoomTo(stage, (S.zoom || 100) > 100 ? 100 : 250, t0.clientX, t0.clientY);
+        setTimeout(function () { stage.classList.remove("pinching"); }, 60); return;
+      }
+      tap = { t: now, x: t0.clientX, y: t0.clientY };
+    }, { passive: false });
+    document.addEventListener("touchmove", function (e) {
+      if (!P || e.touches.length !== 2) return;
+      e.preventDefault(); var g = two(e.touches);
+      zoomTo(P.stage, P.z0 * g.d / P.d0, g.x, g.y, P.f);
+    }, { passive: false });
+    function end(e) { if (P && e.touches.length < 2) { P.stage.classList.remove("pinching"); P = null; tap.t = 0; } }
+    document.addEventListener("touchend", end); document.addEventListener("touchcancel", end);
+    // Safari's own pinch would zoom the whole page: not inside a sheet
+    ["gesturestart", "gesturechange", "gestureend"].forEach(function (n) { document.addEventListener(n, function (e) { if (stageOf(e)) e.preventDefault(); }, { passive: false }); });
+    // Mac trackpad pinch (and Ctrl + wheel) zooms the sheet, not the page
+    document.addEventListener("wheel", function (e) {
+      if (!e.ctrlKey) return; var stage = stageOf(e); if (!stage) return;
+      e.preventDefault(); stage.classList.add("pinching");
+      zoomTo(stage, (S.zoom || 100) * Math.exp(-e.deltaY / 100), e.clientX, e.clientY);
+      clearTimeout(stage._pz); stage._pz = setTimeout(function () { stage.classList.remove("pinching"); }, 120);
+    }, { passive: false });
+  })();
   /* Smart redraws: instead of rebuilding the whole page on every update, only what changed is touched (morphdom).
      Photos and maps don't flash, animations don't replay, and the box you're typing in is left alone. */
   var MORPH = null;
@@ -5654,11 +5709,11 @@
     var q = ttQ(); if (!q.length || S.ttFlushing || !navigator.onLine) { if (q.length) S.ttSync = { st: "pending", n: q.length }; return; }
     S.ttFlushing = 1;
     try {
-      while (q.length) {
-        var ev = q[0];
+      while ((q = ttQ()).length) {                                                          // read the phone's list again each time: a tap made while sending stays in it
+        var ev = q[0], evKey = JSON.stringify(ev);
         try { var r = await call("ttPunch", ev); S.tt = Object.assign(S.tt || {}, r.state); if (ev.declare_at && r.event && !r.dup) await ttDeclare(r.event.id, ev.declare_at, ev.kind); if (r.status === "conflict") S.ttSync = { st: "err", msg: ttL() === "es" ? "Un registro sin señal no cuadró; la oficina lo revisará." : "An offline record didn't fit; the office will review it." }; }
         catch (e) { if (e instanceof TypeError || /busy|ocupad|try again|intenta|took too long|tard|timeout|network|fetch|failed|log in again|inicia sesi/i.test(e.message || "")) break; S.ttSync = { st: "err", msg: e.message }; }   // a passing problem (Google busy, slow, session): keep it on the phone and try again later; never lose a tap
-        q.shift(); ttQ(q);
+        var now = ttQ(), at = now.map(function (x) { return JSON.stringify(x); }).indexOf(evKey); if (at > -1) now.splice(at, 1); ttQ(now); q = now;   // take off only the tap just sent
       }
       if (!q.length && (!S.ttSync || S.ttSync.st === "pending")) S.ttSync = { st: "ok", at: new Date().toISOString() };
     } finally { S.ttFlushing = 0; keepScroll(render); }
